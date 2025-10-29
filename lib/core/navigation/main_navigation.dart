@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
+import '../../features/dashboard/screens/student_home_screen.dart';
 import '../../features/booking/screens/tutor_pending_requests_screen.dart';
 import '../../features/tutor/screens/tutor_students_screen.dart';
 import '../../features/discovery/screens/find_tutors_screen.dart';
@@ -41,7 +42,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   // Student/Parent screens (4 items)
   final List<Widget> _studentScreens = [
-    const TutorHomeScreen(), // Home Dashboard (to be created)
+    const StudentHomeScreen(), // Home Dashboard
     const FindTutorsScreen(), // Find Tutors
     const MyRequestsScreen(), // My Booking Requests
     const ProfileScreen(userType: 'student'), // Profile & Settings
