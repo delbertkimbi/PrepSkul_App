@@ -535,9 +535,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.05),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.2),
-              ),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
             ),
             child: Column(
               children: [
@@ -605,11 +603,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.schedule,
-                size: 18,
-                color: Colors.grey[600],
-              ),
+              Icon(Icons.schedule, size: 18, color: Colors.grey[600]),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -662,7 +656,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => BookSessionScreen(tutor: widget.tutor),
+                    builder: (context) =>
+                        BookSessionScreen(tutor: widget.tutor),
                   ),
                 );
               },
@@ -846,11 +841,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     color: Colors.black.withOpacity(0.5),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.close,
-                    color: Colors.white,
-                    size: 24,
-                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 24),
                 ),
               ),
             ),
