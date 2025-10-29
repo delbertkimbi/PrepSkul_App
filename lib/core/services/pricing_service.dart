@@ -45,7 +45,8 @@ class PricingService {
     final locationMultiplier = _getLocationMultiplier(location);
 
     // Calculate session rate with all multipliers
-    double sessionRate = baseTutorRate *
+    double sessionRate =
+        baseTutorRate *
         ratingMultiplier *
         credentialMultiplier *
         locationMultiplier;
@@ -69,7 +70,7 @@ class PricingService {
         'ratingMultiplier': ratingMultiplier,
         'credentialMultiplier': credentialMultiplier,
         'locationMultiplier': locationMultiplier,
-      }
+      },
     };
   }
 
@@ -132,9 +133,9 @@ class PricingService {
 
     // Add thousands separator
     final formatted = rounded.toString().replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]},',
-        );
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (Match m) => '${m[1]},',
+    );
 
     return '$formatted XAF';
   }
@@ -226,8 +227,7 @@ class PricingService {
       location: 'online', // Default to online
       adminPriceOverride: adminOverride,
       hasVisibilitySubscription: tutorData['visibility_subscription'] ?? false,
-      hasPrepSkulCertification:
-          tutorData['prepskul_certified'] ?? false,
+      hasPrepSkulCertification: tutorData['prepskul_certified'] ?? false,
     );
   }
 
@@ -256,10 +256,6 @@ class PricingService {
       if (monthly > maxPrice) maxPrice = monthly;
     }
 
-    return {
-      'min': minPrice,
-      'max': maxPrice,
-    };
+    return {'min': minPrice, 'max': maxPrice};
   }
 }
-

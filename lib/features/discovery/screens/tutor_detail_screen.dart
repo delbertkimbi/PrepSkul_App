@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_session_screen.dart';
 
@@ -60,7 +61,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     final bio = widget.tutor['bio'] ?? '';
     final education = widget.tutor['education'] ?? '';
     final experience = widget.tutor['experience'] ?? '';
-    final rate = (widget.tutor['hourly_rate'] ?? 0).toDouble();
     final rating = (widget.tutor['rating'] ?? 0.0).toDouble();
     final totalReviews = widget.tutor['total_reviews'] ?? 0;
     final studentCount = widget.tutor['student_count'] ?? 0;
@@ -470,86 +470,241 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     ),
                   ),
 
-                const SizedBox(height: 100),
+                const SizedBox(height: 32),
+
+                // Pricing & Availability (AFTER all information)
+                _buildPricingSection(),
+
+                const SizedBox(height: 32),
+
+                // Action Buttons (AT THE VERY BOTTOM)
+                _buildActionButtons(context),
+
+                const SizedBox(height: 40),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
 
-      // Bottom Book Bar
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Row(
+  // Pricing Section (appears AFTER all information)
+  Widget _buildPricingSection() {
+    final pricing = PricingService.calculateFromTutorData(widget.tutor);
+    final perSession = pricing['perSession'] as double;
+    final perMonth = pricing['perMonth'] as double;
+    final sessionsPerWeek = pricing['sessionsPerWeek'] as int;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Icon(
+                Icons.payments_outlined,
+                size: 24,
+                color: AppTheme.primaryColor,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Pricing & Availability',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.primaryColor.withOpacity(0.2),
+              ),
+            ),
+            child: Column(
+              children: [
+                // Monthly estimate
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Per hour',
+                      'Monthly Package',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    Text(
+                      PricingService.formatPrice(perMonth),
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Based on $sessionsPerWeek session${sessionsPerWeek > 1 ? 's' : ''}/week',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: Colors.grey[600],
                       ),
                     ),
+                  ],
+                ),
+                Divider(color: Colors.grey[300], height: 32),
+                // Per session rate
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
                     Text(
-                      '${(rate / 1000).toStringAsFixed(0)}k XAF',
+                      'Per Session',
                       style: GoogleFonts.poppins(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black,
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    Text(
+                      PricingService.formatPrice(perSession),
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
                       ),
                     ),
                   ],
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Available times
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.schedule,
+                size: 18,
+                color: Colors.grey[600],
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
               Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            BookSessionScreen(tutor: widget.tutor),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Available Schedule',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[800],
                       ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
                     ),
-                    elevation: 0,
-                  ),
-                  child: Text(
-                    'Book Trial Lesson',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                    const SizedBox(height: 4),
+                    ...(widget.tutor['available_schedule'] as List? ?? [])
+                        .map(
+                          (schedule) => Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              schedule.toString(),
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ],
                 ),
               ),
             ],
           ),
-        ),
+        ],
+      ),
+    );
+  }
+
+  // Action Buttons (AT THE VERY BOTTOM)
+  Widget _buildActionButtons(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          // Book Trial Session (outlined)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookSessionScreen(tutor: widget.tutor),
+                  ),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: AppTheme.primaryColor, width: 2),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Book Trial Session',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Book This Tutor (filled)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                // TODO: Navigate to full booking flow
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Full booking flow coming soon!'),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: Text(
+                'Book This Tutor',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

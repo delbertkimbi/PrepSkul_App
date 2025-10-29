@@ -526,20 +526,28 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Student count & sessions
+                    // Sessions completed (bold as requested)
                     Row(
                       children: [
                         Icon(
-                          Icons.people_outline,
+                          Icons.school_outlined,
                           size: 16,
                           color: Colors.grey[600],
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '$completedSessions sessions',
+                          '$completedSessions',
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: Colors.grey[700],
+                            fontWeight: FontWeight.w700, // Bold as requested
+                          ),
+                        ),
+                        Text(
+                          ' lessons',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[600],
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -566,8 +574,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       'From ${PricingService.formatPrice(monthlyAmount)}/mo',
       style: GoogleFonts.poppins(
         fontSize: 12,
-        color: Colors.grey[600],
-        fontWeight: FontWeight.w500,
+        color: Colors.grey[700],
+        fontWeight: FontWeight.w700, // Bold as requested
       ),
     );
   }
