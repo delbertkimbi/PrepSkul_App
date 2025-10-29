@@ -158,39 +158,49 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     children: [
                       Row(
                         children: [
-                          // Avatar
-                          Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.primaryColor.withOpacity(0.2),
-                                width: 2,
+                          // Avatar (Larger & clickable)
+                          GestureDetector(
+                            onTap: () => _showProfileImage(context),
+                            child: Container(
+                              width: 90,
+                              height: 90,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppTheme.primaryColor.withOpacity(0.3),
+                                  width: 3,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 3),
+                                  ),
+                                ],
                               ),
-                            ),
-                            child: ClipOval(
-                              child: Image.asset(
-                                widget.tutor['avatar_url'] ??
-                                    'assets/images/prepskul_profile.png',
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Container(
-                                    color: AppTheme.primaryColor.withOpacity(
-                                      0.1,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        name[0].toUpperCase(),
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 28,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.primaryColor,
+                              child: ClipOval(
+                                child: Image.asset(
+                                  widget.tutor['avatar_url'] ??
+                                      'assets/images/prepskul_profile.png',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: AppTheme.primaryColor.withOpacity(
+                                        0.1,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          name[0].toUpperCase(),
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 36,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.primaryColor,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                ),
                               ),
                             ),
                           ),
@@ -754,6 +764,98 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showProfileImage(BuildContext context) {
+    final name = widget.tutor['full_name'] ?? 'Tutor';
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            // Profile Image
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.7,
+                  maxWidth: MediaQuery.of(context).size.width * 0.9,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    widget.tutor['avatar_url'] ??
+                        'assets/images/prepskul_profile.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        height: 300,
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                name[0].toUpperCase(),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 80,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                name,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            // Close button
+            Positioned(
+              top: 10,
+              right: 10,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
