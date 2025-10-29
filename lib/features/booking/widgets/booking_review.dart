@@ -45,7 +45,8 @@ class _BookingReviewState extends State<BookingReview> {
   @override
   void initState() {
     super.initState();
-    _selectedPaymentPlan = widget.initialPaymentPlan; // Don't default to monthly
+    _selectedPaymentPlan =
+        widget.initialPaymentPlan; // Don't default to monthly
   }
 
   void _selectPaymentPlan(String plan) {
@@ -145,10 +146,7 @@ class _BookingReviewState extends State<BookingReview> {
             icon: Icons.place,
             color: Colors.green,
             children: [
-              _buildDetailRow(
-                'Format',
-                widget.location.toUpperCase(),
-              ),
+              _buildDetailRow('Format', widget.location.toUpperCase()),
               if (widget.address != null) ...[
                 const SizedBox(height: 12),
                 _buildDetailRow('Address', widget.address!),
@@ -177,7 +175,11 @@ class _BookingReviewState extends State<BookingReview> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.payments, size: 24, color: AppTheme.primaryColor),
+                    Icon(
+                      Icons.payments,
+                      size: 24,
+                      color: AppTheme.primaryColor,
+                    ),
                     const SizedBox(width: 12),
                     Text(
                       'Pricing Breakdown',
@@ -302,7 +304,8 @@ class _BookingReviewState extends State<BookingReview> {
           CircleAvatar(
             radius: 32,
             backgroundImage: AssetImage(
-              widget.tutor['avatar_url'] ?? 'assets/images/prepskul_profile.png',
+              widget.tutor['avatar_url'] ??
+                  'assets/images/prepskul_profile.png',
             ),
           ),
           const SizedBox(width: 16),
@@ -416,10 +419,7 @@ class _BookingReviewState extends State<BookingReview> {
           width: 100,
           child: Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
           ),
         ),
         Expanded(
@@ -436,8 +436,12 @@ class _BookingReviewState extends State<BookingReview> {
     );
   }
 
-  Widget _buildPricingRow(String label, String value,
-      {bool isSubtotal = false, bool isTotal = false}) {
+  Widget _buildPricingRow(
+    String label,
+    String value, {
+    bool isSubtotal = false,
+    bool isTotal = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -502,7 +506,9 @@ class _BookingReviewState extends State<BookingReview> {
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                  color: isSelected
+                      ? AppTheme.primaryColor
+                      : Colors.transparent,
                 ),
               ),
             ),
@@ -573,4 +579,3 @@ class _BookingReviewState extends State<BookingReview> {
     );
   }
 }
-
