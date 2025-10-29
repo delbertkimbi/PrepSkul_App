@@ -350,12 +350,18 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
         ),
         child: Center(
           child: isAvailable
-              ? Text(
-                  time,
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? Colors.white : Colors.black,
+              ? FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Text(
+                      time,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : Colors.black,
+                      ),
+                    ),
                   ),
                 )
               : Icon(Icons.block, size: 16, color: Colors.grey[400]),
