@@ -191,7 +191,15 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context); // Close dialog
-                  Navigator.pop(context); // Go back to tutor detail
+                  Navigator.pop(context); // Close booking flow
+                  
+                  // Navigate to MainNavigation with Requests tab (index 2)
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/student-nav',
+                    (route) => false,
+                    arguments: {'initialTab': 2}, // Tab 2 = Requests
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
@@ -201,7 +209,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                   ),
                 ),
                 child: Text(
-                  'Done',
+                  'View My Requests',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,

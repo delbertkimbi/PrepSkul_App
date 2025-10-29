@@ -77,14 +77,37 @@ class PrepSkulApp extends StatelessWidget {
               '/beautiful-login': (context) => const BeautifulLoginScreen(),
               '/beautiful-signup': (context) => const BeautifulSignupScreen(),
               '/forgot-password': (context) => const ForgotPasswordScreen(),
-              '/tutor-nav': (context) =>
-                  const MainNavigation(userRole: 'tutor'),
-              '/student-nav': (context) =>
-                  const MainNavigation(userRole: 'student'),
-              '/parent-nav': (context) =>
-                  const MainNavigation(userRole: 'parent'),
             },
             onGenerateRoute: (settings) {
+              // Handle navigation routes with optional initialTab argument
+              if (settings.name == '/tutor-nav') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                return MaterialPageRoute(
+                  builder: (context) => MainNavigation(
+                    userRole: 'tutor',
+                    initialTab: args?['initialTab'],
+                  ),
+                );
+              }
+              if (settings.name == '/student-nav') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                return MaterialPageRoute(
+                  builder: (context) => MainNavigation(
+                    userRole: 'student',
+                    initialTab: args?['initialTab'],
+                  ),
+                );
+              }
+              if (settings.name == '/parent-nav') {
+                final args = settings.arguments as Map<String, dynamic>?;
+                return MaterialPageRoute(
+                  builder: (context) => MainNavigation(
+                    userRole: 'parent',
+                    initialTab: args?['initialTab'],
+                  ),
+                );
+              }
+
               if (settings.name == '/profile-setup') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final userRole = args?['userRole'] ?? 'student';

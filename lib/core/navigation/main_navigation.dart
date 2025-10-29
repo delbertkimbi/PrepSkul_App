@@ -1,41 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
-import '../../features/tutor/screens/tutor_requests_screen.dart';
+import '../../features/booking/screens/tutor_pending_requests_screen.dart';
 import '../../features/tutor/screens/tutor_students_screen.dart';
 import '../../features/discovery/screens/find_tutors_screen.dart';
-import '../../features/sessions/screens/my_tutors_screen.dart';
+import '../../features/booking/screens/my_requests_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../theme/app_theme.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
+  final int? initialTab;
 
-  const MainNavigation({Key? key, required this.userRole}) : super(key: key);
+  const MainNavigation({
+    Key? key,
+    required this.userRole,
+    this.initialTab,
+  }) : super(key: key);
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
 
-  // Tutor screens
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.initialTab ?? 0;
+  }
+
+  // Tutor screens (4 items)
   final List<Widget> _tutorScreens = [
-    const TutorHomeScreen(),
-    const TutorRequestsScreen(),
-    const TutorStudentsScreen(),
-    const ProfileScreen(userType: 'tutor'),
+    const TutorHomeScreen(), // Home Dashboard
+    const TutorPendingRequestsScreen(), // Booking Requests
+    const TutorStudentsScreen(), // Active Sessions
+    const ProfileScreen(userType: 'tutor'), // Profile & Settings
   ];
 
-  // Student/Parent screens
+  // Student/Parent screens (4 items)
   final List<Widget> _studentScreens = [
-    const FindTutorsScreen(),
-    const MyTutorsScreen(),
-    const ProfileScreen(userType: 'student'),
+    const TutorHomeScreen(), // Home Dashboard (to be created)
+    const FindTutorsScreen(), // Find Tutors
+    const MyRequestsScreen(), // My Booking Requests
+    const ProfileScreen(userType: 'student'), // Profile & Settings
   ];
 
-  // Tutor navigation items
+  // Tutor navigation items (4 items)
   final List<BottomNavigationBarItem> _tutorItems = [
     const BottomNavigationBarItem(
       icon: Icon(Icons.home_outlined),
@@ -43,14 +55,14 @@ class _MainNavigationState extends State<MainNavigation> {
       label: 'Home',
     ),
     const BottomNavigationBarItem(
-      icon: Icon(Icons.assignment_outlined),
-      activeIcon: Icon(Icons.assignment),
+      icon: Icon(Icons.mail_outline), // inbox icon for requests
+      activeIcon: Icon(Icons.mail),
       label: 'Requests',
     ),
     const BottomNavigationBarItem(
-      icon: Icon(Icons.people_outline),
-      activeIcon: Icon(Icons.people),
-      label: 'Students',
+      icon: Icon(Icons.school_outlined), // sessions icon
+      activeIcon: Icon(Icons.school),
+      label: 'Sessions',
     ),
     const BottomNavigationBarItem(
       icon: Icon(Icons.person_outline),
@@ -59,17 +71,22 @@ class _MainNavigationState extends State<MainNavigation> {
     ),
   ];
 
-  // Student/Parent navigation items
+  // Student/Parent navigation items (4 items)
   final List<BottomNavigationBarItem> _studentItems = [
+    const BottomNavigationBarItem(
+      icon: Icon(Icons.home_outlined),
+      activeIcon: Icon(Icons.home),
+      label: 'Home',
+    ),
     const BottomNavigationBarItem(
       icon: Icon(Icons.search),
       activeIcon: Icon(Icons.search),
       label: 'Find Tutors',
     ),
     const BottomNavigationBarItem(
-      icon: Icon(Icons.people_outline),
-      activeIcon: Icon(Icons.people),
-      label: 'My Tutors',
+      icon: Icon(Icons.receipt_long_outlined), // requests icon
+      activeIcon: Icon(Icons.receipt_long),
+      label: 'Requests',
     ),
     const BottomNavigationBarItem(
       icon: Icon(Icons.person_outline),
