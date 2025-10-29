@@ -17,10 +17,8 @@ import 'package:table_calendar/table_calendar.dart';
 class BookTrialSessionScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
 
-  const BookTrialSessionScreen({
-    Key? key,
-    required this.tutor,
-  }) : super(key: key);
+  const BookTrialSessionScreen({Key? key, required this.tutor})
+    : super(key: key);
 
   @override
   State<BookTrialSessionScreen> createState() => _BookTrialSessionScreenState();
@@ -37,9 +35,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   // Available time slots (demo data - will be dynamic based on tutor availability)
   final List<String> _availableTimeSlots = [
-    '09:00', '10:00', '11:00',
-    '14:00', '15:00', '16:00', '17:00',
-    '18:00', '19:00', '20:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '14:00',
+    '15:00',
+    '16:00',
+    '17:00',
+    '18:00',
+    '19:00',
+    '20:00',
   ];
 
   // Trial fee based on duration
@@ -323,7 +328,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               required: true,
               child: _buildTextInput(
                 controller: _goalController,
-                hint: 'e.g., Understand quadratic equations, improve pronunciation...',
+                hint:
+                    'e.g., Understand quadratic equations, improve pronunciation...',
                 maxLines: 3,
               ),
             ),
@@ -388,7 +394,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           CircleAvatar(
             radius: 30,
             backgroundImage: AssetImage(
-              widget.tutor['avatar_url'] ?? 'assets/images/prepskul_profile.png',
+              widget.tutor['avatar_url'] ??
+                  'assets/images/prepskul_profile.png',
             ),
           ),
           const SizedBox(width: 12),
@@ -515,13 +522,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Widget _buildDurationSelector() {
     return Row(
       children: [
-        Expanded(
-          child: _buildDurationOption(30, '30 min', '2,000 XAF'),
-        ),
+        Expanded(child: _buildDurationOption(30, '30 min', '2,000 XAF')),
         const SizedBox(width: 12),
-        Expanded(
-          child: _buildDurationOption(60, '1 hour', '3,500 XAF'),
-        ),
+        Expanded(child: _buildDurationOption(60, '1 hour', '3,500 XAF')),
       ],
     );
   }
@@ -533,7 +536,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.white,
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.1)
+              : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
@@ -661,13 +666,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       child: TextField(
         controller: controller,
         maxLines: maxLines,
-        onChanged: (value) => setState(() {}), // Trigger rebuild for button state
+        onChanged: (value) =>
+            setState(() {}), // Trigger rebuild for button state
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.poppins(
-            fontSize: 14,
-            color: Colors.grey[400],
-          ),
+          hintStyle: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[400]),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
         ),
@@ -708,4 +711,3 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     );
   }
 }
-

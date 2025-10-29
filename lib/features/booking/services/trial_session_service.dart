@@ -207,10 +207,13 @@ class TrialSessionService {
     String recurringSessionId,
   ) async {
     try {
-      await _supabase.from('trial_sessions').update({
-        'converted_to_recurring': true,
-        'recurring_session_id': recurringSessionId,
-      }).eq('id', sessionId);
+      await _supabase
+          .from('trial_sessions')
+          .update({
+            'converted_to_recurring': true,
+            'recurring_session_id': recurringSessionId,
+          })
+          .eq('id', sessionId);
     } catch (e) {
       throw Exception('Failed to mark trial as converted: $e');
     }
@@ -257,4 +260,3 @@ class TrialSessionService {
     }
   }
 }
-
