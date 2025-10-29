@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_session_screen.dart';
+import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -684,10 +685,14 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: () {
-                // TODO: Navigate to full booking flow
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Full booking flow coming soon!'),
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookTutorFlowScreen(
+                      tutor: widget.tutor,
+                      // TODO: Pass actual survey data
+                      surveyData: null,
+                    ),
                   ),
                 );
               },
