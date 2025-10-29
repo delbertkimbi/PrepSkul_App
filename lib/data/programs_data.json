@@ -1,0 +1,475 @@
+{
+  "programs": {
+    "exam_preparation": {
+      "id": "exam_preparation",
+      "name": "Exam Preparation",
+      "description": "Get ready for your most important exams with focused preparation and proven strategies",
+      "icon": "🎯",
+      "color": "#1E40AF",
+      "categories": {
+        "primary_level": {
+          "name": "Primary Level",
+          "exams": [
+            {
+              "name": "Primary 6 Exam (CEPE)",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Certificat d'Études Primaires Élémentaires"
+            },
+            {
+              "name": "Primary 6 Exam (FSLC)",
+              "system": "Cameroonian",
+              "language": "English",
+              "description": "First School Leaving Certificate"
+            }
+          ]
+        },
+        "secondary_level": {
+          "name": "Secondary Level",
+          "exams": [
+            {
+              "name": "BEPC (Brevet d'Études du Premier Cycle)",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Junior Secondary Certificate"
+            },
+            {
+              "name": "GCE O-Level",
+              "system": "British",
+              "language": "English",
+              "description": "General Certificate of Education Ordinary Level"
+            },
+            {
+              "name": "Baccalauréat A, C, D, E, F",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Senior Secondary Certificate (Science, Literature, Economics, etc.)"
+            },
+            {
+              "name": "GCE A-Level",
+              "system": "British",
+              "language": "English",
+              "description": "General Certificate of Education Advanced Level"
+            }
+          ]
+        },
+        "university_entrance": {
+          "name": "University Entrance",
+          "exams": [
+            {
+              "name": "Concours ENS (École Normale Supérieure)",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Teacher Training College Entrance"
+            },
+            {
+              "name": "Concours Polytechnique",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Engineering School Entrance"
+            },
+            {
+              "name": "Concours Médecine",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Medical School Entrance"
+            },
+            {
+              "name": "Concours Droit",
+              "system": "Cameroonian",
+              "language": "French",
+              "description": "Law School Entrance"
+            },
+            {
+              "name": "SAT",
+              "system": "International",
+              "language": "English",
+              "description": "Scholastic Assessment Test"
+            },
+            {
+              "name": "TOEFL",
+              "system": "International",
+              "language": "English",
+              "description": "Test of English as a Foreign Language"
+            },
+            {
+              "name": "IELTS",
+              "system": "International",
+              "language": "English",
+              "description": "International English Language Testing System"
+            },
+            {
+              "name": "GRE",
+              "system": "International",
+              "language": "English",
+              "description": "Graduate Record Examination"
+            }
+          ]
+        },
+        "professional_certifications": {
+          "name": "Professional Certifications",
+          "exams": [
+            {
+              "name": "Microsoft Office Specialist",
+              "system": "International",
+              "language": "English/French",
+              "description": "Office productivity certification"
+            },
+            {
+              "name": "Cisco CCNA",
+              "system": "International",
+              "language": "English",
+              "description": "Cisco Certified Network Associate"
+            },
+            {
+              "name": "CompTIA A+",
+              "system": "International",
+              "language": "English",
+              "description": "IT fundamentals certification"
+            }
+          ]
+        }
+      },
+      "subjects_covered": [
+        "Mathematics",
+        "Physics",
+        "Chemistry",
+        "Biology",
+        "English Language",
+        "French Language",
+        "Literature",
+        "History",
+        "Geography",
+        "Economics",
+        "Computer Science",
+        "Philosophy"
+      ],
+      "success_rate": "95%",
+      "features": [
+        "Comprehensive exam preparation",
+        "Past papers and practice tests",
+        "Exam strategies and techniques",
+        "Time management skills",
+        "Stress management",
+        "Mock exams with feedback"
+      ]
+    },
+    "academic_tutoring": {
+      "id": "academic_tutoring",
+      "name": "Academic Tutoring",
+      "description": "Master your subjects with personalized guidance from expert tutors",
+      "icon": "📚",
+      "color": "#059669",
+      "categories": {
+        "mathematics": {
+          "name": "Mathematics",
+          "levels": ["Primary", "Secondary", "University"],
+          "subjects": [
+            "Algebra",
+            "Geometry",
+            "Trigonometry",
+            "Calculus",
+            "Statistics",
+            "Probability",
+            "Linear Algebra",
+            "Differential Equations"
+          ]
+        },
+        "sciences": {
+          "name": "Sciences",
+          "levels": ["Primary", "Secondary", "University"],
+          "subjects": [
+            "Physics",
+            "Chemistry",
+            "Biology",
+            "Earth Science",
+            "Environmental Science",
+            "Anatomy",
+            "Physiology",
+            "Organic Chemistry",
+            "Inorganic Chemistry",
+            "Physical Chemistry"
+          ]
+        },
+        "languages": {
+          "name": "Languages",
+          "levels": ["Primary", "Secondary", "University", "Adult Learning"],
+          "subjects": [
+            "English Language",
+            "English Literature",
+            "French Language",
+            "French Literature",
+            "Spanish",
+            "German",
+            "Italian",
+            "Portuguese",
+            "Arabic",
+            "Chinese",
+            "Grammar",
+            "Writing Skills",
+            "Reading Comprehension",
+            "Speaking Skills"
+          ]
+        },
+        "social_sciences": {
+          "name": "Social Sciences",
+          "levels": ["Primary", "Secondary", "University"],
+          "subjects": [
+            "History",
+            "Geography",
+            "Economics",
+            "Political Science",
+            "Psychology",
+            "Sociology",
+            "Philosophy",
+            "Civics",
+            "World History",
+            "African History",
+            "Cameroonian History"
+          ]
+        },
+        "computer_science": {
+          "name": "Computer Science",
+          "levels": ["Secondary", "University"],
+          "subjects": [
+            "Programming Fundamentals",
+            "Data Structures",
+            "Algorithms",
+            "Database Management",
+            "Web Development",
+            "Mobile Development",
+            "Software Engineering",
+            "Computer Networks",
+            "Cybersecurity",
+            "Artificial Intelligence"
+          ]
+        }
+      },
+      "learning_approaches": [
+        "Personalized lesson plans",
+        "Interactive learning",
+        "Hands-on practice",
+        "Conceptual understanding",
+        "Problem-solving techniques",
+        "Exam preparation",
+        "Homework assistance",
+        "Study skills development"
+      ]
+    },
+    "skill_development": {
+      "id": "skill_development",
+      "name": "Skill Development",
+      "description": "Learn practical skills that prepare you for the future",
+      "icon": "🚀",
+      "color": "#DC2626",
+      "categories": {
+        "technology": {
+          "name": "Technology & Digital Skills",
+          "skills": [
+            {
+              "name": "Coding & Programming",
+              "subcategories": [
+                "Web Development (HTML, CSS, JavaScript)",
+                "Python Programming",
+                "Java Programming",
+                "Mobile App Development",
+                "Database Management",
+                "Software Development",
+                "Game Development"
+              ]
+            },
+            {
+              "name": "Digital Literacy",
+              "subcategories": [
+                "Microsoft Office Suite",
+                "Google Workspace",
+                "Social Media Management",
+                "Digital Marketing",
+                "Graphic Design",
+                "Video Editing",
+                "Photography",
+                "Cybersecurity Basics"
+              ]
+            }
+          ]
+        },
+        "creative_arts": {
+          "name": "Creative Arts",
+          "skills": [
+            {
+              "name": "Visual Arts",
+              "subcategories": [
+                "Drawing & Sketching",
+                "Painting (Watercolor, Oil, Acrylic)",
+                "Digital Art",
+                "Graphic Design",
+                "Photography",
+                "Sculpture",
+                "Ceramics",
+                "Textile Design"
+              ]
+            },
+            {
+              "name": "Music",
+              "subcategories": [
+                "Piano",
+                "Guitar",
+                "Violin",
+                "Drums",
+                "Saxophone",
+                "Voice Training",
+                "Music Theory",
+                "Music Production",
+                "DJ Skills"
+              ]
+            },
+            {
+              "name": "Performing Arts",
+              "subcategories": [
+                "Acting",
+                "Dancing",
+                "Public Speaking",
+                "Drama",
+                "Theater Production",
+                "Stand-up Comedy"
+              ]
+            }
+          ]
+        },
+        "vocational_skills": {
+          "name": "Vocational Skills",
+          "skills": [
+            {
+              "name": "Fashion & Beauty",
+              "subcategories": [
+                "Tailoring & Fashion Design",
+                "Hair Styling & Braiding",
+                "Makeup Artistry",
+                "Nail Art",
+                "Barbering",
+                "Cosmetology"
+              ]
+            },
+            {
+              "name": "Culinary Arts",
+              "subcategories": [
+                "Cooking & Baking",
+                "Pastry Making",
+                "Food Presentation",
+                "Restaurant Management",
+                "Catering"
+              ]
+            },
+            {
+              "name": "Construction & Crafts",
+              "subcategories": [
+                "Carpentry",
+                "Plumbing",
+                "Electrical Work",
+                "Welding",
+                "Masonry",
+                "Woodworking",
+                "Metalworking"
+              ]
+            }
+          ]
+        },
+        "life_skills": {
+          "name": "Life Skills",
+          "skills": [
+            {
+              "name": "Personal Development",
+              "subcategories": [
+                "Leadership Skills",
+                "Communication Skills",
+                "Time Management",
+                "Goal Setting",
+                "Critical Thinking",
+                "Problem Solving",
+                "Decision Making",
+                "Emotional Intelligence"
+              ]
+            },
+            {
+              "name": "Business & Entrepreneurship",
+              "subcategories": [
+                "Business Planning",
+                "Financial Literacy",
+                "Marketing",
+                "Sales Skills",
+                "Project Management",
+                "Team Management",
+                "Customer Service"
+              ]
+            },
+            {
+              "name": "Health & Wellness",
+              "subcategories": [
+                "Physical Fitness",
+                "Nutrition",
+                "Mental Health Awareness",
+                "First Aid",
+                "Yoga & Meditation",
+                "Sports Coaching"
+              ]
+            }
+          ]
+        }
+      },
+      "delivery_methods": [
+        "Hands-on workshops",
+        "Project-based learning",
+        "Mentorship programs",
+        "Industry partnerships",
+        "Portfolio development",
+        "Certification programs"
+      ]
+    }
+  },
+  "learning_modes": {
+    "online": {
+      "name": "Online Learning",
+      "description": "Learn from anywhere with video calls and digital tools",
+      "features": ["Video calls", "Screen sharing", "Digital whiteboard", "File sharing", "Recorded sessions"]
+    },
+    "onsite": {
+      "name": "In-Person Learning",
+      "description": "Face-to-face learning at home or learning centers",
+      "features": ["Physical presence", "Hands-on practice", "Direct interaction", "Equipment access"]
+    },
+    "hybrid": {
+      "name": "Hybrid Learning",
+      "description": "Combination of online and in-person sessions",
+      "features": ["Flexibility", "Best of both worlds", "Adaptable schedule", "Mixed resources"]
+    }
+  },
+  "age_groups": {
+    "primary": {"min_age": 6, "max_age": 12, "description": "Primary School (6-12 years)"},
+    "secondary": {"min_age": 13, "max_age": 18, "description": "Secondary School (13-18 years)"},
+    "university": {"min_age": 19, "max_age": 25, "description": "University Level (19-25 years)"},
+    "adult": {"min_age": 26, "max_age": 65, "description": "Adult Learning (26+ years)"}
+  },
+  "program_benefits": {
+    "exam_preparation": [
+      "95% success rate",
+      "Comprehensive study materials",
+      "Expert exam strategies",
+      "Mock exams and feedback",
+      "Stress management techniques"
+    ],
+    "academic_tutoring": [
+      "Personalized learning plans",
+      "Expert subject tutors",
+      "Flexible scheduling",
+      "Progress tracking",
+      "Homework assistance"
+    ],
+    "skill_development": [
+      "Industry-relevant skills",
+      "Hands-on learning",
+      "Portfolio development",
+      "Career preparation",
+      "Practical application"
+    ]
+  }
+}

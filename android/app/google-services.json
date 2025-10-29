@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "613507205446",
+    "project_id": "operating-axis-420213",
+    "storage_bucket": "operating-axis-420213.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:613507205446:android:73e9d18897fff00313fd47",
+        "android_client_info": {
+          "package_name": "com.prepskul.prepskul"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfLopHRc7cnW-mEqto1CtiwIEk34qGWi4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

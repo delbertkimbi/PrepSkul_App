@@ -1,0 +1,437 @@
+[
+  {
+    "id": "tutor_001",
+    "full_name": "Dr. Marie Ngono",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "PhD in Mathematics with 8+ years teaching experience. Specialized in preparing students for GCE A-Level and university entrance exams.",
+    "education": "PhD Mathematics - University of Yaoundé I",
+    "experience": "8 years",
+    "subjects": [
+      "Mathematics",
+      "Further Mathematics",
+      "Statistics"
+    ],
+    "hourly_rate": 5000,
+    "rating": 4.9,
+    "total_reviews": 127,
+    "is_verified": true,
+    "tutor_qualification": "Professional",
+    "gender": "Female",
+    "city": "Yaoundé",
+    "quarter": "Bastos",
+    "languages": [
+      "English",
+      "French"
+    ],
+    "available_schedule": [
+      "Weekday evenings",
+      "Weekends"
+    ],
+    "teaching_style": "Interactive problem-solving with real-world applications",
+    "success_stories": "95% of my students pass GCE A-Level with Grade B or higher",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "certifications": [
+      "Cambridge Certified Teacher",
+      "PhD Mathematics"
+    ],
+    "achievements": [
+      "Best Mathematics Teacher Award 2022",
+      "Published Research in Applied Mathematics"
+    ],
+    "student_count": 156,
+    "completed_sessions": 2340
+  },
+  {
+    "id": "tutor_002",
+    "full_name": "Njoku Emmanuel",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Software Engineer & Coding Instructor. I make programming fun and easy to understand for beginners and advanced students.",
+    "education": "BSc Computer Science - University of Buea",
+    "experience": "5 years",
+    "subjects": [
+      "Python",
+      "JavaScript",
+      "Web Development",
+      "Mobile App Development"
+    ],
+    "hourly_rate": 3500,
+    "rating": 4.8,
+    "total_reviews": 89,
+    "is_verified": true,
+    "tutor_qualification": "Graduate",
+    "gender": "Male",
+    "city": "Douala",
+    "quarter": "Akwa",
+    "languages": [
+      "English",
+      "Pidgin"
+    ],
+    "available_schedule": [
+      "Weekday evenings",
+      "Weekends",
+      "Flexible hours"
+    ],
+    "teaching_style": "Project-based learning with hands-on coding exercises",
+    "success_stories": "Students have built 50+ mobile apps and websites",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "certifications": [
+      "Google Developer Certified",
+      "React Native Expert"
+    ],
+    "achievements": [
+      "Built 20+ production apps",
+      "Mentor at Google Developer Groups Douala"
+    ],
+    "student_count": 98,
+    "completed_sessions": 1456
+  },
+  {
+    "id": "tutor_003",
+    "full_name": "Aminata Sow",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Passionate French & English teacher. Native bilingual speaker helping students master both languages with confidence.",
+    "education": "Masters in Applied Linguistics - University of Douala",
+    "experience": "6 years",
+    "subjects": [
+      "French",
+      "English",
+      "Literature"
+    ],
+    "hourly_rate": 3000,
+    "rating": 4.7,
+    "total_reviews": 104,
+    "is_verified": true,
+    "tutor_qualification": "Graduate",
+    "gender": "Female",
+    "city": "Douala",
+    "quarter": "Bonanjo",
+    "languages": [
+      "French",
+      "English",
+      "Wolof"
+    ],
+    "available_schedule": [
+      "Weekday mornings",
+      "Weekday afternoons"
+    ],
+    "teaching_style": "Conversational approach with cultural immersion",
+    "success_stories": "Students improve fluency by 80% in 3 months",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=KQmvjKGBS04",
+    "certifications": [
+      "DELF/DALF Examiner",
+      "IELTS Preparation Specialist"
+    ],
+    "achievements": [
+      "100% pass rate for DELF B2 exams",
+      "Polyglot Community Leader"
+    ],
+    "student_count": 132,
+    "completed_sessions": 1890
+  },
+  {
+    "id": "tutor_004",
+    "full_name": "Tabi Felix",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Physics & Chemistry expert. Making science exciting through experiments and practical demonstrations.",
+    "education": "MSc Physics - University of Yaoundé I",
+    "experience": "7 years",
+    "subjects": [
+      "Physics",
+      "Chemistry",
+      "General Science"
+    ],
+    "hourly_rate": 4000,
+    "rating": 4.9,
+    "total_reviews": 143,
+    "is_verified": true,
+    "tutor_qualification": "Professional",
+    "gender": "Male",
+    "city": "Yaoundé",
+    "quarter": "Melen",
+    "languages": [
+      "English",
+      "French"
+    ],
+    "available_schedule": [
+      "Weekday evenings",
+      "Weekends"
+    ],
+    "teaching_style": "Hands-on experiments with theoretical foundations",
+    "success_stories": "90% of students achieve A grades in GCE sciences",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=C_S5cXbXe-4",
+    "certifications": [
+      "Cambridge Science Educator",
+      "Lab Safety Certified"
+    ],
+    "achievements": [
+      "National Science Fair Judge",
+      "Published 5 research papers"
+    ],
+    "student_count": 167,
+    "completed_sessions": 2567
+  },
+  {
+    "id": "tutor_005",
+    "full_name": "Grace Nkeng",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Accounting & Business Studies specialist. Preparing students for professional accounting exams and business success.",
+    "education": "ACCA Qualified, BSc Accounting - University of Bamenda",
+    "experience": "9 years",
+    "subjects": [
+      "Accounting",
+      "Business Studies",
+      "Economics",
+      "Financial Literacy"
+    ],
+    "hourly_rate": 5500,
+    "rating": 4.8,
+    "total_reviews": 76,
+    "is_verified": true,
+    "tutor_qualification": "Professional",
+    "gender": "Female",
+    "city": "Bamenda",
+    "quarter": "Commercial Avenue",
+    "languages": [
+      "English"
+    ],
+    "available_schedule": [
+      "Weekday evenings",
+      "Weekends"
+    ],
+    "teaching_style": "Real-world case studies and practical accounting",
+    "success_stories": "85% pass rate for ACCA and professional exams",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=WEDIj9JBTC8",
+    "certifications": [
+      "ACCA Qualified",
+      "CFA Level 2",
+      "Business Educator Certified"
+    ],
+    "achievements": [
+      "Top 10 ACCA Tutor West Africa",
+      "Accounting Firm Partner"
+    ],
+    "student_count": 94,
+    "completed_sessions": 1234
+  },
+  {
+    "id": "tutor_006",
+    "full_name": "Brice Kamga",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Biology & Life Sciences teacher. Passionate about environmental science and helping students understand the living world.",
+    "education": "MSc Biotechnology - University of Dschang",
+    "experience": "4 years",
+    "subjects": [
+      "Biology",
+      "Environmental Science",
+      "Health Science"
+    ],
+    "hourly_rate": 3500,
+    "rating": 4.6,
+    "total_reviews": 58,
+    "is_verified": true,
+    "tutor_qualification": "Graduate",
+    "gender": "Male",
+    "city": "Dschang",
+    "quarter": "Université",
+    "languages": [
+      "French",
+      "English"
+    ],
+    "available_schedule": [
+      "Weekday afternoons",
+      "Weekends"
+    ],
+    "teaching_style": "Visual learning with diagrams and field trips",
+    "success_stories": "Students develop genuine passion for life sciences",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=PheJb1sToMk",
+    "certifications": [
+      "Biotechnology Specialist",
+      "Environmental Educator"
+    ],
+    "achievements": [
+      "Conservation Project Leader",
+      "Science Camp Organizer"
+    ],
+    "student_count": 67,
+    "completed_sessions": 789
+  },
+  {
+    "id": "tutor_007",
+    "full_name": "Stella Mbah",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "History & Geography expert. Bringing the past to life and exploring our world through engaging storytelling.",
+    "education": "MA History - University of Buea",
+    "experience": "6 years",
+    "subjects": [
+      "History",
+      "Geography",
+      "Citizenship Education"
+    ],
+    "hourly_rate": 3000,
+    "rating": 4.7,
+    "total_reviews": 91,
+    "is_verified": true,
+    "tutor_qualification": "Graduate",
+    "gender": "Female",
+    "city": "Buea",
+    "quarter": "Molyko",
+    "languages": [
+      "English"
+    ],
+    "available_schedule": [
+      "Weekday mornings",
+      "Weekday afternoons",
+      "Weekends"
+    ],
+    "teaching_style": "Storytelling with multimedia presentations",
+    "success_stories": "Students remember facts 3x better with my methods",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=BELlZKpi1Zs",
+    "certifications": [
+      "Cambridge Humanities Teacher",
+      "Digital Education Specialist"
+    ],
+    "achievements": [
+      "History Documentary Creator",
+      "Cultural Heritage Advocate"
+    ],
+    "student_count": 112,
+    "completed_sessions": 1567
+  },
+  {
+    "id": "tutor_008",
+    "full_name": "Igor Nkemngong",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Engineering & Technical Drawing instructor. Preparing future engineers with practical skills and solid foundations.",
+    "education": "BEng Mechanical Engineering - ENSP Yaoundé",
+    "experience": "5 years",
+    "subjects": [
+      "Technical Drawing",
+      "Engineering Science",
+      "Mathematics"
+    ],
+    "hourly_rate": 4500,
+    "rating": 4.8,
+    "total_reviews": 67,
+    "is_verified": true,
+    "tutor_qualification": "Graduate",
+    "gender": "Male",
+    "city": "Yaoundé",
+    "quarter": "Ngoa-Ekelle",
+    "languages": [
+      "French",
+      "English"
+    ],
+    "available_schedule": [
+      "Weekday evenings",
+      "Saturday mornings"
+    ],
+    "teaching_style": "Practical projects with CAD software training",
+    "success_stories": "Students build real engineering projects",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=jBreKn2xtYI",
+    "certifications": [
+      "AutoCAD Certified",
+      "SolidWorks Professional"
+    ],
+    "achievements": [
+      "Engineering Mentor at MTN Innovation Hub",
+      "Patent Holder"
+    ],
+    "student_count": 78,
+    "completed_sessions": 934
+  },
+  {
+    "id": "tutor_009",
+    "full_name": "Raissa Tchuente",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "Music & Arts teacher. Nurturing creativity and helping students discover their artistic talents.",
+    "education": "BA Fine Arts - University of Yaoundé I",
+    "experience": "4 years",
+    "subjects": [
+      "Music Theory",
+      "Piano",
+      "Art & Design",
+      "Creative Writing"
+    ],
+    "hourly_rate": 3000,
+    "rating": 4.9,
+    "total_reviews": 82,
+    "is_verified": true,
+    "tutor_qualification": "Graduate",
+    "gender": "Female",
+    "city": "Douala",
+    "quarter": "Bali",
+    "languages": [
+      "French",
+      "English"
+    ],
+    "available_schedule": [
+      "Flexible hours",
+      "Weekends"
+    ],
+    "teaching_style": "Personalized creative expression and practice",
+    "success_stories": "Students perform in concerts and exhibitions",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=9E6b3swbnWg",
+    "certifications": [
+      "ABRSM Grade 8 Piano",
+      "Digital Art Certified"
+    ],
+    "achievements": [
+      "Concert Pianist",
+      "Local Art Gallery Featured Artist"
+    ],
+    "student_count": 89,
+    "completed_sessions": 1123
+  },
+  {
+    "id": "tutor_010",
+    "full_name": "Paul Eto'o",
+    "avatar_url": "assets/images/prepskul_profile.png",
+    "bio": "SAT/GRE/TOEFL prep specialist. Helping students achieve their dreams of studying abroad with top test scores.",
+    "education": "MBA - Harvard Business School",
+    "experience": "10 years",
+    "subjects": [
+      "SAT Prep",
+      "GRE Prep",
+      "TOEFL",
+      "IELTS",
+      "College Counseling"
+    ],
+    "hourly_rate": 8000,
+    "rating": 5.0,
+    "total_reviews": 215,
+    "is_verified": true,
+    "tutor_qualification": "Professional",
+    "gender": "Male",
+    "city": "Douala",
+    "quarter": "Bonapriso",
+    "languages": [
+      "English",
+      "French"
+    ],
+    "available_schedule": [
+      "Weekday evenings",
+      "Weekends"
+    ],
+    "teaching_style": "Strategic test-taking with personalized study plans",
+    "success_stories": "Students accepted to Harvard, MIT, Stanford, Oxford",
+    "video_intro": "https://youtu.be/VqfdTbmKQzo",
+    "video_intro_old": "https://www.youtube.com/watch?v=9No-FiEInLA",
+    "certifications": [
+      "ETS Certified Instructor",
+      "College Counselor Certified"
+    ],
+    "achievements": [
+      "300+ students admitted to top universities",
+      "Perfect SAT scorer"
+    ],
+    "student_count": 234,
+    "completed_sessions": 3456
+  }
+]
