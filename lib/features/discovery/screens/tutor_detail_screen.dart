@@ -5,6 +5,7 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_session_screen.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
+import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -658,7 +659,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (context) =>
-                        BookSessionScreen(tutor: widget.tutor),
+                        BookTrialSessionScreen(tutor: widget.tutor),
                   ),
                 );
               },

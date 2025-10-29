@@ -184,7 +184,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: Row(
             children: [
               Icon(Icons.error_outline, color: Colors.red[600], size: 28),
@@ -282,7 +284,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 onPressed: () {
                   Navigator.pop(context); // Close dialog
                   Navigator.pop(context); // Close booking flow
-                  
+
                   // Navigate to MainNavigation with Requests tab (index 2)
                   Navigator.pushNamedAndRemoveUntil(
                     context,

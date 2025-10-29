@@ -21,7 +21,8 @@ class TrialSession {
   final String? learnerLevel;
 
   // Status
-  final String status; // pending, approved, rejected, scheduled, completed, cancelled, no_show
+  final String
+  status; // pending, approved, rejected, scheduled, completed, cancelled, no_show
   final String? tutorResponseNotes;
   final String? rejectionReason;
 
@@ -149,10 +150,10 @@ class TrialSession {
   String get formattedTime {
     final parts = scheduledTime.split(':');
     if (parts.length < 2) return scheduledTime;
-    
+
     final hour = int.tryParse(parts[0]) ?? 0;
     final minute = parts[1];
-    
+
     if (hour == 0) return '12:$minute AM';
     if (hour < 12) return '$hour:$minute AM';
     if (hour == 12) return '12:$minute PM';
@@ -214,4 +215,3 @@ class TrialSession {
     );
   }
 }
-
