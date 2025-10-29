@@ -24,7 +24,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     try {
       final userProfile = await AuthService.getUserProfile();
       setState(() {
-        _userName = userProfile['full_name'] ?? 'Student';
+        _userName = userProfile?['full_name'] ?? 'Student';
         _isLoading = false;
       });
     } catch (e) {
@@ -39,9 +39,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Get greeting based on time
@@ -295,10 +293,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           Text(
             description,
             textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.grey[500],
-            ),
+            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[500]),
           ),
         ],
       ),
@@ -339,4 +334,3 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     );
   }
 }
-

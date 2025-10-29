@@ -13,11 +13,8 @@ class MainNavigation extends StatefulWidget {
   final String userRole;
   final int? initialTab;
 
-  const MainNavigation({
-    Key? key,
-    required this.userRole,
-    this.initialTab,
-  }) : super(key: key);
+  const MainNavigation({Key? key, required this.userRole, this.initialTab})
+    : super(key: key);
 
   @override
   State<MainNavigation> createState() => _MainNavigationState();
@@ -127,6 +124,3 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 }
-
-
-

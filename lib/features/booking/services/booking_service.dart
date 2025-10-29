@@ -94,9 +94,7 @@ class BookingService {
         query = query.eq('status', status);
       }
 
-      query = query.order('created_at', ascending: false);
-
-      final response = await query;
+      final response = await query.order('created_at', ascending: false);
       return (response as List)
           .map((json) => BookingRequest.fromJson(json))
           .toList();
@@ -120,9 +118,7 @@ class BookingService {
         query = query.eq('status', status);
       }
 
-      query = query.order('created_at', ascending: false);
-
-      final response = await query;
+      final response = await query.order('created_at', ascending: false);
       return (response as List)
           .map((json) => BookingRequest.fromJson(json))
           .toList();
@@ -253,9 +249,7 @@ class BookingService {
         query = query.eq('status', status);
       }
 
-      query = query.order('created_at', ascending: false);
-
-      final response = await query;
+      final response = await query.order('created_at', ascending: false);
       return (response as List)
           .map((json) => RecurringSession.fromJson(json))
           .toList();
@@ -281,9 +275,7 @@ class BookingService {
         query = query.eq('status', status);
       }
 
-      query = query.order('created_at', ascending: false);
-
-      final response = await query;
+      final response = await query.order('created_at', ascending: false);
       return (response as List)
           .map((json) => RecurringSession.fromJson(json))
           .toList();
