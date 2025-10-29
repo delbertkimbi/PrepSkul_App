@@ -4,9 +4,11 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/booking/widgets/frequency_selector.dart';
 import 'package:prepskul/features/booking/widgets/days_selector.dart';
 import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
+import 'package:prepskul/features/booking/widgets/location_selector.dart';
+import 'package:prepskul/features/booking/widgets/booking_review.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
-/// 
+///
 /// Flow:
 /// 1. Session Frequency (1x, 2x, 3x per week)
 /// 2. Days Selection (which days work best)
@@ -17,11 +19,8 @@ class BookTutorFlowScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
   final Map<String, dynamic>? surveyData; // For smart prefilling
 
-  const BookTutorFlowScreen({
-    Key? key,
-    required this.tutor,
-    this.surveyData,
-  }) : super(key: key);
+  const BookTutorFlowScreen({Key? key, required this.tutor, this.surveyData})
+    : super(key: key);
 
   @override
   State<BookTutorFlowScreen> createState() => _BookTutorFlowScreenState();
@@ -122,9 +121,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(
-        child: CircularProgressIndicator(),
-      ),
+      builder: (context) => const Center(child: CircularProgressIndicator()),
     );
 
     try {
@@ -132,7 +129,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       await Future.delayed(const Duration(seconds: 2));
 
       if (!mounted) return;
-      
+
       // Close loading
       Navigator.pop(context);
 
@@ -141,10 +138,10 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -153,9 +150,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -299,11 +294,32 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             },
           ),
 
-          // Step 4: Location Selector (TODO: Create widget)
-          const Center(child: Text('Location Selector - Coming next')),
+          // Step 4: Location Selector
+          LocationSelector(
+            tutor: widget.tutor,
+            initialLocation: _selectedLocation,
+            initialAddress: _onsiteAddress,
+            onLocationSelected: (location, address) {
+              setState(() {
+                _selectedLocation = location;
+                _onsiteAddress = address;
+              });
+            },
+          ),
 
-          // Step 5: Review & Payment (TODO: Create widget)
-          const Center(child: Text('Review - Coming next')),
+          // Step 5: Booking Review
+          BookingReview(
+            tutor: widget.tutor,
+            frequency: _selectedFrequency ?? 1,
+            selectedDays: _selectedDays,
+            selectedTimes: _selectedTimes,
+            location: _selectedLocation ?? 'online',
+            address: _onsiteAddress,
+            initialPaymentPlan: _selectedPaymentPlan,
+            onPaymentPlanSelected: (plan) {
+              setState(() => _selectedPaymentPlan = plan);
+            },
+          ),
         ],
       ),
       bottomNavigationBar: Container(
@@ -348,8 +364,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 child: ElevatedButton(
                   onPressed: _canProceed()
                       ? (_currentStep == _totalSteps - 1
-                          ? _submitBookingRequest
-                          : _nextStep)
+                            ? _submitBookingRequest
+                            : _nextStep)
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
@@ -384,4 +400,3 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     super.dispose();
   }
 }
-

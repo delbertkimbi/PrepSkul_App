@@ -233,7 +233,11 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.warning_amber, size: 18, color: Colors.orange[700]),
+                  Icon(
+                    Icons.warning_amber,
+                    size: 18,
+                    color: Colors.orange[700],
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -354,14 +358,9 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
                     color: isSelected ? Colors.white : Colors.black,
                   ),
                 )
-              : Icon(
-                  Icons.block,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
+              : Icon(Icons.block, size: 16, color: Colors.grey[400]),
         ),
       ),
     );
   }
 }
-

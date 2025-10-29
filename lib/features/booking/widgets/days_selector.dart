@@ -63,7 +63,7 @@ class _DaysSelectorState extends State<DaysSelector> {
             'Tuesday',
             'Wednesday',
             'Thursday',
-            'Friday'
+            'Friday',
           ]);
         }
         if (scheduleStr.contains('weekend')) {
@@ -281,21 +281,12 @@ class _DaysSelectorState extends State<DaysSelector> {
             ),
             const SizedBox(height: 4),
             if (!isAvailable)
-              Icon(
-                Icons.block,
-                size: 16,
-                color: Colors.grey[400],
-              )
+              Icon(Icons.block, size: 16, color: Colors.grey[400])
             else if (isSelected)
-              const Icon(
-                Icons.check_circle,
-                size: 18,
-                color: Colors.white,
-              ),
+              const Icon(Icons.check_circle, size: 18, color: Colors.white),
           ],
         ),
       ),
     );
   }
 }
-
