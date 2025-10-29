@@ -45,7 +45,7 @@ class _BookingReviewState extends State<BookingReview> {
   @override
   void initState() {
     super.initState();
-    _selectedPaymentPlan = widget.initialPaymentPlan ?? 'monthly';
+    _selectedPaymentPlan = widget.initialPaymentPlan; // Don't default to monthly
   }
 
   void _selectPaymentPlan(String plan) {
