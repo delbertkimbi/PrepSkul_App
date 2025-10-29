@@ -522,69 +522,31 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Monthly Pricing
-                _buildMonthlyPricing(tutor),
-                const SizedBox(height: 12),
-                // Action Buttons
+                // Bottom Info Row - Focus on value, not pricing
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          // TODO: Navigate to trial booking
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => TutorDetailScreen(tutor: tutor),
-                            ),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: AppTheme.primaryColor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                    // Student count & sessions
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.people_outline,
+                          size: 16,
+                          color: Colors.grey[600],
                         ),
-                        child: Text(
-                          'Book Trial',
+                        const SizedBox(width: 4),
+                        Text(
+                          '$completedSessions sessions',
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // TODO: Navigate to full booking
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => TutorDetailScreen(tutor: tutor),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        child: Text(
-                          'Book Tutor',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Subtle monthly estimate (not emphasized)
+                    _buildSubtleMonthlyEstimate(tutor),
                   ],
                 ),
               ],
@@ -595,82 +557,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
-  Widget _buildMonthlyPricing(Map<String, dynamic> tutor) {
-    // Calculate monthly pricing using PricingService
+  Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
+    // Calculate monthly pricing but display it subtly
     final pricing = PricingService.calculateFromTutorData(tutor);
     final monthlyAmount = pricing['perMonth'] as double;
-    final sessionsPerWeek = pricing['sessionsPerWeek'] as int;
-    final studentCount = tutor['student_count'] ?? 0;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    PricingService.formatMonthlyEstimate(monthlyAmount),
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'based on $sessionsPerWeek session${sessionsPerWeek > 1 ? 's' : ''}/week',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.people_outline,
-                      size: 14,
-                      color: AppTheme.primaryColor,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$studentCount',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+    return Text(
+      'From ${PricingService.formatPrice(monthlyAmount)}/mo',
+      style: GoogleFonts.poppins(
+        fontSize: 12,
+        color: Colors.grey[600],
+        fontWeight: FontWeight.w500,
       ),
     );
   }

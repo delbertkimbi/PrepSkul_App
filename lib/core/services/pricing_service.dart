@@ -139,9 +139,9 @@ class PricingService {
     return '$formatted XAF';
   }
 
-  /// Format monthly estimate with "≈" symbol
+  /// Format monthly estimate (clean, no approximation symbol)
   static String formatMonthlyEstimate(double amount) {
-    return '≈ ${formatPrice(amount)} / month';
+    return '${formatPrice(amount)} / month';
   }
 
   /// Calculate discount for upfront payment
