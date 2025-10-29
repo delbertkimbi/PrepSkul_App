@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/widgets/frequency_selector.dart';
 import 'package:prepskul/features/booking/widgets/days_selector.dart';
 import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
@@ -117,16 +119,55 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   }
 
   Future<void> _submitBookingRequest() async {
-    // Show loading
+    // Show loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Sending request...',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
 
     try {
-      // TODO: Save to database
-      await Future.delayed(const Duration(seconds: 2));
+      // Calculate pricing
+      final pricing = PricingService.calculateFromTutorData(widget.tutor);
+      final perSession = pricing['perSession'] as double;
+      final sessionsPerMonth = _selectedFrequency! * 4;
+      final monthlyTotal = perSession * sessionsPerMonth;
+
+      // Create booking request in database
+      await BookingService.createBookingRequest(
+        tutorId: widget.tutor['user_id'] ?? widget.tutor['id'],
+        frequency: _selectedFrequency!,
+        days: _selectedDays,
+        times: _selectedTimes,
+        location: _selectedLocation!,
+        address: _onsiteAddress,
+        paymentPlan: _selectedPaymentPlan!,
+        monthlyTotal: monthlyTotal,
+      );
 
       if (!mounted) return;
 
@@ -139,9 +180,58 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       if (!mounted) return;
       Navigator.pop(context);
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      // Show error dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red[600], size: 28),
+              const SizedBox(width: 12),
+              Text(
+                'Request Failed',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Unable to send your booking request. Please check your connection and try again.',
+            style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Try Again',
+                style: GoogleFonts.poppins(
+                  color: AppTheme.primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context); // Go back to tutor detail
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+              ),
+              child: Text(
+                'Go Back',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
   }
 
