@@ -177,4 +177,3 @@ class BookingRequest {
     return days.join(', ');
   }
 }
-

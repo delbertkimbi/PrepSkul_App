@@ -106,9 +106,7 @@ class BookingService {
   }
 
   /// Get all booking requests for a tutor
-  static Future<List<BookingRequest>> getTutorRequests({
-    String? status,
-  }) async {
+  static Future<List<BookingRequest>> getTutorRequests({String? status}) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
@@ -201,7 +199,8 @@ class BookingService {
 
   /// Create recurring session from approved request
   static Future<RecurringSession> _createRecurringSession(
-      BookingRequest request) async {
+    BookingRequest request,
+  ) async {
     try {
       final sessionData = {
         'request_id': request.id,
@@ -338,4 +337,3 @@ class BookingService {
     }
   }
 }
-
