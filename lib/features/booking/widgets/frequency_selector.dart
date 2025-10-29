@@ -4,7 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 
 /// Step 1: Session Frequency Selector
-/// 
+///
 /// Lets user choose how many sessions per week (1x, 2x, 3x, 4x, custom)
 /// Shows monthly pricing estimate for each option
 /// Pre-fills from survey data if available
@@ -76,7 +76,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
             icon: Icons.calendar_today,
           ),
           const SizedBox(height: 12),
-          
+
           _buildFrequencyOption(
             frequency: 2,
             label: '2x per week',
@@ -85,7 +85,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
             isRecommended: true, // Most popular
           ),
           const SizedBox(height: 12),
-          
+
           _buildFrequencyOption(
             frequency: 3,
             label: '3x per week',
@@ -93,7 +93,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
             icon: Icons.event_available,
           ),
           const SizedBox(height: 12),
-          
+
           _buildFrequencyOption(
             frequency: 4,
             label: '4x per week',
@@ -108,9 +108,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.2),
-              ),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -163,9 +161,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
               : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected
-                ? AppTheme.primaryColor
-                : Colors.grey[300]!,
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
@@ -187,9 +183,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : Colors.grey[400]!,
+                  color: isSelected ? AppTheme.primaryColor : Colors.grey[400]!,
                   width: 2,
                 ),
               ),
@@ -220,9 +214,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
               child: Icon(
                 icon,
                 size: 24,
-                color: isSelected
-                    ? AppTheme.primaryColor
-                    : Colors.grey[600],
+                color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
               ),
             ),
             const SizedBox(width: 16),
@@ -298,4 +290,3 @@ class _FrequencySelectorState extends State<FrequencySelector> {
     );
   }
 }
-

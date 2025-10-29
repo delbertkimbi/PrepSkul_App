@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/booking/widgets/frequency_selector.dart';
+import 'package:prepskul/features/booking/widgets/days_selector.dart';
+import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
 /// 
@@ -273,11 +275,29 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             },
           ),
 
-          // Step 2: Days Selector (TODO: Create widget)
-          const Center(child: Text('Days Selector - Coming next')),
+          // Step 2: Days Selector
+          DaysSelector(
+            tutor: widget.tutor,
+            requiredDays: _selectedFrequency ?? 1,
+            initialDays: _selectedDays,
+            onDaysSelected: (days) {
+              setState(() {
+                _selectedDays = days;
+                // Clear times for days that were removed
+                _selectedTimes.removeWhere((day, time) => !days.contains(day));
+              });
+            },
+          ),
 
-          // Step 3: Time Selector (TODO: Create widget)
-          const Center(child: Text('Time Selector - Coming next')),
+          // Step 3: Time Grid Selector
+          TimeGridSelector(
+            tutor: widget.tutor,
+            selectedDays: _selectedDays,
+            initialTimes: _selectedTimes,
+            onTimesSelected: (times) {
+              setState(() => _selectedTimes = times);
+            },
+          ),
 
           // Step 4: Location Selector (TODO: Create widget)
           const Center(child: Text('Location Selector - Coming next')),
