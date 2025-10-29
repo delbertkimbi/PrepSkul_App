@@ -268,22 +268,28 @@ class _DaysSelectorState extends State<DaysSelector> {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              abbreviation,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: isSelected
-                    ? Colors.white
-                    : (isAvailable ? Colors.black : Colors.grey[400]),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                abbreviation,
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected
+                      ? Colors.white
+                      : (isAvailable ? Colors.black : Colors.grey[400]),
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            if (!isAvailable)
-              Icon(Icons.block, size: 16, color: Colors.grey[400])
-            else if (isSelected)
-              const Icon(Icons.check_circle, size: 18, color: Colors.white),
+            if (!isAvailable || isSelected) ...[
+              const SizedBox(height: 4),
+              if (!isAvailable)
+                Icon(Icons.block, size: 16, color: Colors.grey[400])
+              else if (isSelected)
+                const Icon(Icons.check_circle, size: 16, color: Colors.white),
+            ],
           ],
         ),
       ),
