@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 
 /// Tutor Service - Handles fetching tutor data
-/// 
+///
 /// DESIGN: Easy to swap between demo data and real Supabase data
 /// - Currently: Loads from JSON file (demo mode)
 /// - Future: Just change USE_DEMO_DATA to false
-/// 
+///
 /// When ready for production:
 /// 1. Set USE_DEMO_DATA = false
 /// 2. Delete assets/data/sample_tutors.json
@@ -77,17 +77,20 @@ class TutorService {
     await Future.delayed(const Duration(milliseconds: 800));
 
     // Load from JSON file
-    final String response =
-        await rootBundle.loadString('assets/data/sample_tutors.json');
+    final String response = await rootBundle.loadString(
+      'assets/data/sample_tutors.json',
+    );
     final List<dynamic> data = json.decode(response);
-    List<Map<String, dynamic>> tutors =
-        List<Map<String, dynamic>>.from(data);
+    List<Map<String, dynamic>> tutors = List<Map<String, dynamic>>.from(data);
 
     // Apply filters
     if (subject != null && subject.isNotEmpty) {
       tutors = tutors.where((tutor) {
         final subjects = tutor['subjects'] as List?;
-        return subjects?.any((s) => s.toString().toLowerCase().contains(subject.toLowerCase())) ?? false;
+        return subjects?.any(
+              (s) => s.toString().toLowerCase().contains(subject.toLowerCase()),
+            ) ??
+            false;
       }).toList();
     }
 
@@ -117,11 +120,13 @@ class TutorService {
   }
 
   static Future<Map<String, dynamic>?> _fetchDemoTutorById(
-      String tutorId) async {
+    String tutorId,
+  ) async {
     await Future.delayed(const Duration(milliseconds: 500));
 
-    final String response =
-        await rootBundle.loadString('assets/data/sample_tutors.json');
+    final String response = await rootBundle.loadString(
+      'assets/data/sample_tutors.json',
+    );
     final List<dynamic> data = json.decode(response);
     final tutors = List<Map<String, dynamic>>.from(data);
 
@@ -133,11 +138,13 @@ class TutorService {
   }
 
   static Future<List<Map<String, dynamic>>> _searchDemoTutors(
-      String query) async {
+    String query,
+  ) async {
     await Future.delayed(const Duration(milliseconds: 600));
 
-    final String response =
-        await rootBundle.loadString('assets/data/sample_tutors.json');
+    final String response = await rootBundle.loadString(
+      'assets/data/sample_tutors.json',
+    );
     final List<dynamic> data = json.decode(response);
     final tutors = List<Map<String, dynamic>>.from(data);
 
@@ -150,7 +157,10 @@ class TutorService {
 
       // Search in name or subjects
       if (name.contains(queryLower)) return true;
-      if (subjects?.any((s) => s.toString().toLowerCase().contains(queryLower)) ?? false) {
+      if (subjects?.any(
+            (s) => s.toString().toLowerCase().contains(queryLower),
+          ) ??
+          false) {
         return true;
       }
 
@@ -235,7 +245,8 @@ class TutorService {
   }
 
   static Future<Map<String, dynamic>?> _fetchSupabaseTutorById(
-      String tutorId) async {
+    String tutorId,
+  ) async {
     try {
       final response = await SupabaseService.client
           .from('tutor_profiles')
@@ -277,7 +288,8 @@ class TutorService {
   }
 
   static Future<List<Map<String, dynamic>>> _searchSupabaseTutors(
-      String query) async {
+    String query,
+  ) async {
     try {
       final response = await SupabaseService.client
           .from('tutor_profiles')
@@ -311,4 +323,3 @@ class TutorService {
     }
   }
 }
-
