@@ -17,8 +17,7 @@ class TutorPendingRequestsScreen extends StatefulWidget {
       _TutorPendingRequestsScreenState();
 }
 
-class _TutorPendingRequestsScreenState
-    extends State<TutorPendingRequestsScreen>
+class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = true;
@@ -70,7 +69,7 @@ class _TutorPendingRequestsScreenState
           'times': {
             'Tuesday': '5:00 PM',
             'Thursday': '5:00 PM',
-            'Saturday': '10:00 AM'
+            'Saturday': '10:00 AM',
           },
           'location': 'hybrid',
           'address': 'Douala, Akwa, Rue de la Joie',
@@ -110,8 +109,9 @@ class _TutorPendingRequestsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final pendingCount =
-        _allRequests.where((r) => r['status'] == 'pending').length;
+    final pendingCount = _allRequests
+        .where((r) => r['status'] == 'pending')
+        .length;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -226,19 +226,13 @@ class _TutorPendingRequestsScreenState
           const SizedBox(height: 16),
           Text(
             message,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
           ),
           if (status == 'pending') ...[
             const SizedBox(height: 8),
             Text(
               'You\'re all caught up!',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.grey[500],
-              ),
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[500]),
             ),
           ],
         ],
@@ -286,7 +280,10 @@ class _TutorPendingRequestsScreenState
             // Conflict warning banner (if applicable)
             if (hasConflict && isPending)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.orange[50],
                   borderRadius: const BorderRadius.only(
@@ -296,7 +293,11 @@ class _TutorPendingRequestsScreenState
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.warning_amber, size: 18, color: Colors.orange[700]),
+                    Icon(
+                      Icons.warning_amber,
+                      size: 18,
+                      color: Colors.orange[700],
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -451,10 +452,11 @@ class _TutorPendingRequestsScreenState
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => TutorRequestDetailScreen(
-                                    request: request,
-                                    autoOpenReject: true,
-                                  ),
+                                  builder: (context) =>
+                                      TutorRequestDetailScreen(
+                                        request: request,
+                                        autoOpenReject: true,
+                                      ),
                                 ),
                               );
                             },
@@ -484,7 +486,9 @@ class _TutorPendingRequestsScreenState
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      TutorRequestDetailScreen(request: request),
+                                      TutorRequestDetailScreen(
+                                        request: request,
+                                      ),
                                 ),
                               );
                             },
@@ -557,4 +561,3 @@ class _TutorPendingRequestsScreenState
     super.dispose();
   }
 }
-

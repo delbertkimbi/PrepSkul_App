@@ -135,8 +135,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
               controller: _rejectionReasonController,
               maxLines: 4,
               decoration: InputDecoration(
-                hintText:
-                    'E.g., Schedule conflict, location too far, etc.',
+                hintText: 'E.g., Schedule conflict, location too far, etc.',
                 hintStyle: GoogleFonts.poppins(fontSize: 13),
                 filled: true,
                 fillColor: Colors.grey[50],
@@ -216,10 +215,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
       Navigator.pop(context); // Go back to list
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Request declined',
-            style: GoogleFonts.poppins(),
-          ),
+          content: Text('Request declined', style: GoogleFonts.poppins()),
           backgroundColor: Colors.red,
         ),
       );
@@ -268,7 +264,11 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning_amber, color: Colors.orange[700], size: 28),
+                    Icon(
+                      Icons.warning_amber,
+                      color: Colors.orange[700],
+                      size: 28,
+                    ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(
@@ -371,8 +371,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                 ],
               ),
             ],
-            if (_isProcessing)
-              const Center(child: CircularProgressIndicator()),
+            if (_isProcessing) const Center(child: CircularProgressIndicator()),
           ],
         ),
       ),
@@ -545,10 +544,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            Colors.green[50]!,
-            Colors.green[25]!,
-          ],
+          colors: [Colors.green[50]!, Colors.green[25]!],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.green[200]!),
@@ -622,10 +618,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
           width: 100,
           child: Text(
             label,
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
           ),
         ),
         Expanded(
@@ -649,4 +642,3 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     super.dispose();
   }
 }
-
