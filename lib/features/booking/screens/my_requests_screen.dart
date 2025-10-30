@@ -171,6 +171,97 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
   Widget _buildEmptyState(String status) {
+    // For 'all' and 'custom' tabs, always show the request card
+    if (status == 'all' || status == 'custom') {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.primaryColor.withOpacity(0.1),
+                  AppTheme.primaryColor.withOpacity(0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.primaryColor.withOpacity(0.3),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.person_search_rounded,
+                  size: 48,
+                  color: AppTheme.primaryColor,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Looking for a tutor?',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Request a custom tutor and we\'ll find the perfect match for you',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textMedium,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // Navigate to custom request form
+                      Navigator.pushNamed(context, '/request-tutor');
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.add_circle_outline, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Request a Tutor',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // For other tabs (trial, pending, approved), show simple empty state
     String message;
     IconData icon;
 
@@ -198,102 +289,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (status == 'all' || status == 'custom') ...[
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppTheme.primaryColor.withOpacity(0.1),
-                      AppTheme.primaryColor.withOpacity(0.05),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                    width: 1.5,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.person_search_rounded,
-                      size: 48,
-                      color: AppTheme.primaryColor,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Looking for a tutor?',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textDark,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Request a custom tutor and we\'ll find the perfect match for you',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: AppTheme.textMedium,
-                        height: 1.5,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // Navigate to Find Tutors tab (index 1)
-                          Navigator.pushReplacementNamed(
-                            context,
-                            '/student-nav',
-                            arguments: {'initialTab': 1},
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.add_circle_outline, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Request a Tutor',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            Icon(icon, size: 80, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                color: Colors.grey[600],
               ),
-            ] else ...[
-              Icon(icon, size: 80, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ],
+            ),
           ],
         ),
       ),
@@ -436,13 +440,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   backgroundImage: isTrial
                       ? null
                       : (request as BookingRequest).tutorAvatarUrl != null
-                          ? NetworkImage((request as BookingRequest).tutorAvatarUrl!)
-                          : null,
+                      ? NetworkImage(
+                          (request as BookingRequest).tutorAvatarUrl!,
+                        )
+                      : null,
                   child: isTrial
                       ? Icon(Icons.science, color: Colors.purple, size: 24)
                       : (request as BookingRequest).tutorAvatarUrl == null
-                          ? Icon(Icons.person, color: AppTheme.primaryColor, size: 24)
-                          : null,
+                      ? Icon(
+                          Icons.person,
+                          color: AppTheme.primaryColor,
+                          size: 24,
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 12),
               ],
