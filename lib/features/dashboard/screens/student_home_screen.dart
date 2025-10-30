@@ -14,6 +14,7 @@ class StudentHomeScreen extends StatefulWidget {
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _userName = '';
+  String? _avatarUrl;
   bool _isLoading = true;
   bool _isFirstVisit = false;
   Map<String, dynamic>? _surveyData;
@@ -32,14 +33,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
 
       _userName = userProfile?['full_name'] ?? 'Student';
+      _avatarUrl = userProfile?['avatar_url'];
       _userType = userProfile?['user_type'] ?? 'student';
       _isFirstVisit = !hasVisitedHome;
 
       // Load survey data for personalization
       if (_userType == 'student') {
-        _surveyData = await SurveyRepository.getStudentSurvey(userProfile?['id']);
+        _surveyData = await SurveyRepository.getStudentSurvey(
+          userProfile?['id'],
+        );
       } else if (_userType == 'parent') {
-        _surveyData = await SurveyRepository.getParentSurvey(userProfile?['id']);
+        _surveyData = await SurveyRepository.getParentSurvey(
+          userProfile?['id'],
+        );
       }
 
       setState(() {
@@ -85,10 +91,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 _isFirstVisit
                     ? 'Finding perfect tutors for you...'
                     : 'Loading your dashboard...',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontSize: 14,
-                ),
+                style: GoogleFonts.poppins(color: Colors.white, fontSize: 14),
               ),
             ],
           ),
@@ -117,8 +120,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
+      body: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -165,16 +167,49 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                             ],
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.person_outline,
-                            color: Colors.white,
-                            size: 28,
+                        GestureDetector(
+                          onTap: () {
+                            // Navigate to Profile tab (index 3)
+                            Navigator.pushReplacementNamed(
+                              context,
+                              _userType == 'parent'
+                                  ? '/parent-nav'
+                                  : '/student-nav',
+                              arguments: {'initialTab': 3},
+                            );
+                          },
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.3),
+                                width: 2,
+                              ),
+                            ),
+                            child: _avatarUrl != null &&
+                                    _avatarUrl!.isNotEmpty
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      _avatarUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stack) {
+                                        return const Icon(
+                                          Icons.person_outline,
+                                          color: Colors.white,
+                                          size: 28,
+                                        );
+                                      },
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person_outline,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
                           ),
                         ),
                       ],
@@ -371,7 +406,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       onTap: () {
                         Navigator.pushReplacementNamed(
                           context,
-                          _userType == 'parent' ? '/parent-nav' : '/student-nav',
+                          _userType == 'parent'
+                              ? '/parent-nav'
+                              : '/student-nav',
                           arguments: {'initialTab': 1},
                         );
                       },
@@ -385,7 +422,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       onTap: () {
                         Navigator.pushReplacementNamed(
                           context,
-                          _userType == 'parent' ? '/parent-nav' : '/student-nav',
+                          _userType == 'parent'
+                              ? '/parent-nav'
+                              : '/student-nav',
                           arguments: {'initialTab': 2},
                         );
                       },
@@ -544,11 +583,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 ],
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
           ],
         ),
       ),
