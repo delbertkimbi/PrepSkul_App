@@ -69,19 +69,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       combined.addAll(_trialRequests);
     } else {
       // Filter regular requests by status
-      combined.addAll(
-        _regularRequests.where((req) => req.status == status),
-      );
+      combined.addAll(_regularRequests.where((req) => req.status == status));
       // Also filter trial requests by status
-      combined.addAll(
-        _trialRequests.where((trial) => trial.status == status),
-      );
+      combined.addAll(_trialRequests.where((trial) => trial.status == status));
     }
 
     // Sort by creation date (newest first)
     combined.sort((a, b) {
-      final aDate = a is BookingRequest ? a.createdAt : (a as TrialSession).createdAt;
-      final bDate = b is BookingRequest ? b.createdAt : (b as TrialSession).createdAt;
+      final aDate = a is BookingRequest
+          ? a.createdAt
+          : (a as TrialSession).createdAt;
+      final bDate = b is BookingRequest
+          ? b.createdAt
+          : (b as TrialSession).createdAt;
       return bDate.compareTo(aDate);
     });
 
@@ -191,7 +191,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget _buildRequestCard(dynamic request) {
     // Handle both BookingRequest and TrialSession
     final bool isTrial = request is TrialSession;
-    final String status = isTrial ? request.status : (request as BookingRequest).status;
+    final String status = isTrial
+        ? request.status
+        : (request as BookingRequest).status;
     final String tutorName = isTrial
         ? 'Demo Tutor' // Trial sessions use user ID as tutor in demo mode
         : request.tutorName;
@@ -220,7 +222,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isTrial
                       ? Colors.purple.withOpacity(0.1)
@@ -249,7 +254,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -294,58 +302,57 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           const SizedBox(height: 12),
 
           // Details based on type
-          if (isTrial) ...[
+          if (isTrial) ...{
             _buildDetailRow(
               Icons.calendar_today_outlined,
               'Date',
-              request.formattedDate,
+              (request as TrialSession).formattedDate,
             ),
             const SizedBox(height: 8),
             _buildDetailRow(
               Icons.access_time_outlined,
               'Time',
-              request.formattedTime,
+              (request as TrialSession).formattedTime,
             ),
             const SizedBox(height: 8),
             _buildDetailRow(
               Icons.hourglass_empty_outlined,
               'Duration',
-              request.formattedDuration,
+              (request as TrialSession).formattedDuration,
             ),
-            if (request.subject != null) ...[
+            if ((request as TrialSession).subject != null) ...{
               const SizedBox(height: 8),
               _buildDetailRow(
                 Icons.book_outlined,
                 'Subject',
-                request.subject!,
+                (request as TrialSession).subject!,
               ),
-            ],
-          ] else ...[
-            final bookingReq = request as BookingRequest;
+            },
+          } else ...{
             _buildDetailRow(
               Icons.repeat,
               'Frequency',
-              '${bookingReq.frequency}x per week',
+              '${(request as BookingRequest).frequency}x per week',
             ),
             const SizedBox(height: 8),
             _buildDetailRow(
               Icons.calendar_month_outlined,
               'Days',
-              bookingReq.days.join(', '),
+              (request as BookingRequest).days.join(', '),
             ),
             const SizedBox(height: 8),
             _buildDetailRow(
               Icons.location_on_outlined,
               'Location',
-              bookingReq.location.toUpperCase(),
+              (request as BookingRequest).location.toUpperCase(),
             ),
             const SizedBox(height: 8),
             _buildDetailRow(
               Icons.payments_outlined,
               'Payment',
-              '${bookingReq.monthlyTotal.toStringAsFixed(0)} XAF/${bookingReq.paymentPlan}',
+              '${(request as BookingRequest).monthlyTotal.toStringAsFixed(0)} XAF/${(request as BookingRequest).paymentPlan}',
             ),
-          ],
+          },
           const SizedBox(height: 12),
 
           // Created date
@@ -374,10 +381,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         const SizedBox(width: 8),
         Text(
           '$label: ',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: Colors.grey[600],
-          ),
+          style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
         ),
         Expanded(
           child: Text(
