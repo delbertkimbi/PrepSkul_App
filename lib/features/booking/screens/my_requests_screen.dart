@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 
 /// MyRequestsScreen
 ///
@@ -26,11 +27,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   bool _isLoading = true;
   List<BookingRequest> _regularRequests = [];
   List<TrialSession> _trialRequests = [];
+  List<TutorRequest> _tutorRequests = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this); // 5 tabs now
     _loadRequests();
   }
 
@@ -42,13 +44,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Future<void> _loadRequests() async {
     try {
-      // Load both regular and trial requests
+      // Load regular, trial, and tutor requests
       final regularReqs = await BookingService.getStudentRequests();
       final trialReqs = await TrialSessionService.getStudentTrialSessions();
+      final tutorReqs = await TutorRequestService.getUserRequests();
 
       setState(() {
         _regularRequests = regularReqs;
         _trialRequests = trialReqs;
+        _tutorRequests = tutorReqs;
         _isLoading = false;
       });
     } catch (e) {
@@ -65,23 +69,32 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     if (status == 'all') {
       combined.addAll(_regularRequests);
       combined.addAll(_trialRequests);
+      combined.addAll(_tutorRequests);
     } else if (status == 'trial') {
       combined.addAll(_trialRequests);
+    } else if (status == 'custom') {
+      combined.addAll(_tutorRequests);
     } else {
       // Filter regular requests by status
       combined.addAll(_regularRequests.where((req) => req.status == status));
       // Also filter trial requests by status
       combined.addAll(_trialRequests.where((trial) => trial.status == status));
+      // Also filter tutor requests by status
+      combined.addAll(_tutorRequests.where((req) => req.status == status));
     }
 
     // Sort by creation date (newest first)
     combined.sort((a, b) {
       final aDate = a is BookingRequest
           ? a.createdAt
-          : (a as TrialSession).createdAt;
+          : a is TrialSession
+              ? (a as TrialSession).createdAt
+              : (a as TutorRequest).createdAt;
       final bDate = b is BookingRequest
           ? b.createdAt
-          : (b as TrialSession).createdAt;
+          : b is TrialSession
+              ? (b as TrialSession).createdAt
+              : (b as TutorRequest).createdAt;
       return bDate.compareTo(aDate);
     });
 
@@ -120,6 +133,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           tabs: const [
             Tab(text: 'All'),
             Tab(text: 'Trial'),
+            Tab(text: 'Custom'),
             Tab(text: 'Pending'),
             Tab(text: 'Approved'),
           ],
@@ -132,6 +146,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               children: [
                 _buildRequestsList('all'),
                 _buildRequestsList('trial'),
+                _buildRequestsList('custom'),
                 _buildRequestsList('pending'),
                 _buildRequestsList('approved'),
               ],
@@ -189,14 +204,25 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
   Widget _buildRequestCard(dynamic request) {
-    // Handle both BookingRequest and TrialSession
+    // Handle BookingRequest, TrialSession, and TutorRequest
     final bool isTrial = request is TrialSession;
-    final String status = isTrial
-        ? request.status
-        : (request as BookingRequest).status;
+    final bool isCustom = request is TutorRequest;
+    
+    final String status;
+    if (isTrial) {
+      status = (request as TrialSession).status;
+    } else if (isCustom) {
+      status = (request as TutorRequest).status;
+    } else {
+      status = (request as BookingRequest).status;
+    }
+    
     final String tutorName = isTrial
         ? 'Demo Tutor' // Trial sessions use user ID as tutor in demo mode
-        : request.tutorName;
+        : isCustom
+            ? 'Tutor Request'
+            : (request as BookingRequest).tutorName;
+    
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
 
@@ -229,24 +255,42 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 decoration: BoxDecoration(
                   color: isTrial
                       ? Colors.purple.withOpacity(0.1)
-                      : AppTheme.primaryColor.withOpacity(0.1),
+                      : isCustom
+                          ? Colors.orange.withOpacity(0.1)
+                          : AppTheme.primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      isTrial ? Icons.science_outlined : Icons.repeat,
+                      isTrial
+                          ? Icons.science_outlined
+                          : isCustom
+                              ? Icons.person_search_rounded
+                              : Icons.repeat,
                       size: 16,
-                      color: isTrial ? Colors.purple : AppTheme.primaryColor,
+                      color: isTrial
+                          ? Colors.purple
+                          : isCustom
+                              ? Colors.orange
+                              : AppTheme.primaryColor,
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      isTrial ? 'Trial Session' : 'Regular Booking',
+                      isTrial
+                          ? 'Trial Session'
+                          : isCustom
+                              ? 'Custom Tutor'
+                              : 'Regular Booking',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: isTrial ? Colors.purple : AppTheme.primaryColor,
+                        color: isTrial
+                            ? Colors.purple
+                            : isCustom
+                                ? Colors.orange
+                                : AppTheme.primaryColor,
                       ),
                     ),
                   ],
@@ -328,6 +372,38 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 (request as TrialSession).subject!,
               ),
             },
+          } else if (isCustom) ...{
+            _buildDetailRow(
+              Icons.book_outlined,
+              'Subjects',
+              (request as TutorRequest).formattedSubjects,
+            ),
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              Icons.school_outlined,
+              'Level',
+              (request as TutorRequest).educationLevel,
+            ),
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              Icons.payments_outlined,
+              'Budget',
+              (request as TutorRequest).formattedBudget,
+            ),
+            const SizedBox(height: 8),
+            _buildDetailRow(
+              Icons.location_on_outlined,
+              'Location',
+              (request as TutorRequest).location,
+            ),
+            if ((request as TutorRequest).urgency != 'normal') ...{
+              const SizedBox(height: 8),
+              _buildDetailRow(
+                Icons.priority_high_outlined,
+                'Urgency',
+                (request as TutorRequest).urgencyLabel,
+              ),
+            },
           } else ...{
             _buildDetailRow(
               Icons.repeat,
@@ -361,7 +437,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               Icon(Icons.schedule, size: 14, color: Colors.grey[400]),
               const SizedBox(width: 4),
               Text(
-                'Created ${_formatDate(isTrial ? request.createdAt : (request as BookingRequest).createdAt)}',
+                'Created ${_formatDate(
+                  isTrial
+                      ? (request as TrialSession).createdAt
+                      : isCustom
+                          ? (request as TutorRequest).createdAt
+                          : (request as BookingRequest).createdAt,
+                )}',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   color: Colors.grey[600],
@@ -424,6 +506,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         return Colors.red;
       case 'cancelled':
         return Colors.grey;
+      case 'in_progress':
+        return Colors.blue;
+      case 'matched':
+        return Colors.green;
+      case 'closed':
+        return Colors.grey;
       default:
         return Colors.blue;
     }
@@ -438,6 +526,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       case 'rejected':
         return Icons.cancel;
       case 'cancelled':
+        return Icons.block;
+      case 'in_progress':
+        return Icons.pending_actions;
+      case 'matched':
+        return Icons.check_circle;
+      case 'closed':
         return Icons.block;
       default:
         return Icons.info;
