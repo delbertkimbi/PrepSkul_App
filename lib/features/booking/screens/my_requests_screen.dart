@@ -194,14 +194,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
-            ),
             if (status == 'all') ...[
-              const SizedBox(height: 32),
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -251,7 +244,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.pushNamed(context, '/find-tutors');
+                          // Navigate to Find Tutors tab (index 1)
+                          Navigator.pushReplacementNamed(
+                            context,
+                            '/student-nav',
+                            arguments: {'initialTab': 1},
+                          );
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
@@ -280,6 +278,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ],
                 ),
+              ),
+            ] else ...[
+              Icon(icon, size: 80, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
               ),
             ],
           ],

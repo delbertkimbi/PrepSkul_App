@@ -137,7 +137,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ],
                 ),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+              padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -179,8 +179,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           );
                         },
                         child: Container(
-                          width: 56,
-                          height: 56,
+                          width: 48,
+                          height: 48,
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(12),
@@ -199,7 +199,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                       return const Icon(
                                         Icons.person_outline,
                                         color: Colors.white,
-                                        size: 28,
+                                        size: 24,
                                       );
                                     },
                                   ),
@@ -207,7 +207,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                               : const Icon(
                                   Icons.person_outline,
                                   color: Colors.white,
-                                  size: 28,
+                                  size: 24,
                                 ),
                         ),
                       ),
