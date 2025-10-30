@@ -2620,7 +2620,9 @@ class _ParentSurveyState extends State<ParentSurvey> {
         'tutor_gender_preference': _tutorGenderPreference,
         'tutor_qualification_preference': _tutorQualificationPreference,
         'preferred_location': _preferredLocation,
-        'preferred_schedule': _preferredSchedule != null ? [_preferredSchedule!] : null,
+        'preferred_schedule': _preferredSchedule != null
+            ? [_preferredSchedule!]
+            : null,
         'child_confidence_level': _childConfidenceLevel,
         'learning_goals': _learningGoals,
         'challenges': _challenges,
