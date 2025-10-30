@@ -2621,8 +2621,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
         'tutor_qualification_preference': _tutorQualificationPreference,
         'preferred_location': _preferredLocation,
         'preferred_schedule': _preferredSchedule,
-        'learning_style': _learningStyle,
-        'confidence_level': _confidenceLevel,
+        'child_confidence_level': _childConfidenceLevel,
         'learning_goals': _learningGoals,
         'challenges': _challenges,
       };
