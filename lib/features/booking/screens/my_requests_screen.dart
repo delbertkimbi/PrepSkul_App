@@ -67,7 +67,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           'times': {
             'Tuesday': '5:00 PM',
             'Thursday': '5:00 PM',
-            'Saturday': '10:00 AM'
+            'Saturday': '10:00 AM',
           },
           'location': 'hybrid',
           'address': 'Douala, Akwa, Rue de la Joie',
@@ -197,10 +197,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           const SizedBox(height: 16),
           Text(
             message,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
           ),
         ],
       ),
@@ -481,4 +478,3 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     super.dispose();
   }
 }
-
