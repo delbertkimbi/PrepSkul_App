@@ -130,6 +130,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        automaticallyImplyLeading: false, // Remove back button
         elevation: 0,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
