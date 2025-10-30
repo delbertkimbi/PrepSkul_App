@@ -175,6 +175,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     IconData icon;
 
     switch (status) {
+      case 'trial':
+        message = 'No trial sessions yet';
+        icon = Icons.science_outlined;
+        break;
       case 'pending':
         message = 'No pending requests';
         icon = Icons.access_time;
@@ -419,24 +423,57 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           ),
           const SizedBox(height: 16),
 
-          // Tutor name
+          // Tutor info with avatar
           Row(
             children: [
-              const Icon(Icons.person_outline, size: 20, color: Colors.grey),
-              const SizedBox(width: 8),
+              // Tutor Avatar
+              if (!isCustom) ...[
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: isTrial
+                      ? Colors.purple.withOpacity(0.1)
+                      : AppTheme.primaryColor.withOpacity(0.1),
+                  backgroundImage: isTrial
+                      ? null
+                      : (request as BookingRequest).tutorAvatarUrl != null
+                          ? NetworkImage((request as BookingRequest).tutorAvatarUrl!)
+                          : null,
+                  child: isTrial
+                      ? Icon(Icons.science, color: Colors.purple, size: 24)
+                      : (request as BookingRequest).tutorAvatarUrl == null
+                          ? Icon(Icons.person, color: AppTheme.primaryColor, size: 24)
+                          : null,
+                ),
+                const SizedBox(width: 12),
+              ],
+              // Tutor Name
               Expanded(
-                child: Text(
-                  tutorName,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tutorName,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    if (isTrial)
+                      Text(
+                        'Try before you commit!',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.purple,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
 
           // Details based on type
           if (isTrial) ...{
