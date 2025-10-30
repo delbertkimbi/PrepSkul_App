@@ -2696,9 +2696,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
         builder: (context) => AlertDialog(
           title: Text(
             'Error',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w600,
-            ),
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
           ),
           content: Text(
             'Failed to save survey. Please try again.\n\nError: $e',

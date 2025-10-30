@@ -2656,9 +2656,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
         builder: (context) => AlertDialog(
           title: Text(
             'Error',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w600,
-            ),
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
           ),
           content: Text(
             'Failed to save survey. Please try again.\n\nError: $e',
