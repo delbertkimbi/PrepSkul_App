@@ -586,12 +586,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const SizedBox(height: 60),
-          
+
           // Clear filters button
           TextButton(
             onPressed: _clearFilters,
             child: Text(
-              'Clear all filters',
+              'Clear all filters/search',
               style: GoogleFonts.poppins(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,

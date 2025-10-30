@@ -616,7 +616,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             TextButton(
               onPressed: _clearFilters,
               child: Text(
-                'Clear all filters',
+                'Clear all filters/search',
                 style: GoogleFonts.poppins(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
