@@ -7,6 +7,7 @@ import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
+import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 
 /// MyRequestsScreen
 ///
@@ -227,7 +228,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   child: ElevatedButton(
                     onPressed: () {
                       // Navigate to custom request form
-                      Navigator.pushNamed(context, '/request-tutor');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RequestTutorFlowScreen(),
+                        ),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
@@ -293,10 +299,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             const SizedBox(height: 16),
             Text(
               message,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
+              style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
             ),
           ],
         ),

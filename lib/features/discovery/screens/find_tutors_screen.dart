@@ -585,15 +585,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(height: 40),
-          Icon(Icons.search_off, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 20),
-          Text(
-            'Try adjusting your search or filters',
-            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 60),
+          
+          // Clear filters button
           TextButton(
             onPressed: _clearFilters,
             child: Text(
@@ -605,7 +599,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
 
           // Request Tutor CTA
           Container(
