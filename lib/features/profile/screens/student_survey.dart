@@ -2660,7 +2660,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
         'tutor_gender_preference': _tutorGenderPreference,
         'tutor_qualification_preference': _tutorQualificationPreference,
         'preferred_location': _preferredLocation,
-        'preferred_schedule': _preferredSchedule,
+        'preferred_schedule': _preferredSchedule != null ? [_preferredSchedule!] : null,
         'learning_style': _learningStyle,
         'confidence_level': _confidenceLevel,
         'learning_goals': _learningGoals,
