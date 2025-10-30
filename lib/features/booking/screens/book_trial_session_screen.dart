@@ -14,7 +14,7 @@ class BookTrialSessionScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
 
   const BookTrialSessionScreen({Key? key, required this.tutor})
-      : super(key: key);
+    : super(key: key);
 
   @override
   State<BookTrialSessionScreen> createState() => _BookTrialSessionScreenState();
@@ -40,9 +40,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   // Available time slots
   final List<String> _availableTimeSlots = [
-    '09:00', '10:00', '11:00',
-    '14:00', '15:00', '16:00', '17:00',
-    '18:00', '19:00', '20:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '14:00',
+    '15:00',
+    '16:00',
+    '17:00',
+    '18:00',
+    '19:00',
+    '20:00',
   ];
 
   double get _trialFee => _selectedDuration == 30 ? 2000.0 : 3500.0;
@@ -322,7 +329,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               child: LinearProgressIndicator(
                 value: (_currentStep + 1) / _totalSteps,
                 backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
                 minHeight: 6,
               ),
             ),
@@ -381,8 +390,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   child: ElevatedButton(
                     onPressed: _canProceed()
                         ? (_currentStep == _totalSteps - 1
-                            ? _submitTrialRequest
-                            : _nextStep)
+                              ? _submitTrialRequest
+                              : _nextStep)
                         : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
@@ -438,10 +447,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           const SizedBox(height: 4),
           Text(
             'Choose what you want to learn',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -452,8 +458,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               return GestureDetector(
                 onTap: () => setState(() => _selectedSubject = subject),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected ? AppTheme.primaryColor : Colors.white,
                     borderRadius: BorderRadius.circular(12),
@@ -490,10 +498,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           const SizedBox(height: 4),
           Text(
             'How long would you like the trial?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
           Row(
@@ -526,10 +531,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           const SizedBox(height: 4),
           Text(
             'When would you like the trial session?',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
           Container(
@@ -584,10 +586,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           const SizedBox(height: 4),
           Text(
             'Choose a time that works for you',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -598,8 +597,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               return GestureDetector(
                 onTap: () => setState(() => _selectedTime = time),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: isSelected ? AppTheme.primaryColor : Colors.white,
                     borderRadius: BorderRadius.circular(8),
@@ -645,10 +646,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           const SizedBox(height: 4),
           Text(
             'Help the tutor prepare for your session',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-            ),
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
 
@@ -770,9 +768,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.05),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.2),
-              ),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -911,10 +907,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       children: [
         Text(
           label,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            color: Colors.grey[600],
-          ),
+          style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
         ),
         Flexible(
           child: Text(
