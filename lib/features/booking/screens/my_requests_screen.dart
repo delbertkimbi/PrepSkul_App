@@ -194,7 +194,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            if (status == 'all') ...[
+            if (status == 'all' || status == 'custom') ...[
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
