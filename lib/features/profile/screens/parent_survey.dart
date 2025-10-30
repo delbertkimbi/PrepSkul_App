@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
@@ -2545,26 +2547,138 @@ class _ParentSurveyState extends State<ParentSurvey> {
   }
 
   Future<void> _completeSurvey() async {
-    print('Parent Survey completed!');
-    print('Learning Path: $_selectedLearningPath');
-    print('Education Level: $_selectedEducationLevel');
-    print('Class: $_selectedClass');
-    print('Stream: $_selectedStream');
-    print('Subjects: $_selectedSubjects');
-    print('Skills: $_selectedSkills');
-    print('Exam: $_selectedSpecificExam');
-    print('Exam Subjects: $_examSubjects');
-    print('Goals: $_learningGoals');
-    print('Challenges: $_challenges');
+    try {
+      print('📝 Parent Survey submission started...');
 
-    // Mark survey as completed
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('survey_completed', true);
+      // Show loading indicator
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  'Saving your preferences...',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
 
-    // TODO: Save survey data to database
+      // Get current user
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
 
-    // Navigate to parent dashboard after completing survey
-    Navigator.pushReplacementNamed(context, '/parent-nav');
+      // Prepare survey data to save to parent_profiles
+      final surveyData = <String, dynamic>{
+        // Location
+        'city': _selectedCity,
+        'quarter': _isCustomQuarter ? _customQuarter : _selectedQuarter,
+        // Child Info
+        'child_name': _childName,
+        'child_date_of_birth': _childDateOfBirth?.toIso8601String(),
+        'child_gender': _childGender,
+        // Learning Path
+        'learning_path': _selectedLearningPath,
+        // Academic Tutoring
+        if (_selectedLearningPath == 'Academic Tutoring') ...{
+          'education_level': _selectedEducationLevel,
+          'class_level': _selectedClass,
+          'stream': _selectedStream,
+          'subjects': _selectedSubjects,
+          'university_courses': _universityCoursesController.text,
+        },
+        // Skill Development
+        if (_selectedLearningPath == 'Skill Development') ...{
+          'skill_category': _selectedSkillCategory,
+          'skills': _selectedSkills,
+        },
+        // Exam Preparation
+        if (_selectedLearningPath == 'Exam Preparation') ...{
+          'exam_type': _selectedExamType,
+          'specific_exam': _selectedSpecificExam,
+          'exam_subjects': _examSubjects,
+        },
+        // Preferences
+        'budget_min': _minBudget,
+        'budget_max': _maxBudget,
+        'tutor_gender_preference': _tutorGenderPreference,
+        'tutor_qualification_preference': _tutorQualificationPreference,
+        'preferred_location': _preferredLocation,
+        'preferred_schedule': _preferredSchedule,
+        'learning_style': _learningStyle,
+        'confidence_level': _confidenceLevel,
+        'learning_goals': _learningGoals,
+        'challenges': _challenges,
+      };
+
+      // Save to database
+      await SurveyRepository.saveParentSurvey(userId, surveyData);
+
+      // Mark survey as completed locally
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('survey_completed', true);
+
+      print('✅ Parent survey saved successfully!');
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Navigate to parent dashboard
+      if (!mounted) return;
+      Navigator.pushReplacementNamed(context, '/parent-nav');
+    } catch (e) {
+      print('❌ Error saving parent survey: $e');
+
+      // Close loading dialog if open
+      if (mounted) Navigator.of(context).pop();
+
+      // Show error dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Error',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            'Failed to save survey. Please try again.\n\nError: $e',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'OK',
+                style: GoogleFonts.poppins(
+                  color: AppTheme.primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 }
 

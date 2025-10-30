@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
@@ -48,11 +50,41 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   }
 
   /// Pre-fill data from survey if available
-  void _prefillFromSurvey() {
-    if (widget.surveyData == null) return;
+  Future<void> _prefillFromSurvey() async {
+    // First try to use passed survey data
+    if (widget.surveyData != null) {
+      _applyPrefillData(widget.surveyData!);
+      return;
+    }
 
-    final survey = widget.surveyData!;
+    // Otherwise fetch from database
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      if (userProfile == null) return;
 
+      final userType = userProfile['user_type'] as String?;
+      if (userType == null) return;
+
+      Map<String, dynamic>? surveyData;
+
+      if (userType == 'student') {
+        surveyData = await SurveyRepository.getStudentSurvey(userProfile['id']);
+      } else if (userType == 'parent') {
+        surveyData = await SurveyRepository.getParentSurvey(userProfile['id']);
+      }
+
+      if (surveyData != null && mounted) {
+        setState(() {
+          _applyPrefillData(surveyData!);
+        });
+      }
+    } catch (e) {
+      print('⚠️ Could not load survey data for prefill: $e');
+    }
+  }
+
+  /// Apply survey data to prefill booking form
+  void _applyPrefillData(Map<String, dynamic> survey) {
     // Pre-fill frequency
     if (survey['preferred_session_frequency'] != null) {
       _selectedFrequency = survey['preferred_session_frequency'] as int;
@@ -74,6 +106,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     // Pre-fill address (if onsite)
     if (survey['city'] != null && survey['quarter'] != null) {
       _onsiteAddress = '${survey['city']}, ${survey['quarter']}';
+      print('✅ Pre-filled address: $_onsiteAddress');
     }
   }
 

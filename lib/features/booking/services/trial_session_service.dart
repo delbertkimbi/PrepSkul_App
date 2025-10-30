@@ -41,10 +41,19 @@ class TrialSessionService {
       final userType = userProfile['user_type'] as String;
       final isParent = userType == 'parent';
 
+      // DEMO MODE FIX: If tutorId is not a valid UUID (e.g., "tutor_001"),
+      // use the current user's ID as a placeholder for testing
+      // In production, this will be a real tutor's UUID
+      String validTutorId = tutorId;
+      if (!_isValidUUID(tutorId)) {
+        print('⚠️ DEMO MODE: Using user ID as tutor ID for testing');
+        validTutorId = userId; // Use self as tutor for demo
+      }
+
       // Create trial session data
       final trialData = {
-        'tutor_id': tutorId,
-        'learner_id': userId, // For now, user is the learner
+        'tutor_id': validTutorId,
+        'learner_id': userId,
         'parent_id': isParent ? userId : null,
         'requester_id': userId,
         'subject': subject,
@@ -71,8 +80,18 @@ class TrialSessionService {
 
       return TrialSession.fromJson(response);
     } catch (e) {
+      print('❌ Trial booking error: $e');
       throw Exception('Failed to create trial request: $e');
     }
+  }
+
+  /// Helper to validate UUID format
+  static bool _isValidUUID(String value) {
+    final uuidRegex = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    return uuidRegex.hasMatch(value);
   }
 
   /// Get all trial sessions for a student/parent
