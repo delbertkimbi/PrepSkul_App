@@ -51,8 +51,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
   List<String> _examSubjects = [];
 
   // Preferences
-  int _minBudget = 2500;
-  int _maxBudget = 15000;
+  int _minBudget = 20000;
+  int _maxBudget = 55000;
   String? _tutorGenderPreference;
   String? _tutorQualificationPreference;
   String? _preferredLocation;
@@ -1546,16 +1546,16 @@ class _StudentSurveyState extends State<StudentSurvey> {
         ),
         const SizedBox(height: 4),
         Text(
-          'per 60-min session',
+          'per month',
           style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
         ),
         const SizedBox(height: 24),
 
         RangeSlider(
           values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
-          min: 2500,
-          max: 15000,
-          divisions: 13,
+          min: 20000,
+          max: 55000,
+          divisions: 7,
           activeColor: AppTheme.primaryColor,
           inactiveColor: AppTheme.softBorder,
           onChanged: (RangeValues values) {
@@ -1573,10 +1573,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
           runSpacing: 8,
           alignment: WrapAlignment.start,
           children: [
-            _buildQuickBudgetButton('2,500 - 5,000 XAF', 2500, 5000),
-            _buildQuickBudgetButton('5,000 - 8,000 XAF', 5000, 8000),
-            _buildQuickBudgetButton('8,000 - 12,000 XAF', 8000, 12000),
-            _buildQuickBudgetButton('12,000 - 15,000 XAF', 12000, 15000),
+            _buildQuickBudgetButton('20k - 30k XAF', 20000, 30000),
+            _buildQuickBudgetButton('30k - 40k XAF', 30000, 40000),
+            _buildQuickBudgetButton('40k - 50k XAF', 40000, 50000),
+            _buildQuickBudgetButton('50k - 55k XAF', 50000, 55000),
           ],
         ),
       ],

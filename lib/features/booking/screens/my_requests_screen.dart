@@ -284,7 +284,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               const SizedBox(height: 16),
               Text(
                 message,
-                style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                ),
               ),
             ],
           ],
