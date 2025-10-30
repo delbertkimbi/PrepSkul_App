@@ -146,6 +146,25 @@ class TrialSession {
     return '$durationMinutes minutes';
   }
 
+  /// Format date for display
+  String get formattedDate {
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[scheduledDate.month - 1]} ${scheduledDate.day}, ${scheduledDate.year}';
+  }
+
   /// Format time for display
   String get formattedTime {
     final parts = scheduledTime.split(':');

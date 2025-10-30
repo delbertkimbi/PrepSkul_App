@@ -88,13 +88,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       final aDate = a is BookingRequest
           ? a.createdAt
           : a is TrialSession
-              ? (a as TrialSession).createdAt
-              : (a as TutorRequest).createdAt;
+          ? (a as TrialSession).createdAt
+          : (a as TutorRequest).createdAt;
       final bDate = b is BookingRequest
           ? b.createdAt
           : b is TrialSession
-              ? (b as TrialSession).createdAt
-              : (b as TutorRequest).createdAt;
+          ? (b as TrialSession).createdAt
+          : (b as TutorRequest).createdAt;
       return bDate.compareTo(aDate);
     });
 
@@ -189,16 +189,101 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 80, color: Colors.grey[300]),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 80, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: GoogleFonts.poppins(fontSize: 16, color: Colors.grey[600]),
+            ),
+            if (status == 'all') ...[
+              const SizedBox(height: 32),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor.withOpacity(0.1),
+                      AppTheme.primaryColor.withOpacity(0.05),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.3),
+                    width: 1.5,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.person_search_rounded,
+                      size: 48,
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Looking for a tutor?',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Request a custom tutor and we\'ll find the perfect match for you',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppTheme.textMedium,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/find-tutors');
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add_circle_outline, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Request a Tutor',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -207,7 +292,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     // Handle BookingRequest, TrialSession, and TutorRequest
     final bool isTrial = request is TrialSession;
     final bool isCustom = request is TutorRequest;
-    
+
     final String status;
     if (isTrial) {
       status = (request as TrialSession).status;
@@ -216,13 +301,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     } else {
       status = (request as BookingRequest).status;
     }
-    
+
     final String tutorName = isTrial
         ? 'Demo Tutor' // Trial sessions use user ID as tutor in demo mode
         : isCustom
-            ? 'Tutor Request'
-            : (request as BookingRequest).tutorName;
-    
+        ? 'Tutor Request'
+        : (request as BookingRequest).tutorName;
+
     final statusColor = _getStatusColor(status);
     final statusIcon = _getStatusIcon(status);
 
@@ -256,8 +341,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   color: isTrial
                       ? Colors.purple.withOpacity(0.1)
                       : isCustom
-                          ? Colors.orange.withOpacity(0.1)
-                          : AppTheme.primaryColor.withOpacity(0.1),
+                      ? Colors.orange.withOpacity(0.1)
+                      : AppTheme.primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -267,30 +352,30 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       isTrial
                           ? Icons.science_outlined
                           : isCustom
-                              ? Icons.person_search_rounded
-                              : Icons.repeat,
+                          ? Icons.person_search_rounded
+                          : Icons.repeat,
                       size: 16,
                       color: isTrial
                           ? Colors.purple
                           : isCustom
-                              ? Colors.orange
-                              : AppTheme.primaryColor,
+                          ? Colors.orange
+                          : AppTheme.primaryColor,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       isTrial
                           ? 'Trial Session'
                           : isCustom
-                              ? 'Custom Tutor'
-                              : 'Regular Booking',
+                          ? 'Custom Tutor'
+                          : 'Regular Booking',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: isTrial
                             ? Colors.purple
                             : isCustom
-                                ? Colors.orange
-                                : AppTheme.primaryColor,
+                            ? Colors.orange
+                            : AppTheme.primaryColor,
                       ),
                     ),
                   ],
@@ -437,13 +522,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               Icon(Icons.schedule, size: 14, color: Colors.grey[400]),
               const SizedBox(width: 4),
               Text(
-                'Created ${_formatDate(
-                  isTrial
-                      ? (request as TrialSession).createdAt
-                      : isCustom
-                          ? (request as TutorRequest).createdAt
-                          : (request as BookingRequest).createdAt,
-                )}',
+                'Created ${_formatDate(isTrial
+                    ? (request as TrialSession).createdAt
+                    : isCustom
+                    ? (request as TutorRequest).createdAt
+                    : (request as BookingRequest).createdAt)}',
                 style: GoogleFonts.poppins(
                   fontSize: 12,
                   color: Colors.grey[600],

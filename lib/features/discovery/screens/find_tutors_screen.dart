@@ -580,44 +580,35 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off, size: 80, color: Colors.grey[300]),
-            const SizedBox(height: 20),
-            Text(
-              'No tutors found',
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 40),
+          Icon(Icons.search_off, size: 80, color: Colors.grey[300]),
+          const SizedBox(height: 20),
+          Text(
+            'Try adjusting your search or filters',
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: _clearFilters,
+            child: Text(
+              'Clear all filters',
               style: GoogleFonts.poppins(
-                fontSize: 20,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                color: AppTheme.primaryColor,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Try adjusting your search or filters',
-              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: _clearFilters,
-              child: Text(
-                'Clear all filters',
-                style: GoogleFonts.poppins(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            
-            // Request Tutor CTA
-            Container(
+          ),
+          const SizedBox(height: 24),
+          
+          // Request Tutor CTA
+          Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
