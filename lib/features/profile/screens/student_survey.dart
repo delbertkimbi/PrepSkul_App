@@ -1423,9 +1423,55 @@ class _StudentSurveyState extends State<StudentSurvey> {
             color: AppTheme.textDark,
           ),
         ),
+        const SizedBox(height: 24),
+
+        Text(
+          '$_minBudget XAF - $_maxBudget XAF',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'per month',
+          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+        ),
+        const SizedBox(height: 24),
+
+        RangeSlider(
+          values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
+          min: 20000,
+          max: 55000,
+          divisions: 7,
+          activeColor: AppTheme.primaryColor,
+          inactiveColor: AppTheme.softBorder,
+          onChanged: (RangeValues values) {
+            setState(() {
+              _minBudget = values.start.round();
+              _maxBudget = values.end.round();
+            });
+          },
+        ),
+
         const SizedBox(height: 16),
 
-        // Information Card
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          alignment: WrapAlignment.start,
+          children: [
+            _buildQuickBudgetButton('20k - 30k XAF', 20000, 30000),
+            _buildQuickBudgetButton('30k - 40k XAF', 30000, 40000),
+            _buildQuickBudgetButton('40k - 50k XAF', 40000, 50000),
+            _buildQuickBudgetButton('50k - 55k XAF', 50000, 55000),
+          ],
+        ),
+
+        const SizedBox(height: 24),
+
+        // Information Card (moved below budget selection)
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1532,52 +1578,6 @@ class _StudentSurveyState extends State<StudentSurvey> {
               ),
             ],
           ),
-        ),
-
-        const SizedBox(height: 24),
-
-        Text(
-          '$_minBudget XAF - $_maxBudget XAF',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'per month',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 24),
-
-        RangeSlider(
-          values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
-          min: 20000,
-          max: 55000,
-          divisions: 7,
-          activeColor: AppTheme.primaryColor,
-          inactiveColor: AppTheme.softBorder,
-          onChanged: (RangeValues values) {
-            setState(() {
-              _minBudget = values.start.round();
-              _maxBudget = values.end.round();
-            });
-          },
-        ),
-
-        const SizedBox(height: 16),
-
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.start,
-          children: [
-            _buildQuickBudgetButton('20k - 30k XAF', 20000, 30000),
-            _buildQuickBudgetButton('30k - 40k XAF', 30000, 40000),
-            _buildQuickBudgetButton('40k - 50k XAF', 40000, 50000),
-            _buildQuickBudgetButton('50k - 55k XAF', 50000, 55000),
-          ],
         ),
       ],
     );
