@@ -36,7 +36,16 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         _customQuarter = _customQuarterController.text;
       });
     });
+    _loadAuthMethod();
     _loadSavedData();
+  }
+
+  Future<void> _loadAuthMethod() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _authMethod =
+          prefs.getString('auth_method') ?? 'phone'; // Default to phone
+    });
   }
 
   // Auto-save functionality
@@ -135,6 +144,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
 
   // Contact Information
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  String? _authMethod; // 'email' or 'phone'
 
   // Academic Background
   String? _selectedEducation;
@@ -489,8 +500,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         children: [
           _buildSectionHeader(
             'Contact Information',
-            'We need your email for important notifications',
-            Icons.email_outlined,
+            _authMethod == 'email'
+                ? 'We need your phone number for important notifications'
+                : 'We need your email for important notifications',
+            _authMethod == 'email'
+                ? Icons.phone_outlined
+                : Icons.email_outlined,
             hasRequiredFields: true,
           ),
           const SizedBox(height: 32),
@@ -513,7 +528,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'We\'ll send your approval status and important updates to this email',
+                    _authMethod == 'email'
+                        ? 'We\'ll send your approval status and important updates to this phone number'
+                        : 'We\'ll send your approval status and important updates to this email',
                     style: GoogleFonts.poppins(
                       fontSize: 13,
                       color: AppTheme.textDark,
@@ -527,23 +544,48 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
 
           const SizedBox(height: 32),
 
-          // Email Input
-          _buildInputField(
-            controller: _emailController,
-            label: 'Email Address',
-            hint: 'Enter your email (e.g., tutor@example.com)',
-            icon: Icons.email,
-            keyboardType: TextInputType.emailAddress,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Email is required';
-              }
-              if (!_isValidEmail(value.trim())) {
-                return 'Please enter a valid email address';
-              }
-              return null;
-            },
-          ),
+          // Phone or Email Input (based on auth method)
+          _authMethod == 'email'
+              ? _buildInputField(
+                  controller: _phoneController,
+                  label: 'Phone Number',
+                  hint: 'Enter your phone number (e.g., 6 53 30 19 97)',
+                  icon: Icons.phone,
+                  keyboardType: TextInputType.phone,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Phone number is required';
+                    }
+                    // Format phone number
+                    String phone = value.trim().replaceAll(
+                      RegExp(r'[\s\-]'),
+                      '',
+                    );
+                    if (phone.startsWith('0')) {
+                      phone = phone.substring(1);
+                    }
+                    if (!_isValidPhoneNumber(phone)) {
+                      return 'Please enter a valid phone number (9 digits)';
+                    }
+                    return null;
+                  },
+                )
+              : _buildInputField(
+                  controller: _emailController,
+                  label: 'Email Address',
+                  hint: 'Enter your email (e.g., tutor@example.com)',
+                  icon: Icons.email,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Email is required';
+                    }
+                    if (!_isValidEmail(value.trim())) {
+                      return 'Please enter a valid email address';
+                    }
+                    return null;
+                  },
+                ),
 
           const SizedBox(height: 80),
         ],
@@ -3280,11 +3322,28 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       final userInfo = await AuthService.getCurrentUser();
       final userId = userInfo['userId'];
 
-      // Save to database (pass email separately)
+      // Format phone if needed
+      String? phoneNumber;
+      if (_authMethod == 'email' && _phoneController.text.isNotEmpty) {
+        String phone = _phoneController.text.trim().replaceAll(
+          RegExp(r'[\s\-]'),
+          '',
+        );
+        if (phone.startsWith('0')) {
+          phone = phone.substring(1);
+        }
+        phoneNumber = '+237$phone';
+      }
+
+      // Save to database (pass email or phone based on auth method)
+      String? contactInfo = _authMethod == 'email'
+          ? phoneNumber
+          : _emailController.text.trim();
+
       await SurveyRepository.saveTutorSurvey(
         userId,
         tutorData,
-        _emailController.text.trim(),
+        contactInfo, // Email if phone auth, phone if email auth
       );
 
       // Close loading dialog
@@ -3377,7 +3436,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       'video_link': _videoLinkController.text,
       'social_links': _socialMediaLinks,
       'verification_agreement': _agreesToVerification,
-      
+
       // Status - Always pending on submission (admin reviews)
       'status': 'pending',
     };
@@ -3387,6 +3446,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
   void dispose() {
     _pageController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
+    _customQuarterController.dispose();
     _institutionController.dispose();
     _fieldOfStudyController.dispose();
     _customSpecializationController.dispose();

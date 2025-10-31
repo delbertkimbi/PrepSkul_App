@@ -11,10 +11,12 @@ import 'package:prepskul/features/profile/screens/student_survey.dart';
 import 'package:prepskul/features/profile/screens/parent_survey.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
-import 'package:prepskul/features/auth/screens/forgot_password_screen.dart'
-    hide AppTheme;
+import 'package:prepskul/features/auth/screens/forgot_password_screen.dart';
 import 'package:prepskul/features/auth/screens/reset_password_screen.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
+import 'package:prepskul/features/auth/screens/auth_method_selection_screen.dart';
+import 'package:prepskul/features/auth/screens/email_signup_screen.dart';
+import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 // Removed unused imports (deleted placeholder features)
@@ -73,9 +75,13 @@ class PrepSkulApp extends StatelessWidget {
             // Routes
             routes: {
               '/onboarding': (context) => const SimpleOnboardingScreen(),
+              '/auth-method-selection': (context) =>
+                  const AuthMethodSelectionScreen(),
               '/login': (context) => const BeautifulLoginScreen(),
               '/beautiful-login': (context) => const BeautifulLoginScreen(),
               '/beautiful-signup': (context) => const BeautifulSignupScreen(),
+              '/email-signup': (context) => const EmailSignupScreen(),
+              '/email-login': (context) => const EmailLoginScreen(),
               '/forgot-password': (context) => const ForgotPasswordScreen(),
             },
             onGenerateRoute: (settings) {
@@ -217,9 +223,9 @@ class _SplashScreenState extends State<SplashScreen> {
       print('Navigating to onboarding...');
       Navigator.of(context).pushReplacementNamed('/onboarding');
     } else if (!isLoggedIn) {
-      // User has seen onboarding but not logged in - go to login
-      print('Navigating to login...');
-      Navigator.of(context).pushReplacementNamed('/login');
+      // User has seen onboarding but not logged in - go to auth method selection
+      print('Navigating to auth method selection...');
+      Navigator.of(context).pushReplacementNamed('/auth-method-selection');
     } else if (!hasCompletedSurvey && userRole != null) {
       // User is logged in but hasn't completed survey - redirect to survey
       print('Navigating to survey...');

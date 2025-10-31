@@ -8,22 +8,29 @@ class SurveyRepository {
   static Future<void> saveTutorSurvey(
     String userId,
     Map<String, dynamic> data,
-    String? email, // Pass email separately since it goes to profiles table
+    String? contactInfo, // Email or phone based on auth method
   ) async {
     try {
       print('📝 Saving tutor survey for user: $userId');
 
-      // Save to tutor_profiles table (email is NOT in this table)
+      // Save to tutor_profiles table
       await SupabaseService.client.from('tutor_profiles').upsert({
         'user_id': userId,
         ...data,
       }, onConflict: 'user_id');
 
-      // Update profiles table with email and mark survey as completed
+      // Update profiles table with contact info and mark survey as completed
       final profileUpdates = <String, dynamic>{'survey_completed': true};
 
-      if (email != null && email.isNotEmpty) {
-        profileUpdates['email'] = email;
+      if (contactInfo != null && contactInfo.isNotEmpty) {
+        // Determine if it's email or phone based on format
+        if (contactInfo.contains('@')) {
+          // It's an email
+          profileUpdates['email'] = contactInfo;
+        } else if (contactInfo.startsWith('+')) {
+          // It's a phone number
+          profileUpdates['phone_number'] = contactInfo;
+        }
       }
 
       await SupabaseService.client

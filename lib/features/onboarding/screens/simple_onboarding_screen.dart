@@ -89,8 +89,8 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_completed', true);
-    print('Onboarding completed, navigating to login...');
-    Navigator.pushReplacementNamed(context, '/beautiful-login');
+    print('Onboarding completed, navigating to auth method selection...');
+    Navigator.pushReplacementNamed(context, '/auth-method-selection');
   }
 
   @override
@@ -100,7 +100,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            SizedBox(height: 10,),
+            SizedBox(height: 10),
             // Header with language switcher
             Padding(
               padding: const EdgeInsets.all(20.0),
@@ -128,7 +128,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
                 ],
               ),
             ),
-           SizedBox(height: 60,),
+            SizedBox(height: 60),
             // Page view
             Expanded(
               child: PageView.builder(
