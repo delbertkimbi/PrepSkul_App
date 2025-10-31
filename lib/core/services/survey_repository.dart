@@ -17,7 +17,7 @@ class SurveyRepository {
       await SupabaseService.client.from('tutor_profiles').upsert({
         'user_id': userId,
         ...data,
-      });
+      }, onConflict: 'user_id');
 
       // Update profiles table with email and mark survey as completed
       final profileUpdates = <String, dynamic>{'survey_completed': true};
@@ -91,7 +91,7 @@ class SurveyRepository {
       await SupabaseService.client.from('learner_profiles').upsert({
         'user_id': userId,
         ...data,
-      });
+      }, onConflict: 'user_id');
 
       // Mark survey as completed
       await SupabaseService.client
@@ -159,7 +159,7 @@ class SurveyRepository {
       await SupabaseService.client.from('parent_profiles').upsert({
         'user_id': userId,
         ...data,
-      });
+      }, onConflict: 'user_id');
 
       // Mark survey as completed
       await SupabaseService.client
