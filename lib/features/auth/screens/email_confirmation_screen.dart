@@ -31,35 +31,42 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   void initState() {
     super.initState();
     _startCountdown();
-    _checkEmailConfirmation(); // Check if email was already confirmed
+    // Check immediately first, then poll
+    _checkEmailConfirmation();
   }
 
   Future<void> _checkEmailConfirmation() async {
-    // Poll for email confirmation every 5 seconds
-    Future.delayed(const Duration(seconds: 5), () async {
-      if (!mounted) return;
+    if (!mounted) return;
 
-      setState(() => _isChecking = true);
+    setState(() => _isChecking = true);
 
-      try {
-        final user = SupabaseService.currentUser;
-        if (user != null && user.emailConfirmedAt != null) {
-          // Email confirmed - proceed with profile creation
-          await _proceedToSurvey();
-        } else {
-          // Keep checking
-          _checkEmailConfirmation();
-        }
-      } catch (e) {
-        print('Error checking email confirmation: $e');
-        // Keep checking despite errors
-        _checkEmailConfirmation();
-      } finally {
-        if (mounted) {
-          setState(() => _isChecking = false);
-        }
+    try {
+      // Refresh session to get latest auth state
+      await SupabaseService.client.auth.refreshSession();
+      final user = SupabaseService.currentUser;
+      
+      if (user != null && user.emailConfirmedAt != null) {
+        // Email confirmed - proceed with profile creation
+        print('✅ Email confirmed! Proceeding to survey...');
+        await _proceedToSurvey();
+        return; // Don't check again if proceeding
       }
-    });
+      
+      // If not confirmed, keep checking every 5 seconds
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) _checkEmailConfirmation();
+      });
+    } catch (e) {
+      print('Error checking email confirmation: $e');
+      // Keep checking despite errors
+      Future.delayed(const Duration(seconds: 5), () {
+        if (mounted) _checkEmailConfirmation();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isChecking = false);
+      }
+    }
   }
 
   Future<void> _proceedToSurvey() async {
@@ -69,8 +76,8 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         throw Exception('User not found');
       }
 
-      // Create profile entry
-      await SupabaseService.client.from('profiles').insert({
+      // Create profile entry (use upsert to avoid duplicates if user already exists)
+      await SupabaseService.client.from('profiles').upsert({
         'id': user.id,
         'email': widget.email,
         'full_name': widget.fullName,
@@ -79,7 +86,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         'avatar_url': null,
         'survey_completed': false,
         'is_admin': false,
-      });
+      }, onConflict: 'id');
 
       // Save session
       await AuthService.saveSession(
@@ -190,231 +197,302 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 40),
-
-              // Email icon
-              Container(
-                width: 120,
-                height: 120,
+      body: Stack(
+        children: [
+          // Curved wave background at top
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ClipPath(
+              clipper: WaveClipper(),
+              child: Container(
+                height: 200,
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(60),
-                ),
-                child: Icon(
-                  Icons.mark_email_read_outlined,
-                  size: 60,
-                  color: AppTheme.primaryColor,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.85),
+                    ],
+                  ),
                 ),
               ),
+            ),
+          ),
 
-              const SizedBox(height: 32),
-
-              // Title
-              Text(
-                'Check your email',
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 16),
-
-              // Subtitle
-              Text(
-                'We\'ve sent a confirmation link to',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w400,
-                  color: AppTheme.textMedium,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 8),
-
-              // Email address
-              Text(
-                widget.email,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 16),
-
-              // Auto-checking indicator
-              if (_isChecking)
+          // Main content
+          SafeArea(
+            child: Column(
+              children: [
+                // Header content inside the wave
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  padding: const EdgeInsets.fromLTRB(24.0, 29.0, 24.0, 30.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppTheme.primaryColor,
+                      const SizedBox(height: 15),
+                      Center(
+                        child: Text(
+                          'Check your email',
+                          style: GoogleFonts.poppins(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Checking for confirmation...',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color: AppTheme.textMedium,
-                          fontStyle: FontStyle.italic,
+                      const SizedBox(height: 3),
+                      Center(
+                        child: Text(
+                          'We sent you a confirmation link',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white.withOpacity(0.95),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                )
-              else
-                const SizedBox(height: 8),
-
-              const SizedBox(height: 16),
-
-              // Info box
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.2),
-                    width: 1,
-                  ),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+
+                // Form content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: AppTheme.primaryColor,
-                          size: 24,
+                        const SizedBox(height: 50),
+
+                        // Email icon
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(50),
+                          ),
+                          child: Icon(
+                            Icons.mark_email_read_outlined,
+                            size: 50,
+                            color: AppTheme.primaryColor,
+                          ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
+
+                        const SizedBox(height: 24),
+
+                        // Email address
+                        Text(
+                          widget.email,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Auto-checking indicator
+                        if (_isChecking)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Checking...',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    color: AppTheme.textMedium,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          const SizedBox(height: 8),
+
+                        const SizedBox(height: 20),
+
+                        // Info box
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppTheme.primaryColor.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'What\'s next?',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textDark,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                widget.userRole == 'tutor'
-                                    ? '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Complete your tutor profile!'
-                                    : '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Find your perfect tutor!',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  color: AppTheme.textMedium,
-                                  height: 1.6,
-                                ),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: AppTheme.primaryColor,
+                                    size: 24,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'What\'s next?',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.textDark,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          widget.userRole == 'tutor'
+                                              ? '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Complete your tutor profile!'
+                                              : '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Find your perfect tutor!',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            color: AppTheme.textMedium,
+                                            height: 1.6,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                         ),
+
+                        const SizedBox(height: 32),
+
+                        // Resend email button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 56,
+                          child: OutlinedButton.icon(
+                            onPressed: _resendCountdown > 0 || _isResending
+                                ? null
+                                : _resendEmail,
+                            icon: _isResending
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.refresh_outlined),
+                            label: Text(
+                              _resendCountdown > 0
+                                  ? 'Resend email ($_resendCountdown)'
+                                  : 'Resend confirmation email',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: AppTheme.primaryColor,
+                                width: 1.5,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Change email link
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                          },
+                          child: Text(
+                            'Wrong email address?',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // Help text
+                        Text(
+                          'Didn\'t receive the email? Check your spam folder or contact support.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.textLight,
+                            height: 1.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 32),
-
-              // Resend email button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: OutlinedButton.icon(
-                  onPressed: _resendCountdown > 0 || _isResending
-                      ? null
-                      : _resendEmail,
-                  icon: _isResending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_outlined),
-                  label: Text(
-                    _resendCountdown > 0
-                        ? 'Resend email ($_resendCountdown)'
-                        : 'Resend confirmation email',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: AppTheme.primaryColor,
-                      width: 1.5,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Change email link
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: Text(
-                  'Wrong email address?',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              // Help text
-              Text(
-                'Didn\'t receive the email? Check your spam folder or contact support.',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: AppTheme.textLight,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
 }
 
+// Reuse WaveClipper
+class WaveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height * 0.85);
+    path.quadraticBezierTo(
+      size.width * 0.25,
+      size.height,
+      size.width * 0.5,
+      size.height * 0.85,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.75,
+      size.height * 0.7,
+      size.width,
+      size.height * 0.85,
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}

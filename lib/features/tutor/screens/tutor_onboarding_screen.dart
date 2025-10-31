@@ -1340,7 +1340,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
               final currentAvailability = _getCurrentAvailability();
               final selectedSlots = currentAvailability[day] ?? [];
               final isSelected = day == _selectedDay;
-              
+
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
@@ -1354,15 +1354,15 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                       color: isSelected
                           ? AppTheme.primaryColor
                           : (selectedSlots.isNotEmpty
-                              ? AppTheme.primaryColor.withOpacity(0.1)
-                              : AppTheme.softCard),
+                                ? AppTheme.primaryColor.withOpacity(0.1)
+                                : AppTheme.softCard),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isSelected
                             ? AppTheme.primaryColor
                             : (selectedSlots.isNotEmpty
-                                ? AppTheme.primaryColor
-                                : AppTheme.softBorder),
+                                  ? AppTheme.primaryColor
+                                  : AppTheme.softBorder),
                         width: isSelected || selectedSlots.isNotEmpty ? 2 : 1,
                       ),
                     ),
@@ -1377,8 +1377,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                             color: isSelected
                                 ? Colors.white
                                 : (selectedSlots.isNotEmpty
-                                    ? AppTheme.primaryColor
-                                    : AppTheme.textDark),
+                                      ? AppTheme.primaryColor
+                                      : AppTheme.textDark),
                           ),
                         ),
                         if (selectedSlots.isNotEmpty && !isSelected) ...[
@@ -1400,103 +1400,105 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         const SizedBox(height: 24),
 
         // Day content card for selected day only
-        Builder(builder: (context) {
-          final day = _selectedDay;
-          final currentAvailability = _getCurrentAvailability();
-          final selectedSlots = currentAvailability[day] ?? [];
+        Builder(
+          builder: (context) {
+            final day = _selectedDay;
+            final currentAvailability = _getCurrentAvailability();
+            final selectedSlots = currentAvailability[day] ?? [];
 
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: selectedSlots.isNotEmpty
-                    ? AppTheme.primaryColor
-                    : AppTheme.softBorder,
-                width: selectedSlots.isNotEmpty ? 2 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: selectedSlots.isNotEmpty
+                      ? AppTheme.primaryColor
+                      : AppTheme.softBorder,
+                  width: selectedSlots.isNotEmpty ? 2 : 1,
                 ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Day header
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: selectedSlots.isNotEmpty
-                            ? AppTheme.primaryColor
-                            : AppTheme.softCard,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        day,
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Day header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
                           color: selectedSlots.isNotEmpty
-                              ? Colors.white
-                              : AppTheme.textDark,
+                              ? AppTheme.primaryColor
+                              : AppTheme.softCard,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          day,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: selectedSlots.isNotEmpty
+                                ? Colors.white
+                                : AppTheme.textDark,
+                          ),
                         ),
                       ),
-                    ),
-                    const Spacer(),
-                    if (selectedSlots.isNotEmpty)
-                      Icon(
-                        Icons.check_circle,
-                        color: AppTheme.primaryColor,
-                        size: 24,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 20),
+                      const Spacer(),
+                      if (selectedSlots.isNotEmpty)
+                        Icon(
+                          Icons.check_circle,
+                          color: AppTheme.primaryColor,
+                          size: 24,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
 
-                // Morning time slots
-                _buildTimeSlotSection(
-                  'Morning',
-                  morningSlots,
-                  day,
-                  Icons.wb_sunny_outlined,
-                  Colors.orange,
-                ),
-                const SizedBox(height: 16),
+                  // Morning time slots
+                  _buildTimeSlotSection(
+                    'Morning',
+                    morningSlots,
+                    day,
+                    Icons.wb_sunny_outlined,
+                    Colors.orange,
+                  ),
+                  const SizedBox(height: 16),
 
-                // Afternoon time slots
-                _buildTimeSlotSection(
-                  'Afternoon',
-                  afternoonSlots,
-                  day,
-                  Icons.wb_twilight_outlined,
-                  Colors.amber,
-                ),
-                const SizedBox(height: 16),
+                  // Afternoon time slots
+                  _buildTimeSlotSection(
+                    'Afternoon',
+                    afternoonSlots,
+                    day,
+                    Icons.wb_twilight_outlined,
+                    Colors.amber,
+                  ),
+                  const SizedBox(height: 16),
 
-                // Evening time slots
-                _buildTimeSlotSection(
-                  'Evening',
-                  eveningSlots,
-                  day,
-                  Icons.nightlight_outlined,
-                  Colors.indigo,
-                ),
-              ],
-            ),
-          );
-        }),
-        
+                  // Evening time slots
+                  _buildTimeSlotSection(
+                    'Evening',
+                    eveningSlots,
+                    day,
+                    Icons.nightlight_outlined,
+                    Colors.indigo,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
         const SizedBox(height: 20),
 
         // Helper text
