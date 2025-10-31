@@ -2856,37 +2856,44 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
 
   bool _canProceedFromCurrentStep() {
     switch (_currentStep) {
-      case 0: // Academic Background - Certification is optional, so _hasTraining doesn't need to be true
+      case 0: // Contact Information
+        // Validate based on auth method
+        if (_authMethod == 'email') {
+          return _phoneController.text.trim().replaceAll(RegExp(r'[\s\-]'), '').length >= 9;
+        } else {
+          return _emailController.text.trim().isNotEmpty && _isValidEmail(_emailController.text.trim());
+        }
+      case 1: // Academic Background
         return _selectedEducation != null &&
             _institutionController.text.isNotEmpty &&
             _fieldOfStudyController.text.isNotEmpty;
-      case 1: // Location
+      case 2: // Location
         return _selectedCity != null &&
             (_selectedQuarter != null ||
                 (_isCustomQuarter &&
                     _customQuarter != null &&
                     _customQuarter!.isNotEmpty));
-      case 2: // Teaching Focus
+      case 3: // Teaching Focus
         return _selectedTutoringAreas.isNotEmpty &&
             _selectedLearnerLevels.isNotEmpty &&
             _selectedSpecializations.isNotEmpty;
-      case 3: // Experience - _hasExperience defaults to false, only validate if true
+      case 4: // Experience - _hasExperience defaults to false, only validate if true
         if (_hasExperience) {
           return _experienceDuration != null;
         }
         return _motivationController
             .text
             .isNotEmpty; // Motivation is always required
-      case 4: // Teaching Style
+      case 5: // Teaching Style
         return _preferredMode != null &&
             _teachingApproaches.isNotEmpty &&
             _preferredSessionType != null &&
             _hoursPerWeek != null;
-      case 5: // Digital Readiness - _hasInternet defaults to false, so no validation needed
+      case 6: // Digital Readiness - _hasInternet defaults to false, so no validation needed
         return true; // No required fields
-      case 6: // Availability
+      case 7: // Availability
         return _tutoringAvailability.isNotEmpty;
-      case 7: // Payment - All fields are required
+      case 8: // Payment - All fields are required
         // Must select payment method
         if (_paymentMethod == null || _paymentMethod!.isEmpty) {
           return false;
@@ -2912,9 +2919,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         }
 
         return true;
-      case 8: // Verification
+      case 9: // Verification
         return _agreesToVerification;
-      case 9: // Personal Statement
+      case 10: // Personal Statement
         return true; // No required fields
       default:
         return true;
