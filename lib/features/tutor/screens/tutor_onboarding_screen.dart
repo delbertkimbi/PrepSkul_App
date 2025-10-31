@@ -185,6 +185,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
   Map<String, List<String>> _testSessionAvailability =
       {}; // Day -> List of time ranges
   String _selectedServiceType = 'tutoring'; // 'tutoring' or 'test_sessions'
+  String _selectedDay = 'Monday'; // Currently selected day for availability
 
   // Digital Readiness
   List<String> _devices = [];
@@ -1284,7 +1285,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       'Saturday',
       'Sunday',
     ];
-    
+
     // Grouped time ranges for better UX
     final List<String> morningSlots = [
       '6:00 AM',
@@ -1294,7 +1295,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       '10:00 AM',
       '11:00 AM',
     ];
-    
+
     final List<String> afternoonSlots = [
       '12:00 PM',
       '1:00 PM',
@@ -1303,7 +1304,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       '4:00 PM',
       '5:00 PM',
     ];
-    
+
     final List<String> eveningSlots = [
       '6:00 PM',
       '7:00 PM',
@@ -1329,13 +1330,81 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           'Select the time slots when you\'re available each day',
           style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
         ),
+        const SizedBox(height: 20),
+
+        // Day selector tabs
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: days.map((day) {
+              final currentAvailability = _getCurrentAvailability();
+              final selectedSlots = currentAvailability[day] ?? [];
+              final isSelected = day == _selectedDay;
+              
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedDay = day),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : (selectedSlots.isNotEmpty
+                              ? AppTheme.primaryColor.withOpacity(0.1)
+                              : AppTheme.softCard),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : (selectedSlots.isNotEmpty
+                                ? AppTheme.primaryColor
+                                : AppTheme.softBorder),
+                        width: isSelected || selectedSlots.isNotEmpty ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          day.substring(0, 3),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected
+                                ? Colors.white
+                                : (selectedSlots.isNotEmpty
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.textDark),
+                          ),
+                        ),
+                        if (selectedSlots.isNotEmpty && !isSelected) ...[
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
         const SizedBox(height: 24),
 
-        // Beautiful card-based day selector
-        ...days.map((day) {
+        // Day content card for selected day only
+        Builder(builder: (context) {
+          final day = _selectedDay;
           final currentAvailability = _getCurrentAvailability();
           final selectedSlots = currentAvailability[day] ?? [];
-          
+
           return Container(
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(20),
@@ -1343,8 +1412,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: selectedSlots.isNotEmpty 
-                    ? AppTheme.primaryColor 
+                color: selectedSlots.isNotEmpty
+                    ? AppTheme.primaryColor
                     : AppTheme.softBorder,
                 width: selectedSlots.isNotEmpty ? 2 : 1,
               ),
@@ -1394,7 +1463,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                   ],
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Morning time slots
                 _buildTimeSlotSection(
                   'Morning',
@@ -1404,7 +1473,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                   Colors.orange,
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Afternoon time slots
                 _buildTimeSlotSection(
                   'Afternoon',
@@ -1414,7 +1483,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                   Colors.amber,
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Evening time slots
                 _buildTimeSlotSection(
                   'Evening',
@@ -1426,25 +1495,21 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
               ],
             ),
           );
-        }).toList(),
+        }),
         
+        const SizedBox(height: 20),
+
         // Helper text
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: AppTheme.primaryColor.withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppTheme.primaryColor.withOpacity(0.2),
-            ),
+            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.info_outline,
-                color: AppTheme.primaryColor,
-                size: 20,
-              ),
+              Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -1470,7 +1535,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
     Color iconColor,
   ) {
     final currentAvailability = _getCurrentAvailability();
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1493,8 +1558,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           spacing: 8,
           runSpacing: 8,
           children: slots.map((slot) {
-            final isSelected = currentAvailability[day]?.contains(slot) ?? false;
-            
+            final isSelected =
+                currentAvailability[day]?.contains(slot) ?? false;
+
             return GestureDetector(
               onTap: () {
                 setState(() {
@@ -1513,13 +1579,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected 
-                      ? AppTheme.primaryColor 
-                      : AppTheme.softCard,
+                  color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isSelected 
-                        ? AppTheme.primaryColor 
+                    color: isSelected
+                        ? AppTheme.primaryColor
                         : AppTheme.softBorder,
                     width: isSelected ? 2 : 1,
                   ),

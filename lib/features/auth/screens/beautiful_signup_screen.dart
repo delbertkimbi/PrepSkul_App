@@ -532,6 +532,28 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                 ),
                               ),
 
+                              const SizedBox(height: 16),
+
+                              // Use Email Auth Link
+                              Center(
+                                child: TextButton(
+                                  onPressed: () {
+                                    Navigator.pushReplacementNamed(
+                                      context,
+                                      '/email-signup',
+                                    );
+                                  },
+                                  child: Text(
+                                    'Use email instead',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textMedium,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
                               const SizedBox(height: 32),
                             ],
                           ),
