@@ -38,7 +38,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             child: ClipPath(
               clipper: WaveClipper(),
               child: Container(
-                height: 200,
+                height: 180,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -59,7 +59,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
               children: [
                 // Header content inside the wave
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 20.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 10.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -95,7 +95,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 30),
+                        const SizedBox(height: 45),
                         Form(
                           key: _formKey,
                           child: Column(
@@ -188,7 +188,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                     color: AppTheme.textLight,
                                     fontSize: 14,
                                   ),
-                                  prefixIcon: const Icon(Icons.email_outlined),
                                   filled: true,
                                   fillColor: AppTheme.softCard,
                                   border: OutlineInputBorder(
@@ -248,7 +247,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                     color: AppTheme.textLight,
                                     fontSize: 14,
                                   ),
-                                  prefixIcon: const Icon(Icons.lock_outlined),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
@@ -320,7 +318,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                     color: AppTheme.textLight,
                                     fontSize: 14,
                                   ),
-                                  prefixIcon: const Icon(Icons.lock_outlined),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscureConfirmPassword
@@ -656,15 +653,18 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             Icon(
               icon,
               color: isSelected ? Colors.white : AppTheme.textMedium,
-              size: 20,
+              size: 18,
             ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.textDark,
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

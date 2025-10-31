@@ -124,7 +124,6 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                     color: AppTheme.textLight,
                                     fontSize: 14,
                                   ),
-                                  prefixIcon: const Icon(Icons.email_outlined),
                                   filled: true,
                                   fillColor: AppTheme.softCard,
                                   border: OutlineInputBorder(
@@ -181,7 +180,6 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                     color: AppTheme.textLight,
                                     fontSize: 14,
                                   ),
-                                  prefixIcon: const Icon(Icons.lock_outlined),
                                   suffixIcon: IconButton(
                                     icon: Icon(
                                       _obscurePassword
