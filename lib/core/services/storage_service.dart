@@ -109,18 +109,10 @@ class StorageService {
       // Create storage path
       final storagePath = '$userId/$documentType$fileExtension';
 
-      // Upload to Supabase
-      if (kIsWeb) {
-        // Use uploadBinary for web
-        await SupabaseService.client.storage
-            .from(documentsBucket)
-            .uploadBinary(storagePath, fileBytes);
-      } else {
-        // Use regular upload for mobile - pass as Uint8List which is supported
-        await SupabaseService.client.storage
-            .from(documentsBucket)
-            .uploadBinary(storagePath, fileBytes);
-      }
+      // Upload to Supabase using upload method (works with Uint8List on all platforms)
+      await SupabaseService.client.storage
+          .from(documentsBucket)
+          .upload(storagePath, fileBytes);
 
       // Get authenticated URL (documents are private)
       final signedUrl = await SupabaseService.client.storage

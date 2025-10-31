@@ -80,7 +80,7 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 70),
 
                         // Auth Method Buttons
                         _AuthMethodButton(
