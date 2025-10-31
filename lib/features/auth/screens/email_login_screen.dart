@@ -293,53 +293,54 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
 
                               // Sign up link
                               Center(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                child: Column(
                                   children: [
-                                    Text(
-                                      'Don\'t have an account? ',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: AppTheme.textMedium,
-                                      ),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Don\'t have an account? ',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            color: AppTheme.textMedium,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap: () {
+                                            Navigator.pushReplacementNamed(
+                                              context,
+                                              '/email-signup',
+                                            );
+                                          },
+                                          child: Text(
+                                            'Sign up',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.primaryColor,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    GestureDetector(
-                                      onTap: () {
+                                    const SizedBox(height: 16),
+                                    TextButton(
+                                      onPressed: () {
                                         Navigator.pushReplacementNamed(
                                           context,
-                                          '/email-signup',
+                                          '/beautiful-login',
                                         );
                                       },
                                       child: Text(
-                                        'Sign up',
+                                        'Use phone number instead',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.primaryColor,
+                                          color: AppTheme.textMedium,
                                         ),
                                       ),
                                     ),
                                   ],
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Switch auth method
-                              Center(
-                                child: TextButton(
-                                  onPressed: () {
-                                    Navigator.pushReplacementNamed(
-                                      context,
-                                      '/beautiful-login',
-                                    );
-                                  },
-                                  child: Text(
-                                    'Use phone number instead',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      color: AppTheme.textMedium,
-                                    ),
-                                  ),
                                 ),
                               ),
                             ],

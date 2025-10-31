@@ -27,14 +27,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
       body: Stack(
         children: [
           // Curved wave background at top
@@ -66,11 +58,10 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
               children: [
                 // Header content inside the wave
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 20.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 40.0, 24.0, 20.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 15),
                       Center(
                         child: Text(
                           'Sign up',
@@ -81,7 +72,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 8),
                       Center(
                         child: Text(
                           'Create your account with email',
@@ -453,29 +444,50 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
 
                               // Already have account?
                               Center(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
+                                child: Column(
                                   children: [
-                                    Text(
-                                      'Already have an account? ',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: AppTheme.textMedium,
-                                      ),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          'Already have an account? ',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            color: AppTheme.textMedium,
+                                          ),
+                                        ),
+                                        GestureDetector(
+                                          onTap: () {
+                                            Navigator.pushReplacementNamed(
+                                              context,
+                                              '/email-login',
+                                            );
+                                          },
+                                          child: Text(
+                                            'Sign in',
+                                            style: GoogleFonts.poppins(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.primaryColor,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    GestureDetector(
-                                      onTap: () {
+                                    const SizedBox(height: 16),
+                                    TextButton(
+                                      onPressed: () {
                                         Navigator.pushReplacementNamed(
                                           context,
-                                          '/email-login',
+                                          '/beautiful-signup',
                                         );
                                       },
                                       child: Text(
-                                        'Sign in',
+                                        'Use phone number instead',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.primaryColor,
+                                          color: AppTheme.textMedium,
                                         ),
                                       ),
                                     ),
@@ -617,20 +629,20 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             width: 2,
           ),
         ),
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.white : AppTheme.textDark,
-              size: 24,
+              color: isSelected ? Colors.white : AppTheme.textMedium,
+              size: 20,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(width: 8),
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
                 color: isSelected ? Colors.white : AppTheme.textDark,
               ),
             ),

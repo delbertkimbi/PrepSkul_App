@@ -19,14 +19,14 @@ class AuthMethodSelectionScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const SizedBox(height: 60),
+              const SizedBox(height: 40),
 
               // Logo/Title
               Text(
                 'Sign up to see all our tutors',
                 style: GoogleFonts.poppins(
                   fontSize: 28,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800,
                   color: AppTheme.textDark,
                 ),
                 textAlign: TextAlign.center,
@@ -38,13 +38,13 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                 'Get instant access to 40,000+ profiles',
                 style: GoogleFonts.poppins(
                   fontSize: 16,
-                  fontWeight: FontWeight.w400,
+                  fontWeight: FontWeight.w500,
                   color: AppTheme.textMedium,
                 ),
                 textAlign: TextAlign.center,
               ),
 
-              const SizedBox(height: 60),
+              const SizedBox(height: 48),
 
               // Auth Method Buttons
               _AuthMethodButton(
@@ -87,7 +87,7 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                 },
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
 
               // Already have account?
               Row(
@@ -121,7 +121,7 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 32),
 
               // Terms
               Padding(

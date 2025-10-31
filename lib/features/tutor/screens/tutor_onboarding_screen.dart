@@ -548,8 +548,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           _authMethod == 'email'
               ? _buildInputField(
                   controller: _phoneController,
-                  label: 'Phone Number',
-                  hint: 'Enter your phone number (e.g., 6 53 30 19 97)',
+                  label: 'Phone Number(WhatsApp)',
+                  hint: '6 53 30 19 97',
                   icon: Icons.phone,
                   keyboardType: TextInputType.phone,
                   validator: (value) {
