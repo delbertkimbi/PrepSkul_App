@@ -3377,6 +3377,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       'video_link': _videoLinkController.text,
       'social_links': _socialMediaLinks,
       'verification_agreement': _agreesToVerification,
+      
+      // Status - Always pending on submission (admin reviews)
+      'status': 'pending',
     };
   }
 
