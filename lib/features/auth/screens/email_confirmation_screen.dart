@@ -325,7 +325,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Start learning with PrepSkul!',
+                                widget.userRole == 'tutor'
+                                    ? '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Complete your tutor profile!'
+                                    : '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Find your perfect tutor!',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   color: AppTheme.textMedium,

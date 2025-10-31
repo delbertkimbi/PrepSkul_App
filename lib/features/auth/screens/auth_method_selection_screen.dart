@@ -12,133 +12,172 @@ class AuthMethodSelectionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 40),
-
-              // Logo/Title
-              Text(
-                'Sign up to see all our tutors',
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.textDark,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-
-              // Subtitle
-              Text(
-                'Get instant access to 40,000+ profiles',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textMedium,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: 48),
-
-              // Auth Method Buttons
-              _AuthMethodButton(
-                icon: Icons.email_outlined,
-                label: 'Sign up with email',
-                onTap: () async {
-                  // Save auth method choice
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('auth_method', 'email');
-
-                  if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const EmailSignupScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-
-              const SizedBox(height: 16),
-
-              _AuthMethodButton(
-                icon: Icons.phone_outlined,
-                label: 'Sign up with phone',
-                onTap: () async {
-                  // Save auth method choice
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('auth_method', 'phone');
-
-                  if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const BeautifulLoginScreen(),
-                      ),
-                    );
-                  }
-                },
-              ),
-
-              const SizedBox(height: 32),
-
-              // Already have account?
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'Already have an account? ',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: AppTheme.textMedium,
-                    ),
+      body: Stack(
+        children: [
+          // Curved wave background at top
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: ClipPath(
+              clipper: WaveClipper(),
+              child: Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.85),
+                    ],
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const BeautifulLoginScreen(),
-                        ),
-                      );
-                    },
-                    child: Text(
-                      'Sign in',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 32),
-
-              // Terms
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                child: Text(
-                  'By signing up, you agree to PrepSkul\'s Terms of Service and Privacy Policy',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppTheme.textLight,
-                    height: 1.4,
-                  ),
-                  textAlign: TextAlign.center,
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+
+          // Main content
+          SafeArea(
+            child: Column(
+              children: [
+                // Header content inside the wave
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24.0, 29.0, 24.0, 30.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 15),
+                      Center(
+                        child: Text(
+                          'Get started',
+                          style: GoogleFonts.poppins(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Center(
+                        child: Text(
+                          'Choose your sign up method',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white.withOpacity(0.95),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Form content
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 50),
+
+                        // Auth Method Buttons
+                        _AuthMethodButton(
+                          icon: Icons.email_outlined,
+                          label: 'Sign up with email',
+                          onTap: () async {
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('auth_method', 'email');
+
+                            if (context.mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const EmailSignupScreen(),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        _AuthMethodButton(
+                          icon: Icons.phone_outlined,
+                          label: 'Sign up with phone',
+                          onTap: () async {
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('auth_method', 'phone');
+
+                            if (context.mounted) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const BeautifulLoginScreen(),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+
+                        const SizedBox(height: 32),
+
+                        // Already have account?
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Already have an account? ',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: AppTheme.textMedium,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const BeautifulLoginScreen(),
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                'Sign in',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 40),
+
+                        // Terms
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                          child: Text(
+                            'By signing up, you agree to PrepSkul\'s Terms of Service and Privacy Policy',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.textLight,
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -187,4 +226,31 @@ class _AuthMethodButton extends StatelessWidget {
       ),
     );
   }
+}
+
+// Reuse WaveClipper from beautiful_login_screen
+class WaveClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height * 0.85);
+    path.quadraticBezierTo(
+      size.width * 0.25,
+      size.height,
+      size.width * 0.5,
+      size.height * 0.85,
+    );
+    path.quadraticBezierTo(
+      size.width * 0.75,
+      size.height * 0.7,
+      size.width,
+      size.height * 0.85,
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
