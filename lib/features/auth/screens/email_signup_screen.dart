@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'email_confirmation_screen.dart';
 
 class EmailSignupScreen extends StatefulWidget {
   const EmailSignupScreen({Key? key}) : super(key: key);
@@ -557,39 +558,59 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         throw Exception('Failed to create account');
       }
 
-      // Create profile entry
-      await SupabaseService.client.from('profiles').insert({
-        'id': response.user!.id,
-        'email': email,
-        'full_name': fullName,
-        'phone_number': null, // Will be collected in onboarding if needed
-        'user_type': _selectedRole,
-        'avatar_url': null,
-        'survey_completed': false,
-        'is_admin': false,
-      });
+      // Check if email confirmation is required
+      final emailConfirmed = response.user?.emailConfirmedAt != null;
 
-      // Save session
-      await AuthService.saveSession(
-        userId: response.user!.id,
-        userRole: _selectedRole!,
-        phone: '', // No phone for email auth
-        fullName: fullName,
-        surveyCompleted: false,
-        rememberMe: true,
-      );
+      // If email is confirmed, create profile and navigate to survey
+      if (emailConfirmed) {
+        // Create profile entry
+        await SupabaseService.client.from('profiles').insert({
+          'id': response.user!.id,
+          'email': email,
+          'full_name': fullName,
+          'phone_number': null,
+          'user_type': _selectedRole,
+          'avatar_url': null,
+          'survey_completed': false,
+          'is_admin': false,
+        });
 
-      // Save auth method preference
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auth_method', 'email');
-
-      // Navigate to profile setup/survey
-      if (mounted) {
-        Navigator.pushReplacementNamed(
-          context,
-          '/profile-setup',
-          arguments: {'userRole': _selectedRole},
+        // Save session
+        await AuthService.saveSession(
+          userId: response.user!.id,
+          userRole: _selectedRole!,
+          phone: '',
+          fullName: fullName,
+          surveyCompleted: false,
+          rememberMe: true,
         );
+
+        // Save auth method preference
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('auth_method', 'email');
+
+        // Navigate to profile setup/survey
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/profile-setup',
+            arguments: {'userRole': _selectedRole},
+          );
+        }
+      } else {
+        // Email confirmation required - show confirmation screen
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EmailConfirmationScreen(
+                email: email,
+                fullName: fullName,
+                userRole: _selectedRole!,
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       print('❌ Email signup error: $e');
