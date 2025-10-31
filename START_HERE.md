@@ -39,6 +39,8 @@ Toggle ON in Supabase Dashboard → Authentication → Email Auth
 4. **SUPABASE_URLS_TO_ADD.md** - URLs to add to Supabase
 5. **SUPABASE_EMAIL_CUSTOMIZATION.md** - Email templates
 6. **SUPABASE_AUTH_SETUP.md** - Complete auth setup
+7. **SMTP_SETUP_GUIDE.md** ⭐ - How to set up custom SMTP (Gmail, SendGrid, etc.)
+8. **SUPABASE_SENDER_NAME_FIX.md** - Fix "Supabase Auth" sender name
 
 ### **How It Works:**
 7. **EMAIL_CONFIRMATION_EXPLAINED.md** - Deep dive

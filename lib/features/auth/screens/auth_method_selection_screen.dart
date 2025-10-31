@@ -94,7 +94,8 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const EmailSignupScreen(),
+                                  builder: (context) =>
+                                      const EmailSignupScreen(),
                                 ),
                               );
                             }
@@ -114,7 +115,8 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const BeautifulLoginScreen(),
+                                  builder: (context) =>
+                                      const BeautifulLoginScreen(),
                                 ),
                               );
                             }
@@ -139,7 +141,8 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => const BeautifulLoginScreen(),
+                                    builder: (context) =>
+                                        const BeautifulLoginScreen(),
                                   ),
                                 );
                               },
