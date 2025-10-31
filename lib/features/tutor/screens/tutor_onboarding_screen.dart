@@ -2078,11 +2078,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
               padding: const EdgeInsets.only(top: 8),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.check_circle,
-                    color: Colors.green,
-                    size: 16,
-                  ),
+                  Icon(Icons.check_circle, color: Colors.green, size: 16),
                   const SizedBox(width: 8),
                   Text(
                     'Uploaded successfully',
@@ -3124,8 +3120,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
 
   void _uploadDocument(String documentType) async {
     try {
-      // Show image picker bottom sheet
-      final File? pickedFile = await showModalBottomSheet<File>(
+      // Show image picker bottom sheet (returns XFile or File)
+      final dynamic pickedFile = await showModalBottomSheet(
         context: context,
         builder: (context) => const ImagePickerBottomSheet(),
       );

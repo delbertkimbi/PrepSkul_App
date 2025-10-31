@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:mime/mime.dart';
@@ -63,22 +65,40 @@ class StorageService {
   }
 
   /// Upload document (PDF, image)
+  /// Handles both File and XFile for cross-platform support
   static Future<String> uploadDocument({
     required String userId,
-    required File documentFile,
+    required dynamic documentFile, // File or XFile
     required String documentType, // e.g., 'id_front', 'degree', etc.
   }) async {
     try {
+      Uint8List fileBytes;
+      String? mimeType;
+      String fileExtension;
+      
+      // Handle different file types
+      if (documentFile is XFile) {
+        // XFile (works on all platforms including web)
+        fileBytes = await documentFile.readAsBytes();
+        mimeType = lookupMimeType(documentFile.name);
+        fileExtension = path.extension(documentFile.name);
+      } else if (documentFile is File) {
+        // File (mobile platforms)
+        fileBytes = await documentFile.readAsBytes();
+        mimeType = lookupMimeType(documentFile.path);
+        fileExtension = path.extension(documentFile.path);
+      } else {
+        throw Exception('Unsupported file type: ${documentFile.runtimeType}');
+      }
+
       // Validate file size
-      final fileSize = await documentFile.length();
-      if (fileSize > maxDocumentSize) {
+      if (fileBytes.length > maxDocumentSize) {
         throw Exception(
           'Document too large. Maximum size is ${maxDocumentSize ~/ (1024 * 1024)} MB',
         );
       }
 
       // Validate file type
-      final mimeType = lookupMimeType(documentFile.path);
       if (mimeType == null ||
           (!mimeType.startsWith('image/') && mimeType != 'application/pdf')) {
         throw Exception(
@@ -86,16 +106,21 @@ class StorageService {
         );
       }
 
-      // Get file extension
-      final extension = path.extension(documentFile.path);
-
       // Create storage path
-      final storagePath = '$userId/$documentType$extension';
+      final storagePath = '$userId/$documentType$fileExtension';
 
       // Upload to Supabase
-      await SupabaseService.client.storage
-          .from(documentsBucket)
-          .upload(storagePath, documentFile);
+      if (kIsWeb) {
+        // Use uploadBinary for web
+        await SupabaseService.client.storage
+            .from(documentsBucket)
+            .uploadBinary(storagePath, fileBytes);
+      } else {
+        // Use regular upload for mobile - pass as Uint8List which is supported
+        await SupabaseService.client.storage
+            .from(documentsBucket)
+            .uploadBinary(storagePath, fileBytes);
+      }
 
       // Get authenticated URL (documents are private)
       final signedUrl = await SupabaseService.client.storage

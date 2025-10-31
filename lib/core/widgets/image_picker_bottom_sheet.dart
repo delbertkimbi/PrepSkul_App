@@ -6,7 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Bottom sheet for picking images/documents from camera, gallery, or files
-/// Returns dynamic type: File on mobile, PlatformFile on web
+/// Returns XFile on all platforms
 class ImagePickerBottomSheet extends StatelessWidget {
   const ImagePickerBottomSheet({super.key});
 
@@ -60,7 +60,7 @@ class ImagePickerBottomSheet extends StatelessWidget {
                       imageQuality: 85,
                     );
                     if (image != null && context.mounted) {
-                      Navigator.pop(context, File(image.path));
+                      Navigator.pop(context, image);
                     }
                   } catch (e) {
                     if (context.mounted) {
@@ -133,10 +133,8 @@ class ImagePickerBottomSheet extends StatelessWidget {
                       final platformFile = result.files.single;
                       if (platformFile.path != null) {
                         Navigator.pop(context, File(platformFile.path!));
-                      } else if (context.mounted) {
-                        Navigator.pop(context);
                       }
-                    } else if (context.mounted) {
+                    } else {
                       Navigator.pop(context);
                     }
                   } catch (e) {
