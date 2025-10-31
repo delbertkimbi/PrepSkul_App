@@ -2076,13 +2076,23 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           if (_uploadedDocuments[doc['type']] != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '✓ ${_uploadedDocuments[doc['type']]['name']}',
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  color: Colors.green,
-                  fontWeight: FontWeight.w500,
-                ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Uploaded successfully',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.green,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
         ],

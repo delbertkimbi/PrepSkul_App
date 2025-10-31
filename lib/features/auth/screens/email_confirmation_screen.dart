@@ -19,7 +19,8 @@ class EmailConfirmationScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<EmailConfirmationScreen> createState() => _EmailConfirmationScreenState();
+  State<EmailConfirmationScreen> createState() =>
+      _EmailConfirmationScreenState();
 }
 
 class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
@@ -44,14 +45,14 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       // Refresh session to get latest auth state
       await SupabaseService.client.auth.refreshSession();
       final user = SupabaseService.currentUser;
-      
+
       if (user != null && user.emailConfirmedAt != null) {
         // Email confirmed - proceed with profile creation
         print('✅ Email confirmed! Proceeding to survey...');
         await _proceedToSurvey();
         return; // Don't check again if proceeding
       }
-      
+
       // If not confirmed, keep checking every 5 seconds
       Future.delayed(const Duration(seconds: 5), () {
         if (mounted) _checkEmailConfirmation();
@@ -355,7 +356,8 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           'What\'s next?',
@@ -399,7 +401,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                                 ? const SizedBox(
                                     width: 20,
                                     height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   )
                                 : const Icon(Icons.refresh_outlined),
                             label: Text(

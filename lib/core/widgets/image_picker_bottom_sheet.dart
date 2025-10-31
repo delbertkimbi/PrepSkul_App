@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Bottom sheet for picking images/documents from camera, gallery, or files
+/// Returns dynamic type: File on mobile, PlatformFile on web
 class ImagePickerBottomSheet extends StatelessWidget {
   const ImagePickerBottomSheet({super.key});
 
@@ -112,39 +113,47 @@ class ImagePickerBottomSheet extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Files option
-            _buildOption(
-              context: context,
-              icon: Icons.folder,
-              title: 'Files',
-              subtitle: 'Browse documents',
-              onTap: () async {
-                try {
-                  final FilePickerResult? result = await FilePicker.platform
-                      .pickFiles(
-                        type: FileType.custom,
-                        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+            // Files option (disabled on web to avoid _Names error)
+            if (!kIsWeb) ...[
+              _buildOption(
+                context: context,
+                icon: Icons.folder,
+                title: 'Files',
+                subtitle: 'Browse documents',
+                onTap: () async {
+                  try {
+                    final FilePickerResult? result = await FilePicker.platform
+                        .pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                        );
+                    if (result != null &&
+                        result.files.isNotEmpty &&
+                        context.mounted) {
+                      final platformFile = result.files.single;
+                      if (platformFile.path != null) {
+                        Navigator.pop(context, File(platformFile.path!));
+                      } else if (context.mounted) {
+                        Navigator.pop(context);
+                      }
+                    } else if (context.mounted) {
+                      Navigator.pop(context);
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to pick file: $e'),
+                          backgroundColor: Colors.red,
+                        ),
                       );
-                  if (result != null &&
-                      result.files.isNotEmpty &&
-                      context.mounted) {
-                    Navigator.pop(context, File(result.files.single.path!));
-                  } else if (context.mounted) {
-                    Navigator.pop(context);
+                      Navigator.pop(context);
+                    }
                   }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Failed to pick file: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                    Navigator.pop(context);
-                  }
-                }
-              },
-            ),
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
 
             const SizedBox(height: 24),
 
