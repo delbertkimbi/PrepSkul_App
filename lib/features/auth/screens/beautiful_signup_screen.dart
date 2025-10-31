@@ -218,7 +218,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                         return null;
                                       },
                                       decoration: InputDecoration(
-                                        hintText: '6712345678',
+                                        hintText: '6 53 30 19 97',
                                         hintStyle: GoogleFonts.poppins(
                                           color: AppTheme.textLight,
                                           fontSize: 14,

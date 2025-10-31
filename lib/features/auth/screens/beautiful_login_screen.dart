@@ -140,7 +140,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                       controller: _phoneController,
                                       keyboardType: TextInputType.phone,
                                       decoration: InputDecoration(
-                                        hintText: '6712345678',
+                                        hintText: '6 53 30 19 97',
                                         hintStyle: GoogleFonts.poppins(
                                           color: AppTheme.textLight,
                                           fontSize: 14,
