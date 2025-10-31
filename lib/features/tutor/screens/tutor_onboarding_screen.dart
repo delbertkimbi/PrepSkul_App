@@ -2859,9 +2859,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       case 0: // Contact Information
         // Validate based on auth method
         if (_authMethod == 'email') {
-          return _phoneController.text.trim().replaceAll(RegExp(r'[\s\-]'), '').length >= 9;
+          return _phoneController.text
+                  .trim()
+                  .replaceAll(RegExp(r'[\s\-]'), '')
+                  .length >=
+              9;
         } else {
-          return _emailController.text.trim().isNotEmpty && _isValidEmail(_emailController.text.trim());
+          return _emailController.text.trim().isNotEmpty &&
+              _isValidEmail(_emailController.text.trim());
         }
       case 1: // Academic Background
         return _selectedEducation != null &&
