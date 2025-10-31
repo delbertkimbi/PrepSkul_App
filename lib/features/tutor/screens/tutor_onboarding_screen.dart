@@ -1284,20 +1284,40 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       'Saturday',
       'Sunday',
     ];
-    List<String> timeRanges = [
-      '6:00 AM - 9:00 AM',
-      '9:00 AM - 12:00 PM',
-      '12:00 PM - 3:00 PM',
-      '3:00 PM - 6:00 PM',
-      '6:00 PM - 9:00 PM',
-      '9:00 PM - 12:00 AM',
+    
+    // Grouped time ranges for better UX
+    final List<String> morningSlots = [
+      '6:00 AM',
+      '7:00 AM',
+      '8:00 AM',
+      '9:00 AM',
+      '10:00 AM',
+      '11:00 AM',
+    ];
+    
+    final List<String> afternoonSlots = [
+      '12:00 PM',
+      '1:00 PM',
+      '2:00 PM',
+      '3:00 PM',
+      '4:00 PM',
+      '5:00 PM',
+    ];
+    
+    final List<String> eveningSlots = [
+      '6:00 PM',
+      '7:00 PM',
+      '8:00 PM',
+      '9:00 PM',
+      '10:00 PM',
+      '11:00 PM',
     ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Select your available times for ${_selectedServiceType == 'tutoring' ? 'Tutoring' : 'Test Sessions'}',
+          'Set your weekly availability',
           style: GoogleFonts.poppins(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -1306,140 +1326,224 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          _selectedServiceType == 'tutoring'
-              ? 'Set your availability for regular tutoring sessions (online & physical)'
-              : 'Set your availability for trial sessions where students/parents can evaluate your teaching style',
+          'Select the time slots when you\'re available each day',
           style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
 
-        // Better Mobile-Friendly Time Selection with Synchronized Scrolling
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.softBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 2),
+        // Beautiful card-based day selector
+        ...days.map((day) {
+          final currentAvailability = _getCurrentAvailability();
+          final selectedSlots = currentAvailability[day] ?? [];
+          
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selectedSlots.isNotEmpty 
+                    ? AppTheme.primaryColor 
+                    : AppTheme.softBorder,
+                width: selectedSlots.isNotEmpty ? 2 : 1,
               ),
-            ],
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Column(
-              children: [
-                // Time Ranges Header - Now scrolls with content
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 80,
-                        child: Text(
-                          'Day',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                      ),
-                      ...timeRanges.map(
-                        (timeRange) => Container(
-                          width: 100,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(
-                            timeRange,
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.primaryColor,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Days and availability checkboxes - All in one scrollable row
-                ...days.map(
-                  (day) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                      horizontal: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: AppTheme.softBorder.withOpacity(0.5),
-                          width: 0.5,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 80,
-                          child: Text(
-                            day,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.textDark,
-                            ),
-                          ),
-                        ),
-                        ...timeRanges.map(
-                          (timeRange) => Container(
-                            width: 100,
-                            child: Center(
-                              child: Checkbox(
-                                value:
-                                    _getCurrentAvailability()[day]?.contains(
-                                      timeRange,
-                                    ) ??
-                                    false,
-                                onChanged: (value) {
-                                  setState(() {
-                                    final currentAvailability =
-                                        _getCurrentAvailability();
-                                    currentAvailability[day] ??= [];
-                                    if (value == true) {
-                                      currentAvailability[day]!.add(timeRange);
-                                    } else {
-                                      currentAvailability[day]!.remove(
-                                        timeRange,
-                                      );
-                                    }
-                                  });
-                                },
-                                activeColor: AppTheme.primaryColor,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Day header
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selectedSlots.isNotEmpty
+                            ? AppTheme.primaryColor
+                            : AppTheme.softCard,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        day,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: selectedSlots.isNotEmpty
+                              ? Colors.white
+                              : AppTheme.textDark,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (selectedSlots.isNotEmpty)
+                      Icon(
+                        Icons.check_circle,
+                        color: AppTheme.primaryColor,
+                        size: 24,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                
+                // Morning time slots
+                _buildTimeSlotSection(
+                  'Morning',
+                  morningSlots,
+                  day,
+                  Icons.wb_sunny_outlined,
+                  Colors.orange,
+                ),
+                const SizedBox(height: 16),
+                
+                // Afternoon time slots
+                _buildTimeSlotSection(
+                  'Afternoon',
+                  afternoonSlots,
+                  day,
+                  Icons.wb_twilight_outlined,
+                  Colors.amber,
+                ),
+                const SizedBox(height: 16),
+                
+                // Evening time slots
+                _buildTimeSlotSection(
+                  'Evening',
+                  eveningSlots,
+                  day,
+                  Icons.nightlight_outlined,
+                  Colors.indigo,
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+        
+        // Helper text
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppTheme.primaryColor.withOpacity(0.2),
+            ),
           ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'You can select multiple time slots per day. Students will see these as your available times.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimeSlotSection(
+    String label,
+    List<String> slots,
+    String day,
+    IconData icon,
+    Color iconColor,
+  ) {
+    final currentAvailability = _getCurrentAvailability();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: iconColor),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: slots.map((slot) {
+            final isSelected = currentAvailability[day]?.contains(slot) ?? false;
+            
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  final currentAvailability = _getCurrentAvailability();
+                  currentAvailability[day] ??= [];
+                  if (isSelected) {
+                    currentAvailability[day]!.remove(slot);
+                  } else {
+                    currentAvailability[day]!.add(slot);
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isSelected 
+                      ? AppTheme.primaryColor 
+                      : AppTheme.softCard,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected 
+                        ? AppTheme.primaryColor 
+                        : AppTheme.softBorder,
+                    width: isSelected ? 2 : 1,
+                  ),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withOpacity(0.3),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(
+                  slot,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? Colors.white : AppTheme.textDark,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
     );

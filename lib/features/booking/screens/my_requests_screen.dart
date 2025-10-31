@@ -31,11 +31,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.inbox_outlined,
-              size: 80,
-              color: AppTheme.textLight,
-            ),
+            Icon(Icons.inbox_outlined, size: 80, color: AppTheme.textLight),
             const SizedBox(height: 16),
             Text(
               'No booking requests yet',
@@ -59,4 +55,3 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     );
   }
 }
-
