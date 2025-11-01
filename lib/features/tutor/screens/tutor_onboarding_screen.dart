@@ -186,6 +186,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       {}; // Day -> List of time ranges
   String _selectedServiceType = 'tutoring'; // 'tutoring' or 'test_sessions'
   String _selectedDay = 'Monday'; // Currently selected day for availability
+  String _selectedDocumentType =
+      'profile_picture'; // Currently selected document type
 
   // Digital Readiness
   List<String> _devices = [];
@@ -1986,44 +1988,158 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       });
     }
 
+    // Make sure _selectedDocumentType is valid
+    if (!requiredDocs.any((doc) => doc['type'] == _selectedDocumentType)) {
+      _selectedDocumentType = requiredDocs.first['type']!;
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Required Documents',
+          'Upload Required Documents',
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
+        Text(
+          'Select a document type and upload',
+          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+        ),
+        const SizedBox(height: 20),
 
-        ...requiredDocs.map((doc) => _buildDocumentUploadCard(doc)),
+        // Document type selector tabs (horizontal slider)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: requiredDocs.map((doc) {
+              final docType = doc['type']!;
+              final isUploaded = _uploadedDocuments[docType] != null;
+              final isSelected = docType == _selectedDocumentType;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedDocumentType = docType),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : (isUploaded
+                                ? AppTheme.primaryColor.withOpacity(0.1)
+                                : AppTheme.softCard),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : (isUploaded
+                                  ? AppTheme.primaryColor
+                                  : AppTheme.softBorder),
+                        width: isSelected || isUploaded ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _getDocumentIcon(docType),
+                          size: 16,
+                          color: isSelected
+                              ? Colors.white
+                              : (isUploaded
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.textDark),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          doc['title']!.length > 15
+                              ? doc['title']!.substring(0, 12) + '...'
+                              : doc['title']!,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected
+                                ? Colors.white
+                                : (isUploaded
+                                      ? AppTheme.primaryColor
+                                      : AppTheme.textDark),
+                          ),
+                        ),
+                        if (isUploaded && !isSelected) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Selected document upload card
+        _buildSelectedDocumentUploadCard(
+          requiredDocs.firstWhere(
+            (doc) => doc['type'] == _selectedDocumentType,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildDocumentUploadCard(Map<String, dynamic> doc) {
+  Widget _buildSelectedDocumentUploadCard(Map<String, dynamic> doc) {
+    final docType = doc['type']!;
+    final isUploaded = _uploadedDocuments[docType] != null;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.softCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.softBorder),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isUploaded ? AppTheme.primaryColor : AppTheme.softBorder,
+          width: isUploaded ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header with icon and title
           Row(
             children: [
-              Icon(
-                _getDocumentIcon(doc['type']!),
-                color: AppTheme.primaryColor,
-                size: 24,
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isUploaded ? AppTheme.primaryColor : AppTheme.softCard,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _getDocumentIcon(docType),
+                  color: isUploaded ? Colors.white : AppTheme.primaryColor,
+                  size: 32,
+                ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2031,64 +2147,89 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                     Text(
                       doc['title']!,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                         color: AppTheme.textDark,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       doc['description']!,
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 14,
                         color: AppTheme.textMedium,
                       ),
                     ),
                   ],
                 ),
               ),
-              ElevatedButton(
-                onPressed: () => _uploadDocument(doc['type']!),
+              if (isUploaded)
+                Icon(
+                  Icons.check_circle,
+                  color: AppTheme.primaryColor,
+                  size: 32,
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Upload preview or upload button
+          if (isUploaded)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.softCard,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.softBorder),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Document uploaded successfully',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.green,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _uploadDocument(docType),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Reupload'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: () => _uploadDocument(docType),
+                icon: const Icon(Icons.cloud_upload),
+                label: Text(
+                  'Upload ${doc['title']}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: Text(
-                  _uploadedDocuments[doc['type']] != null
-                      ? 'Reupload'
-                      : 'Upload',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_uploadedDocuments[doc['type']] != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Uploaded successfully',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.green,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
               ),
             ),
         ],

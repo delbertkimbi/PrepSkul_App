@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -72,19 +71,24 @@ class StorageService {
     required String documentType, // e.g., 'id_front', 'degree', etc.
   }) async {
     try {
-      Uint8List fileBytes;
+      File uploadableFile;
       String? mimeType;
       String fileExtension;
-      
-      // Handle different file types
+
+      // Handle different file types - convert to File for upload
       if (documentFile is XFile) {
-        // XFile (works on all platforms including web)
-        fileBytes = await documentFile.readAsBytes();
+        // XFile: For mobile, use path. For web, throw error (not supported yet)
+        if (kIsWeb) {
+          throw Exception(
+            'Web uploads are not yet supported. Please use mobile app for file uploads.',
+          );
+        }
+
         mimeType = lookupMimeType(documentFile.name);
         fileExtension = path.extension(documentFile.name);
+        uploadableFile = File(documentFile.path);
       } else if (documentFile is File) {
-        // File (mobile platforms)
-        fileBytes = await documentFile.readAsBytes();
+        uploadableFile = documentFile;
         mimeType = lookupMimeType(documentFile.path);
         fileExtension = path.extension(documentFile.path);
       } else {
@@ -92,7 +96,8 @@ class StorageService {
       }
 
       // Validate file size
-      if (fileBytes.length > maxDocumentSize) {
+      final fileSize = await uploadableFile.length();
+      if (fileSize > maxDocumentSize) {
         throw Exception(
           'Document too large. Maximum size is ${maxDocumentSize ~/ (1024 * 1024)} MB',
         );
@@ -109,10 +114,10 @@ class StorageService {
       // Create storage path
       final storagePath = '$userId/$documentType$fileExtension';
 
-      // Upload to Supabase using upload method (works with Uint8List on all platforms)
+      // Upload to Supabase using File
       await SupabaseService.client.storage
           .from(documentsBucket)
-          .upload(storagePath, fileBytes);
+          .upload(storagePath, uploadableFile);
 
       // Get authenticated URL (documents are private)
       final signedUrl = await SupabaseService.client.storage

@@ -27,6 +27,8 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   bool _isResending = false;
   int _resendCountdown = 60; // Countdown in seconds
   bool _isChecking = false;
+  int _checkAttempts = 0; // Track polling attempts to prevent infinite loops
+  static const int _maxCheckAttempts = 20; // Max 20 attempts = 100 seconds
 
   @override
   void initState() {
@@ -37,12 +39,28 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   }
 
   Future<void> _checkEmailConfirmation() async {
-    if (!mounted) return;
+    if (!mounted || _checkAttempts >= _maxCheckAttempts) {
+      print('🛑 Stopped email confirmation polling after $_maxCheckAttempts attempts');
+      return;
+    }
 
+    _checkAttempts++;
     setState(() => _isChecking = true);
 
     try {
-      // Refresh session to get latest auth state
+      // Check if we have a session before trying to refresh
+      final hasSession = SupabaseService.client.auth.currentSession != null;
+      
+      if (!hasSession) {
+        print('⚠️ No session found, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)');
+        // Schedule next check without calling refreshSession
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) _checkEmailConfirmation();
+        });
+        return;
+      }
+
+      // Only refresh session if one exists
       await SupabaseService.client.auth.refreshSession();
       final user = SupabaseService.currentUser;
 
@@ -54,15 +72,18 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       }
 
       // If not confirmed, keep checking every 5 seconds
+      print('⏳ Email not confirmed yet, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)');
       Future.delayed(const Duration(seconds: 5), () {
         if (mounted) _checkEmailConfirmation();
       });
     } catch (e) {
-      print('Error checking email confirmation: $e');
-      // Keep checking despite errors
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) _checkEmailConfirmation();
-      });
+      print('⚠️ Error checking email confirmation: $e');
+      // Only retry if we haven't hit max attempts
+      if (_checkAttempts < _maxCheckAttempts) {
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) _checkEmailConfirmation();
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _isChecking = false);

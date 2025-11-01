@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'forgot_password_email_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
   const EmailLoginScreen({Key? key}) : super(key: key);
@@ -228,13 +229,10 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
                                   onPressed: () {
-                                    // TODO: Implement forgot password
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Forgot password coming soon',
-                                          style: GoogleFonts.poppins(),
-                                        ),
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const ForgotPasswordEmailScreen(),
                                       ),
                                     );
                                   },

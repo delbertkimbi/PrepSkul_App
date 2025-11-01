@@ -150,7 +150,7 @@ class AuthService {
     }
   }
 
-  /// Send password reset OTP
+  /// Send password reset OTP (for phone auth)
   static Future<void> sendPasswordResetOTP(String phone) async {
     try {
       // Format phone number
@@ -181,6 +181,20 @@ class AuthService {
       print('✅ Password reset OTP sent to: $formattedPhone');
     } catch (e) {
       print('❌ Error sending password reset OTP: $e');
+      rethrow;
+    }
+  }
+
+  /// Send password reset email (for email auth)
+  static Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await SupabaseService.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: 'https://operating-axis-420213.web.app/reset-password',
+      );
+      print('✅ Password reset email sent to: $email');
+    } catch (e) {
+      print('❌ Error sending password reset email: $e');
       rethrow;
     }
   }
