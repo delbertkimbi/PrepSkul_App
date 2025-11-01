@@ -8,7 +8,8 @@ class ForgotPasswordEmailScreen extends StatefulWidget {
   const ForgotPasswordEmailScreen({Key? key}) : super(key: key);
 
   @override
-  State<ForgotPasswordEmailScreen> createState() => _ForgotPasswordEmailScreenState();
+  State<ForgotPasswordEmailScreen> createState() =>
+      _ForgotPasswordEmailScreenState();
 }
 
 class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
@@ -94,7 +95,9 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                       borderRadius: BorderRadius.circular(60),
                     ),
                     child: Icon(
-                      _emailSent ? Icons.mark_email_read_outlined : Icons.lock_reset_outlined,
+                      _emailSent
+                          ? Icons.mark_email_read_outlined
+                          : Icons.lock_reset_outlined,
                       size: 60,
                       color: AppTheme.primaryColor,
                     ),
@@ -172,7 +175,9 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                               if (value == null || value.trim().isEmpty) {
                                 return 'Please enter your email address';
                               }
-                              if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value.trim())) {
+                              if (!RegExp(
+                                r'^[^@]+@[^@]+\.[^@]+',
+                              ).hasMatch(value.trim())) {
                                 return 'Please enter a valid email address';
                               }
                               return null;
@@ -225,12 +230,16 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                             width: double.infinity,
                             height: 56,
                             child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSendResetEmail,
+                              onPressed: _isLoading
+                                  ? null
+                                  : _handleSendResetEmail,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryColor,
                                 foregroundColor: Colors.white,
                                 elevation: 2,
-                                shadowColor: AppTheme.primaryColor.withOpacity(0.3),
+                                shadowColor: AppTheme.primaryColor.withOpacity(
+                                  0.3,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(28),
                                 ),
@@ -241,9 +250,10 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                                       width: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(
-                                          Colors.white,
-                                        ),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
                                       ),
                                     )
                                   : Text(
@@ -320,4 +330,3 @@ class WaveClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
-

@@ -263,19 +263,11 @@ class _SplashScreenState extends State<SplashScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // App logo - simple icon in a circle
-                  Container(
+                  // App logo
+                  Image.asset(
+                    'assets/images/app_logo(blue).png',
                     width: 100,
                     height: 100,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(
-                      Icons.school,
-                      size: 50,
-                      color: Colors.white,
-                    ),
                   ),
 
                   const SizedBox(height: 32),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/app_logo_header.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
@@ -135,14 +136,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         elevation: 0,
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
-        title: Text(
-          'Find Tutors',
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Colors.black,
-          ),
-        ),
+        title: const AppLogoHeader(),
         actions: [
           IconButton(
             icon: Icon(Icons.tune, color: Colors.black),

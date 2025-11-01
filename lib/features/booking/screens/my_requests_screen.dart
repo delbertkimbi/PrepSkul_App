@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import '../../../core/services/auth_service.dart';
+import 'package:prepskul/core/widgets/app_logo_header.dart';
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({Key? key}) : super(key: key);
@@ -15,14 +15,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'My Requests',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+        title: const AppLogoHeader(),
         backgroundColor: Colors.white,
         elevation: 0,
       ),

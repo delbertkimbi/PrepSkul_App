@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_logo_header.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
@@ -61,13 +62,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         automaticallyImplyLeading: false, // No back button in bottom nav
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          'Tutor Dashboard',
-          style: GoogleFonts.poppins(
-            color: AppTheme.textDark,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        title: const AppLogoHeader(),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

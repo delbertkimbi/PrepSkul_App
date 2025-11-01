@@ -40,7 +40,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
 
   Future<void> _checkEmailConfirmation() async {
     if (!mounted || _checkAttempts >= _maxCheckAttempts) {
-      print('🛑 Stopped email confirmation polling after $_maxCheckAttempts attempts');
+      print(
+        '🛑 Stopped email confirmation polling after $_maxCheckAttempts attempts',
+      );
       return;
     }
 
@@ -50,9 +52,11 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
     try {
       // Check if we have a session before trying to refresh
       final hasSession = SupabaseService.client.auth.currentSession != null;
-      
+
       if (!hasSession) {
-        print('⚠️ No session found, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)');
+        print(
+          '⚠️ No session found, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)',
+        );
         // Schedule next check without calling refreshSession
         Future.delayed(const Duration(seconds: 5), () {
           if (mounted) _checkEmailConfirmation();
@@ -72,7 +76,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       }
 
       // If not confirmed, keep checking every 5 seconds
-      print('⏳ Email not confirmed yet, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)');
+      print(
+        '⏳ Email not confirmed yet, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)',
+      );
       Future.delayed(const Duration(seconds: 5), () {
         if (mounted) _checkEmailConfirmation();
       });
