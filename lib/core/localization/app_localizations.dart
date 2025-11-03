@@ -72,7 +72,7 @@ class AppLocalizations {
   static final Map<String, Map<String, String>> _localizedValues = {
     'en': {
       'app_name': 'PrepSkul',
-      'tagline': 'Building a Future Where Every Learner is Guided',
+      'tagline': 'Guiding Every Learner to thier full potential',
       'welcome': 'Welcome to PrepSkul',
       'select_role': 'Select your role to continue',
       'login': 'Login',

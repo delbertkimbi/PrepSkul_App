@@ -143,10 +143,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              errorMessage,
-              style: GoogleFonts.poppins(),
-            ),
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
             backgroundColor: AppTheme.primaryColor,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
@@ -212,10 +209,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              errorMessage,
-              style: GoogleFonts.poppins(),
-            ),
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
             backgroundColor: AppTheme.primaryColor,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
@@ -234,6 +228,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top

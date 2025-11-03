@@ -121,47 +121,59 @@ class ImagePickerBottomSheet extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Files option (disabled on web to avoid _Names error)
-            if (!kIsWeb) ...[
-              _buildOption(
-                context: context,
-                icon: Icons.folder,
-                title: 'Files',
-                subtitle: 'Browse documents',
-                onTap: () async {
-                  try {
-                    final FilePickerResult? result = await FilePicker.platform
-                        .pickFiles(
-                          type: FileType.custom,
-                          allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-                        );
-                    if (result != null &&
-                        result.files.isNotEmpty &&
-                        context.mounted) {
-                      final platformFile = result.files.single;
-                      if (platformFile.path != null) {
-                        Navigator.pop(context, File(platformFile.path!));
+            // Files option (works on all platforms including web)
+            _buildOption(
+              context: context,
+              icon: Icons.folder,
+              title: 'Files',
+              subtitle: 'Browse documents',
+              onTap: () async {
+                try {
+                  final FilePickerResult? result = await FilePicker.platform
+                      .pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                        withData: kIsWeb, // Read bytes on web
+                      );
+                  if (result != null &&
+                      result.files.isNotEmpty &&
+                      context.mounted) {
+                    final platformFile = result.files.single;
+                    if (kIsWeb) {
+                      // Web: Return PlatformFile with bytes (NEVER access .path on web)
+                      if (platformFile.bytes != null) {
+                        Navigator.pop(context, platformFile);
+                      } else {
+                        throw Exception('File bytes are null on web');
                       }
                     } else {
-                      Navigator.pop(context);
+                      // Mobile: Use path to create XFile
+                      if (platformFile.path != null && platformFile.path!.isNotEmpty) {
+                        final XFile xFile = XFile(platformFile.path!);
+                        Navigator.pop(context, xFile);
+                      } else {
+                        throw Exception('File path is null on mobile');
+                      }
                     }
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Failed to pick file: $e', style: GoogleFonts.poppins()),
-                          backgroundColor: AppTheme.primaryColor,
-                          behavior: SnackBarBehavior.floating,
-                          margin: const EdgeInsets.all(16),
-                        ),
-                      );
-                      Navigator.pop(context);
-                    }
+                  } else {
+                    Navigator.pop(context);
                   }
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to pick file: $e', style: GoogleFonts.poppins()),
+                        backgroundColor: AppTheme.primaryColor,
+                        behavior: SnackBarBehavior.floating,
+                        margin: const EdgeInsets.all(16),
+                      ),
+                    );
+                    Navigator.pop(context);
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 12),
 
             const SizedBox(height: 24),
 

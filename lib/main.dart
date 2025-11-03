@@ -24,27 +24,41 @@ import 'package:prepskul/core/navigation/main_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase
-  await Supabase.initialize(
-    url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU',
-    authOptions: const FlutterAuthClientOptions(
-      authFlowType: AuthFlowType.pkce,
-    ),
-  );
-
-  await LanguageService.initialize();
-
-  // Initialize auth state listener
-  AuthService.initAuthListener();
-
+  // Show splash screen immediately, then initialize in background
   runApp(const PrepSkulApp());
+
+  // Initialize in background after UI is shown
+  _initializeAppInBackground();
+}
+
+/// Initialize app services in background (non-blocking)
+Future<void> _initializeAppInBackground() async {
+  try {
+    // Initialize Supabase
+    await Supabase.initialize(
+      url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
+      anonKey:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU',
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+      ),
+    );
+
+    await LanguageService.initialize();
+
+    // Initialize auth state listener
+    AuthService.initAuthListener();
+
+    print('✅ App initialization complete');
+  } catch (e) {
+    print('❌ Error initializing app: $e');
+  }
 }
 
 class PrepSkulApp extends StatelessWidget {
@@ -156,8 +170,12 @@ class PrepSkulApp extends StatelessWidget {
               if (settings.name == '/reset-password') {
                 final args = settings.arguments as Map<String, dynamic>?;
                 final phone = args?['phone'] ?? '';
+                final isEmailRecovery = args?['isEmailRecovery'] ?? false;
                 return MaterialPageRoute(
-                  builder: (context) => ResetPasswordScreen(phone: phone),
+                  builder: (context) => ResetPasswordScreen(
+                    phone: phone,
+                    isEmailRecovery: isEmailRecovery,
+                  ),
                 );
               }
               if (settings.name == '/otp-verification') {
@@ -196,10 +214,55 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   StreamSubscription<AuthState>? _authStateSubscription;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    _initializeSplash();
+  }
+
+  /// Initialize splash screen - show immediately, then check status
+  Future<void> _initializeSplash() async {
+    // Wait for Supabase to be initialized (max 3 seconds)
+    int attempts = 0;
+    while (!_isSupabaseReady() && attempts < 30) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      attempts++;
+    }
+
+    // Now that we're ready, set up auth listeners
+    _setupAuthListeners();
+
+    // Check for URL callbacks (web only)
+    if (kIsWeb) {
+      _checkPasswordResetCallback();
+      _checkEmailConfirmationCallback();
+    }
+
+    // Small delay to show splash animation, then check onboarding
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        _checkOnboardingStatus();
+      }
+    });
+  }
+
+  /// Check if Supabase is ready
+  bool _isSupabaseReady() {
+    try {
+      // Try to access Supabase client
+      SupabaseService.client;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Setup auth state listeners
+  void _setupAuthListeners() {
+    if (_isInitialized) return;
+    _isInitialized = true;
 
     // Listen to auth state changes for email confirmation
     _authStateSubscription = SupabaseService.client.auth.onAuthStateChange
@@ -217,14 +280,112 @@ class _SplashScreenState extends State<SplashScreen> {
             Future.microtask(() => _handleEmailConfirmation());
           }
         });
+  }
 
-    // Simulate splash screen delay
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        // Check if user has completed onboarding
-        _checkOnboardingStatus();
+  /// Check if URL contains email confirmation code (web only)
+  Future<void> _checkEmailConfirmationCallback() async {
+    try {
+      final uri = Uri.base;
+      final code = uri.queryParameters['code'];
+      final type = uri.queryParameters['type'];
+
+      print('🔍 [DEBUG] Checking URL for email confirmation callback');
+      print('🔍 [DEBUG] URL: ${uri.toString()}');
+      print('🔍 [DEBUG] Code: $code, Type: $type');
+
+      if (code != null && type != 'recovery') {
+        // This is likely an email confirmation code
+        print('📧 [DEBUG] Email confirmation code detected!');
+
+        try {
+          // Exchange code for session
+          await SupabaseService.client.auth.exchangeCodeForSession(code);
+          print('✅ Email confirmation code verified! Session created.');
+
+          // The auth state change listener will handle navigation
+          // But we can also directly navigate here if needed
+          Future.microtask(() => _handleEmailConfirmation());
+        } catch (e) {
+          print('❌ Error verifying email confirmation code: $e');
+          // Show error but continue to normal flow
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Email confirmation link expired or invalid. Please request a new one.',
+                  style: GoogleFonts.poppins(),
+                ),
+                backgroundColor: AppTheme.primaryColor,
+                behavior: SnackBarBehavior.floating,
+                margin: const EdgeInsets.all(16),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        }
       }
-    });
+    } catch (e) {
+      print('⚠️ Error checking email confirmation callback: $e');
+    }
+  }
+
+  /// Check if URL contains password reset code (web only)
+  Future<void> _checkPasswordResetCallback() async {
+    try {
+      final uri = Uri.base;
+      final code = uri.queryParameters['code'];
+      final type = uri.queryParameters['type'];
+
+      print('🔍 [DEBUG] Checking URL for password reset callback');
+      print('🔍 [DEBUG] URL: ${uri.toString()}');
+      print('🔍 [DEBUG] Code: $code, Type: $type');
+
+      if (code != null) {
+        // Check if it's a password reset (recovery type)
+        if (type == 'recovery' ||
+            uri.path.contains('reset') ||
+            uri.path.contains('recovery')) {
+          print('🔑 [DEBUG] Password reset code detected!');
+
+          try {
+            // Exchange code for session - Supabase validates the recovery code
+            // For password reset, Supabase creates a temporary session when code is valid
+            await SupabaseService.client.auth.exchangeCodeForSession(code);
+
+            print('✅ Password reset code verified! Session created.');
+            // User is now authenticated with a recovery session
+            // Navigate to password reset screen to change password
+            // Note: ResetPasswordScreen needs to handle email recovery (no OTP needed)
+            if (mounted) {
+              Navigator.of(context).pushReplacementNamed(
+                '/reset-password',
+                arguments: {'isEmailRecovery': true},
+              );
+            }
+            return;
+          } catch (e) {
+            print('❌ Error verifying password reset code: $e');
+            // Show error and continue to normal flow
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Password reset link expired or invalid. Please request a new one.',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  backgroundColor: AppTheme.primaryColor,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error checking password reset callback: $e');
+    }
   }
 
   Future<void> _handleEmailConfirmation() async {
@@ -243,8 +404,11 @@ class _SplashScreenState extends State<SplashScreen> {
         .eq('id', user.id)
         .maybeSingle();
 
+    // If profile doesn't exist yet, user is still in signup flow
+    // Don't navigate yet - let them complete signup
     if (existingProfile == null) {
-      print('⚠️ No profile found, this should not happen');
+      print('📝 Profile not found - user still in signup flow');
+      // User will complete signup, profile will be created, then they'll see survey
       return;
     }
 
@@ -261,23 +425,30 @@ class _SplashScreenState extends State<SplashScreen> {
       rememberMe: true,
     );
 
-    // Navigate based on survey status
+    // Navigate DIRECTLY to appropriate screen based on role and survey status
+    // Use pushNamedAndRemoveUntil to prevent going back to splash/onboarding
     if (mounted) {
       if (!hasCompletedSurvey) {
-        print('📝 Navigating to survey...');
-        Navigator.of(context).pushReplacementNamed(
+        print('📝 Navigating directly to survey based on role: $userRole');
+        Navigator.of(context).pushNamedAndRemoveUntil(
           '/profile-setup',
+          (route) => false, // Remove all previous routes
           arguments: {'userRole': userRole},
         );
       } else {
-        print('🏠 Navigating to home...');
+        print('🏠 Navigating directly to dashboard based on role: $userRole');
+        String route;
         if (userRole == 'tutor') {
-          Navigator.of(context).pushReplacementNamed('/tutor-nav');
+          route = '/tutor-nav';
         } else if (userRole == 'parent') {
-          Navigator.of(context).pushReplacementNamed('/parent-nav');
+          route = '/parent-nav';
         } else {
-          Navigator.of(context).pushReplacementNamed('/student-nav');
+          route = '/student-nav';
         }
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          route,
+          (route) => false, // Remove all previous routes
+        );
       }
     }
   }
@@ -334,63 +505,8 @@ class _SplashScreenState extends State<SplashScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Main content
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // App logo
-                  Image.asset(
-                    'assets/images/app_logo(blue).png',
-                    width: 100,
-                    height: 100,
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // App name
-                  Text(
-                    'PrepSkul',
-                    style: GoogleFonts.poppins(
-                      color: AppTheme.textDark,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Tagline
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 40),
-                    child: Text(
-                      l10n.tagline,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        color: AppTheme.textMedium,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // Loading indicator
-                  const SizedBox(
-                    width: 30,
-                    height: 30,
-                    child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        AppTheme.primaryColor,
-                      ),
-                      strokeWidth: 3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Main content with animated logo
+            Center(child: _SplashContent(tagline: l10n.tagline)),
 
             // Language switcher in top right
             Positioned(top: 20, right: 20, child: const LanguageSwitcher()),
@@ -404,5 +520,157 @@ class _SplashScreenState extends State<SplashScreen> {
   void dispose() {
     _authStateSubscription?.cancel();
     super.dispose();
+  }
+}
+
+/// Splash screen content with animated logo
+class _SplashContent extends StatefulWidget {
+  final String tagline;
+
+  const _SplashContent({required this.tagline});
+
+  @override
+  State<_SplashContent> createState() => _SplashContentState();
+}
+
+class _SplashContentState extends State<_SplashContent>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.5,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.elasticOut));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
+
+    // Start animation immediately
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Animated logo - use network image for web, local asset for mobile
+        AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: _scaleAnimation.value,
+              child: Opacity(
+                opacity: _fadeAnimation.value,
+                child: kIsWeb
+                    ? Image.network(
+                        'https://cpzaxdfxbamdsshdgjyg.supabase.co/storage/v1/object/public/Logos/app_logo(blue).png',
+                        width: 120,
+                        height: 120,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return SizedBox(
+                            width: 120,
+                            height: 120,
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                  : null,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                AppTheme.primaryColor,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          // Fallback to local asset if network fails
+                          return Image.asset(
+                            'assets/images/app_logo(blue).png',
+                            width: 120,
+                            height: 120,
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        'assets/images/app_logo(blue).png',
+                        width: 120,
+                        height: 120,
+                      ),
+              ),
+            );
+          },
+        ),
+
+        const SizedBox(height: 24),
+
+        // App name with fade animation
+        FadeTransition(
+          opacity: _fadeAnimation,
+          child: Text(
+            'PrepSkul',
+            style: GoogleFonts.poppins(
+              color: AppTheme.textDark,
+              fontSize: 36,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Tagline with fade animation
+        FadeTransition(
+          opacity: _fadeAnimation,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              widget.tagline,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                color: AppTheme.textMedium,
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 40),
+
+        // Loading indicator with fade animation
+        FadeTransition(
+          opacity: _fadeAnimation,
+          child: const SizedBox(
+            width: 30,
+            height: 30,
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+              strokeWidth: 3,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

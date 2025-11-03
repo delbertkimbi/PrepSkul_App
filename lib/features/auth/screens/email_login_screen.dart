@@ -23,6 +23,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top
@@ -333,7 +334,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                         'Use phone number instead',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
-                                          color: AppTheme.textMedium,
+                                          color: AppTheme.primaryColor,
                                         ),
                                       ),
                                     ),

@@ -1070,11 +1070,19 @@ class _ParentSurveyState extends State<ParentSurvey> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'What\'s your budget?',
+          'What is your budget range per month?',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Drag the handles to adjust your budget range',
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            color: AppTheme.textMedium,
           ),
         ),
         const SizedBox(height: 24),
@@ -1082,15 +1090,19 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           '$_minBudget XAF - $_maxBudget XAF',
           style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           'per month',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textMedium,
+          ),
         ),
         const SizedBox(height: 24),
 
@@ -1098,7 +1110,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
           values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
           min: 20000,
           max: 55000,
-          divisions: 7,
+          divisions: 35,
           activeColor: AppTheme.primaryColor,
           inactiveColor: AppTheme.softBorder,
           onChanged: (RangeValues values) {
@@ -1107,20 +1119,10 @@ class _ParentSurveyState extends State<ParentSurvey> {
               _maxBudget = values.end.round();
             });
           },
-        ),
-
-        const SizedBox(height: 16),
-
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.start,
-          children: [
-            _buildQuickBudgetButton('20k - 30k XAF', 20000, 30000),
-            _buildQuickBudgetButton('30k - 40k XAF', 30000, 40000),
-            _buildQuickBudgetButton('40k - 50k XAF', 40000, 50000),
-            _buildQuickBudgetButton('50k - 55k XAF', 50000, 55000),
-          ],
+          // Make the slider handles bigger and more visible
+          overlayColor: WidgetStateProperty.all(
+            AppTheme.primaryColor.withOpacity(0.1),
+          ),
         ),
 
         const SizedBox(height: 24),
@@ -1237,37 +1239,6 @@ class _ParentSurveyState extends State<ParentSurvey> {
     );
   }
 
-  Widget _buildQuickBudgetButton(String label, int min, int max) {
-    bool isSelected = _minBudget == min && _maxBudget == max;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _minBudget = min;
-          _maxBudget = max;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: isSelected ? Colors.white : AppTheme.textDark,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildTutorGenderPreference() {
     return Column(

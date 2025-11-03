@@ -12,6 +12,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
+import 'instruction_screen.dart';
 
 class TutorOnboardingScreen extends StatefulWidget {
   final Map<String, dynamic> basicInfo;
@@ -27,7 +28,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   final PageController _pageController = PageController();
 
   int _currentStep = 0;
-  int _totalSteps = 13; // Added specializations step
+  int _totalSteps = 14; // Split Payment & Expectations into two steps
 
   @override
   void initState() {
@@ -320,6 +321,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -413,7 +415,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildTeachingStyleStep(),
           _buildDigitalReadinessStep(),
           _buildAvailabilityStep(),
-          _buildPaymentStep(),
+          _buildExpectationsStep(), // Step 9: Expected rate + pricing factors
+          _buildPaymentStep(), // Step 10: Payment method + details
           _buildVerificationStep(),
           _buildMediaLinksStep(),
           _buildPersonalStatementStep(),
@@ -1976,35 +1979,18 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         : _testSessionAvailability;
   }
 
-  Widget _buildPaymentStep() {
+  Widget _buildExpectationsStep() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionHeader(
-            'Payment & Expectations',
-            'Tell us about your payment preferences',
-            Icons.payment,
+            'Payment Expectations',
+            'Set your expected rate and pricing factors',
+            Icons.trending_up,
           ),
           const SizedBox(height: 32),
-
-          // Payment Method Selection Cards
-          _buildSelectionCards(
-            title: 'Payment Method',
-            options: ['MTN Mobile Money', 'Orange Money', 'Bank Transfer'],
-            selectedValue: _paymentMethod,
-            onSelectionChanged: (value) =>
-                setState(() => _paymentMethod = value),
-            isSingleSelection: true,
-          ),
-
-          const SizedBox(height: 24),
-
-          // Dynamic Payment Details based on method
-          if (_paymentMethod != null) _buildDynamicPaymentDetails(),
-
-          const SizedBox(height: 24),
 
           // Expected Rate Selection Cards
           _buildSelectionCards(
@@ -2025,6 +2011,71 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
           // Detailed Pricing Factors
           _buildDetailedPricingFactors(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            'Payment Method',
+            'How would you like to receive payments?',
+            Icons.payment,
+          ),
+          const SizedBox(height: 32),
+
+          // Payment Method Selection Cards with info icon
+          Row(
+            children: [
+              Text(
+                'Payment Method',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => InstructionScreen(
+                        title: 'Payment Method Instructions',
+                        icon: Icons.payment,
+                        content:
+                            'Choose how you would like to receive payments from PrepSkul.\n\nMTN Mobile Money:\n\n• Enter your 9-digit MTN Mobile Money number\n• Ensure the number is registered and active\n• Provide the exact name on the account\n\nOrange Money:\n\n• Enter your 9-digit Orange Money number\n• Ensure the number is registered and active\n• Provide the exact name on the account\n\nBank Transfer:\n\n• Provide your complete bank account details\n• Include: Account Number, Bank Name, and Account Holder Name\n• Ensure all information is accurate for transfers\n\nAll payment methods are secure and payments are processed monthly.',
+                      ),
+                    ),
+                  );
+                },
+                child: Icon(
+                  Icons.info_outline,
+                  size: 20,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+          _buildSelectionCards(
+            title: '',
+            options: ['MTN Mobile Money', 'Orange Money', 'Bank Transfer'],
+            selectedValue: _paymentMethod,
+            onSelectionChanged: (value) =>
+                setState(() => _paymentMethod = value),
+            isSingleSelection: true,
+          ),
+
+          const SizedBox(height: 24),
+
+          // Dynamic Payment Details based on method
+          if (_paymentMethod != null) _buildDynamicPaymentDetails(),
 
           const SizedBox(height: 24),
 
@@ -2240,7 +2291,19 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           ),
           const SizedBox(height: 8),
           GestureDetector(
-            onTap: () => _showPaymentProcessInfo(),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => InstructionScreen(
+                    title: 'PrepSkul Payment Process',
+                    icon: Icons.payment,
+                    content:
+                        'Please note:\n\n1) All payments from learners are handled securely through PrepSkul.\n\n2) After each confirmed session, tutor earnings first appear in a Pending Balance for verification.\n\n3) Once the session is confirmed and no issues are reported, the amount moves to your Active Balance.\n\n4) Tutors can withdraw from their Active Balance at the end of each month.\n\nIn case of complaints or cancellations, PrepSkul may review and adjust payments fairly for all parties.',
+                  ),
+                ),
+              );
+            },
             child: Text(
               'View payment process details',
               style: GoogleFonts.poppins(
@@ -2968,7 +3031,19 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () => _showDetailedVideoInstructions(),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => InstructionScreen(
+                            title: 'Video Introduction Instructions',
+                            icon: Icons.video_call,
+                            content:
+                                'To complete your application, please share a short introductory video (1–3 minutes). This helps us and potential learners get to know you better — your teaching style, confidence, and communication approach. Don\'t worry, it\'s not an exam. Just be yourself!\n\n✅ What to do:\n\n1. Record a short video (1–3 minutes) introducing yourself.\n2. Answer the 5 guiding questions below.\n3. Upload the video to YouTube (Unlisted)\n4. Paste your video link in the field below.\n\nNeed help uploading your video on YouTube?\n\n1. Open YouTube and sign in.\n2. Tap the "+" icon → Upload a video.\n3. Choose your video.\n4. Under "Visibility," select Unlisted (so only people with the link can see it).\n5. Copy the link and paste it below.\n\nGuiding Questions for the Video:\n\n1. Who are you, and what subjects or skills do you teach best?\n2. Why do you enjoy teaching or tutoring?\n3. What makes your approach unique or effective?\n4. How do you help learners overcome challenges or build confidence?\n5. Why do you think you\'d be a great fit for PrepSkul?',
+                          ),
+                        ),
+                      );
+                    },
                     child: Text(
                       'View detailed instructions',
                       style: GoogleFonts.poppins(
@@ -3608,14 +3683,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         }
 
         return hasTutoringSlots && hasTestSlots;
-      case 9: // Payment - All fields are required
-        // Must select payment method
-        if (_paymentMethod == null || _paymentMethod!.isEmpty) {
+      case 9: // Expectations - Must select expected rate
+        if (_expectedRate == null || _expectedRate!.isEmpty) {
           return false;
         }
-
-        // Must select expected rate
-        if (_expectedRate == null || _expectedRate!.isEmpty) {
+        return true;
+      case 10: // Payment - All fields are required
+        // Must select payment method
+        if (_paymentMethod == null || _paymentMethod!.isEmpty) {
           return false;
         }
 
@@ -3634,7 +3709,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         }
 
         return true;
-      case 10: // Verification
+      case 11: // Verification
         // Must agree to verification
         if (!_agreesToVerification) {
           return false;
@@ -3672,7 +3747,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         }
 
         return true;
-      case 11: // Media Links
+      case 12: // Media Links
         // Must have at least 1 social media link and valid YouTube video
         bool hasSocialLink = _socialMediaLinks.values.any(
           (link) => link.isNotEmpty,
@@ -3681,7 +3756,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             _videoLinkController.text.trim().isNotEmpty &&
             _isValidYouTubeUrl(_videoLinkController.text.trim());
         return hasSocialLink && hasVideoLink;
-      case 12: // Personal Statement
+      case 13: // Personal Statement
         return true; // No required fields
       default:
         return true;
@@ -3779,7 +3854,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Upload failed. Please try again or use mobile app for uploads.',
+                  'Upload failed: ${e.toString().replaceAll('Exception: ', '')}',
                   style: GoogleFonts.poppins(),
                 ),
               ),
@@ -3792,154 +3867,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         ),
       );
     }
-  }
-
-  void _showPaymentProcessInfo() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'PrepSkul Payment Process',
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Please note:',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '1) All payments from learners are handled securely through PrepSkul.\n\n2) After each confirmed session, tutor earnings first appear in a Pending Balance for verification.\n\n3) Once the session is confirmed and no issues are reported, the amount moves to your Active Balance.\n\n4) Tutors can withdraw from their Active Balance at the end of each month.\n\nIn case of complaints or cancellations, PrepSkul may review and adjust payments fairly for all parties.',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppTheme.textMedium,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Got it',
-              style: GoogleFonts.poppins(
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showDetailedVideoInstructions() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Video Introduction Instructions',
-          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'To complete your application, please share a short introductory video (1–3 minutes). This helps us and potential learners get to know you better — your teaching style, confidence, and communication approach. Don\'t worry, it\'s not an exam. Just be yourself!',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: AppTheme.textMedium,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Text(
-                '✅ What to do:',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '1. Record a short video (1–3 minutes) introducing yourself.\n2. Answer the 5 guiding questions below.\n3. Upload the video to YouTube (Unlisted)\n4. Paste your video link in the field below.',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: AppTheme.textDark,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Text(
-                'Need help uploading your video on YouTube?',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '1. Open YouTube and sign in.\n2. Tap the "+" icon → Upload a video.\n3. Choose your video.\n4. Under "Visibility," select Unlisted (so only people with the link can see it).\n5. Copy the link and paste it below.',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: AppTheme.textDark,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              Text(
-                'Guiding Questions for the Video:',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '1. Who are you, and what subjects or skills do you teach best?\n2. Why do you enjoy teaching or tutoring?\n3. What makes your approach unique or effective?\n4. How do you help learners overcome challenges or build confidence?\n5. Why do you think you\'d be a great fit for PrepSkul?',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: AppTheme.textDark,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Got it',
-              style: GoogleFonts.poppins(
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   void _generatePersonalStatement() {

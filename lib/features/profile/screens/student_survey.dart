@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
@@ -68,6 +69,23 @@ class _StudentSurveyState extends State<StudentSurvey> {
   void initState() {
     super.initState();
     _initializeSteps();
+    _loadStudentNameFromProfile();
+  }
+
+  /// Load student name from profile to avoid redundant entry
+  Future<void> _loadStudentNameFromProfile() async {
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      if (userProfile != null && userProfile['full_name'] != null) {
+        setState(() {
+          _studentName = userProfile['full_name'] as String;
+        });
+        print('✅ Pre-populated student name from profile: $_studentName');
+      }
+    } catch (e) {
+      print('⚠️ Could not load student name from profile: $e');
+      // Continue without pre-population - user can enter manually
+    }
   }
 
   void _initializeSteps() {
@@ -134,7 +152,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
         ),
         const SurveyStep(
           title: 'Budget Range',
-          subtitle: 'What\'s your budget per session?',
+          subtitle: 'What\'s your monthly budget for tutoring?',
         ),
         const SurveyStep(
           title: 'Review & Confirm',
@@ -484,13 +502,57 @@ class _StudentSurveyState extends State<StudentSurvey> {
   Widget _buildStudentInfo() {
     return Column(
       children: [
-        _buildInputField(
-          label: 'Your Name',
-          hint: 'Enter your full name',
-          value: _studentName,
-          onChanged: (value) => setState(() => _studentName = value),
-          isRequired: true,
-        ),
+        // Show name as read-only if already populated from profile
+        if (_studentName != null && _studentName!.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.primaryColor.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.person, color: AppTheme.primaryColor, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Name',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.textMedium,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _studentName!,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          color: AppTheme.textDark,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          _buildInputField(
+            label: 'Your Name',
+            hint: 'Enter your full name',
+            value: _studentName,
+            onChanged: (value) => setState(() => _studentName = value),
+            isRequired: true,
+          ),
         const SizedBox(height: 20),
         _buildDateField(),
         const SizedBox(height: 20),
@@ -1416,35 +1478,44 @@ class _StudentSurveyState extends State<StudentSurvey> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'What\'s your budget?',
+          'What is your budget range per month?',
           style: GoogleFonts.poppins(
-            fontSize: 13,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
+        Text(
+          'Drag the handles to adjust your budget range',
+          style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textMedium),
+        ),
+        const SizedBox(height: 24),
 
         Text(
           '$_minBudget XAF - $_maxBudget XAF',
           style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           'per month',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textMedium,
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
 
         RangeSlider(
           values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
           min: 20000,
           max: 55000,
-          divisions: 7,
+          divisions: 35,
           activeColor: AppTheme.primaryColor,
           inactiveColor: AppTheme.softBorder,
           onChanged: (RangeValues values) {
@@ -1453,20 +1524,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
               _maxBudget = values.end.round();
             });
           },
-        ),
-
-        const SizedBox(height: 16),
-
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.start,
-          children: [
-            _buildQuickBudgetButton('20k - 30k XAF', 20000, 30000),
-            _buildQuickBudgetButton('30k - 40k XAF', 30000, 40000),
-            _buildQuickBudgetButton('40k - 50k XAF', 40000, 50000),
-            _buildQuickBudgetButton('50k - 55k XAF', 50000, 55000),
-          ],
+          // Make the slider handles bigger and more visible
+          overlayColor: WidgetStateProperty.all(
+            AppTheme.primaryColor.withOpacity(0.1),
+          ),
         ),
 
         const SizedBox(height: 16),
@@ -1587,20 +1648,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Tutor Gender Preference',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Do you have a gender preference for your tutor?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        // Title/subtitle are shown in _buildStep, so no need to repeat here
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -1679,20 +1728,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Tutor Qualification Preference',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'What level of tutor qualification would you prefer?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        // Title/subtitle are shown in _buildStep, so no need to repeat here
+        const SizedBox(height: 8),
         ...qualifications.map((qual) {
           bool isSelected = _tutorQualificationPreference == qual['value'];
           return Padding(
@@ -1807,20 +1844,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Confidence Level',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'How confident are you in this subject/skill?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        // Title/subtitle are shown in _buildStep, so no need to repeat here
+        const SizedBox(height: 8),
         ...confidenceLevels.map((level) {
           bool isSelected = _confidenceLevel == level['value'];
           return Padding(
@@ -1911,20 +1936,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Learning Location',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Where would you prefer to have your sessions?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        // Title/subtitle are shown in _buildStep, so no need to repeat here
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -1980,20 +1993,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Schedule Preference',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'When do you prefer to have your learning sessions?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        // Title/subtitle are shown in _buildStep, so no need to repeat here
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -2049,20 +2050,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Learning Style',
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'How do you learn best?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        // Title/subtitle are shown in _buildStep, so no need to repeat here
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -2111,38 +2100,6 @@ class _StudentSurveyState extends State<StudentSurvey> {
           }).toList(),
         ),
       ],
-    );
-  }
-
-  Widget _buildQuickBudgetButton(String label, int min, int max) {
-    bool isSelected = _minBudget == min && _maxBudget == max;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _minBudget = min;
-          _maxBudget = max;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: isSelected ? Colors.white : AppTheme.textDark,
-          ),
-        ),
-      ),
     );
   }
 

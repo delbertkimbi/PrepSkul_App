@@ -310,18 +310,26 @@ class AuthService {
       try {
         // This will work when app is running
         final origin = Uri.base.origin;
-        // If running locally, use localhost, otherwise use production
+
+        // IMPORTANT: Return FULL URL (with protocol) to avoid Supabase treating it as relative path
+        // For password reset, Supabase redirects to this URL with a code parameter
+        // The URL must EXACTLY match what's in Supabase's allowed redirect URLs
         if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
-          return '$origin/';
+          // Local development - return exact origin (e.g., http://localhost:53790)
+          // NOTE: Supabase needs http://localhost:* (with wildcard) in redirect URLs
+          print('🔍 [DEBUG] Local development - redirect URL: $origin');
+          return origin; // Return without trailing slash
         }
-        return '$origin/';
+        // Production - must match exactly what's in Supabase
+        print('🔍 [DEBUG] Production - redirect URL: https://app.prepskul.com');
+        return 'https://app.prepskul.com';
       } catch (e) {
         // Fallback for production
-        return 'https://app.prepskul.com/';
+        return 'https://app.prepskul.com';
       }
     } else {
       // For mobile, use deep link scheme
-      return 'io.supabase.prepskul://login-callback/';
+      return 'io.supabase.prepskul://login-callback';
     }
   }
 
@@ -418,12 +426,7 @@ class AuthService {
     }
 
     // Also check if error has a message property (some Exception types)
-    try {
-      if (error is Exception) {
-        // For Dart Exception, we need to check toString
-        // But we already did that above
-      }
-    } catch (_) {}
+    // Note: Exception is a base class, so we check using dynamic type checking
 
     // Handle Supabase AuthException/AuthApiException properly
     String errorMessage = error.toString();

@@ -181,7 +181,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               'Verification code sent to ${widget.phoneNumber}',
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: Colors.green,
+            backgroundColor: AppTheme.primaryColor,
           ),
         );
       }
@@ -209,6 +209,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top

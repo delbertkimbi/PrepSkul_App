@@ -3,7 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'beautiful_login_screen.dart';
-import 'email_signup_screen.dart';
+import 'beautiful_signup_screen.dart';
+import 'email_login_screen.dart';
 
 class AuthMethodSelectionScreen extends StatelessWidget {
   const AuthMethodSelectionScreen({Key? key}) : super(key: key);
@@ -61,7 +62,7 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                       const SizedBox(height: 3),
                       Center(
                         child: Text(
-                          'Choose your sign up method',
+                          'Choose your sign in method',
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
@@ -82,10 +83,10 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                       children: [
                         const SizedBox(height: 90),
 
-                        // Auth Method Buttons
+                        // Auth Method Buttons - Navigate to SIGNIN screens
                         _AuthMethodButton(
                           icon: Icons.email_outlined,
-                          label: 'Sign up with email',
+                          label: 'Sign in with email',
                           onTap: () async {
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setString('auth_method', 'email');
@@ -95,7 +96,7 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      const EmailSignupScreen(),
+                                      const EmailLoginScreen(),
                                 ),
                               );
                             }
@@ -106,7 +107,7 @@ class AuthMethodSelectionScreen extends StatelessWidget {
 
                         _AuthMethodButton(
                           icon: Icons.phone_outlined,
-                          label: 'Sign up with phone',
+                          label: 'Sign in with phone',
                           onTap: () async {
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setString('auth_method', 'phone');
@@ -125,12 +126,12 @@ class AuthMethodSelectionScreen extends StatelessWidget {
 
                         const SizedBox(height: 32),
 
-                        // Already have account?
+                        // Don't have account? Sign up
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Already have an account? ',
+                              'Don\'t have an account? ',
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 color: AppTheme.textMedium,
@@ -142,12 +143,12 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) =>
-                                        const BeautifulLoginScreen(),
+                                        const BeautifulSignupScreen(),
                                   ),
                                 );
                               },
                               child: Text(
-                                'Sign in',
+                                'Sign up',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,

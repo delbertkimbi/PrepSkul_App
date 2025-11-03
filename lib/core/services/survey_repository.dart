@@ -94,11 +94,42 @@ class SurveyRepository {
     try {
       print('📝 Saving student survey for user: $userId');
 
+      // CRITICAL: Ensure profile exists before saving to learner_profiles
+      // This prevents foreign key constraint violations
+      final existingProfile = await SupabaseService.client
+          .from('profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (existingProfile == null) {
+        // Profile doesn't exist - create it first
+        print('⚠️ Profile not found for user $userId, creating profile...');
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) {
+          throw Exception('User not authenticated. Cannot create profile.');
+        }
+
+        await SupabaseService.client.from('profiles').upsert({
+          'id': userId,
+          'email': user.email ?? '',
+          'full_name': user.userMetadata?['full_name'] ?? 'Student',
+          'phone_number': user.phone,
+          'user_type': 'student',
+          'survey_completed': false,
+          'is_admin': false,
+        }, onConflict: 'id');
+
+        print('✅ Profile created for user: $userId');
+      }
+
       // Save to learner_profiles table
+      // Use 'id' as it's the primary key that references profiles.id
       await SupabaseService.client.from('learner_profiles').upsert({
-        'user_id': userId,
+        'id': userId, // Use id as it's the FK to profiles
+        'user_id': userId, // Also set user_id if column exists
         ...data,
-      }, onConflict: 'user_id');
+      }, onConflict: 'id'); // Conflict on id (primary key)
 
       // Mark survey as completed
       await SupabaseService.client
@@ -162,11 +193,42 @@ class SurveyRepository {
     try {
       print('📝 Saving parent survey for user: $userId');
 
+      // CRITICAL: Ensure profile exists before saving to parent_profiles
+      // This prevents foreign key constraint violations
+      final existingProfile = await SupabaseService.client
+          .from('profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (existingProfile == null) {
+        // Profile doesn't exist - create it first
+        print('⚠️ Profile not found for user $userId, creating profile...');
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) {
+          throw Exception('User not authenticated. Cannot create profile.');
+        }
+
+        await SupabaseService.client.from('profiles').upsert({
+          'id': userId,
+          'email': user.email ?? '',
+          'full_name': user.userMetadata?['full_name'] ?? 'Parent',
+          'phone_number': user.phone,
+          'user_type': 'parent',
+          'survey_completed': false,
+          'is_admin': false,
+        }, onConflict: 'id');
+
+        print('✅ Profile created for user: $userId');
+      }
+
       // Save to parent_profiles table
+      // Use 'id' as it's the primary key that references profiles.id
       await SupabaseService.client.from('parent_profiles').upsert({
-        'user_id': userId,
+        'id': userId, // Use id as it's the FK to profiles
+        'user_id': userId, // Also set user_id if column exists
         ...data,
-      }, onConflict: 'user_id');
+      }, onConflict: 'id'); // Conflict on id (primary key)
 
       // Mark survey as completed
       await SupabaseService.client

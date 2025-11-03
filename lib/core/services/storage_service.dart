@@ -68,52 +68,84 @@ class StorageService {
   }
 
   /// Upload document (PDF, image)
-  /// Handles both File and XFile for cross-platform support
+  /// Handles File, XFile, and PlatformFile for cross-platform support
   static Future<String> uploadDocument({
     required String userId,
-    required dynamic documentFile, // File or XFile
+    required dynamic documentFile, // File, XFile, or PlatformFile
     required String documentType, // e.g., 'id_front', 'degree', etc.
   }) async {
     try {
       String? mimeType;
       String fileExtension;
       int fileSize;
-      dynamic uploadData; // File, XFile, or Uint8List
+      dynamic uploadData; // File, XFile, Uint8List, or PlatformFile
 
       print(
         '🔍 [DEBUG] uploadDocument called with type: ${documentFile.runtimeType}',
       );
       print('🔍 [DEBUG] isWeb: $kIsWeb');
 
-      // Handle different file types
-      if (documentFile is XFile) {
-        print('🔍 [DEBUG] Detected XFile: ${documentFile.name}');
+      // Handle PlatformFile (from file_picker, works on all platforms)
+      if (documentFile is PlatformFile) {
+        print('🔍 [DEBUG] Detected PlatformFile: ${documentFile.name}');
 
-        // Get file name and extension (works for both web and mobile)
         final fileName = documentFile.name;
-        if (fileName.isEmpty || fileName == '') {
-          // Fallback: try to get name from path (mobile only)
-          final filePath = documentFile.path;
-          if (!kIsWeb && filePath != null && filePath.isNotEmpty) {
-            fileExtension = path.extension(filePath);
-            mimeType = lookupMimeType(filePath);
-            print('🔍 [DEBUG] Using path for extension: $fileExtension');
-          } else {
-            // Default for web when name is missing
-            fileExtension = '.jpg';
-            mimeType = 'image/jpeg';
-            print('🔍 [DEBUG] Using default extension: $fileExtension');
-          }
-        } else {
-          fileExtension = path.extension(fileName);
-          mimeType = lookupMimeType(fileName);
-          print(
-            '🔍 [DEBUG] Using name for extension: $fileExtension, mime: $mimeType',
-          );
-        }
+        fileExtension = path.extension(fileName).isEmpty
+            ? '.jpg'
+            : path.extension(fileName);
+        mimeType = lookupMimeType(fileName) ?? 'image/jpeg';
 
         if (kIsWeb) {
-          // Web: Use bytes (path is null/invalid on web)
+          // Web: PlatformFile has bytes
+          if (documentFile.bytes != null) {
+            fileSize = documentFile.bytes!.length;
+            uploadData = documentFile.bytes!;
+            print(
+              '🔍 [DEBUG] Web: Using PlatformFile bytes (${fileSize} bytes)',
+            );
+          } else {
+            throw Exception('PlatformFile bytes are null on web');
+          }
+        } else {
+          // Mobile: PlatformFile has path
+          if (documentFile.path != null && documentFile.path!.isNotEmpty) {
+            final File file = File(documentFile.path!);
+            fileSize = await file.length();
+            uploadData = file;
+            print(
+              '🔍 [DEBUG] Mobile: Using PlatformFile path (${fileSize} bytes)',
+            );
+          } else {
+            throw Exception('PlatformFile path is null on mobile');
+          }
+        }
+      }
+      // Handle XFile (from image_picker, works on all platforms)
+      else if (documentFile is XFile) {
+        print('🔍 [DEBUG] Detected XFile: ${documentFile.name}');
+
+        // Get file name and extension - handle web vs mobile differently
+        String fileName = documentFile.name;
+
+        if (kIsWeb) {
+          // On web: Use name directly, never access .path
+          if (fileName.isEmpty || fileName == '') {
+            // Default for web when name is missing
+            fileName = 'upload.jpg';
+            fileExtension = '.jpg';
+            mimeType = 'image/jpeg';
+            print('🔍 [DEBUG] Web: Using default name and extension');
+          } else {
+            fileExtension = path.extension(fileName).isEmpty
+                ? '.jpg'
+                : path.extension(fileName);
+            mimeType = lookupMimeType(fileName) ?? 'image/jpeg';
+            print(
+              '🔍 [DEBUG] Web: Using name for extension: $fileExtension, mime: $mimeType',
+            );
+          }
+
+          // Web: Use bytes (NEVER access .path on web)
           print('🔍 [DEBUG] Web platform: Reading as bytes');
           try {
             final Uint8List bytes = await documentFile.readAsBytes();
@@ -125,15 +157,47 @@ class StorageService {
             throw Exception('Failed to read file data: $e');
           }
         } else {
-          // Mobile: Use File path
-          print('🔍 [DEBUG] Mobile platform: Using file path');
-          final filePath = documentFile.path;
-          if (filePath == null || filePath.isEmpty) {
-            throw Exception(
-              'File path is null or empty. Cannot upload on mobile.',
+          // Mobile: Can safely use both name and path
+          if (fileName.isEmpty || fileName == '') {
+            // Fallback: try to get name from path (mobile only)
+            try {
+              final filePath = documentFile.path;
+              if (filePath.isNotEmpty) {
+                fileExtension = path.extension(filePath).isEmpty
+                    ? '.jpg'
+                    : path.extension(filePath);
+                mimeType = lookupMimeType(filePath) ?? 'image/jpeg';
+                fileName = path.basename(filePath);
+                print(
+                  '🔍 [DEBUG] Mobile: Using path for extension: $fileExtension',
+                );
+              } else {
+                fileExtension = '.jpg';
+                mimeType = 'image/jpeg';
+                print('🔍 [DEBUG] Mobile: Using default extension');
+              }
+            } catch (e) {
+              print('⚠️ [DEBUG] Error accessing path, using defaults: $e');
+              fileExtension = '.jpg';
+              mimeType = 'image/jpeg';
+            }
+          } else {
+            fileExtension = path.extension(fileName).isEmpty
+                ? '.jpg'
+                : path.extension(fileName);
+            mimeType = lookupMimeType(fileName) ?? 'image/jpeg';
+            print(
+              '🔍 [DEBUG] Mobile: Using name for extension: $fileExtension, mime: $mimeType',
             );
           }
+
+          // Mobile: Use File path
+          print('🔍 [DEBUG] Mobile platform: Using file path');
           try {
+            final filePath = documentFile.path;
+            if (filePath.isEmpty) {
+              throw Exception('File path is empty. Cannot upload on mobile.');
+            }
             final File file = File(filePath);
             fileSize = await file.length();
             uploadData = file;
@@ -144,14 +208,27 @@ class StorageService {
           }
         }
       } else if (documentFile is File) {
+        // File objects should only come from mobile, but handle safely
         print('🔍 [DEBUG] Detected File');
-        uploadData = documentFile;
-        mimeType = lookupMimeType(documentFile.path);
-        fileExtension = path.extension(documentFile.path);
-        fileSize = await documentFile.length();
-        print(
-          '🔍 [DEBUG] File size: $fileSize bytes, extension: $fileExtension',
-        );
+        if (kIsWeb) {
+          // On web, File objects are NOT supported
+          // File.path will throw NoSuchMethodError on web
+          print('❌ [DEBUG] File object detected on web - not supported');
+          throw Exception(
+            'File objects are not supported on web. Please use Gallery or Files option to select files.',
+          );
+        } else {
+          // Mobile: Use File normally
+          uploadData = documentFile;
+          mimeType = lookupMimeType(documentFile.path) ?? 'image/jpeg';
+          fileExtension = path.extension(documentFile.path).isEmpty
+              ? '.jpg'
+              : path.extension(documentFile.path);
+          fileSize = await documentFile.length();
+          print(
+            '🔍 [DEBUG] File size: $fileSize bytes, extension: $fileExtension',
+          );
+        }
       } else if (documentFile is Uint8List) {
         print('🔍 [DEBUG] Detected Uint8List directly');
         uploadData = documentFile;
@@ -163,7 +240,7 @@ class StorageService {
       } else {
         print('❌ [DEBUG] Unsupported file type: ${documentFile.runtimeType}');
         throw Exception(
-          'Unsupported file type: ${documentFile.runtimeType}. Expected File or XFile.',
+          'Unsupported file type: ${documentFile.runtimeType}. Expected File, XFile, or PlatformFile.',
         );
       }
 
@@ -175,8 +252,7 @@ class StorageService {
       }
 
       // Validate file type
-      if (mimeType == null ||
-          (!mimeType.startsWith('image/') && mimeType != 'application/pdf')) {
+      if (!mimeType.startsWith('image/') && mimeType != 'application/pdf') {
         throw Exception(
           'Invalid file type. Only images and PDF files are allowed',
         );

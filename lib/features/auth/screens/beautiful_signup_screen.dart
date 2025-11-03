@@ -26,6 +26,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top
@@ -548,7 +549,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: AppTheme.textMedium,
+                                      color: AppTheme.primaryColor,
                                     ),
                                   ),
                                 ),
@@ -586,7 +587,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
             'Please select your role',
             style: GoogleFonts.poppins(),
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: AppTheme.primaryColor,
         ),
       );
       return;
@@ -597,7 +598,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Passwords do not match', style: GoogleFonts.poppins()),
-          backgroundColor: Colors.red,
+          backgroundColor: AppTheme.primaryColor,
         ),
       );
       return;
@@ -642,7 +643,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
               'Failed to send verification code. Please check your phone number.',
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: AppTheme.primaryColor,
           ),
         );
       }

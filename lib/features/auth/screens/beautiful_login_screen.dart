@@ -374,7 +374,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: AppTheme.textMedium,
+                                      color: AppTheme.primaryColor,
                                     ),
                                   ),
                                 ),
@@ -435,7 +435,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                 'No account found with this phone number. Please sign up.',
                 style: GoogleFonts.poppins(),
               ),
-              backgroundColor: Colors.red,
+              backgroundColor: AppTheme.primaryColor,
             ),
           );
         }

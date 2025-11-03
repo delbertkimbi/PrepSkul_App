@@ -57,5 +57,17 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Camera and Photo Library Permissions -->
+	<key>NSCameraUsageDescription</key>
+	<string>PrepSkul needs access to your camera to take photos for your profile and documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PrepSkul needs access to your photo library to select images for your profile and documents.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>PrepSkul needs access to save photos to your library.</string>
+	<!-- File Access Permissions -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 </dict>
 </plist>

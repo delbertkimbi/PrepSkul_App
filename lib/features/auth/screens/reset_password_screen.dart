@@ -2,11 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String phone;
+  final bool isEmailRecovery;
 
-  const ResetPasswordScreen({Key? key, required this.phone}) : super(key: key);
+  const ResetPasswordScreen({
+    Key? key,
+    required this.phone,
+    this.isEmailRecovery = false,
+  }) : super(key: key);
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -27,9 +34,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     // Check if passwords match
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Passwords do not match'),
-          backgroundColor: Colors.red,
+        SnackBar(
+          content: Text(
+            'Passwords do not match',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
@@ -40,25 +52,50 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     });
 
     try {
-      await AuthService.resetPassword(
-        phone: widget.phone,
-        otp: _otpController.text.trim(),
-        newPassword: _passwordController.text,
-      );
+      if (widget.isEmailRecovery) {
+        // Email recovery: User already has a session from exchangeCodeForSession
+        // Just update the password
+        await SupabaseService.client.auth.updateUser(
+          UserAttributes(password: _passwordController.text),
+        );
+        print('✅ Password updated successfully via email recovery');
+      } else {
+        // Phone OTP recovery: Verify OTP first, then update password
+        await AuthService.resetPassword(
+          phone: widget.phone,
+          otp: _otpController.text.trim(),
+          newPassword: _passwordController.text,
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Password reset successful!'),
+          SnackBar(
+            content: Text(
+              'Password reset successful!',
+              style: GoogleFonts.poppins(),
+            ),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
           ),
         );
         Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
       }
     } catch (e) {
       if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(
+              errorMessage,
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     } finally {
@@ -73,6 +110,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -104,7 +142,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Enter the OTP sent to ${widget.phone} and your new password',
+                    widget.isEmailRecovery
+                        ? 'Enter your new password'
+                        : 'Enter the OTP sent to ${widget.phone} and your new password',
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       color: Colors.white70,
@@ -112,31 +152,34 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 40),
-                  TextFormField(
-                    controller: _otpController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    decoration: InputDecoration(
-                      labelText: 'OTP Code',
-                      hintText: 'Enter 6-digit code',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                  // Only show OTP field for phone-based recovery
+                  if (!widget.isEmailRecovery) ...[
+                    TextFormField(
+                      controller: _otpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: InputDecoration(
+                        labelText: 'OTP Code',
+                        hintText: 'Enter 6-digit code',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter OTP';
+                        }
+                        if (value.length != 6) {
+                          return 'OTP must be 6 digits';
+                        }
+                        return null;
+                      },
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter OTP';
-                      }
-                      if (value.length != 6) {
-                        return 'OTP must be 6 digits';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
+                  ],
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,

@@ -103,32 +103,56 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
             SizedBox(height: 10),
             // Header with language switcher
             Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 10.0,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   // Skip button
-                  if (_currentPage < _slides.length - 1)
-                    TextButton(
-                      onPressed: _completeOnboarding,
-                      child: Text(
-                        'Skip',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.textMedium,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    )
-                  else
-                    const SizedBox(width: 80),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: _currentPage < _slides.length - 1
+                          ? TextButton(
+                              onPressed: _completeOnboarding,
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: Text(
+                                'Skip',
+                                style: GoogleFonts.poppins(
+                                  color: AppTheme.textMedium,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
 
                   // Language switcher
                   const LanguageSwitcher(),
                 ],
               ),
             ),
-            SizedBox(height: 60),
+            // Responsive top spacing - reduces on small screens
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final screenHeight = MediaQuery.of(context).size.height;
+                // Reduce top spacing progressively on smaller screens
+                final topSpacing = screenHeight < 600
+                    ? 20.0
+                    : screenHeight < 700
+                    ? 40.0
+                    : 60.0; // Original on normal screens
+                return SizedBox(height: topSpacing);
+              },
+            ),
             // Page view
             Expanded(
               child: PageView.builder(
@@ -157,53 +181,113 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
   }
 
   Widget _buildSlide(OnboardingSlide slide) {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 20.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Stacked dynamic image container with liquid edges
-            _buildStackedImageContainer(slide),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Smart responsive breakpoints based on screen height
+        final screenHeight = constraints.maxHeight;
 
-            const SizedBox(height: 40),
+        // Normal screens (>= 700px): Keep original beautiful design
+        // Small screens (< 700px): Start reducing spacing
+        // Very small screens (< 600px): More aggressive reductions
+        final isSmallScreen = screenHeight < 700;
+        final isVerySmallScreen = screenHeight < 600;
 
-            // Title
-            Text(
-              slide.title,
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textDark,
-                height: 1.2,
-              ),
-              textAlign: TextAlign.center,
+        // Responsive adjustments (only for small screens)
+        final topSpacing = isVerySmallScreen
+            ? 8.0
+            : isSmallScreen
+            ? 16.0
+            : 0.0; // No extra top spacing on normal screens
+
+        final imageHeight = isVerySmallScreen
+            ? 220.0
+            : isSmallScreen
+            ? 250.0
+            : 280.0; // Original on normal screens
+
+        final imageTextSpacing = isVerySmallScreen
+            ? 24.0
+            : isSmallScreen
+            ? 32.0
+            : 40.0; // Original on normal screens
+
+        final titleSize = isVerySmallScreen
+            ? 22.0
+            : isSmallScreen
+            ? 23.0
+            : 24.0; // Original on normal screens
+
+        final descriptionSize = isVerySmallScreen
+            ? 13.0
+            : 14.0; // Keep same for small and normal
+
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: constraints.maxWidth < 400 ? 24.0 : 32.0,
+              vertical: isVerySmallScreen ? 12.0 : 20.0,
             ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Top spacing (only on small screens to reduce white space)
+                if (topSpacing > 0) SizedBox(height: topSpacing),
 
-            const SizedBox(height: 12),
+                // Responsive image container
+                _buildStackedImageContainer(slide, imageHeight),
 
-            // Description
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Text(
-                slide.description,
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: AppTheme.textMedium,
-                  height: 1.5,
+                SizedBox(height: imageTextSpacing),
+
+                // Title with responsive font size
+                Text(
+                  slide.title,
+                  style: GoogleFonts.poppins(
+                    fontSize: titleSize,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textDark,
+                    height: 1.2,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
-                textAlign: TextAlign.center,
-              ),
+
+                SizedBox(height: isVerySmallScreen ? 10 : 12),
+
+                // Description
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: constraints.maxWidth < 400 ? 4.0 : 8.0,
+                  ),
+                  child: Text(
+                    slide.description,
+                    style: GoogleFonts.poppins(
+                      fontSize: descriptionSize,
+                      color: AppTheme.textMedium,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+                // Bottom spacing for very small screens
+                if (isVerySmallScreen) const SizedBox(height: 12),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildStackedImageContainer(OnboardingSlide slide) {
+  Widget _buildStackedImageContainer(
+    OnboardingSlide slide, [
+    double? imageHeight,
+  ]) {
+    // Use provided height or default to original 280
+    final containerHeight = imageHeight ?? 280.0;
+
     return SizedBox(
-      height: 280,
+      height: containerHeight,
       width: double.infinity,
       child: Stack(
         alignment: Alignment.center,
@@ -376,6 +460,10 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
                           child: Image.asset(
                             slide.image,
                             fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                            // Note: loadingBuilder is only for Image.network
+                            // Image.asset loads synchronously from bundled assets
                             errorBuilder: (context, error, stackTrace) {
                               return Container(
                                 decoration: BoxDecoration(

@@ -31,6 +31,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // Curved wave background at top
@@ -487,7 +488,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                         'Use phone number instead',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
-                                          color: AppTheme.textMedium,
+                                          color: AppTheme.primaryColor,
                                         ),
                                       ),
                                     ),
@@ -563,15 +564,17 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             .select('email')
             .eq('email', email)
             .maybeSingle();
-        
+
         if (existingProfile != null) {
-          throw Exception('This email is already registered. Please sign in instead.');
+          throw Exception(
+            'This email is already registered. Please sign in instead.',
+          );
         }
       } catch (checkError) {
         // If the check itself fails, continue (don't block signup)
         // But if we got a profile, re-throw
         final errorStr = checkError.toString().toLowerCase();
-        if (errorStr.contains('already registered') || 
+        if (errorStr.contains('already registered') ||
             errorStr.contains('email')) {
           rethrow;
         }
@@ -590,7 +593,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       if (response.user == null) {
         throw Exception('Failed to create account');
       }
-
 
       // Check if email confirmation is required
       final emailConfirmed = response.user?.emailConfirmedAt != null;
@@ -652,10 +654,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              errorMessage,
-              style: GoogleFonts.poppins(),
-            ),
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
             backgroundColor: AppTheme.primaryColor,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
