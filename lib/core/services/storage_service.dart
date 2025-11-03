@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -17,8 +18,11 @@ class StorageService {
   static const String videosBucket = 'videos';
 
   // File size limits (in bytes)
-  static const int maxImageSize = 2 * 1024 * 1024; // 2 MB
-  static const int maxDocumentSize = 5 * 1024 * 1024; // 5 MB
+  // Note: Supabase allows up to 50 MB by default, but you can increase this in your project settings
+  static const int maxImageSize =
+      10 * 1024 * 1024; // 10 MB (increased from 2 MB)
+  static const int maxDocumentSize =
+      10 * 1024 * 1024; // 10 MB (increased from 5 MB)
   static const int maxVideoSize = 50 * 1024 * 1024; // 50 MB
 
   /// Upload profile photo
@@ -71,32 +75,99 @@ class StorageService {
     required String documentType, // e.g., 'id_front', 'degree', etc.
   }) async {
     try {
-      File uploadableFile;
       String? mimeType;
       String fileExtension;
+      int fileSize;
+      dynamic uploadData; // File, XFile, or Uint8List
 
-      // Handle different file types - convert to File for upload
+      print(
+        '🔍 [DEBUG] uploadDocument called with type: ${documentFile.runtimeType}',
+      );
+      print('🔍 [DEBUG] isWeb: $kIsWeb');
+
+      // Handle different file types
       if (documentFile is XFile) {
-        // XFile: For mobile, use path. For web, throw error (not supported yet)
-        if (kIsWeb) {
-          throw Exception(
-            'Web uploads are not yet supported. Please use mobile app for file uploads.',
+        print('🔍 [DEBUG] Detected XFile: ${documentFile.name}');
+
+        // Get file name and extension (works for both web and mobile)
+        final fileName = documentFile.name;
+        if (fileName.isEmpty || fileName == '') {
+          // Fallback: try to get name from path (mobile only)
+          final filePath = documentFile.path;
+          if (!kIsWeb && filePath != null && filePath.isNotEmpty) {
+            fileExtension = path.extension(filePath);
+            mimeType = lookupMimeType(filePath);
+            print('🔍 [DEBUG] Using path for extension: $fileExtension');
+          } else {
+            // Default for web when name is missing
+            fileExtension = '.jpg';
+            mimeType = 'image/jpeg';
+            print('🔍 [DEBUG] Using default extension: $fileExtension');
+          }
+        } else {
+          fileExtension = path.extension(fileName);
+          mimeType = lookupMimeType(fileName);
+          print(
+            '🔍 [DEBUG] Using name for extension: $fileExtension, mime: $mimeType',
           );
         }
 
-        mimeType = lookupMimeType(documentFile.name);
-        fileExtension = path.extension(documentFile.name);
-        uploadableFile = File(documentFile.path);
+        if (kIsWeb) {
+          // Web: Use bytes (path is null/invalid on web)
+          print('🔍 [DEBUG] Web platform: Reading as bytes');
+          try {
+            final Uint8List bytes = await documentFile.readAsBytes();
+            fileSize = bytes.length;
+            uploadData = bytes;
+            print('🔍 [DEBUG] Read ${fileSize} bytes');
+          } catch (e) {
+            print('❌ [DEBUG] Error reading XFile bytes: $e');
+            throw Exception('Failed to read file data: $e');
+          }
+        } else {
+          // Mobile: Use File path
+          print('🔍 [DEBUG] Mobile platform: Using file path');
+          final filePath = documentFile.path;
+          if (filePath == null || filePath.isEmpty) {
+            throw Exception(
+              'File path is null or empty. Cannot upload on mobile.',
+            );
+          }
+          try {
+            final File file = File(filePath);
+            fileSize = await file.length();
+            uploadData = file;
+            print('🔍 [DEBUG] File size: $fileSize bytes');
+          } catch (e) {
+            print('❌ [DEBUG] Error creating File from path: $e');
+            throw Exception('Failed to access file: $e');
+          }
+        }
       } else if (documentFile is File) {
-        uploadableFile = documentFile;
+        print('🔍 [DEBUG] Detected File');
+        uploadData = documentFile;
         mimeType = lookupMimeType(documentFile.path);
         fileExtension = path.extension(documentFile.path);
+        fileSize = await documentFile.length();
+        print(
+          '🔍 [DEBUG] File size: $fileSize bytes, extension: $fileExtension',
+        );
+      } else if (documentFile is Uint8List) {
+        print('🔍 [DEBUG] Detected Uint8List directly');
+        uploadData = documentFile;
+        fileSize = documentFile.length;
+        // For Uint8List, we can't determine mime type easily
+        mimeType = 'image/jpeg'; // Default
+        fileExtension = '.jpg'; // Default
+        print('🔍 [DEBUG] Uint8List size: $fileSize bytes');
       } else {
-        throw Exception('Unsupported file type: ${documentFile.runtimeType}');
+        print('❌ [DEBUG] Unsupported file type: ${documentFile.runtimeType}');
+        throw Exception(
+          'Unsupported file type: ${documentFile.runtimeType}. Expected File or XFile.',
+        );
       }
 
       // Validate file size
-      final fileSize = await uploadableFile.length();
       if (fileSize > maxDocumentSize) {
         throw Exception(
           'Document too large. Maximum size is ${maxDocumentSize ~/ (1024 * 1024)} MB',
@@ -114,10 +185,10 @@ class StorageService {
       // Create storage path
       final storagePath = '$userId/$documentType$fileExtension';
 
-      // Upload to Supabase using File
+      // Upload to Supabase (handles both File and Uint8List)
       await SupabaseService.client.storage
           .from(documentsBucket)
-          .upload(storagePath, uploadableFile);
+          .upload(storagePath, uploadData);
 
       // Get authenticated URL (documents are private)
       final signedUrl = await SupabaseService.client.storage

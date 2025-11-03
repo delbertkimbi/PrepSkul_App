@@ -6,6 +6,9 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
+// Email validation regex
+final _emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+
 class EmailSignupScreen extends StatefulWidget {
   const EmailSignupScreen({Key? key}) : super(key: key);
 
@@ -176,8 +179,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                   if (value == null || value.trim().isEmpty) {
                                     return 'Please enter your email';
                                   }
-                                  if (!value.contains('@') ||
-                                      !value.contains('.')) {
+                                  if (!_emailRegex.hasMatch(value.trim())) {
                                     return 'Please enter a valid email address';
                                   }
                                   return null;
@@ -521,7 +523,9 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
             'Please select your role',
             style: GoogleFonts.poppins(),
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
@@ -532,7 +536,9 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Passwords do not match', style: GoogleFonts.poppins()),
-          backgroundColor: Colors.red,
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
@@ -545,15 +551,46 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final password = _passwordController.text;
       final fullName = _nameController.text.trim();
 
+      // Validate email format
+      if (!_emailRegex.hasMatch(email)) {
+        throw Exception('Please enter a valid email address');
+      }
+
+      // Check if email already exists in profiles table
+      try {
+        final existingProfile = await SupabaseService.client
+            .from('profiles')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+        
+        if (existingProfile != null) {
+          throw Exception('This email is already registered. Please sign in instead.');
+        }
+      } catch (checkError) {
+        // If the check itself fails, continue (don't block signup)
+        // But if we got a profile, re-throw
+        final errorStr = checkError.toString().toLowerCase();
+        if (errorStr.contains('already registered') || 
+            errorStr.contains('email')) {
+          rethrow;
+        }
+      }
+
+      // Get redirect URL for email verification
+      final redirectUrl = AuthService.getRedirectUrl();
+
       // Sign up with email/password
       final response = await SupabaseService.client.auth.signUp(
         email: email,
         password: password,
+        emailRedirectTo: redirectUrl,
       );
 
       if (response.user == null) {
         throw Exception('Failed to create account');
       }
+
 
       // Check if email confirmation is required
       final emailConfirmed = response.user?.emailConfirmedAt != null;
@@ -612,13 +649,17 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
     } catch (e) {
       print('❌ Email signup error: $e');
       if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to create account: ${e.toString().length > 50 ? e.toString().substring(0, 50) : e.toString()}',
+              errorMessage,
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

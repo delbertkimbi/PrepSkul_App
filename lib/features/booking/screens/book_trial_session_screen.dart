@@ -236,7 +236,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            Icon(Icons.error_outline, color: Colors.red[600], size: 28),
+            Icon(Icons.error_outline, color: AppTheme.primaryColor, size: 28),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

@@ -382,7 +382,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
                 onPressed: () => Navigator.of(context).pop(true),
                 child: Text(
                   'Exit',
-                  style: GoogleFonts.poppins(color: Colors.red),
+                  style: GoogleFonts.poppins(color: AppTheme.primaryColor),
                 ),
               ),
             ],
@@ -401,26 +401,26 @@ class _ParentSurveyState extends State<ParentSurvey> {
           Text(
             step.title,
             style: GoogleFonts.poppins(
-              fontSize: 28,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: AppTheme.textDark,
               height: 1.2,
             ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           // Subtitle
           Text(
             step.subtitle,
             style: GoogleFonts.poppins(
-              fontSize: 16,
+              fontSize: 14,
               color: AppTheme.textMedium,
               height: 1.4,
             ),
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 24),
 
           // Content based on step
           Expanded(
@@ -542,7 +542,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
             Text(
               '*',
               style: GoogleFonts.poppins(
-                color: Colors.red,
+                color: AppTheme.primaryColor,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -892,15 +892,15 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           title,
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: options.map((option) {
             final isSelected = selectedValues.contains(option);
@@ -916,12 +916,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
@@ -936,13 +936,13 @@ class _ParentSurveyState extends State<ParentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -981,7 +981,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
               Text(
                 ' *',
                 style: GoogleFonts.poppins(
-                  color: Colors.red,
+                  color: AppTheme.primaryColor,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1276,20 +1276,20 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           'Tutor Gender Preference',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'Do you have a gender preference for your child\'s tutor?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.tutorGenderPreferences.map((option) {
             bool isSelected = _tutorGenderPreference == option;
@@ -1297,12 +1297,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
               onTap: () => setState(() => _tutorGenderPreference = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
@@ -1317,13 +1317,13 @@ class _ParentSurveyState extends State<ParentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -1368,17 +1368,17 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           'Tutor Qualification Preference',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'What level of tutor qualification would you prefer?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ...qualifications.map((qual) {
           bool isSelected = _tutorQualificationPreference == qual['value'];
           return Padding(
@@ -1386,8 +1386,8 @@ class _ParentSurveyState extends State<ParentSurvey> {
             child: GestureDetector(
               onTap: () =>
                   setState(() => _tutorQualificationPreference = qual['value']),
-              child: Container(
-                padding: const EdgeInsets.all(16),
+                child: Container(
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
@@ -1396,12 +1396,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
                         : AppTheme.softBorder,
                     width: isSelected ? 2 : 1.5,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
                             color: AppTheme.primaryColor.withOpacity(0.1),
-                            blurRadius: 8,
+                            blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ]
@@ -1410,8 +1410,8 @@ class _ParentSurveyState extends State<ParentSurvey> {
                 child: Row(
                   children: [
                     Container(
-                      width: 20,
-                      height: 20,
+                      width: 18,
+                      height: 18,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
@@ -1428,11 +1428,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
                           ? const Icon(
                               Icons.check,
                               color: Colors.white,
-                              size: 14,
+                              size: 12,
                             )
                           : null,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1440,16 +1440,16 @@ class _ParentSurveyState extends State<ParentSurvey> {
                           Text(
                             qual['label'] as String,
                             style: GoogleFonts.poppins(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             qual['description'] as String,
                             style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 11,
                               color: AppTheme.textMedium,
                             ),
                           ),
@@ -1496,26 +1496,26 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           'Confidence Level',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'How confident is your child in this subject/skill?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ...confidenceLevels.map((level) {
           bool isSelected = _childConfidenceLevel == level['value'];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () =>
                   setState(() => _childConfidenceLevel = level['value']),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
@@ -1524,12 +1524,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
                         : AppTheme.softBorder,
                     width: isSelected ? 2 : 1.5,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
                             color: AppTheme.primaryColor.withOpacity(0.1),
-                            blurRadius: 8,
+                            blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ]
@@ -1538,8 +1538,8 @@ class _ParentSurveyState extends State<ParentSurvey> {
                 child: Row(
                   children: [
                     Container(
-                      width: 20,
-                      height: 20,
+                      width: 18,
+                      height: 18,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
@@ -1556,11 +1556,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
                           ? const Icon(
                               Icons.check,
                               color: Colors.white,
-                              size: 14,
+                              size: 12,
                             )
                           : null,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1568,16 +1568,16 @@ class _ParentSurveyState extends State<ParentSurvey> {
                           Text(
                             level['label'] as String,
                             style: GoogleFonts.poppins(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
                           Text(
                             level['description'] as String,
                             style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 11,
                               color: AppTheme.textMedium,
                             ),
                           ),
@@ -1601,20 +1601,20 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           'Learning Location',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'Where would you prefer your child to have sessions?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.learningModes.map((option) {
             bool isSelected = _preferredLocation == option;
@@ -1622,12 +1622,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
               onTap: () => setState(() => _preferredLocation = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
@@ -1642,13 +1642,13 @@ class _ParentSurveyState extends State<ParentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -1670,20 +1670,20 @@ class _ParentSurveyState extends State<ParentSurvey> {
         Text(
           'Schedule Preference',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'When do you prefer your child to have learning sessions?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.schedulePreferences.map((option) {
             bool isSelected = _preferredSchedule == option;
@@ -1691,12 +1691,12 @@ class _ParentSurveyState extends State<ParentSurvey> {
               onTap: () => setState(() => _preferredSchedule = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
@@ -1711,13 +1711,13 @@ class _ParentSurveyState extends State<ParentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -2128,7 +2128,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.red,
+                  color: AppTheme.primaryColor,
                 ),
               ),
             ],
@@ -2180,19 +2180,19 @@ class _ParentSurveyState extends State<ParentSurvey> {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
             width: isSelected ? 2 : 1.5,
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
@@ -2200,8 +2200,8 @@ class _ParentSurveyState extends State<ParentSurvey> {
         child: Row(
           children: [
             Container(
-              width: 24,
-              height: 24,
+              width: 20,
+              height: 20,
               decoration: BoxDecoration(
                 color: isSelected ? AppTheme.primaryColor : Colors.transparent,
                 border: Border.all(
@@ -2210,13 +2210,13 @@ class _ParentSurveyState extends State<ParentSurvey> {
                       : AppTheme.softBorder,
                   width: 2,
                 ),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: isSelected
-                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  ? const Icon(Icons.check, color: Colors.white, size: 14)
                   : null,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2224,17 +2224,17 @@ class _ParentSurveyState extends State<ParentSurvey> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: AppTheme.textMedium,
                       ),
                     ),

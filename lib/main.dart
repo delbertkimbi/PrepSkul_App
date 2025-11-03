@@ -19,11 +19,12 @@ import 'package:prepskul/features/auth/screens/email_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
-// Removed unused imports (deleted placeholder features)
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:prepskul/core/navigation/main_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -194,9 +195,29 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  StreamSubscription<AuthState>? _authStateSubscription;
+
   @override
   void initState() {
     super.initState();
+
+    // Listen to auth state changes for email confirmation
+    _authStateSubscription = SupabaseService.client.auth.onAuthStateChange
+        .listen((data) {
+          final AuthChangeEvent event = data.event;
+          final Session? session = data.session;
+
+          print('🔐 Auth state changed: $event');
+
+          // Handle email confirmation
+          if (event == AuthChangeEvent.signedIn &&
+              session != null &&
+              session.user.emailConfirmedAt != null) {
+            print('✅ Email confirmed via deep link!');
+            Future.microtask(() => _handleEmailConfirmation());
+          }
+        });
+
     // Simulate splash screen delay
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
@@ -204,6 +225,61 @@ class _SplashScreenState extends State<SplashScreen> {
         _checkOnboardingStatus();
       }
     });
+  }
+
+  Future<void> _handleEmailConfirmation() async {
+    print('🔐 Handling email confirmation...');
+    final user = SupabaseService.currentUser;
+
+    if (user == null) {
+      print('⚠️ No user found after email confirmation');
+      return;
+    }
+
+    // Check if profile already exists
+    final existingProfile = await SupabaseService.client
+        .from('profiles')
+        .select()
+        .eq('id', user.id)
+        .maybeSingle();
+
+    if (existingProfile == null) {
+      print('⚠️ No profile found, this should not happen');
+      return;
+    }
+
+    final userRole = existingProfile['user_type'] ?? 'student';
+    final hasCompletedSurvey = existingProfile['survey_completed'] ?? false;
+
+    // Save session
+    await AuthService.saveSession(
+      userId: user.id,
+      userRole: userRole,
+      phone: existingProfile['phone_number'] ?? '',
+      fullName: existingProfile['full_name'] ?? '',
+      surveyCompleted: hasCompletedSurvey,
+      rememberMe: true,
+    );
+
+    // Navigate based on survey status
+    if (mounted) {
+      if (!hasCompletedSurvey) {
+        print('📝 Navigating to survey...');
+        Navigator.of(context).pushReplacementNamed(
+          '/profile-setup',
+          arguments: {'userRole': userRole},
+        );
+      } else {
+        print('🏠 Navigating to home...');
+        if (userRole == 'tutor') {
+          Navigator.of(context).pushReplacementNamed('/tutor-nav');
+        } else if (userRole == 'parent') {
+          Navigator.of(context).pushReplacementNamed('/parent-nav');
+        } else {
+          Navigator.of(context).pushReplacementNamed('/student-nav');
+        }
+      }
+    }
   }
 
   Future<void> _checkOnboardingStatus() async {
@@ -270,7 +346,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     height: 100,
                   ),
 
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 20),
 
                   // App name
                   Text(
@@ -322,5 +398,11 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription?.cancel();
+    super.dispose();
   }
 }

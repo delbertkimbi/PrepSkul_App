@@ -34,10 +34,14 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to send reset email: $e'),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -88,8 +92,8 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
 
                   // Email icon
                   Container(
-                    width: 120,
-                    height: 120,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
                       color: AppTheme.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(60),
@@ -99,7 +103,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                           ? Icons.mark_email_read_outlined
                           : Icons.lock_reset_outlined,
                       size: 60,
-                      color: AppTheme.primaryColor,
+                      color: Colors.white,
                     ),
                   ),
 
@@ -138,6 +142,51 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                         color: AppTheme.primaryColor,
                       ),
                       textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    // Helpful tips
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: AppTheme.primaryColor.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: AppTheme.primaryColor,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Didn\'t receive the email?',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            '• Check your spam/junk folder\n• Wait a few minutes (emails can take 1-5 minutes)\n• Make sure you used the correct email address\n',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppTheme.textDark,
+                              height: 1.6,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ] else ...[
                     Text(

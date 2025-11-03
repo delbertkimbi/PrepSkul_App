@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'supabase_service.dart';
 
 /// Comprehensive authentication service for PrepSkul
@@ -188,14 +189,54 @@ class AuthService {
   /// Send password reset email (for email auth)
   static Future<void> sendPasswordResetEmail(String email) async {
     try {
+      print('🔍 [DEBUG] Sending password reset email to: $email');
+
+      // Get platform-appropriate redirect URL
+      final redirectUrl = getRedirectUrl();
+      print('🔍 [DEBUG] Using redirect URL: $redirectUrl');
+
+      // Send password reset email (returns void, just checks for exceptions)
       await SupabaseService.client.auth.resetPasswordForEmail(
         email,
-        redirectTo: 'https://operating-axis-420213.web.app/reset-password',
+        redirectTo: redirectUrl,
       );
-      print('✅ Password reset email sent to: $email');
+
+      print('✅ Password reset email sent successfully to: $email');
+      print('📧 [INFO] Email sent! Check inbox and spam folder.');
+      print('🔍 [DEBUG] Supabase resetPasswordForEmail completed successfully');
+
+      // Note: Supabase might not return an error even if email doesn't exist
+      // for security reasons, so the email might not actually be sent
+      print(
+        '⚠️ [INFO] If email not received: Check spam, wait 1-5 minutes, verify email exists',
+      );
     } catch (e) {
       print('❌ Error sending password reset email: $e');
-      rethrow;
+      print('🔍 [DEBUG] Error type: ${e.runtimeType}');
+      print('🔍 [DEBUG] Error details: ${e.toString()}');
+
+      // Check for rate limiting specifically
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('rate limit') ||
+          errorStr.contains('too_many_requests') ||
+          errorStr.contains('over_email_send_rate_limit') ||
+          errorStr.contains('429')) {
+        throw Exception(
+          'Too many email requests. Please wait a few minutes before requesting another reset email.',
+        );
+      }
+
+      // Check for user not found
+      if (errorStr.contains('user not found') ||
+          errorStr.contains('email not found') ||
+          errorStr.contains('no account found')) {
+        throw Exception(
+          'No account found with this email address. Please check and try again.',
+        );
+      }
+
+      // Re-throw with parsed error message
+      throw Exception(parseAuthError(e));
     }
   }
 
@@ -260,5 +301,309 @@ class AuthService {
         print('🔄 Auth token refreshed');
       }
     });
+  }
+
+  /// Get platform-appropriate redirect URL for email verification
+  static String getRedirectUrl() {
+    if (kIsWeb) {
+      // For web, use current origin or fallback to production URL
+      try {
+        // This will work when app is running
+        final origin = Uri.base.origin;
+        // If running locally, use localhost, otherwise use production
+        if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
+          return '$origin/';
+        }
+        return '$origin/';
+      } catch (e) {
+        // Fallback for production
+        return 'https://app.prepskul.com/';
+      }
+    } else {
+      // For mobile, use deep link scheme
+      return 'io.supabase.prepskul://login-callback/';
+    }
+  }
+
+  /// Check if email already exists in Supabase
+  /// Note: This is a helper method, but the best way is to catch signUp errors
+  static Future<bool> emailExists(String email) async {
+    try {
+      // Query the auth.users table via admin API or try to sign in
+      // For now, we'll rely on signUp throwing an error if email exists
+      // This method is kept for backward compatibility but may not be reliable
+      try {
+        final response = await SupabaseService.client.auth.signInWithPassword(
+          email: email,
+          password: 'dummy_check_password_12345!',
+        );
+        // If sign in succeeds (unlikely with dummy password), email exists
+        return response.user != null;
+      } catch (signInError) {
+        final errorString = signInError.toString().toLowerCase();
+        // If error mentions credentials or email not confirmed, email likely exists
+        if (errorString.contains('invalid login credentials') ||
+            errorString.contains('email not confirmed') ||
+            errorString.contains('invalid_credentials')) {
+          return true; // Email exists but password wrong
+        }
+        // If explicitly says user not found, email doesn't exist
+        if (errorString.contains('user not found') ||
+            errorString.contains('no user found') ||
+            errorString.contains('invalid_grant')) {
+          return false;
+        }
+        // Default: assume email doesn't exist (let signUp handle the real check)
+        return false;
+      }
+    } catch (e) {
+      // On any error, default to false - let signUp handle the validation
+      return false;
+    }
+  }
+
+  /// Parse and return user-friendly error message
+  static String parseAuthError(dynamic error) {
+    if (error == null) return 'An unexpected error occurred';
+
+    print('🔍 [DEBUG] parseAuthError called with: ${error.runtimeType}');
+    print('🔍 [DEBUG] Error toString: ${error.toString()}');
+
+    // If error is already a friendly Exception we created, extract the message
+    final errorStr = error.toString();
+    print('🔍 [DEBUG] Checking if friendly exception: $errorStr');
+
+    // Check for friendly messages we created (Exception: message format)
+    // When we throw Exception('message'), toString() becomes "Exception: message"
+    if (errorStr.startsWith('Exception: ')) {
+      final friendlyMessage = errorStr.substring(
+        11,
+      ); // Remove "Exception: " prefix
+      print('🔍 [DEBUG] Extracted from Exception: $friendlyMessage');
+
+      // Check if it's a friendly user-facing message (not a technical error)
+      // Friendly messages usually have these characteristics:
+      // - Contain action words like "Please", "wait", "sign in"
+      // - Are complete sentences
+      // - Don't contain technical terms like "auth", "api", "exception", "code"
+      final lowerMessage = friendlyMessage.toLowerCase();
+      final isTechnical =
+          lowerMessage.contains('authapi') ||
+          lowerMessage.contains('authexception') ||
+          lowerMessage.contains('api exception') ||
+          lowerMessage.contains('exception:') ||
+          lowerMessage.contains('code:') ||
+          lowerMessage.contains('statuscode:');
+
+      // If it's NOT technical AND contains friendly keywords, return it
+      final hasFriendlyKeywords =
+          lowerMessage.contains('already registered') ||
+          lowerMessage.contains('please') ||
+          lowerMessage.contains('too many') ||
+          lowerMessage.contains('wait') ||
+          lowerMessage.contains('sign in') ||
+          lowerMessage.contains('valid email') ||
+          lowerMessage.contains('try again');
+
+      if (!isTechnical &&
+          (hasFriendlyKeywords || friendlyMessage.length > 20)) {
+        // This looks like a friendly message - return it
+        print(
+          '🔍 [DEBUG] ✅ Returning friendly exception message: $friendlyMessage',
+        );
+        return friendlyMessage;
+      } else {
+        print('🔍 [DEBUG] ⚠️ Exception looks technical, will parse further');
+      }
+    }
+
+    // Also check if error has a message property (some Exception types)
+    try {
+      if (error is Exception) {
+        // For Dart Exception, we need to check toString
+        // But we already did that above
+      }
+    } catch (_) {}
+
+    // Handle Supabase AuthException/AuthApiException properly
+    String errorMessage = error.toString();
+    String errorCode = '';
+    String statusCode = '';
+
+    // Handle AuthApiException format: AuthApiException(message: ..., statusCode: ..., code: ...)
+    final originalErrorString = error.toString();
+    print('🔍 [DEBUG] Original error string: $originalErrorString');
+
+    if (originalErrorString.contains('AuthApiException')) {
+      print('🔍 [DEBUG] Detected AuthApiException format');
+
+      // Extract message from the original error string
+      final messageMatch = RegExp(
+        r'message:\s*([^,]+)',
+      ).firstMatch(originalErrorString);
+      if (messageMatch != null) {
+        errorMessage = messageMatch.group(1)?.trim() ?? errorMessage;
+        print('🔍 [DEBUG] Extracted message: $errorMessage');
+      } else {
+        print('🔍 [DEBUG] No message match found');
+      }
+
+      // Extract code from the original error string
+      final codeMatch = RegExp(
+        r'code:\s*([^\s,)]+)',
+      ).firstMatch(originalErrorString);
+      if (codeMatch != null) {
+        errorCode = codeMatch.group(1)?.trim() ?? '';
+        print('🔍 [DEBUG] Extracted code: $errorCode');
+      } else {
+        print('🔍 [DEBUG] No code match found');
+      }
+
+      // Extract statusCode from the original error string
+      final statusMatch = RegExp(
+        r'statusCode:\s*([^,]+)',
+      ).firstMatch(originalErrorString);
+      if (statusMatch != null) {
+        statusCode = statusMatch.group(1)?.trim() ?? '';
+        print('🔍 [DEBUG] Extracted statusCode: $statusCode');
+      } else {
+        print('🔍 [DEBUG] No statusCode match found');
+      }
+    }
+    // Handle AuthException format (legacy)
+    else if (errorMessage.contains('AuthException')) {
+      final match = RegExp(
+        r'AuthException\([^,]+,\s*([^)]+)\)',
+      ).firstMatch(errorMessage);
+      if (match != null) {
+        errorMessage = match.group(1)?.replaceAll("'", "") ?? errorMessage;
+      }
+      final codeMatch = RegExp(r'code:\s*([^,}]+)').firstMatch(errorMessage);
+      if (codeMatch != null) {
+        errorCode = codeMatch.group(1)?.trim().replaceAll("'", "") ?? '';
+      }
+    }
+
+    final errorString = errorMessage.toLowerCase();
+    errorCode = errorCode.toLowerCase();
+    statusCode = statusCode.toLowerCase();
+
+    print('🔍 [DEBUG] Final values:');
+    print('🔍 [DEBUG]   errorMessage: $errorMessage');
+    print('🔍 [DEBUG]   errorString: $errorString');
+    print('🔍 [DEBUG]   errorCode: $errorCode');
+    print('🔍 [DEBUG]   statusCode: $statusCode');
+
+    // Email-related errors - check both message and code
+    if (errorString.contains('user already registered') ||
+        errorString.contains('email already registered') ||
+        errorString.contains('already been registered') ||
+        errorString.contains('user already exists') ||
+        errorString.contains('email_address_already_exists') ||
+        errorString.contains('duplicate') && errorString.contains('email') ||
+        errorCode == 'email_address_already_exists' ||
+        errorCode == 'signup_disabled' ||
+        errorString.contains('email address is already registered')) {
+      return 'This email is already registered. Please sign in instead.';
+    }
+
+    if (errorString.contains('invalid email') ||
+        errorString.contains('email format')) {
+      return 'Please enter a valid email address.';
+    }
+
+    if (errorString.contains('email not confirmed') ||
+        errorString.contains('email not verified')) {
+      return 'Please verify your email first. Check your inbox for the confirmation link.';
+    }
+
+    // Password-related errors
+    if (errorString.contains('invalid login credentials') ||
+        errorString.contains('invalid password') ||
+        errorString.contains('wrong password')) {
+      return 'Invalid email or password. Please check and try again.';
+    }
+
+    if (errorString.contains('password') && errorString.contains('weak')) {
+      return 'Password is too weak. Please use a stronger password.';
+    }
+
+    // Rate limiting - check BEFORE other generic errors
+    print('🔍 [DEBUG] Checking rate limit conditions...');
+    final isRateLimit =
+        errorString.contains('rate limit') ||
+        errorString.contains('over_email_send_rate_limit') ||
+        errorCode == 'over_email_send_rate_limit' ||
+        errorString.contains('email rate limit exceeded') ||
+        statusCode == '429' ||
+        errorString.contains('429');
+    print('🔍 [DEBUG] Rate limit check result: $isRateLimit');
+
+    if (isRateLimit) {
+      print('🔍 [DEBUG] ✅ Returning rate limit message');
+      return 'Too many email requests. Please wait a few minutes before trying again.';
+    }
+
+    // Too many requests (generic)
+    if (errorString.contains('too many requests')) {
+      return 'Too many attempts. Please wait a moment before trying again.';
+    }
+
+    // Network errors
+    if (errorString.contains('network') ||
+        errorString.contains('connection') ||
+        errorString.contains('timeout')) {
+      return 'Connection error. Please check your internet connection.';
+    }
+
+    // User not found
+    if (errorString.contains('user not found') ||
+        errorString.contains('no user found')) {
+      return 'No account found with this email. Please sign up first.';
+    }
+
+    // Expired token
+    if (errorString.contains('expired') ||
+        errorString.contains('otp_expired')) {
+      return 'Verification link has expired. Please request a new one.';
+    }
+
+    // Default fallback
+    print(
+      '🔍 [DEBUG] ⚠️ No matching error pattern found, using default message',
+    );
+    print('🔍 [DEBUG] Original error was: ${error.toString()}');
+    return 'Unable to complete this action. Please try again.';
+  }
+
+  /// Resend email verification
+  static Future<void> resendEmailVerification(String email) async {
+    try {
+      await SupabaseService.client.auth.resend(
+        type: OtpType.signup,
+        email: email,
+        emailRedirectTo: getRedirectUrl(),
+      );
+      print('✅ Verification email resent to: $email');
+    } catch (e) {
+      print('❌ Error resending verification email: $e');
+
+      // Check for rate limiting or other specific errors
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('rate limit') ||
+          errorStr.contains('too many requests') ||
+          errorStr.contains('too_many_requests')) {
+        throw Exception(
+          'Too many email requests. Please wait a few minutes before requesting another email.',
+        );
+      }
+
+      if (errorStr.contains('email') && errorStr.contains('not found')) {
+        throw Exception('Email not found. Please check your email address.');
+      }
+
+      // Re-throw with parsed error message
+      throw Exception(parseAuthError(e));
+    }
   }
 }

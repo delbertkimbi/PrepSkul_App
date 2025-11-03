@@ -519,6 +519,7 @@ class AppData {
           'Geography',
           'Economics',
           'ICT',
+          'Computer Science',
         ],
         'francophone': [
           'Mathématiques',
@@ -551,7 +552,14 @@ class AppData {
             'Geography',
             'Economics',
           ],
-          'Sciences': ['Mathematics', 'Chemistry', 'Physics', 'Biology', 'ICT'],
+          'Sciences': [
+            'Mathematics',
+            'Chemistry',
+            'Physics',
+            'Biology',
+            'ICT',
+            'Computer Science',
+          ],
           'Commercial': [
             'Accounting',
             'Commerce',

@@ -22,11 +22,12 @@ class TutorOnboardingScreen extends StatefulWidget {
   State<TutorOnboardingScreen> createState() => _TutorOnboardingScreenState();
 }
 
-class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
+class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
+    with TickerProviderStateMixin {
   final PageController _pageController = PageController();
 
   int _currentStep = 0;
-  int _totalSteps = 11; // Added email step
+  int _totalSteps = 13; // Added specializations step
 
   @override
   void initState() {
@@ -166,6 +167,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
   List<String> _selectedLearnerLevels = [];
   List<String> _selectedSpecializations = [];
   final _customSpecializationController = TextEditingController();
+  final Map<int, TabController> _specializationTabControllers = {};
 
   // Experience
   bool _hasExperience = false;
@@ -332,7 +334,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         ),
         centerTitle: true,
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(80),
+          preferredSize: const Size.fromHeight(40),
           child: Column(
             children: [
               Padding(
@@ -368,20 +370,20 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 4),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'Your progress is automatically saved. You can continue anytime.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppTheme.textLight,
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 8),
+              // const SizedBox(height: 4),
+              // Padding(
+              //   padding: const EdgeInsets.symmetric(horizontal: 20),
+              //   child: Text(
+              //     'Your progress is automatically saved. You can continue anytime.',
+              //     style: GoogleFonts.poppins(
+              //       fontSize: 11,
+              //       color: AppTheme.textLight,
+              //       fontStyle: FontStyle.italic,
+              //     ),
+              //     textAlign: TextAlign.center,
+              //   ),
+              // ),
+              // const SizedBox(height: 8),
               LinearProgressIndicator(
                 value: (_currentStep + 1) / _totalSteps,
                 backgroundColor: AppTheme.softBorder,
@@ -406,12 +408,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           _buildAcademicBackgroundStep(),
           _buildLocationStep(),
           _buildTeachingFocusStep(),
+          _buildSpecializationsStep(),
           _buildExperienceStep(),
           _buildTeachingStyleStep(),
           _buildDigitalReadinessStep(),
           _buildAvailabilityStep(),
           _buildPaymentStep(),
           _buildVerificationStep(),
+          _buildMediaLinksStep(),
           _buildPersonalStatementStep(),
         ],
       ),
@@ -771,43 +775,273 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                 setState(() => _selectedLearnerLevels = values),
             isSingleSelection: false,
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(height: 24),
+  // NEW STEP: Specializations with tabs
+  Widget _buildSpecializationsStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            'Specializations',
+            'What subjects can you teach?',
+            Icons.school,
+            hasRequiredFields: true,
+          ),
+          const SizedBox(height: 32),
 
-          // Dynamic Specializations based on selections
+          // Show specializations with tabs
           if (_selectedTutoringAreas.isNotEmpty &&
               _selectedLearnerLevels.isNotEmpty)
             _buildDynamicSpecializations(),
+
+          // Show message if prerequisites not met
+          if (_selectedTutoringAreas.isEmpty || _selectedLearnerLevels.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange[700]),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Please select tutoring areas and learner levels in the previous step first.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildDynamicSpecializations() {
-    List<String> specializationOptions = _getSpecializationOptions();
+    Map<String, List<String>> categorizedSpecs =
+        _getCategorizedSpecializations();
+
+    // If only one category, show simple list
+    if (categorizedSpecs.length <= 1) {
+      List<String> specializationOptions = _getSpecializationOptions();
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // All specializations in one grid
+          _buildSelectionChips(
+            options: specializationOptions,
+            selectedValue: _selectedSpecializations,
+            onSelectionChanged: (values) =>
+                setState(() => _selectedSpecializations = values),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Custom Specialization Input
+          _buildInputField(
+            controller: _customSpecializationController,
+            label: 'Other Specializations',
+            hint: 'Add here (comma-separated)',
+            icon: Icons.add_circle_outline,
+          ),
+        ],
+      );
+    }
+
+    // Multiple categories - create tab controller for them
+    late TabController tabController;
+    if (_specializationTabControllers.containsKey(categorizedSpecs.length)) {
+      tabController = _specializationTabControllers[categorizedSpecs.length]!;
+      if (tabController.length != categorizedSpecs.length) {
+        tabController.dispose();
+        tabController = TabController(
+          length: categorizedSpecs.length,
+          vsync: this,
+        );
+        _specializationTabControllers[categorizedSpecs.length] = tabController;
+      }
+    } else {
+      tabController = TabController(
+        length: categorizedSpecs.length,
+        vsync: this,
+      );
+      _specializationTabControllers[categorizedSpecs.length] = tabController;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildSelectionCards(
-          title: 'Specializations',
-          options: specializationOptions,
-          selectedValue: _selectedSpecializations,
-          onSelectionChanged: (values) =>
-              setState(() => _selectedSpecializations = values),
-          isSingleSelection: false,
+        // Segmented Control Style Tabs
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: TabBar(
+            controller: tabController,
+            isScrollable: false,
+            labelColor: Colors.white,
+            unselectedLabelColor: AppTheme.textMedium,
+            indicator: BoxDecoration(
+              color: AppTheme.primaryColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            indicatorSize: TabBarIndicatorSize.tab,
+            dividerColor: Colors.transparent,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+            labelStyle: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+            tabs: categorizedSpecs.keys.map((category) {
+              // Convert category names to two lines ONLY when there are 3 tabs
+              String displayText = category;
+              if (categorizedSpecs.length == 3) {
+                if (category == 'AcademicTutoring') {
+                  displayText = 'Academic\nTutoring';
+                } else if (category == 'ExamPreparation') {
+                  displayText = 'Exam\nPreparation';
+                } else if (category == 'SkillDevelopment') {
+                  displayText = 'Skill\nDevelopment';
+                }
+              }
+              return Tab(
+                child: Text(
+                  displayText,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(fontSize: 10),
+                ),
+              );
+            }).toList(),
+          ),
         ),
 
         const SizedBox(height: 16),
+
+        // Tab Views with specializations
+        SizedBox(
+          height: 300,
+          child: TabBarView(
+            controller: tabController,
+            children: categorizedSpecs.entries.map((entry) {
+              return SingleChildScrollView(
+                child: _buildSelectionChips(
+                  options: entry.value,
+                  selectedValue: _selectedSpecializations,
+                  onSelectionChanged: (values) =>
+                      setState(() => _selectedSpecializations = values),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        const SizedBox(height: 24),
 
         // Custom Specialization Input
         _buildInputField(
           controller: _customSpecializationController,
           label: 'Other Specializations',
-          hint: 'Add your own specializations (comma-separated)',
+          hint: 'Add here (comma-separated)',
           icon: Icons.add_circle_outline,
         ),
       ],
+    );
+  }
+
+  /// Get specializations categorized by tutoring area
+  Map<String, List<String>> _getCategorizedSpecializations() {
+    Map<String, List<String>> categorized = {};
+
+    for (String area in _selectedTutoringAreas) {
+      List<String> specs = AppData.getSpecializationsForTutoringArea(
+        area,
+        _selectedLearnerLevels,
+      );
+
+      if (specs.isNotEmpty) {
+        // Use area as category name
+        String categoryName = area.replaceAll(' ', '');
+        categorized[categoryName] = specs.toSet().toList();
+      }
+    }
+
+    return categorized;
+  }
+
+  /// Build selection chips for tab view
+  Widget _buildSelectionChips({
+    required List<String> options,
+    required List<String> selectedValue,
+    required Function(List<String>) onSelectionChanged,
+  }) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: options.map((option) {
+        final isSelected = selectedValue.contains(option);
+        return GestureDetector(
+          onTap: () {
+            final newSelection = List<String>.from(selectedValue);
+            if (isSelected) {
+              newSelection.remove(option);
+            } else {
+              newSelection.add(option);
+            }
+            onSelectionChanged(newSelection);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected ? AppTheme.primaryColor : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isSelected ? Icons.check_circle : Icons.add_circle_outline,
+                  size: isSelected ? 18 : 16,
+                  color: isSelected ? Colors.white : Colors.grey[600],
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  option,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected ? Colors.white : AppTheme.textDark,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -902,12 +1136,131 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           const SizedBox(height: 24),
 
           // Motivation Input
-          _buildInputField(
-            controller: _motivationController,
-            label: 'What motivates you to teach?',
-            hint: 'Tell us what drives your passion for teaching...',
-            icon: Icons.psychology,
-            maxLines: 3,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildInputField(
+                controller: _motivationController,
+                label: 'What motivates you to teach?',
+                hint:
+                    'Tell us what drives your passion for teaching... (at least 20 characters)',
+                icon: Icons.psychology,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 8),
+              // Validation message
+              Builder(
+                builder: (context) {
+                  final motivationText = _motivationController.text.trim();
+                  if (motivationText.isEmpty) {
+                    return Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.orange[700],
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Motivation is required',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    );
+                  } else if (motivationText.length < 20) {
+                    return Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 14,
+                          color: Colors.orange[700],
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Please write at least 20 characters (${motivationText.length}/20)',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+              // Show missing fields if has experience
+              if (_hasExperience) ...[
+                const SizedBox(height: 16),
+                Builder(
+                  builder: (context) {
+                    List<String> missingFields = [];
+                    if (_experienceDuration == null) {
+                      missingFields.add('Teaching duration');
+                    }
+                    if (_previousOrganizationController.text.trim().isEmpty) {
+                      missingFields.add('Previous organization');
+                    }
+                    if (_taughtLevels.isEmpty) {
+                      missingFields.add('Levels taught');
+                    }
+                    if (missingFields.isNotEmpty) {
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: Colors.orange[700],
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Please complete:',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange[900],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  ...missingFields.map(
+                                    (field) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 2),
+                                      child: Text(
+                                        '• $field',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 11,
+                                          color: Colors.orange[900],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -1929,13 +2282,74 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
             onChanged: (value) => setState(() => _agreesToVerification = value),
             icon: Icons.verified_user,
           ),
+        ],
+      ),
+    );
+  }
 
-          const SizedBox(height: 24),
+  Widget _buildMediaLinksStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader(
+            'Media & Links',
+            'Add your social media links and video introduction',
+            Icons.link,
+          ),
+          const SizedBox(height: 32),
+
+          // Info box with instructions
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: AppTheme.primaryColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Instructions',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '• You must add at least 1 social media link\n• You must include a valid YouTube video link\n• These help learners get to know you better',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppTheme.textMedium,
+                    height: 1.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 32),
 
           // Social Media Links with Icons
           _buildSocialMediaLinks(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
 
           // Video Introduction
           _buildVideoIntroduction(),
@@ -1987,6 +2401,15 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         'description': 'Your teacher/tutor training certificate',
       });
     }
+
+    // Always add last official certificate (for any education level)
+    // This can be a transcript, diploma, certificate slip, etc.
+    requiredDocs.add({
+      'type': 'last_certificate',
+      'title': 'Last Official Certificate',
+      'description':
+          'Your latest official certificate (slip, transcript, or diploma)',
+    });
 
     // Make sure _selectedDocumentType is valid
     if (!requiredDocs.any((doc) => doc['type'] == _selectedDocumentType)) {
@@ -2248,6 +2671,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         return Icons.school;
       case 'training_certificate':
         return Icons.verified;
+      case 'last_certificate':
+        return Icons.workspace_premium;
       default:
         return Icons.description;
     }
@@ -2292,7 +2717,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
           children: [
             Expanded(
               child: Text(
-                'Social Media & Professional Links (Optional)',
+                'Social Media & Professional Links',
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -2402,7 +2827,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                         errorBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide: const BorderSide(
-                            color: Colors.red,
+                            color: AppTheme.primaryColor,
                             width: 2,
                           ),
                         ),
@@ -2492,58 +2917,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.textMedium.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                'Optional',
-                style: GoogleFonts.poppins(
-                  fontSize: 10,
-                  color: AppTheme.textMedium,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
         const SizedBox(height: 8),
         Text(
           'This helps us and potential learners get to know you better',
           style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 16),
-
-        // Info box
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.primaryColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Your responses are automatically saved. You can add your video later from your profile.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
         const SizedBox(height: 16),
 
         _buildInputField(
@@ -2777,7 +3155,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
     bool hasRequiredFields = false,
   }) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: AppTheme.primaryGradient,
         borderRadius: BorderRadius.circular(16),
@@ -2785,14 +3163,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
+            child: Icon(icon, color: Colors.white, size: 20),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2803,44 +3181,22 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                       child: Text(
                         title,
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
                       ),
                     ),
-                    if (hasRequiredFields) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '*',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),
-                if (hasRequiredFields) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Fields marked with * are required',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.8),
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -2862,15 +3218,15 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         Text(
           title,
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           children: options.map((option) {
             bool isSelected = isSingleSelection
                 ? selectedValue == option
@@ -2892,12 +3248,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
@@ -2912,13 +3268,13 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -2960,7 +3316,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: Colors.red,
+                  color: AppTheme.primaryColor,
                 ),
               ),
             ],
@@ -3017,7 +3373,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         Text(
           label,
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -3061,11 +3417,17 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red, width: 2),
+              borderSide: const BorderSide(
+                color: AppTheme.primaryColor,
+                width: 2,
+              ),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red, width: 2),
+              borderSide: const BorderSide(
+                color: AppTheme.primaryColor,
+                width: 2,
+              ),
             ),
             errorStyle: GoogleFonts.poppins(fontSize: 11),
             contentPadding: const EdgeInsets.symmetric(
@@ -3099,12 +3461,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       child: Row(
         children: [
           Icon(icon, color: AppTheme.primaryColor, size: 24),
-          const SizedBox(width: 16),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: AppTheme.textDark,
               ),
@@ -3197,25 +3559,56 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                     _customQuarter!.isNotEmpty));
       case 3: // Teaching Focus
         return _selectedTutoringAreas.isNotEmpty &&
-            _selectedLearnerLevels.isNotEmpty &&
-            _selectedSpecializations.isNotEmpty;
-      case 4: // Experience - _hasExperience defaults to false, only validate if true
+            _selectedLearnerLevels.isNotEmpty;
+      case 4: // Specializations
+        return _selectedSpecializations.isNotEmpty;
+      case 5: // Experience
+        // Motivation is always required with minimum length
+        final motivationText = _motivationController.text.trim();
+        final hasValidMotivation =
+            motivationText.isNotEmpty && motivationText.length >= 20;
+
         if (_hasExperience) {
-          return _experienceDuration != null;
+          // If they have experience, require all experience fields + motivation
+          return _experienceDuration != null &&
+              _previousOrganizationController.text.trim().isNotEmpty &&
+              _taughtLevels.isNotEmpty &&
+              hasValidMotivation;
+        } else {
+          // If no experience, just require motivation
+          return hasValidMotivation;
         }
-        return _motivationController
-            .text
-            .isNotEmpty; // Motivation is always required
-      case 5: // Teaching Style
+      case 6: // Teaching Style
         return _preferredMode != null &&
             _teachingApproaches.isNotEmpty &&
             _preferredSessionType != null &&
             _hoursPerWeek != null;
-      case 6: // Digital Readiness - _hasInternet defaults to false, so no validation needed
+      case 7: // Digital Readiness - _hasInternet defaults to false, so no validation needed
         return true; // No required fields
-      case 7: // Availability
-        return _tutoringAvailability.isNotEmpty;
-      case 8: // Payment - All fields are required
+      case 8: // Availability
+        // Must have at least 1 tutoring slot and 1 test session slot
+        // Check that both service types have at least one day with time slots
+        bool hasTutoringSlots = false;
+        bool hasTestSlots = false;
+
+        // Check tutoring availability
+        for (var daySlots in _tutoringAvailability.values) {
+          if (daySlots.isNotEmpty) {
+            hasTutoringSlots = true;
+            break;
+          }
+        }
+
+        // Check test session availability
+        for (var daySlots in _testSessionAvailability.values) {
+          if (daySlots.isNotEmpty) {
+            hasTestSlots = true;
+            break;
+          }
+        }
+
+        return hasTutoringSlots && hasTestSlots;
+      case 9: // Payment - All fields are required
         // Must select payment method
         if (_paymentMethod == null || _paymentMethod!.isEmpty) {
           return false;
@@ -3241,9 +3634,54 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
         }
 
         return true;
-      case 9: // Verification
-        return _agreesToVerification;
-      case 10: // Personal Statement
+      case 10: // Verification
+        // Must agree to verification
+        if (!_agreesToVerification) {
+          return false;
+        }
+
+        // Check that all required documents are uploaded
+        List<String> requiredDocTypes = [
+          'profile_picture',
+          'id_front',
+          'id_back',
+          'last_certificate',
+        ];
+
+        // Add degree certificate if applicable
+        if (_selectedEducation != null &&
+            [
+              'Bachelors',
+              'Master\'s',
+              'Doctorate',
+              'PHD',
+            ].contains(_selectedEducation)) {
+          requiredDocTypes.add('degree_certificate');
+        }
+
+        // Add training certificate if applicable
+        if (_hasTraining) {
+          requiredDocTypes.add('training_certificate');
+        }
+
+        // Check all required documents are uploaded
+        for (String docType in requiredDocTypes) {
+          if (!_uploadedDocuments.containsKey(docType)) {
+            return false;
+          }
+        }
+
+        return true;
+      case 11: // Media Links
+        // Must have at least 1 social media link and valid YouTube video
+        bool hasSocialLink = _socialMediaLinks.values.any(
+          (link) => link.isNotEmpty,
+        );
+        bool hasVideoLink =
+            _videoLinkController.text.trim().isNotEmpty &&
+            _isValidYouTubeUrl(_videoLinkController.text.trim());
+        return hasSocialLink && hasVideoLink;
+      case 12: // Personal Statement
         return true; // No required fields
       default:
         return true;
@@ -3293,8 +3731,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       );
 
       // Get user ID
+      // DEBUG: Use test user ID if not authenticated
       final user = await AuthService.getCurrentUser();
-      final userId = user['userId'] ?? 'unknown';
+      final userId = user['userId'] ?? 'test-user-123'; // DEBUG MODE
 
       // Upload to Supabase Storage
       final String uploadedUrl = await StorageService.uploadDocument(
@@ -3338,15 +3777,18 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
             children: [
               const Icon(Icons.error, color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              Text(
-                'Upload failed: ${e.toString()}',
-                style: GoogleFonts.poppins(),
+              Expanded(
+                child: Text(
+                  'Upload failed. Please try again or use mobile app for uploads.',
+                  style: GoogleFonts.poppins(),
+                ),
               ),
             ],
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: AppTheme.primaryColor,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -3598,7 +4040,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
                       children: [
                         const Icon(
                           Icons.error_outline,
-                          color: Colors.red,
+                          color: AppTheme.primaryColor,
                           size: 20,
                         ),
                         const SizedBox(width: 8),
@@ -3700,8 +4142,13 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error submitting application: $e'),
-            backgroundColor: Colors.red,
+            content: Text(
+              'Error submitting application: $e',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
           ),
         );
       }
@@ -3787,7 +4234,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen> {
     _bankDetailsController.dispose();
     _videoLinkController.dispose();
     _statementController.dispose();
-    _customQuarterController.dispose();
+    // Dispose all tab controllers
+    for (var controller in _specializationTabControllers.values) {
+      controller.dispose();
+    }
+    _specializationTabControllers.clear();
     super.dispose();
   }
 }

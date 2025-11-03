@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -66,8 +67,10 @@ class ImagePickerBottomSheet extends StatelessWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Camera not available: $e'),
-                          backgroundColor: Colors.red,
+                          content: Text('Camera not available: $e', style: GoogleFonts.poppins()),
+                          backgroundColor: AppTheme.primaryColor,
+                          behavior: SnackBarBehavior.floating,
+                          margin: const EdgeInsets.all(16),
                         ),
                       );
                       Navigator.pop(context);
@@ -93,7 +96,10 @@ class ImagePickerBottomSheet extends StatelessWidget {
                     imageQuality: 85,
                   );
                   if (image != null && context.mounted) {
-                    Navigator.pop(context, File(image.path));
+                    Navigator.pop(
+                      context,
+                      image,
+                    ); // Return XFile directly for cross-platform support
                   } else if (context.mounted) {
                     Navigator.pop(context);
                   }
@@ -101,8 +107,10 @@ class ImagePickerBottomSheet extends StatelessWidget {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Failed to pick image: $e'),
-                        backgroundColor: Colors.red,
+                        content: Text('Failed to pick image: $e', style: GoogleFonts.poppins()),
+                        backgroundColor: AppTheme.primaryColor,
+                        behavior: SnackBarBehavior.floating,
+                        margin: const EdgeInsets.all(16),
                       ),
                     );
                     Navigator.pop(context);
@@ -141,8 +149,10 @@ class ImagePickerBottomSheet extends StatelessWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Failed to pick file: $e'),
-                          backgroundColor: Colors.red,
+                          content: Text('Failed to pick file: $e', style: GoogleFonts.poppins()),
+                          backgroundColor: AppTheme.primaryColor,
+                          behavior: SnackBarBehavior.floating,
+                          margin: const EdgeInsets.all(16),
                         ),
                       );
                       Navigator.pop(context);

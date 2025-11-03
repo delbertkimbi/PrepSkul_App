@@ -222,7 +222,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           ),
           title: Row(
             children: [
-              Icon(Icons.error_outline, color: Colors.red[600], size: 28),
+              Icon(Icons.error_outline, color: AppTheme.primaryColor, size: 28),
               const SizedBox(width: 12),
               Text(
                 'Request Failed',

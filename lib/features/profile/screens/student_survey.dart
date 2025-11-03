@@ -275,7 +275,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       Text(
                         '${((_currentStep + 1) / _steps.length * 100).toInt()}% Complete',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.neutral50,
                         ),
@@ -315,7 +315,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 //     ),
                 //   ),
                 // ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
               ],
             ),
           ),
@@ -371,7 +371,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 onPressed: () => Navigator.of(context).pop(true),
                 child: Text(
                   'Exit',
-                  style: GoogleFonts.poppins(color: Colors.red),
+                  style: GoogleFonts.poppins(color: AppTheme.primaryColor),
                 ),
               ),
             ],
@@ -390,26 +390,26 @@ class _StudentSurveyState extends State<StudentSurvey> {
           Text(
             step.title,
             style: GoogleFonts.poppins(
-              fontSize: 28,
+              fontSize: 22,
               fontWeight: FontWeight.bold,
               color: AppTheme.textDark,
               height: 1.2,
             ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           // Subtitle
           Text(
             step.subtitle,
             style: GoogleFonts.poppins(
-              fontSize: 16,
+              fontSize: 12,
               color: AppTheme.textMedium,
               height: 1.4,
             ),
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 16),
 
           // Content based on step
           Expanded(
@@ -514,7 +514,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             Text(
               'Date of Birth',
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
@@ -523,14 +523,14 @@ class _StudentSurveyState extends State<StudentSurvey> {
             Text(
               '*',
               style: GoogleFonts.poppins(
-                color: Colors.red,
-                fontSize: 16,
+                color: AppTheme.primaryColor,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         GestureDetector(
           onTap: () async {
             final date = await showDatePicker(
@@ -557,7 +557,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 Icon(
                   Icons.calendar_today,
                   color: AppTheme.textMedium,
-                  size: 20,
+                  size: 18,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -569,7 +569,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       color: _studentDateOfBirth != null
                           ? AppTheme.textDark
                           : AppTheme.textLight,
-                      fontSize: 14,
+                      fontSize: 12,
                     ),
                   ),
                 ),
@@ -645,7 +645,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           onSelectionChanged: (values) =>
               setState(() => _learningGoals = values),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         _buildMultiSelectField(
           title: 'What are your biggest learning challenges?',
           options: SurveyConfig.learningChallenges,
@@ -658,7 +658,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
 
   Widget _buildReview() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -670,15 +670,15 @@ class _StudentSurveyState extends State<StudentSurvey> {
               color: AppTheme.textDark,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             'Please review all information',
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 12,
               color: AppTheme.textMedium,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // Personal Information Card
           _buildReviewCard(
@@ -784,7 +784,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.softCard,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.softBorder, width: 1),
       ),
       child: Column(
@@ -806,7 +806,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 Text(
                   title,
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textDark,
                   ),
@@ -847,7 +847,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: FontWeight.w500,
               color: AppTheme.textDark,
             ),
@@ -869,15 +869,15 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           title,
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: options.map((option) {
             final isSelected = selectedValues.contains(option);
@@ -893,12 +893,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
@@ -913,13 +913,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -949,7 +949,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
@@ -958,8 +958,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
               Text(
                 ' *',
                 style: GoogleFonts.poppins(
-                  color: Colors.red,
-                  fontSize: 16,
+                  color: AppTheme.primaryColor,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1023,7 +1023,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
         final config = SurveyConfig.getProgramConfig(program);
         final isSelected = _selectedLearningPath == program;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: program,
             subtitle: config?.description,
@@ -1046,7 +1046,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: SurveyConfig.educationLevels.keys.map((level) {
         final isSelected = _selectedEducationLevel == level;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: level,
             isSelected: isSelected,
@@ -1076,7 +1076,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: levelConfig.classes.map((cls) {
         final isSelected = _selectedClass == cls;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: cls,
             isSelected: isSelected,
@@ -1107,7 +1107,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: levelConfig!.streams!.map((stream) {
         final isSelected = _selectedStream == stream;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: stream,
             subtitle: SurveyConfig.getStreamDescription(stream),
@@ -1135,7 +1135,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.softCard,
                 borderRadius: BorderRadius.circular(12),
@@ -1151,20 +1151,20 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       Icon(
                         Icons.school,
                         color: AppTheme.primaryColor,
-                        size: 20,
+                        size: 18,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Text(
                         'University Courses',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     'Enter each course on a new line\nExample:\nIntroduction to Microeconomics\nCalculus II\nOrganic Chemistry',
                     style: GoogleFonts.poppins(
@@ -1194,7 +1194,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                     'Type your courses here...\n\nIntroduction to Psychology\nLinear Algebra\nBusiness Statistics',
                 hintStyle: GoogleFonts.poppins(
                   color: AppTheme.textLight,
-                  fontSize: 14,
+                  fontSize: 12,
                 ),
                 filled: true,
                 fillColor: AppTheme.softCard,
@@ -1216,7 +1216,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 contentPadding: const EdgeInsets.all(16),
               ),
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 color: AppTheme.textDark,
                 height: 1.5,
               ),
@@ -1236,7 +1236,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       color: AppTheme.primaryColor,
                       size: 16,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         '${_selectedSubjects.length} course(s) added',
@@ -1265,7 +1265,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: subjects.map((subject) {
         final isSelected = _selectedSubjects.contains(subject);
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: subject,
             isSelected: isSelected,
@@ -1289,7 +1289,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: SurveyConfig.skillAreas.keys.map((category) {
         final isSelected = _selectedSkillCategory == category;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: category,
             isSelected: isSelected,
@@ -1314,7 +1314,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: skills.map((skill) {
         final isSelected = _selectedSkills.contains(skill);
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: skill,
             isSelected: isSelected,
@@ -1339,7 +1339,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
         final config = SurveyConfig.getExamTypeConfig(type);
         final isSelected = _selectedExamType == type;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: type,
             subtitle: config?.description,
@@ -1366,7 +1366,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: exams.map((exam) {
         final isSelected = _selectedSpecificExam == exam;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: exam,
             isSelected: isSelected,
@@ -1391,7 +1391,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       children: subjects.map((subject) {
         final isSelected = _examSubjects.contains(subject);
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: const EdgeInsets.only(bottom: 10),
           child: _buildOptionCard(
             title: subject,
             isSelected: isSelected,
@@ -1418,17 +1418,17 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'What\'s your budget?',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         Text(
           '$_minBudget XAF - $_maxBudget XAF',
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -1436,9 +1436,9 @@ class _StudentSurveyState extends State<StudentSurvey> {
         const SizedBox(height: 4),
         Text(
           'per month',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         RangeSlider(
           values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
@@ -1469,11 +1469,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
           ],
         ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         // Information Card (moved below budget selection)
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: AppTheme.primaryColor.withOpacity(0.05),
             borderRadius: BorderRadius.circular(12),
@@ -1490,13 +1490,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   Icon(
                     Icons.info_outline,
                     color: AppTheme.primaryColor,
-                    size: 20,
+                    size: 18,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Text(
                     'About Tutoring Costs',
                     style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
@@ -1511,7 +1511,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   color: AppTheme.textDark,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               ...[
                 'Tutor\'s qualifications and experience',
                 'Subject difficulty and level',
@@ -1590,20 +1590,20 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'Tutor Gender Preference',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'Do you have a gender preference for your tutor?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.tutorGenderPreferences.map((option) {
             bool isSelected = _tutorGenderPreference == option;
@@ -1611,8 +1611,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
               onTap: () => setState(() => _tutorGenderPreference = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
@@ -1631,13 +1631,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -1682,26 +1682,26 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'Tutor Qualification Preference',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'What level of tutor qualification would you prefer?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ...qualifications.map((qual) {
           bool isSelected = _tutorQualificationPreference == qual['value'];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () =>
                   setState(() => _tutorQualificationPreference = qual['value']),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
@@ -1710,12 +1710,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
                         : AppTheme.softBorder,
                     width: isSelected ? 2 : 1.5,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
                             color: AppTheme.primaryColor.withOpacity(0.1),
-                            blurRadius: 8,
+                            blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ]
@@ -1754,7 +1754,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                           Text(
                             qual['label'] as String,
                             style: GoogleFonts.poppins(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
                             ),
@@ -1810,25 +1810,25 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'Confidence Level',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'How confident are you in this subject/skill?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         ...confidenceLevels.map((level) {
           bool isSelected = _confidenceLevel == level['value'];
           return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () => setState(() => _confidenceLevel = level['value']),
               child: Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(
@@ -1837,12 +1837,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
                         : AppTheme.softBorder,
                     width: isSelected ? 2 : 1.5,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
                             color: AppTheme.primaryColor.withOpacity(0.1),
-                            blurRadius: 8,
+                            blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ]
@@ -1881,7 +1881,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                           Text(
                             level['label'] as String,
                             style: GoogleFonts.poppins(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
                             ),
@@ -1914,20 +1914,20 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'Learning Location',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'Where would you prefer to have your sessions?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.learningModes.map((option) {
             bool isSelected = _preferredLocation == option;
@@ -1935,8 +1935,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
               onTap: () => setState(() => _preferredLocation = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
@@ -1955,13 +1955,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -1983,20 +1983,20 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'Schedule Preference',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'When do you prefer to have your learning sessions?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.schedulePreferences.map((option) {
             bool isSelected = _preferredSchedule == option;
@@ -2004,8 +2004,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
               onTap: () => setState(() => _preferredSchedule = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
@@ -2024,13 +2024,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -2052,20 +2052,20 @@ class _StudentSurveyState extends State<StudentSurvey> {
         Text(
           'Learning Style',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
           'How do you learn best?',
-          style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           alignment: WrapAlignment.start,
           children: SurveyConfig.learningStyles.map((option) {
             bool isSelected = _learningStyle == option;
@@ -2073,8 +2073,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
               onTap: () => setState(() => _learningStyle = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                  horizontal: 14,
+                  vertical: 10,
                 ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
@@ -2093,13 +2093,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       const Icon(
                         Icons.check_circle,
                         color: Colors.white,
-                        size: 20,
+                        size: 18,
                       ),
-                    if (isSelected) const SizedBox(width: 8),
+                    if (isSelected) const SizedBox(width: 6),
                     Text(
                       option,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: isSelected ? Colors.white : AppTheme.textDark,
                       ),
@@ -2161,7 +2161,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
@@ -2171,22 +2171,22 @@ class _StudentSurveyState extends State<StudentSurvey> {
               Text(
                 '*',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: Colors.red,
+                  color: AppTheme.primaryColor,
                 ),
               ),
             ],
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         TextField(
           onChanged: onChanged,
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: GoogleFonts.poppins(
               color: AppTheme.textLight,
-              fontSize: 14,
+              fontSize: 12,
             ),
             filled: true,
             fillColor: AppTheme.softCard,
@@ -2225,19 +2225,19 @@ class _StudentSurveyState extends State<StudentSurvey> {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
             width: isSelected ? 2 : 1.5,
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
@@ -2245,8 +2245,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
         child: Row(
           children: [
             Container(
-              width: 24,
-              height: 24,
+              width: 20,
+              height: 20,
               decoration: BoxDecoration(
                 color: isSelected ? AppTheme.primaryColor : Colors.transparent,
                 border: Border.all(
@@ -2258,10 +2258,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: isSelected
-                  ? const Icon(Icons.check, color: Colors.white, size: 16)
+                  ? const Icon(Icons.check, color: Colors.white, size: 12)
                   : null,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2269,17 +2269,17 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: AppTheme.textMedium,
                       ),
                     ),
@@ -2339,7 +2339,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 child: Text(
                   _currentStep == _steps.length - 1 ? 'Complete' : 'Next',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -2484,7 +2484,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       child: Text(
                         'Payment Policy Agreement',
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textDark,
                         ),
@@ -2545,7 +2545,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                     child: Text(
                       'Got it',
                       style: GoogleFonts.poppins(
-                        fontSize: 15,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -2561,7 +2561,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
 
   Widget _buildPolicyPoint(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2579,7 +2579,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             child: Text(
               text,
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 color: AppTheme.textDark,
                 height: 1.5,
               ),
@@ -2614,7 +2614,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 Text(
                   'Saving your preferences...',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     color: AppTheme.textDark,
                   ),
                 ),

@@ -20,6 +20,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   Map<String, dynamic>? _tutorProfile;
   ProfileCompletionStatus? _completionStatus;
   bool _isLoading = true;
+  String? _approvalStatus; // 'pending', 'approved', 'rejected'
 
   @override
   void initState() {
@@ -44,6 +45,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _userInfo = user;
         _tutorProfile = tutorData;
         _completionStatus = status;
+        _approvalStatus = tutorData?['status'] as String?;
         _isLoading = false;
       });
     } catch (e) {
@@ -128,50 +130,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
                   if (_completionStatus != null) const SizedBox(height: 24),
 
-                  // Pending Approval Card (only if profile is complete)
-                  if (_completionStatus?.isComplete == true)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.primaryColor,
-                            AppTheme.primaryColor.withOpacity(0.8),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Column(
-                        children: [
-                          const Icon(
-                            Icons.hourglass_empty,
-                            size: 48,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Pending Approval',
-                            style: GoogleFonts.poppins(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Your profile is being reviewed by our admin team.\nYou\'ll be notified once approved!',
-                            textAlign: TextAlign.center,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: Colors.white.withOpacity(0.9),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  // Approval Status Card (only if profile is complete)
+                  if (_completionStatus?.isComplete == true &&
+                      _approvalStatus != null)
+                    _buildApprovalStatusCard(),
 
-                  if (_completionStatus?.isComplete == true)
+                  if (_completionStatus?.isComplete == true &&
+                      _approvalStatus != null)
                     const SizedBox(height: 24),
 
                   // Quick Stats (mock data for now)
@@ -195,6 +160,173 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               ),
             ),
     );
+  }
+
+  Widget _buildApprovalStatusCard() {
+    if (_approvalStatus == 'approved') {
+      // Approved - show success card
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.accentGreen,
+              AppTheme.accentGreen.withOpacity(0.8),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.check_circle, size: 48, color: Colors.white),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Approved!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Your profile is live and students can now book sessions with you.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (_approvalStatus == 'rejected') {
+      // Rejected - show error card with reason
+      final rejectionReason =
+          _tutorProfile?['admin_review_notes'] as String? ??
+          'No reason provided';
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3), width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.cancel, size: 32, color: AppTheme.primaryColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Application Rejected',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Reason:',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              rejectionReason,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textDark,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () {
+                // Navigate to onboarding to make corrections
+                Navigator.of(context)
+                    .pushNamed(
+                      '/tutor-onboarding',
+                      arguments: {
+                        'userId': _userInfo?['userId'],
+                        'existingData': _tutorProfile,
+                      },
+                    )
+                    .then((_) => _loadUserInfo());
+              },
+              icon: const Icon(Icons.edit),
+              label: Text(
+                'Update Profile & Re-apply',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryColor,
+                side: BorderSide(color: AppTheme.primaryColor),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Pending - show waiting card
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppTheme.primaryColor,
+              AppTheme.primaryColor.withOpacity(0.8),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          children: [
+            const Icon(Icons.hourglass_empty, size: 48, color: Colors.white),
+            const SizedBox(height: 12),
+            Text(
+              'Pending Approval',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your profile is being reviewed by our admin team.\nYou\'ll be notified once approved!',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.white.withOpacity(0.9),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildStatCard(String title, String value, IconData icon) {

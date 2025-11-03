@@ -4,7 +4,6 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EmailConfirmationScreen extends StatefulWidget {
   final String email;
@@ -141,13 +140,17 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
     } catch (e) {
       print('Error proceeding to survey: $e');
       if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Error: ${e.toString()}',
+              errorMessage,
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -171,7 +174,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
             'Please wait ${_resendCountdown} seconds before resending',
             style: GoogleFonts.poppins(),
           ),
-          backgroundColor: Colors.orange,
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
         ),
       );
       return;
@@ -180,11 +185,8 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
     setState(() => _isResending = true);
 
     try {
-      // Resend confirmation email
-      await SupabaseService.client.auth.resend(
-        type: OtpType.signup,
-        email: widget.email,
-      );
+      // Resend confirmation email with proper redirect URL
+      await AuthService.resendEmailVerification(widget.email);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -193,7 +195,10 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
               'Confirmation email sent to ${widget.email}',
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: Colors.green,
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
           ),
         );
 
@@ -204,13 +209,17 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to resend email. Please try again.',
+              errorMessage,
               style: GoogleFonts.poppins(),
             ),
-            backgroundColor: Colors.red,
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

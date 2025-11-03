@@ -391,7 +391,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       await AuthService.saveSession(
         userId: response.user!.id,
         userRole: profile['user_type'] ?? 'learner',
-        phone: profile['phone_number'],
+        phone: profile['phone_number'] ?? '',
         fullName: profile['full_name'] ?? '',
         surveyCompleted: profile['survey_completed'] ?? false,
         rememberMe: true,
@@ -423,13 +423,14 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
     } catch (e) {
       print('❌ Email login error: $e');
       if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Login failed: ${e.toString().length > 50 ? e.toString().substring(0, 50) : e.toString()}',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red,
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
