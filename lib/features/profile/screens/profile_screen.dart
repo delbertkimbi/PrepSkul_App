@@ -312,24 +312,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               );
             },
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                ),
-                child: CircularProgressIndicator(
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
-                      : null,
-                  color: AppTheme.primaryColor,
-                ),
-              );
-            },
           ),
         ),
       );
