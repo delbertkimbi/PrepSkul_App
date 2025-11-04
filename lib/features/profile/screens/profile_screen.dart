@@ -255,11 +255,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildProfilePhoto() {
     // Get profile photo URL from multiple sources
-    final profilePhotoUrl = _tutorProfile?['profile_photo_url'] as String? ??
+    final profilePhotoUrl =
+        _tutorProfile?['profile_photo_url'] as String? ??
         _userInfo?['avatarUrl'] as String? ??
         _tutorProfile?['avatar_url'] as String?;
     final name = _userInfo?['fullName'] ?? 'User';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+    
+    // Debug logging
+    print('🔍 Profile Photo Debug:');
+    print('  - Tutor Profile exists: ${_tutorProfile != null}');
+    print('  - Profile Photo URL: $profilePhotoUrl');
+    print('  - User Info Avatar: ${_userInfo?['avatarUrl']}');
+    print('  - Tutor Avatar URL: ${_tutorProfile?['avatar_url']}');
+    if (_tutorProfile != null) {
+      print('  - Tutor Profile keys: ${_tutorProfile!.keys.toList()}');
+    }
 
     if (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty) {
       return CircleAvatar(
@@ -284,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: CircularProgressIndicator(
                     value: loadingProgress.expectedTotalBytes != null
                         ? loadingProgress.cumulativeBytesLoaded /
-                            loadingProgress.expectedTotalBytes!
+                              loadingProgress.expectedTotalBytes!
                         : null,
                     color: AppTheme.primaryColor,
                   ),

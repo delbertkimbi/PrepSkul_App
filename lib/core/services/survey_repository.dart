@@ -120,13 +120,26 @@ class SurveyRepository {
     try {
       print('📖 Fetching tutor survey for user: $userId');
 
-      final response = await SupabaseService.client
+      // Try querying by id first (id is the primary key and FK to profiles.id)
+      var response = await SupabaseService.client
           .from('tutor_profiles')
           .select()
-          .eq('user_id', userId)
+          .eq('id', userId)
           .maybeSingle();
 
+      // If not found, try by user_id as fallback
+      if (response == null) {
+        response = await SupabaseService.client
+            .from('tutor_profiles')
+            .select()
+            .eq('user_id', userId)
+            .maybeSingle();
+      }
+
       print('✅ Tutor survey fetched: ${response != null}');
+      if (response != null) {
+        print('📸 Profile photo URL: ${response['profile_photo_url']}');
+      }
       return response;
     } catch (e) {
       print('❌ Error fetching tutor survey: $e');
