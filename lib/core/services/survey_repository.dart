@@ -13,13 +13,48 @@ class SurveyRepository {
     try {
       print('📝 Saving tutor survey for user: $userId');
 
-      // Save to tutor_profiles table
-      await SupabaseService.client.from('tutor_profiles').upsert({
-        'user_id': userId,
-        ...data,
-      }, onConflict: 'user_id');
+      // CRITICAL: Ensure profile exists before saving to tutor_profiles
+      // This prevents foreign key constraint violations
+      final existingProfile = await SupabaseService.client
+          .from('profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
 
-      // Update profiles table with contact info and mark survey as completed
+      if (existingProfile == null) {
+        // Profile doesn't exist - create it first
+        print('⚠️ Profile not found for user $userId, creating profile...');
+        final user = SupabaseService.client.auth.currentUser;
+        if (user == null) {
+          throw Exception('User not authenticated. Cannot create profile.');
+        }
+
+        // Determine email and phone from user or contactInfo
+        String? email = user.email;
+        String? phone = user.phone;
+
+        if (contactInfo != null && contactInfo.isNotEmpty) {
+          if (contactInfo.contains('@')) {
+            email = contactInfo;
+          } else if (contactInfo.startsWith('+')) {
+            phone = contactInfo;
+          }
+        }
+
+        await SupabaseService.client.from('profiles').upsert({
+          'id': userId,
+          'email': email ?? '',
+          'full_name': user.userMetadata?['full_name'] ?? 'Tutor',
+          'phone_number': phone,
+          'user_type': 'tutor',
+          'survey_completed': false,
+          'is_admin': false,
+        }, onConflict: 'id');
+
+        print('✅ Profile created for user: $userId');
+      }
+
+      // Prepare profile updates
       final profileUpdates = <String, dynamic>{'survey_completed': true};
 
       if (contactInfo != null && contactInfo.isNotEmpty) {
@@ -33,10 +68,45 @@ class SurveyRepository {
         }
       }
 
+      // Update profiles table with contact info and mark survey as completed
       await SupabaseService.client
           .from('profiles')
           .update(profileUpdates)
           .eq('id', userId);
+
+      // Verify profile exists one more time before inserting
+      final profileCheck = await SupabaseService.client
+          .from('profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (profileCheck == null) {
+        throw Exception(
+          'Profile validation failed: Profile does not exist for user $userId',
+        );
+      }
+
+      print('✅ Profile verified: $profileCheck');
+
+      // Save to tutor_profiles table
+      // CRITICAL: tutor_profiles.id is the PRIMARY KEY and FK to profiles.id
+      // We MUST set id = userId to satisfy the foreign key constraint
+      final tutorData = Map<String, dynamic>.from(data);
+      tutorData.remove('id'); // Remove any existing id from data
+      tutorData['id'] =
+          userId; // Set id to userId (primary key, FK to profiles.id)
+      tutorData['user_id'] = userId; // Also set user_id for consistency
+
+      print('📦 Preparing to upsert tutor_profiles with id: $userId');
+      print('📦 Data keys: ${tutorData.keys.toList()}');
+
+      await SupabaseService.client
+          .from('tutor_profiles')
+          .upsert(
+            tutorData,
+            onConflict: 'id', // Conflict on id (primary key)
+          );
 
       print('✅ Tutor survey saved successfully');
     } catch (e) {

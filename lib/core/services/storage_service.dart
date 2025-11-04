@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:path/path.dart' as path;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 
 /// Comprehensive file upload service for PrepSkul
@@ -64,6 +65,33 @@ class StorageService {
     } catch (e) {
       print('❌ Error uploading profile photo: $e');
       rethrow;
+    }
+  }
+
+  /// Delete existing document file(s) before re-upload
+  /// Handles multiple file extensions to prevent conflicts
+  static Future<void> _deleteExistingDocument(
+    String userId,
+    String documentType,
+  ) async {
+    try {
+      // List of possible extensions for this document type
+      final extensions = ['.jpg', '.jpeg', '.png', '.pdf'];
+
+      for (final ext in extensions) {
+        final path = '$userId/$documentType$ext';
+        try {
+          await SupabaseService.client.storage.from(documentsBucket).remove([
+            path,
+          ]);
+          print('🗑️ [DEBUG] Deleted existing file: $path');
+        } catch (e) {
+          // File doesn't exist, continue silently
+        }
+      }
+    } catch (e) {
+      // Ignore errors - file might not exist
+      print('⚠️ [DEBUG] Could not delete existing file: $e');
     }
   }
 
@@ -261,10 +289,120 @@ class StorageService {
       // Create storage path
       final storagePath = '$userId/$documentType$fileExtension';
 
-      // Upload to Supabase (handles both File and Uint8List)
-      await SupabaseService.client.storage
-          .from(documentsBucket)
-          .upload(storagePath, uploadData);
+      // Delete existing file(s) before upload to prevent conflicts
+      // This handles file extension changes (e.g., .jpeg to .png)
+      await _deleteExistingDocument(userId, documentType);
+
+      // Upload to Supabase - use uploadBinary on web for Uint8List, upload for mobile File
+      print('🔍 [DEBUG] Uploading to path: $storagePath');
+      print('🔍 [DEBUG] Upload data type: ${uploadData.runtimeType}');
+      print('🔍 [DEBUG] Platform: ${kIsWeb ? "Web" : "Mobile"}');
+
+      try {
+        if (kIsWeb && uploadData is Uint8List) {
+          // Web: use uploadBinary for Uint8List
+          print('🔍 [DEBUG] Using uploadBinary for web upload');
+          await SupabaseService.client.storage
+              .from(documentsBucket)
+              .uploadBinary(
+                storagePath,
+                uploadData,
+                fileOptions: FileOptions(
+                  contentType: mimeType,
+                  upsert:
+                      false, // We deleted the file above, so no need for upsert
+                ),
+              );
+          print('✅ [DEBUG] uploadBinary completed successfully');
+        } else {
+          // Mobile: use regular upload with File
+          print('🔍 [DEBUG] Using regular upload for mobile');
+          await SupabaseService.client.storage
+              .from(documentsBucket)
+              .upload(
+                storagePath,
+                uploadData,
+                fileOptions: const FileOptions(
+                  upsert:
+                      false, // We deleted the file above, so no need for upsert
+                ),
+              );
+          print('✅ [DEBUG] Regular upload completed successfully');
+        }
+      } catch (uploadError) {
+        // Handle specific upload errors
+        final errorString = uploadError.toString();
+
+        // Check if it's a StorageException and extract status code
+        int? statusCode;
+        if (uploadError is Exception) {
+          final errorMessage = uploadError.toString();
+          // Try to extract status code from error message
+          final statusMatch = RegExp(
+            r'statusCode:\s*(\d+)',
+          ).firstMatch(errorMessage);
+          if (statusMatch != null) {
+            statusCode = int.tryParse(statusMatch.group(1)!);
+          }
+        }
+
+        // If 409 error (duplicate), try deleting and retrying once
+        if (statusCode == 409 ||
+            errorString.contains('409') ||
+            errorString.contains('already exists') ||
+            errorString.contains('Duplicate')) {
+          print('⚠️ [DEBUG] Duplicate file detected, deleting and retrying...');
+          // Delete the exact file path and retry
+          try {
+            await SupabaseService.client.storage.from(documentsBucket).remove([
+              storagePath,
+            ]);
+            print('🗑️ [DEBUG] Deleted duplicate file: $storagePath');
+
+            // Retry upload
+            if (kIsWeb && uploadData is Uint8List) {
+              await SupabaseService.client.storage
+                  .from(documentsBucket)
+                  .uploadBinary(
+                    storagePath,
+                    uploadData,
+                    fileOptions: FileOptions(
+                      contentType: mimeType,
+                      upsert: false,
+                    ),
+                  );
+            } else {
+              await SupabaseService.client.storage
+                  .from(documentsBucket)
+                  .upload(
+                    storagePath,
+                    uploadData,
+                    fileOptions: const FileOptions(upsert: false),
+                  );
+            }
+            print('✅ [DEBUG] Retry upload successful');
+          } catch (retryError) {
+            print('❌ [DEBUG] Retry failed: $retryError');
+            throw Exception(
+              'Failed to upload document. Please try again or contact support if the issue persists.',
+            );
+          }
+        }
+        // If 403 error (RLS policy), provide user-friendly message
+        else if (statusCode == 403 ||
+            errorString.contains('403') ||
+            errorString.contains('row-level security') ||
+            errorString.contains('Unauthorized')) {
+          print('❌ [DEBUG] RLS policy error: $uploadError');
+          throw Exception(
+            'Upload failed due to permissions. Please ensure you are logged in and try again. If the issue persists, contact support.',
+          );
+        }
+        // Re-throw other errors
+        else {
+          rethrow;
+        }
+      }
 
       // Get authenticated URL (documents are private)
       final signedUrl = await SupabaseService.client.storage

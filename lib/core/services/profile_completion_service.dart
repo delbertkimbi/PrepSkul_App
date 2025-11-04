@@ -44,10 +44,9 @@ class ProfileCompletionService {
         isRequired: true,
       ),
       ProfileField(
-        name: 'about_me',
+        name: 'bio',
         label: 'About Me',
-        isComplete:
-            data['about_me'] != null && (data['about_me'] as String).isNotEmpty,
+        isComplete: data['bio'] != null && (data['bio'] as String).isNotEmpty,
         isRequired: true,
       ),
     ];
@@ -316,4 +315,3 @@ class ProfileCompletionService {
     );
   }
 }
-

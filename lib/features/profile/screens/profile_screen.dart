@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/survey_repository.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -14,6 +15,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _userInfo;
+  Map<String, dynamic>? _tutorProfile; // Add tutor profile data
   bool _isLoading = true;
 
   @override
@@ -25,8 +27,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadUserInfo() async {
     try {
       final user = await AuthService.getCurrentUser();
+
+      // Load tutor profile data if user is a tutor
+      Map<String, dynamic>? tutorData;
+      if (widget.userType.toLowerCase() == 'tutor') {
+        tutorData = await SurveyRepository.getTutorSurvey(user['userId']);
+      }
+
       setState(() {
         _userInfo = user;
+        _tutorProfile = tutorData;
         _isLoading = false;
       });
     } catch (e) {
@@ -92,15 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 20),
 
                   // Profile Photo
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                    child: Icon(
-                      Icons.person,
-                      size: 50,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
+                  _buildProfilePhoto(),
 
                   const SizedBox(height: 16),
 
@@ -248,6 +250,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildProfilePhoto() {
+    // Get profile photo URL from multiple sources
+    final profilePhotoUrl = _tutorProfile?['profile_photo_url'] as String? ??
+        _userInfo?['avatarUrl'] as String? ??
+        _tutorProfile?['avatar_url'] as String?;
+    final name = _userInfo?['fullName'] ?? 'User';
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+
+    if (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: 50,
+        backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+        child: ClipOval(
+          child: Image.network(
+            profilePhotoUrl,
+            width: 100,
+            height: 100,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                ),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                        : null,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to initial letter if image fails to load
+              return Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primaryColor,
+                ),
+                child: Center(
+                  child: Text(
+                    initial,
+                    style: GoogleFonts.poppins(
+                      fontSize: 40,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              );
+            },
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                ),
+                child: CircularProgressIndicator(
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? loadingProgress.cumulativeBytesLoaded /
+                            loadingProgress.expectedTotalBytes!
+                      : null,
+                  color: AppTheme.primaryColor,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
+
+    // Default fallback - icon with initial letter
+    return CircleAvatar(
+      radius: 50,
+      backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+      child: name.isNotEmpty
+          ? Text(
+              name[0].toUpperCase(),
+              style: GoogleFonts.poppins(
+                fontSize: 36,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.primaryColor,
+              ),
+            )
+          : Icon(Icons.person, size: 50, color: AppTheme.primaryColor),
     );
   }
 }

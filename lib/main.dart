@@ -30,17 +30,21 @@ import 'dart:async';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Show splash screen immediately, then initialize in background
+  // Show splash screen IMMEDIATELY - don't wait for anything
   runApp(const PrepSkulApp());
 
-  // Initialize in background after UI is shown
+  // Initialize in background (non-blocking)
+  // This happens asynchronously and doesn't delay the UI
   _initializeAppInBackground();
 }
 
 /// Initialize app services in background (non-blocking)
+/// This runs asynchronously and doesn't block the UI
 Future<void> _initializeAppInBackground() async {
   try {
-    // Initialize Supabase
+    print('🔄 Starting background initialization...');
+
+    // Initialize Supabase (this may take a moment)
     await Supabase.initialize(
       url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
       anonKey:
@@ -49,11 +53,15 @@ Future<void> _initializeAppInBackground() async {
         authFlowType: AuthFlowType.pkce,
       ),
     );
+    print('✅ Supabase initialized');
 
+    // Initialize language service
     await LanguageService.initialize();
+    print('✅ Language service initialized');
 
     // Initialize auth state listener
     AuthService.initAuthListener();
+    print('✅ Auth listener initialized');
 
     print('✅ App initialization complete');
   } catch (e) {
@@ -224,28 +232,50 @@ class _SplashScreenState extends State<SplashScreen> {
 
   /// Initialize splash screen - show immediately, then check status
   Future<void> _initializeSplash() async {
-    // Wait for Supabase to be initialized (max 3 seconds)
+    // Wait for Supabase to be ready in background (non-blocking)
+    Future.microtask(() async {
+      int attempts = 0;
+      while (!_isSupabaseReady() && attempts < 50) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        attempts++;
+      }
+
+      // Now that we're ready, set up auth listeners
+      if (mounted) {
+        _setupAuthListeners();
+      }
+
+      // Check for URL callbacks (web only)
+      if (kIsWeb && mounted) {
+        _checkPasswordResetCallback();
+        _checkEmailConfirmationCallback();
+      }
+    });
+
+    // Ensure minimum splash display time (2.5 seconds) to show animation
+    // This ensures users see the splash screen even if Supabase is fast
+    await Future.delayed(const Duration(milliseconds: 2500));
+
+    // Wait for Supabase to be ready (with timeout) before checking status
     int attempts = 0;
-    while (!_isSupabaseReady() && attempts < 30) {
+    while (!_isSupabaseReady() && attempts < 50 && mounted) {
       await Future.delayed(const Duration(milliseconds: 100));
       attempts++;
     }
 
-    // Now that we're ready, set up auth listeners
-    _setupAuthListeners();
-
-    // Check for URL callbacks (web only)
-    if (kIsWeb) {
-      _checkPasswordResetCallback();
-      _checkEmailConfirmationCallback();
+    // Setup listeners if Supabase is ready
+    if (_isSupabaseReady() && mounted) {
+      _setupAuthListeners();
+      if (kIsWeb) {
+        _checkPasswordResetCallback();
+        _checkEmailConfirmationCallback();
+      }
     }
 
-    // Small delay to show splash animation, then check onboarding
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (mounted) {
-        _checkOnboardingStatus();
-      }
-    });
+    // Check onboarding status after minimum display time
+    if (mounted) {
+      _checkOnboardingStatus();
+    }
   }
 
   /// Check if Supabase is ready
@@ -498,7 +528,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
+    // Get localization safely - provide fallback if not ready
+    String tagline;
+    try {
+      final l10n = AppLocalizations.of(context);
+      tagline = l10n.tagline;
+    } catch (e) {
+      // Fallback if localization not ready yet
+      tagline = 'Your learning journey starts here';
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -506,7 +544,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Stack(
           children: [
             // Main content with animated logo
-            Center(child: _SplashContent(tagline: l10n.tagline)),
+            Center(child: _SplashContent(tagline: tagline)),
 
             // Language switcher in top right
             Positioned(top: 20, right: 20, child: const LanguageSwitcher()),
@@ -585,20 +623,38 @@ class _SplashContentState extends State<_SplashContent>
                         'https://cpzaxdfxbamdsshdgjyg.supabase.co/storage/v1/object/public/Logos/app_logo(blue).png',
                         width: 120,
                         height: 120,
+                        fit: BoxFit.contain,
+                        // Pre-cache the image for faster loading
+                        cacheWidth: 240, // 2x for retina
                         loadingBuilder: (context, child, loadingProgress) {
+                          // Show local asset immediately while network image loads
                           if (loadingProgress == null) return child;
-                          return SizedBox(
+                          return Image.asset(
+                            'assets/images/app_logo(blue).png',
                             width: 120,
                             height: 120,
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                  : null,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                AppTheme.primaryColor,
-                              ),
-                            ),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              // Ultimate fallback - show placeholder
+                              return Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'PS',
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white,
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                         errorBuilder: (context, error, stackTrace) {
@@ -607,6 +663,28 @@ class _SplashContentState extends State<_SplashContent>
                             'assets/images/app_logo(blue).png',
                             width: 120,
                             height: 120,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) {
+                              // Ultimate fallback - show placeholder
+                              return Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'PS',
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white,
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                       )
@@ -614,6 +692,28 @@ class _SplashContentState extends State<_SplashContent>
                         'assets/images/app_logo(blue).png',
                         width: 120,
                         height: 120,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          // Fallback placeholder if asset doesn't exist
+                          return Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'PS',
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
               ),
             );

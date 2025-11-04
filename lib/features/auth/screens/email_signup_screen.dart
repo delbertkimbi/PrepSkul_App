@@ -10,7 +10,7 @@ import 'email_confirmation_screen.dart';
 final _emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
 
 class EmailSignupScreen extends StatefulWidget {
-  const EmailSignupScreen({Key? key}) : super(key: key);
+  const EmailSignupScreen({super.key});
 
   @override
   State<EmailSignupScreen> createState() => _EmailSignupScreenState();

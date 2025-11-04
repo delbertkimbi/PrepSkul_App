@@ -224,8 +224,8 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final student = widget.request['student'] as Map<String, dynamic>;
-    final status = widget.request['status'] as String;
+    final student = widget.request['student'] as Map<String, dynamic>? ?? {};
+    final status = widget.request['status'] as String? ?? 'pending';
     final hasConflict = widget.request['has_conflict'] == true;
     final isPending = status == 'pending';
 
@@ -446,9 +446,9 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   }
 
   Widget _buildScheduleCard() {
-    final frequency = widget.request['frequency'] as int;
-    final days = widget.request['days'] as List;
-    final times = widget.request['times'] as Map<String, dynamic>;
+    final frequency = widget.request['frequency'] as int? ?? 0;
+    final days = widget.request['days'] as List? ?? [];
+    final times = widget.request['times'] as Map<String, dynamic>? ?? {};
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -513,7 +513,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   }
 
   Widget _buildLocationCard() {
-    final location = widget.request['location'] as String;
+    final location = widget.request['location'] as String? ?? 'Not specified';
     final address = widget.request['address'] as String?;
 
     return Container(
@@ -537,14 +537,14 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   }
 
   Widget _buildRevenueCard() {
-    final monthlyTotal = widget.request['monthly_total'] as double;
-    final paymentPlan = widget.request['payment_plan'] as String;
+    final monthlyTotal = widget.request['monthly_total'] as double? ?? 0.0;
+    final paymentPlan = widget.request['payment_plan'] as String? ?? 'Not specified';
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.green[50]!, Colors.green[25]!],
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE8F5E9), Color(0xFFF1F8E9)],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.green[200]!),

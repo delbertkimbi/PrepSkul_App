@@ -38,6 +38,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         _customQuarter = _customQuarterController.text;
       });
     });
+
+    // Add listeners for payment fields to auto-save
+    _paymentNumberController.addListener(() => _saveData());
+    _paymentNameController.addListener(() => _saveData());
+    _bankDetailsController.addListener(() => _saveData());
+
     _loadAuthMethod();
     _loadSavedData();
   }
@@ -50,36 +56,75 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     });
   }
 
-  // Auto-save functionality
+  // Auto-save functionality - Save ALL fields locally
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
     final data = {
       'currentStep': _currentStep,
+      // Contact Information
       'email': _emailController.text,
+      'phone': _phoneController.text,
+      'authMethod': _authMethod,
+      // Academic Background
       'selectedEducation': _selectedEducation,
       'institution': _institutionController.text,
       'fieldOfStudy': _fieldOfStudyController.text,
       'hasTraining': _hasTraining,
+      // Location
       'selectedCity': _selectedCity,
       'selectedQuarter': _selectedQuarter,
       'customQuarter': _customQuarter,
+      // Teaching Focus
       'selectedTutoringAreas': _selectedTutoringAreas,
       'selectedLearnerLevels': _selectedLearnerLevels,
+      // Specializations
       'selectedSpecializations': _selectedSpecializations,
+      // Experience
       'hasExperience': _hasExperience,
       'experienceDuration': _experienceDuration,
+      'previousOrganization': _previousOrganizationController.text,
+      'taughtLevels': _taughtLevels,
       'motivation': _motivationController.text,
+      // Teaching Style
       'preferredMode': _preferredMode,
       'teachingApproaches': _teachingApproaches,
       'preferredSessionType': _preferredSessionType,
+      'handlesMultipleLearners': _handlesMultipleLearners,
       'hoursPerWeek': _hoursPerWeek,
+      // Digital Readiness
+      'devices': _devices,
+      'hasInternet': _hasInternet,
+      'teachingTools': _teachingTools,
+      'hasMaterials': _hasMaterials,
+      'wantsTraining': _wantsTraining,
+      // Availability
+      'tutoringAvailability': _tutoringAvailability,
+      'testSessionAvailability': _testSessionAvailability,
+      // Payment
       'paymentMethod': _paymentMethod,
+      'paymentNumber': _paymentNumberController.text,
+      'paymentName': _paymentNameController.text,
+      'bankDetails': _bankDetailsController.text,
       'expectedRate': _expectedRate,
+      'pricingFactors': _pricingFactors,
       'agreesToPaymentPolicy': _agreesToPaymentPolicy,
+      // Verification
       'agreesToVerification': _agreesToVerification,
+      'videoLink': _videoLinkController.text,
+      'socialMediaLinks': _socialMediaLinks,
+      // Personal Statement
+      'statement': _statementController.text,
+      // Affirmations
+      'affirmations': _affirmations,
+      // Document URLs (from _uploadedDocuments)
+      'uploadedDocuments': _uploadedDocuments,
+      // Legacy URLs (for backward compatibility)
+      'profilePhotoUrl': _profilePhotoUrl,
+      'idCardFrontUrl': _idCardFrontUrl,
+      'idCardBackUrl': _idCardBackUrl,
     };
     await prefs.setString('tutor_onboarding_data', jsonEncode(data));
-    print('✅ Auto-saved tutor onboarding data');
+    print('✅ Auto-saved tutor onboarding data (comprehensive)');
   }
 
   Future<void> _loadSavedData() async {
@@ -91,36 +136,108 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         final data = jsonDecode(savedDataString) as Map<String, dynamic>;
         setState(() {
           _currentStep = data['currentStep'] ?? 0;
+          // Contact Information
           _emailController.text = data['email'] ?? '';
+          _phoneController.text = data['phone'] ?? '';
+          _authMethod = data['authMethod'] ?? 'phone';
+          // Academic Background
           _selectedEducation = data['selectedEducation'];
           _institutionController.text = data['institution'] ?? '';
           _fieldOfStudyController.text = data['fieldOfStudy'] ?? '';
           _hasTraining = data['hasTraining'] ?? false;
+          // Location
           _selectedCity = data['selectedCity'];
           _selectedQuarter = data['selectedQuarter'];
-          _customQuarter = data['customQuarter'];
+          _customQuarter = data['customQuarter'] ?? '';
+          // Teaching Focus
           _selectedTutoringAreas = List<String>.from(
             data['selectedTutoringAreas'] ?? [],
           );
           _selectedLearnerLevels = List<String>.from(
             data['selectedLearnerLevels'] ?? [],
           );
+          // Specializations
           _selectedSpecializations = List<String>.from(
             data['selectedSpecializations'] ?? [],
           );
+          // Experience
           _hasExperience = data['hasExperience'] ?? false;
           _experienceDuration = data['experienceDuration'];
+          _previousOrganizationController.text =
+              data['previousOrganization'] ?? '';
+          _taughtLevels = List<String>.from(data['taughtLevels'] ?? []);
           _motivationController.text = data['motivation'] ?? '';
+          // Teaching Style
           _preferredMode = data['preferredMode'];
           _teachingApproaches = List<String>.from(
             data['teachingApproaches'] ?? [],
           );
           _preferredSessionType = data['preferredSessionType'];
+          _handlesMultipleLearners = data['handlesMultipleLearners'] ?? false;
           _hoursPerWeek = data['hoursPerWeek'];
+          // Digital Readiness
+          _devices = List<String>.from(data['devices'] ?? []);
+          _hasInternet = data['hasInternet'] ?? false;
+          _teachingTools = List<String>.from(data['teachingTools'] ?? []);
+          _hasMaterials = data['hasMaterials'] ?? false;
+          _wantsTraining = data['wantsTraining'] ?? false;
+          // Availability
+          if (data['tutoringAvailability'] != null) {
+            _tutoringAvailability = Map<String, List<String>>.from(
+              (data['tutoringAvailability'] as Map).map(
+                (key, value) =>
+                    MapEntry(key.toString(), List<String>.from(value as List)),
+              ),
+            );
+          }
+          if (data['testSessionAvailability'] != null) {
+            _testSessionAvailability = Map<String, List<String>>.from(
+              (data['testSessionAvailability'] as Map).map(
+                (key, value) =>
+                    MapEntry(key.toString(), List<String>.from(value as List)),
+              ),
+            );
+          }
+          // Payment
           _paymentMethod = data['paymentMethod'];
+          _paymentNumberController.text = data['paymentNumber'] ?? '';
+          _paymentNameController.text = data['paymentName'] ?? '';
+          _bankDetailsController.text = data['bankDetails'] ?? '';
           _expectedRate = data['expectedRate'];
+          _pricingFactors = List<String>.from(data['pricingFactors'] ?? []);
           _agreesToPaymentPolicy = data['agreesToPaymentPolicy'] ?? false;
+          // Verification
           _agreesToVerification = data['agreesToVerification'] ?? false;
+          _videoLinkController.text = data['videoLink'] ?? '';
+          if (data['socialMediaLinks'] != null) {
+            _socialMediaLinks = Map<String, String>.from(
+              (data['socialMediaLinks'] as Map).map(
+                (key, value) => MapEntry(key.toString(), value.toString()),
+              ),
+            );
+          }
+          // Personal Statement
+          _statementController.text = data['statement'] ?? '';
+          // Affirmations
+          if (data['affirmations'] != null) {
+            _affirmations = Map<String, bool>.from(
+              (data['affirmations'] as Map).map(
+                (key, value) => MapEntry(key.toString(), value as bool),
+              ),
+            );
+          }
+          // Document URLs
+          if (data['uploadedDocuments'] != null) {
+            _uploadedDocuments = Map<String, dynamic>.from(
+              (data['uploadedDocuments'] as Map).map(
+                (key, value) => MapEntry(key.toString(), value),
+              ),
+            );
+          }
+          // Legacy URLs (for backward compatibility)
+          _profilePhotoUrl = data['profilePhotoUrl'];
+          _idCardFrontUrl = data['idCardFrontUrl'];
+          _idCardBackUrl = data['idCardBackUrl'];
         });
 
         // Update quarters if city is selected
@@ -465,19 +582,35 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 height: 56,
                 child: ElevatedButton(
                   onPressed: _currentStep == _totalSteps - 1
-                      ? _submitApplication
+                      ? (_areAllAgreementsChecked() ? _submitApplication : null)
                       : _canProceedFromCurrentStep()
                       ? _nextStep
                       : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _canProceedFromCurrentStep()
-                        ? AppTheme.primaryColor
-                        : AppTheme.neutral200,
-                    foregroundColor: _canProceedFromCurrentStep()
-                        ? Colors.white
-                        : AppTheme.textLight,
-                    elevation: _canProceedFromCurrentStep() ? 2 : 0,
-                    shadowColor: _canProceedFromCurrentStep()
+                    backgroundColor: _currentStep == _totalSteps - 1
+                        ? (_areAllAgreementsChecked()
+                              ? AppTheme.primaryColor
+                              : AppTheme.neutral200)
+                        : (_canProceedFromCurrentStep()
+                              ? AppTheme.primaryColor
+                              : AppTheme.neutral200),
+                    foregroundColor: _currentStep == _totalSteps - 1
+                        ? (_areAllAgreementsChecked()
+                              ? Colors.white
+                              : AppTheme.textLight)
+                        : (_canProceedFromCurrentStep()
+                              ? Colors.white
+                              : AppTheme.textLight),
+                    elevation:
+                        (_currentStep == _totalSteps - 1
+                            ? _areAllAgreementsChecked()
+                            : _canProceedFromCurrentStep())
+                        ? 2
+                        : 0,
+                    shadowColor:
+                        (_currentStep == _totalSteps - 1
+                            ? _areAllAgreementsChecked()
+                            : _canProceedFromCurrentStep())
                         ? AppTheme.primaryColor.withOpacity(0.3)
                         : null,
                     shape: RoundedRectangleBorder(
@@ -2002,8 +2135,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               'Above 5,000 XAF',
             ],
             selectedValue: _expectedRate,
-            onSelectionChanged: (value) =>
-                setState(() => _expectedRate = value),
+            onSelectionChanged: (value) {
+              setState(() => _expectedRate = value);
+              _saveData(); // Auto-save when rate changes
+            },
             isSingleSelection: true,
           ),
 
@@ -2067,8 +2202,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: '',
             options: ['MTN Mobile Money', 'Orange Money', 'Bank Transfer'],
             selectedValue: _paymentMethod,
-            onSelectionChanged: (value) =>
-                setState(() => _paymentMethod = value),
+            onSelectionChanged: (value) {
+              setState(() => _paymentMethod = value);
+              _saveData(); // Auto-save when payment method changes
+            },
             isSingleSelection: true,
           ),
 
@@ -2216,8 +2353,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Preparation Time Required',
           ],
           selectedValue: _pricingFactors,
-          onSelectionChanged: (values) =>
-              setState(() => _pricingFactors = values),
+          onSelectionChanged: (values) {
+            setState(() => _pricingFactors = values);
+            _saveData(); // Auto-save when pricing factors change
+          },
           isSingleSelection: false,
         ),
 
@@ -2586,6 +2725,115 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     );
   }
 
+  /// Build upload preview thumbnail (image or PDF icon)
+  Widget _buildUploadPreview(String docType) {
+    final uploadedUrl = _uploadedDocuments[docType];
+    if (uploadedUrl == null) return const SizedBox.shrink();
+
+    // Document types that are typically PDFs/non-images
+    final isDocumentType = [
+      'degree_certificate',
+      'training_certificate',
+      'last_certificate',
+    ].contains(docType);
+
+    // Document types that are typically images
+    final isImageType = [
+      'profile_picture',
+      'id_front',
+      'id_back',
+    ].contains(docType);
+
+    // Check URL extension to determine file type
+    final urlLower = uploadedUrl.toString().toLowerCase();
+    final isPdfUrl = urlLower.contains('.pdf');
+    final isImageUrl =
+        urlLower.contains('.jpg') ||
+        urlLower.contains('.jpeg') ||
+        urlLower.contains('.png') ||
+        urlLower.contains('.gif') ||
+        urlLower.contains('.webp');
+
+    // Determine if we should show image or document icon
+    final shouldShowImage =
+        (isImageType && !isPdfUrl) ||
+        (isImageUrl && !isPdfUrl && !isDocumentType);
+
+    if (shouldShowImage) {
+      // Show image thumbnail
+      return Container(
+        width: 70,
+        height: 70,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.softBorder, width: 1),
+          color: Colors.white,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            uploadedUrl.toString(),
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                        : null,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              // If image fails to load, show document icon instead
+              return _buildDocumentIcon();
+            },
+          ),
+        ),
+      );
+    } else {
+      // Show PDF/document icon for PDFs and other documents
+      return _buildDocumentIcon();
+    }
+  }
+
+  /// Build document icon widget (for PDFs and other non-image documents)
+  Widget _buildDocumentIcon() {
+    return Container(
+      width: 70,
+      height: 70,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.softBorder, width: 1),
+        color: AppTheme.softCard,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.picture_as_pdf, color: Colors.red[600], size: 32),
+          const SizedBox(height: 4),
+          Text(
+            'PDF',
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSelectedDocumentUploadCard(Map<String, dynamic> doc) {
     final docType = doc['type']!;
     final isUploaded = _uploadedDocuments[docType] != null;
@@ -2671,24 +2919,55 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               ),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 24),
-                  const SizedBox(width: 12),
+                  // Image preview thumbnail
+                  _buildUploadPreview(docType),
+                  const SizedBox(width: 16),
+                  // Success message and reupload button in a column
                   Expanded(
-                    child: Text(
-                      'Document uploaded successfully',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.green,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _uploadDocument(docType),
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Reupload'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Success message
+                        Row(
+                          children: [
+                            // Icon(
+                            //   Icons.check_circle,
+                            //   color: Colors.green,
+                            //   size: 20,
+                            // ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Document uploaded successfully',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Reupload button
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () => _uploadDocument(docType),
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Reupload'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppTheme.primaryColor,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              minimumSize: const Size(0, 32),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -2702,7 +2981,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 onPressed: () => _uploadDocument(docType),
                 icon: const Icon(Icons.cloud_upload),
                 label: Text(
-                  'Upload ${doc['title']}',
+                  // For certificate types, use generic "Upload Document" text
+                  (docType == 'last_certificate' ||
+                          docType == 'degree_certificate' ||
+                          docType == 'training_certificate')
+                      ? 'Upload Document'
+                      : 'Upload ${doc['title']}',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -3757,10 +4041,21 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             _isValidYouTubeUrl(_videoLinkController.text.trim());
         return hasSocialLink && hasVideoLink;
       case 13: // Personal Statement
-        return true; // No required fields
+        // Check if all affirmations are checked
+        return _areAllAgreementsChecked();
       default:
         return true;
     }
+  }
+
+  /// Check if all final agreements/affirmations are checked
+  bool _areAllAgreementsChecked() {
+    // Check all 5 affirmations
+    return _affirmations['professionalism'] == true &&
+        _affirmations['dedication'] == true &&
+        _affirmations['payment_understanding'] == true &&
+        _affirmations['no_external_payments'] == true &&
+        _affirmations['truthful_information'] == true;
   }
 
   void _previousStep() {
@@ -4082,6 +4377,41 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     }
   }
 
+  /// Extract numeric value from hourly rate string like "3,000 – 4,000 XAF"
+  /// Returns the midpoint or a reasonable value for "Above 5,000 XAF"
+  double? _extractHourlyRateValue(String rateString) {
+    try {
+      // Remove commas and "XAF" text
+      final cleanString = rateString
+          .replaceAll(',', '')
+          .replaceAll('XAF', '')
+          .trim();
+
+      // Handle "Above 5,000" case
+      if (cleanString.toLowerCase().contains('above')) {
+        final numbers = RegExp(r'\d+').allMatches(cleanString);
+        if (numbers.isNotEmpty) {
+          final baseValue = double.parse(numbers.first.group(0)!);
+          return baseValue * 1.2; // 20% above the base
+        }
+        return 6000.0; // Default for "Above 5,000"
+      }
+
+      // Extract all numbers from range like "3000 – 4000"
+      final numbers = RegExp(r'\d+').allMatches(cleanString);
+      if (numbers.length >= 2) {
+        final min = double.parse(numbers.first.group(0)!);
+        final max = double.parse(numbers.last.group(0)!);
+        return (min + max) / 2; // Return midpoint
+      } else if (numbers.length == 1) {
+        return double.parse(numbers.first.group(0)!);
+      }
+    } catch (e) {
+      print('⚠️ Error parsing hourly rate: $e');
+    }
+    return null;
+  }
+
   Map<String, dynamic> _prepareTutorData() {
     // Combine both availability maps
     final combinedAvailability = <String, List<String>>{};
@@ -4089,30 +4419,74 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       combinedAvailability[day] = times;
     });
 
+    // Get document URLs from _uploadedDocuments (primary source) or fallback to individual variables
+    final profilePhotoUrl =
+        _uploadedDocuments['profile_picture'] as String? ?? _profilePhotoUrl;
+    final idCardFrontUrl =
+        _uploadedDocuments['id_front'] as String? ?? _idCardFrontUrl;
+    final idCardBackUrl =
+        _uploadedDocuments['id_back'] as String? ?? _idCardBackUrl;
+
+    // Prepare previous roles - include organization if provided
+    final previousRoles =
+        _hasExperience && _previousOrganizationController.text.trim().isNotEmpty
+        ? [_previousOrganizationController.text.trim()]
+        : [];
+
+    // Prepare payment details - ensure it's not empty if payment method is selected
+    Map<String, dynamic> paymentDetails = {};
+    if (_paymentMethod == 'MTN Mobile Money' ||
+        _paymentMethod == 'Orange Money') {
+      // Both require phone and name
+      if (_paymentNumberController.text.trim().isNotEmpty &&
+          _paymentNameController.text.trim().isNotEmpty) {
+        paymentDetails = {
+          'phone': _paymentNumberController.text.trim(),
+          'name': _paymentNameController.text.trim(),
+        };
+      }
+    } else if (_paymentMethod == 'Bank Transfer') {
+      if (_bankDetailsController.text.trim().isNotEmpty) {
+        paymentDetails = {'bank_details': _bankDetailsController.text.trim()};
+      }
+    }
+
+    // If payment method is selected but details are missing, still include method in map
+    // This helps with validation but won't pass final validation
+    if (paymentDetails.isEmpty && _paymentMethod != null) {
+      paymentDetails = {'method': _paymentMethod}; // Temporary marker
+    }
+
     return {
       // Personal Info
       // Note: email is saved separately to profiles table, not tutor_profiles
-      'profile_photo_url': _profilePhotoUrl,
+      'profile_photo_url': profilePhotoUrl,
       'city': _selectedCity,
       'quarter': _selectedQuarter ?? _customQuarter,
-      'about_me': _motivationController.text, // Use motivation as about me
+      'bio': _motivationController.text.trim().isNotEmpty
+          ? _motivationController.text.trim()
+          : null, // Use motivation as bio
       // Academic Background
       'highest_education': _selectedEducation,
-      'institution': _institutionController.text,
-      'field_of_study': _fieldOfStudyController.text,
-      'certifications': _certificateUrls.isNotEmpty ? [_certificateUrls] : [],
-
+      'institution': _institutionController.text.trim(),
+      'field_of_study': _fieldOfStudyController.text.trim(),
+      'certifications': _certificateUrls.isNotEmpty
+          ? _certificateUrls
+          : null, // JSONB format
+      'certifications_array': _certificateUrls.isNotEmpty
+          ? _certificateUrls.values.toList()
+          : null, // TEXT[] format
       // Experience
       'has_teaching_experience': _hasExperience,
       'teaching_duration': _experienceDuration,
-      'previous_roles': [], // Not collected in current form
-      'motivation': _motivationController.text,
+      'previous_roles': previousRoles, // Include organization name if provided
+      'motivation': _motivationController.text.trim(),
 
       // Tutoring Details
       'tutoring_areas': _selectedTutoringAreas,
       'learner_levels': _selectedLearnerLevels,
       'specializations': _selectedSpecializations,
-      'personal_statement': _statementController.text,
+      'personal_statement': _statementController.text.trim(),
 
       // Availability
       'hours_per_week': _hoursPerWeek,
@@ -4121,22 +4495,21 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       // Payment
       'payment_method': _paymentMethod,
       'hourly_rate': _expectedRate != null
-          ? double.tryParse(_expectedRate!)
+          ? _extractHourlyRateValue(_expectedRate!)
           : null,
-      'payment_details': {
-        if (_paymentMethod == 'Mobile Money') ...{
-          'phone': _paymentNumberController.text,
-          'name': _paymentNameController.text,
-        },
-        if (_paymentMethod == 'Bank Transfer')
-          'bank_details': _bankDetailsController.text,
-      },
+      // Only include payment_details if it has actual data (not just method marker)
+      'payment_details':
+          paymentDetails.containsKey('method') && paymentDetails.length == 1
+          ? <String, dynamic>{} // Return empty map if only method marker
+          : paymentDetails,
       'payment_agreement': _agreesToPaymentPolicy,
 
       // Verification
-      'id_card_front_url': _idCardFrontUrl,
-      'id_card_back_url': _idCardBackUrl,
-      'video_link': _videoLinkController.text,
+      'id_card_front_url': idCardFrontUrl,
+      'id_card_back_url': idCardBackUrl,
+      'video_link': _videoLinkController.text.trim(),
+      'video_url': _videoLinkController.text
+          .trim(), // Also map to existing video_url column
       'social_links': _socialMediaLinks,
       'verification_agreement': _agreesToVerification,
 

@@ -316,7 +316,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Your profile is being reviewed by our admin team.\nYou\'ll be notified once approved!',
+              'Your profile is being reviewed by our admin team.You\'ll be notified once approved!',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 fontSize: 14,

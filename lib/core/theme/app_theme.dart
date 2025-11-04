@@ -42,12 +42,12 @@ class AppTheme {
   static const Color neutral700 = Color(0xFF374151);
   static const Color neutral800 = Color(0xFF1F2937);
   static const Color neutral900 = Color(0xFF111827);
-  
+
   // Text Colors
   static const Color textDark = Color(0xFF1F2937);
   static const Color textMedium = Color(0xFF6B7280);
   static const Color textLight = Color(0xFF9CA3AF);
-  
+
   // Status Colors
   static const Color success = Color(0xFF10B981);
   static const Color warning = Color(0xFFF59E0B);
@@ -65,7 +65,7 @@ class AppTheme {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
-  
+
   // Get the app theme data
   static ThemeData get lightTheme {
     return ThemeData(
