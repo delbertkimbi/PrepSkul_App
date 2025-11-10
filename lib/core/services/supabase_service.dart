@@ -2,18 +2,46 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service class to handle Supabase operations
 class SupabaseService {
-  static final SupabaseClient _client = Supabase.instance.client;
+  // Get the Supabase client instance (safely, returns null if not initialized)
+  static SupabaseClient? get _clientSafe {
+    try {
+      return Supabase.instance.client;
+    } catch (e) {
+      // Supabase not initialized yet
+      return null;
+    }
+  }
 
-  // Get the Supabase client instance
-  static SupabaseClient get client => _client;
+  // Get the Supabase client instance (throws if not initialized)
+  static SupabaseClient get client {
+    final client = _clientSafe;
+    if (client == null) {
+      throw Exception(
+        'Supabase is not initialized yet. Call Supabase.initialize() first.',
+      );
+    }
+    return client;
+  }
 
   // User Management
 
-  /// Get current user
-  static User? get currentUser => _client.auth.currentUser;
+  /// Get current user (safely)
+  static User? get currentUser {
+    try {
+      return _clientSafe?.auth.currentUser;
+    } catch (e) {
+      return null;
+    }
+  }
 
-  /// Check if user is authenticated
-  static bool get isAuthenticated => currentUser != null;
+  /// Check if user is authenticated (safely)
+  static bool get isAuthenticated {
+    try {
+      return _clientSafe?.auth.currentUser != null;
+    } catch (e) {
+      return false;
+    }
+  }
 
   /// Sign up with email and password
   static Future<AuthResponse> signUp({
@@ -21,7 +49,7 @@ class SupabaseService {
     required String password,
     Map<String, dynamic>? userData,
   }) async {
-    final response = await _client.auth.signUp(
+    final response = await client.auth.signUp(
       email: email,
       password: password,
       data: userData,
@@ -34,7 +62,7 @@ class SupabaseService {
     required String email,
     required String password,
   }) async {
-    final response = await _client.auth.signInWithPassword(
+    final response = await client.auth.signInWithPassword(
       email: email,
       password: password,
     );
@@ -43,7 +71,7 @@ class SupabaseService {
 
   /// Sign out
   static Future<void> signOut() async {
-    await _client.auth.signOut();
+    await client.auth.signOut();
   }
 
   // Phone Authentication
@@ -51,7 +79,7 @@ class SupabaseService {
   /// Send OTP to phone number
   static Future<void> sendPhoneOTP(String phoneNumber) async {
     try {
-      await _client.auth.signInWithOtp(phone: phoneNumber);
+      await client.auth.signInWithOtp(phone: phoneNumber);
       print('✅ OTP sent successfully to: $phoneNumber');
     } catch (e) {
       print('❌ Error sending OTP: $e');
@@ -66,7 +94,7 @@ class SupabaseService {
   }) async {
     try {
       print('🔐 Verifying OTP for: $phone with code: $token');
-      final response = await _client.auth.verifyOTP(
+      final response = await client.auth.verifyOTP(
         phone: phone,
         token: token,
         type: OtpType.sms,
@@ -83,7 +111,7 @@ class SupabaseService {
 
   /// Sign in with Google (OAuth)
   static Future<bool> signInWithGoogle() async {
-    return await _client.auth.signInWithOAuth(
+    return await client.auth.signInWithOAuth(
       OAuthProvider.google,
       redirectTo: 'io.supabase.prepskul://login-callback/',
     );
@@ -91,9 +119,16 @@ class SupabaseService {
 
   // Auth State Management
 
-  /// Listen to auth state changes
-  static Stream<AuthState> get authStateChanges =>
-      _client.auth.onAuthStateChange;
+  /// Listen to auth state changes (safely - returns empty stream if not initialized)
+  static Stream<AuthState> get authStateChanges {
+    try {
+      return client.auth.onAuthStateChange;
+    } catch (e) {
+      // Return empty stream if Supabase not initialized
+      // This allows the app to continue without errors
+      return const Stream<AuthState>.empty();
+    }
+  }
 
   // Database Operations
 
@@ -102,7 +137,7 @@ class SupabaseService {
     required String table,
     required Map<String, dynamic> data,
   }) async {
-    await _client.from(table).insert(data);
+    await client.from(table).insert(data);
   }
 
   /// Update data in a table
@@ -112,7 +147,7 @@ class SupabaseService {
     required String field,
     required dynamic value,
   }) async {
-    await _client.from(table).update(data).eq(field, value);
+    await client.from(table).update(data).eq(field, value);
   }
 
   /// Get data from a table
@@ -122,9 +157,9 @@ class SupabaseService {
     dynamic value,
   }) async {
     if (field != null && value != null) {
-      return await _client.from(table).select().eq(field, value);
+      return await client.from(table).select().eq(field, value);
     }
-    return await _client.from(table).select();
+    return await client.from(table).select();
   }
 
   /// Delete data from a table
@@ -133,6 +168,6 @@ class SupabaseService {
     required String field,
     required dynamic value,
   }) async {
-    await _client.from(table).delete().eq(field, value);
+    await client.from(table).delete().eq(field, value);
   }
 }

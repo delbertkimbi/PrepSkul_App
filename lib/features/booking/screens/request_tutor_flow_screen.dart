@@ -41,6 +41,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   String? _preferredTime;
   String? _location;
   final TextEditingController _locationController = TextEditingController();
+  final TextEditingController _locationDescriptionController = TextEditingController();
 
   // Step 4: Additional Details
   final TextEditingController _additionalNotesController = TextEditingController();
@@ -56,6 +57,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   void dispose() {
     _requirementsController.dispose();
     _locationController.dispose();
+    _locationDescriptionController.dispose();
     _additionalNotesController.dispose();
     _pageController.dispose();
     super.dispose();
@@ -104,9 +106,24 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             _tutorQualification = surveyData['tutor_qualification_preference'];
             _teachingMode = surveyData['preferred_location'];
             
-            if (surveyData['city'] != null && surveyData['quarter'] != null) {
-              _location = '${surveyData['city']}, ${surveyData['quarter']}';
+            final city = surveyData['city'];
+            final quarter = surveyData['quarter'];
+            if (city != null && quarter != null) {
+              final street = surveyData['street'];
+              final streetStr = street != null ? ', ${street.toString()}' : '';
+              _location = '${city.toString()}, ${quarter.toString()}$streetStr';
               _locationController.text = _location!;
+            }
+
+            // Pre-fill location description if available
+            final locationDesc = surveyData['location_description'];
+            if (locationDesc != null) {
+              _locationDescriptionController.text = locationDesc.toString();
+            } else {
+              final additionalInfo = surveyData['additional_address_info'];
+              if (additionalInfo != null) {
+                _locationDescriptionController.text = additionalInfo.toString();
+              }
             }
           });
         }
@@ -687,6 +704,32 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _locationDescriptionController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              labelText: 'Location Description (Optional)',
+              hintText: 'Add landmarks, nearby buildings, or clear directions to help the tutor find your location easily',
+              hintStyle: GoogleFonts.poppins(
+                fontSize: 13,
+                color: Colors.grey[400],
+              ),
+              prefixIcon: Icon(Icons.description_outlined, color: AppTheme.primaryColor),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -967,6 +1010,9 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         preferredDays: _preferredDays,
         preferredTime: _preferredTime!,
         location: _locationController.text,
+        locationDescription: _locationDescriptionController.text.trim().isNotEmpty
+            ? _locationDescriptionController.text.trim()
+            : null,
         urgency: _urgency,
         additionalNotes: _additionalNotesController.text,
       );

@@ -1,5 +1,9 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/payment/services/fapshi_service.dart';
+import 'package:prepskul/features/sessions/services/meet_service.dart';
+import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 
 /// TrialSessionService
 ///
@@ -19,6 +23,8 @@ class TrialSessionService {
     required String scheduledTime,
     required int durationMinutes,
     required String location,
+    String? address,
+    String? locationDescription,
     String? trialGoal,
     String? learnerChallenges,
     String? learnerLevel,
@@ -61,6 +67,8 @@ class TrialSessionService {
         'scheduled_time': scheduledTime,
         'duration_minutes': durationMinutes,
         'location': location,
+        'onsite_address': address, // Use onsite_address instead of address
+        'location_description': locationDescription,
         'trial_goal': trialGoal,
         'learner_challenges': learnerChallenges,
         'learner_level': learnerLevel,
@@ -78,7 +86,34 @@ class TrialSessionService {
           .select()
           .single();
 
-      return TrialSession.fromJson(response);
+      final trialSession = TrialSession.fromJson(response);
+
+      // Get student name for notification
+      final studentProfile = await _supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .maybeSingle();
+
+      final studentName = studentProfile?['full_name'] as String? ?? 'Student';
+
+      // Send notification to tutor
+      try {
+        await NotificationHelperService.notifyTrialRequestCreated(
+          tutorId: validTutorId,
+          studentId: userId,
+          trialId: trialSession.id,
+          studentName: studentName,
+          subject: subject,
+          scheduledDate: scheduledDate,
+          scheduledTime: scheduledTime,
+        );
+      } catch (e) {
+        print('⚠️ Failed to send trial request notification: $e');
+        // Don't fail the trial creation if notification fails
+      }
+
+      return trialSession;
     } catch (e) {
       print('❌ Trial booking error: $e');
       throw Exception('Failed to create trial request: $e');
@@ -152,6 +187,13 @@ class TrialSessionService {
     String? responseNotes,
   }) async {
     try {
+      // Get trial session first
+      final trialResponse = await _supabase
+          .from('trial_sessions')
+          .select()
+          .eq('id', sessionId)
+          .single();
+
       final updateData = {
         'status': 'approved',
         'responded_at': DateTime.now().toIso8601String(),
@@ -165,7 +207,41 @@ class TrialSessionService {
           .select()
           .single();
 
-      return TrialSession.fromJson(updated);
+      final trialSession = TrialSession.fromJson(updated);
+
+      // Get tutor name for notification
+      final tutorProfile = await _supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', trialSession.tutorId)
+          .maybeSingle();
+
+      final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+
+      // Parse scheduled date and time
+      final scheduledDate = DateTime.parse(
+        trialResponse['scheduled_date'] as String,
+      );
+      final scheduledTime = trialResponse['scheduled_time'] as String;
+      final subject = trialResponse['subject'] as String;
+
+      // Send notification to student
+      try {
+        await NotificationHelperService.notifyTrialRequestAccepted(
+          studentId: trialSession.learnerId,
+          tutorId: trialSession.tutorId,
+          trialId: sessionId,
+          tutorName: tutorName,
+          subject: subject,
+          scheduledDate: scheduledDate,
+          scheduledTime: scheduledTime,
+        );
+      } catch (e) {
+        print('⚠️ Failed to send trial acceptance notification: $e');
+        // Don't fail the approval if notification fails
+      }
+
+      return trialSession;
     } catch (e) {
       throw Exception('Failed to approve trial session: $e');
     }
@@ -177,6 +253,13 @@ class TrialSessionService {
     required String reason,
   }) async {
     try {
+      // Get trial session first
+      final trialResponse = await _supabase
+          .from('trial_sessions')
+          .select()
+          .eq('id', sessionId)
+          .single();
+
       final updateData = {
         'status': 'rejected',
         'responded_at': DateTime.now().toIso8601String(),
@@ -190,7 +273,32 @@ class TrialSessionService {
           .select()
           .single();
 
-      return TrialSession.fromJson(updated);
+      final trialSession = TrialSession.fromJson(updated);
+
+      // Get tutor name for notification
+      final tutorProfile = await _supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', trialSession.tutorId)
+          .maybeSingle();
+
+      final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+
+      // Send notification to student
+      try {
+        await NotificationHelperService.notifyTrialRequestRejected(
+          studentId: trialSession.learnerId,
+          tutorId: trialSession.tutorId,
+          trialId: sessionId,
+          tutorName: tutorName,
+          rejectionReason: reason,
+        );
+      } catch (e) {
+        print('⚠️ Failed to send trial rejection notification: $e');
+        // Don't fail the rejection if notification fails
+      }
+
+      return trialSession;
     } catch (e) {
       throw Exception('Failed to reject trial session: $e');
     }
@@ -235,6 +343,116 @@ class TrialSessionService {
           .eq('id', sessionId);
     } catch (e) {
       throw Exception('Failed to mark trial as converted: $e');
+    }
+  }
+
+  /// Initiate payment for trial session
+  ///
+  /// Starts payment process and updates trial session with transaction ID
+  ///
+  /// Parameters:
+  /// - [sessionId]: Trial session ID
+  /// - [phoneNumber]: Student/parent phone number
+  ///
+  /// Returns: Fapshi transaction ID
+  static Future<String> initiatePayment({
+    required String sessionId,
+    required String phoneNumber,
+  }) async {
+    try {
+      // Get trial session
+      final trial = await getTrialSessionById(sessionId);
+
+      if (trial.paymentStatus == 'paid') {
+        throw Exception('Payment already completed');
+      }
+
+      // Initiate payment
+      final paymentResponse = await FapshiService.initiateDirectPayment(
+        amount: trial.trialFee.toInt(),
+        phone: phoneNumber,
+        externalId: 'trial_$sessionId',
+        userId: trial.learnerId,
+        message: 'Trial session fee - ${trial.subject}',
+      );
+
+      // Update trial session with transaction ID
+      await _supabase
+          .from('trial_sessions')
+          .update({
+            'fapshi_trans_id': paymentResponse.transId,
+            'payment_initiated_at': DateTime.now().toIso8601String(),
+            'payment_status': 'pending',
+          })
+          .eq('id', sessionId);
+
+      return paymentResponse.transId;
+    } catch (e) {
+      print('❌ Error initiating payment: $e');
+      rethrow;
+    }
+  }
+
+  /// Complete payment and generate Meet link
+  ///
+  /// Called after payment is verified (via webhook or polling)
+  /// Updates payment status and generates Meet link
+  ///
+  /// Parameters:
+  /// - [sessionId]: Trial session ID
+  /// - [transactionId]: Fapshi transaction ID
+  static Future<void> completePaymentAndGenerateMeet({
+    required String sessionId,
+    required String transactionId,
+  }) async {
+    try {
+      // Get trial session
+      final trial = await getTrialSessionById(sessionId);
+
+      // Update payment status
+      await _supabase
+          .from('trial_sessions')
+          .update({'payment_status': 'paid', 'fapshi_trans_id': transactionId})
+          .eq('id', sessionId);
+
+      // Parse scheduled date and time
+      // scheduledDate is already a DateTime in the model
+      final scheduledDate = trial.scheduledDate;
+      final scheduledTime = trial.scheduledTime;
+
+      // Generate Meet link
+      await MeetService.generateTrialMeetLink(
+        trialSessionId: sessionId,
+        tutorId: trial.tutorId,
+        studentId: trial.learnerId,
+        scheduledDate: scheduledDate,
+        scheduledTime: scheduledTime,
+        durationMinutes: trial.durationMinutes,
+      );
+
+      // Send notification to student and tutor
+      await NotificationService.createNotification(
+        userId: trial.learnerId,
+        type: 'trial_payment_completed',
+        title: 'Payment Successful',
+        message:
+            'Your trial session payment has been confirmed. Meet link is now available.',
+      );
+
+      await NotificationService.createNotification(
+        userId: trial.tutorId,
+        type: 'trial_payment_completed',
+        title: 'Trial Payment Received',
+        message:
+            'Student has completed payment for trial session. Meet link generated.',
+      );
+
+      print(
+        '✅ Payment completed and Meet link generated for trial: $sessionId',
+      );
+    } catch (e) {
+      print('❌ Error completing payment: $e');
+      rethrow;
     }
   }
 

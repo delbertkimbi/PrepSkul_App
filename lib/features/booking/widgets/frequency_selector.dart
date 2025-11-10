@@ -140,7 +140,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
   Widget _buildFrequencyOption({
     required int frequency,
     required String label,
-    required String description,
+    String? description, // Make optional
     required IconData icon,
     bool isRecommended = false,
   }) {
@@ -256,14 +256,6 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                         ),
                       ],
                     ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    description,
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(

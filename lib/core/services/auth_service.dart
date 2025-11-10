@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'supabase_service.dart';
+import 'push_notification_service.dart';
 
 /// Comprehensive authentication service for PrepSkul
 class AuthService {
@@ -84,6 +85,25 @@ class AuthService {
     await prefs.setBool(_keyRememberMe, rememberMe);
 
     print('✅ Session saved for user: $fullName ($userRole)');
+
+    // Initialize push notifications after login
+    try {
+      await PushNotificationService().initialize(
+        onNotificationTap: (message) {
+          // Handle notification tap navigation
+          final data = message?.data;
+          if (data != null) {
+            print('📱 Notification tapped after login: ${data.toString()}');
+          } else {
+            print('📱 Notification tapped after login (no data)');
+          }
+        },
+      );
+      print('✅ Push notifications initialized after login');
+    } catch (e) {
+      print('⚠️ Error initializing push notifications after login: $e');
+      // Don't fail login if push notifications fail
+    }
   }
 
   /// Update survey completion status
@@ -96,6 +116,13 @@ class AuthService {
   /// Logout user (clear session and Supabase auth)
   static Future<void> logout() async {
     try {
+      // Deactivate push notification tokens
+      try {
+        await PushNotificationService().deactivateAllTokens();
+      } catch (e) {
+        print('⚠️ Error deactivating push notification tokens: $e');
+      }
+
       // Sign out from Supabase
       await SupabaseService.signOut();
 

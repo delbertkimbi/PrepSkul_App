@@ -197,12 +197,6 @@ class _BookingReviewState extends State<BookingReview> {
                   PricingService.formatPrice(perSession),
                   isSubtotal: true,
                 ),
-                const SizedBox(height: 12),
-                _buildPricingRow(
-                  'Sessions per Month',
-                  '$sessionsPerMonth sessions',
-                  isSubtotal: true,
-                ),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Divider(color: Colors.grey[300], thickness: 1),

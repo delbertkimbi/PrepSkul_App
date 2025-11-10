@@ -53,6 +53,10 @@ dependencies:
   # Firebase - upgraded for compatibility with GoogleUtilities 8.0
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.1
+  firebase_messaging: ^15.2.10
+  
+  # Local Notifications (for displaying notifications)
+  flutter_local_notifications: ^16.3.0
   
   # UI Components
   flutter_svg: ^2.0.10+1
@@ -83,6 +87,18 @@ dependencies:
   # Utilities
   logger: ^2.0.2+1
   connectivity_plus: ^5.0.2
+  device_info_plus: ^10.1.0
+  package_info_plus: ^8.0.0
+  
+  # HTTP Client
+  http: ^1.1.0
+  
+  # Environment Variables
+  flutter_dotenv: ^5.1.0
+  
+  # Google APIs (for Calendar)
+  googleapis: ^11.0.0
+  googleapis_auth: ^1.4.1
 
 dev_dependencies:
   flutter_test:

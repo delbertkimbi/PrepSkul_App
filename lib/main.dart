@@ -24,27 +24,32 @@ import 'package:prepskul/core/navigation/main_navigation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/push_notification_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:prepskul/firebase_options.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Show splash screen IMMEDIATELY - don't wait for anything
+  // Show splash screen immediately, then initialize in background
   runApp(const PrepSkulApp());
 
-  // Initialize in background (non-blocking)
-  // This happens asynchronously and doesn't delay the UI
+  // Initialize in background after UI is shown
   _initializeAppInBackground();
 }
 
 /// Initialize app services in background (non-blocking)
-/// This runs asynchronously and doesn't block the UI
 Future<void> _initializeAppInBackground() async {
   try {
-    print('🔄 Starting background initialization...');
+    // Initialize Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('✅ Firebase initialized');
 
-    // Initialize Supabase (this may take a moment)
+    // Initialize Supabase
     await Supabase.initialize(
       url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
       anonKey:
@@ -55,17 +60,41 @@ Future<void> _initializeAppInBackground() async {
     );
     print('✅ Supabase initialized');
 
-    // Initialize language service
     await LanguageService.initialize();
-    print('✅ Language service initialized');
 
     // Initialize auth state listener
     AuthService.initAuthListener();
-    print('✅ Auth listener initialized');
+
+    // Initialize push notifications in background (non-blocking)
+    // Don't await - let splash screen transition happen
+    _initializePushNotifications().catchError((error) {
+      print('⚠️ Push notification initialization error (non-blocking): $error');
+    });
 
     print('✅ App initialization complete');
   } catch (e) {
     print('❌ Error initializing app: $e');
+  }
+}
+
+/// Initialize push notifications
+Future<void> _initializePushNotifications() async {
+  try {
+    await PushNotificationService().initialize(
+      onNotificationTap: (message) {
+        // Handle notification tap navigation
+        // This will be handled by the navigation system
+        final data = message?.data;
+        if (data != null) {
+          print('📱 Notification tapped: ${data.toString()}');
+        } else {
+          print('📱 Notification tapped (no data)');
+        }
+      },
+    );
+    print('✅ Push notifications initialized');
+  } catch (e) {
+    print('❌ Error initializing push notifications: $e');
   }
 }
 
@@ -223,6 +252,7 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   StreamSubscription<AuthState>? _authStateSubscription;
   bool _isInitialized = false;
+  bool _hasNavigated = false; // Prevent multiple navigations
 
   @override
   void initState() {
@@ -230,63 +260,153 @@ class _SplashScreenState extends State<SplashScreen> {
     _initializeSplash();
   }
 
-  /// Initialize splash screen - show immediately, then check status
+  /// Initialize splash screen - SIMPLIFIED VERSION
   Future<void> _initializeSplash() async {
-    // Wait for Supabase to be ready in background (non-blocking)
-    Future.microtask(() async {
-      int attempts = 0;
-      while (!_isSupabaseReady() && attempts < 50) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        attempts++;
-      }
+    print('🚀 [SPLASH] Initializing...');
 
-      // Now that we're ready, set up auth listeners
-      if (mounted) {
-        _setupAuthListeners();
-      }
+    // Start background tasks (non-blocking)
+    _preloadOnboardingImages();
+    _setupAuthListeners();
+    if (kIsWeb) {
+      _checkPasswordResetCallback();
+      _checkEmailConfirmationCallback();
+    }
 
-      // Check for URL callbacks (web only)
-      if (kIsWeb && mounted) {
-        _checkPasswordResetCallback();
-        _checkEmailConfirmationCallback();
+    // Wait a brief moment for UI to render
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    // Navigate directly - don't use postFrameCallback
+    print('🚀 [SPLASH] Starting navigation check...');
+    if (mounted && !_hasNavigated) {
+      _navigateToNextScreen();
+    } else {
+      print(
+        '⚠️ [SPLASH] Cannot navigate - mounted: $mounted, hasNavigated: $_hasNavigated',
+      );
+    }
+
+    // Safety timeout - force navigation after 2.5 seconds if nothing happened
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && !_hasNavigated) {
+        print('⏰ [SPLASH] TIMEOUT - Forcing navigation to auth screen');
+        _hasNavigated = true;
+        try {
+          Navigator.of(context).pushReplacementNamed('/auth-method-selection');
+          print('✅ [SPLASH] Timeout navigation completed');
+        } catch (e) {
+          print('❌ [SPLASH] Timeout navigation error: $e');
+        }
       }
     });
+  }
 
-    // Ensure minimum splash display time (2.5 seconds) to show animation
-    // This ensures users see the splash screen even if Supabase is fast
-    await Future.delayed(const Duration(milliseconds: 2500));
 
-    // Wait for Supabase to be ready (with timeout) before checking status
-    int attempts = 0;
-    while (!_isSupabaseReady() && attempts < 50 && mounted) {
-      await Future.delayed(const Duration(milliseconds: 100));
-      attempts++;
-    }
+  /// Simple navigation logic - directly check and navigate
+  Future<void> _navigateToNextScreen() async {
+    if (_hasNavigated || !mounted) return;
 
-    // Setup listeners if Supabase is ready
-    if (_isSupabaseReady() && mounted) {
-      _setupAuthListeners();
-      if (kIsWeb) {
-        _checkPasswordResetCallback();
-        _checkEmailConfirmationCallback();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasCompletedOnboarding =
+          prefs.getBool('onboarding_completed') ?? false;
+      final isLoggedIn = await AuthService.isLoggedIn();
+      final hasSupabaseSession = SupabaseService.isAuthenticated;
+      final hasCompletedSurvey = await AuthService.isSurveyCompleted();
+      final userRole = await AuthService.getUserRole();
+
+      // Check if Supabase has session but local doesn't (only if Supabase is ready)
+      if (hasSupabaseSession && !isLoggedIn) {
+        print('🔄 [NAV] Attempting to restore session from Supabase...');
+        try {
+          final user = SupabaseService.currentUser;
+          if (user != null) {
+            final profile = await SupabaseService.client
+                .from('profiles')
+                .select()
+                .eq('id', user.id)
+                .maybeSingle();
+
+            if (profile != null) {
+              await AuthService.saveSession(
+                userId: user.id,
+                userRole: profile['user_type'] ?? 'learner',
+                phone: profile['phone_number'] ?? '',
+                fullName: profile['full_name'] ?? '',
+                surveyCompleted: profile['survey_completed'] ?? false,
+              );
+              print('✅ [NAV] Session restored, retrying navigation');
+              // Retry navigation with restored session
+              _navigateToNextScreen();
+              return;
+            }
+          }
+        } catch (e) {
+          // Continue with normal flow
+        }
       }
-    }
 
-    // Check onboarding status after minimum display time
-    if (mounted) {
-      _checkOnboardingStatus();
+      // Simple navigation logic
+      String? route;
+
+      if (!hasCompletedOnboarding) {
+        route = '/onboarding';
+      } else if (!isLoggedIn && !hasSupabaseSession) {
+        route = '/auth-method-selection';
+      } else if (!hasCompletedSurvey && userRole != null) {
+        route = '/profile-setup';
+      } else if (isLoggedIn && hasCompletedSurvey && userRole != null) {
+        if (userRole == 'tutor') {
+          route = '/tutor-nav';
+        } else if (userRole == 'parent') {
+          route = '/parent-nav';
+        } else {
+          route = '/student-nav';
+        }
+      } else {
+        route = '/auth-method-selection'; // Fallback
+      }
+
+      // Navigate (route is always set due to fallback)
+      if (mounted && !_hasNavigated) {
+        _hasNavigated = true;
+        if (route == '/profile-setup') {
+          Navigator.of(context).pushReplacementNamed(
+            route,
+            arguments: {'userRole': userRole ?? 'student'},
+          );
+        } else {
+          Navigator.of(context).pushReplacementNamed(route);
+        }
+      }
+    } catch (e) {
+      // On any error, go to auth
+      if (mounted && !_hasNavigated) {
+        _hasNavigated = true;
+        Navigator.of(context).pushReplacementNamed('/auth-method-selection');
+      }
     }
   }
 
-  /// Check if Supabase is ready
-  bool _isSupabaseReady() {
-    try {
-      // Try to access Supabase client
-      SupabaseService.client;
-      return true;
-    } catch (e) {
-      return false;
-    }
+  /// Preload onboarding images in background
+  void _preloadOnboardingImages() {
+    // Preload images in background without blocking
+    final images = [
+      'assets/images/onboarding1.png',
+      'assets/images/onboarding2.png',
+      'assets/images/onboarding3.jpg',
+    ];
+
+    // Start preloading in background (don't await)
+    Future.microtask(() async {
+      for (final imagePath in images) {
+        try {
+          await precacheImage(AssetImage(imagePath), context);
+        } catch (e) {
+          // Ignore errors, continue loading other images
+          print('Warning: Could not preload $imagePath: $e');
+        }
+      }
+    });
   }
 
   /// Setup auth state listeners
@@ -295,7 +415,7 @@ class _SplashScreenState extends State<SplashScreen> {
     _isInitialized = true;
 
     // Listen to auth state changes for email confirmation
-    _authStateSubscription = SupabaseService.client.auth.onAuthStateChange
+    _authStateSubscription = SupabaseService.authStateChanges
         .listen((data) {
           final AuthChangeEvent event = data.event;
           final Session? session = data.session;
@@ -483,60 +603,9 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  Future<void> _checkOnboardingStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final hasCompletedOnboarding =
-        prefs.getBool('onboarding_completed') ?? false;
-
-    // Use AuthService for authentication state
-    final isLoggedIn = await AuthService.isLoggedIn();
-    final hasCompletedSurvey = await AuthService.isSurveyCompleted();
-    final userRole = await AuthService.getUserRole();
-
-    print('Onboarding status: $hasCompletedOnboarding');
-    print('Login status: $isLoggedIn');
-    print('Survey status: $hasCompletedSurvey');
-    print('User role: $userRole');
-
-    if (!hasCompletedOnboarding) {
-      // First time user - show onboarding slides
-      print('Navigating to onboarding...');
-      Navigator.of(context).pushReplacementNamed('/onboarding');
-    } else if (!isLoggedIn) {
-      // User has seen onboarding but not logged in - go to auth method selection
-      print('Navigating to auth method selection...');
-      Navigator.of(context).pushReplacementNamed('/auth-method-selection');
-    } else if (!hasCompletedSurvey && userRole != null) {
-      // User is logged in but hasn't completed survey - redirect to survey
-      print('Navigating to survey...');
-      Navigator.of(context).pushReplacementNamed(
-        '/profile-setup',
-        arguments: {'userRole': userRole},
-      );
-    } else if (isLoggedIn && hasCompletedSurvey) {
-      // User is fully onboarded - go to role-based navigation
-      print('Navigating to $userRole navigation...');
-      if (userRole == 'tutor') {
-        Navigator.of(context).pushReplacementNamed('/tutor-nav');
-      } else if (userRole == 'parent') {
-        Navigator.of(context).pushReplacementNamed('/parent-nav');
-      } else {
-        Navigator.of(context).pushReplacementNamed('/student-nav');
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Get localization safely - provide fallback if not ready
-    String tagline;
-    try {
-      final l10n = AppLocalizations.of(context);
-      tagline = l10n.tagline;
-    } catch (e) {
-      // Fallback if localization not ready yet
-      tagline = 'Your learning journey starts here';
-    }
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -544,7 +613,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Stack(
           children: [
             // Main content with animated logo
-            Center(child: _SplashContent(tagline: tagline)),
+            Center(child: _SplashContent(tagline: l10n.tagline)),
 
             // Language switcher in top right
             Positioned(top: 20, right: 20, child: const LanguageSwitcher()),
@@ -581,7 +650,9 @@ class _SplashContentState extends State<_SplashContent>
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(
+        milliseconds: 800,
+      ), // Reduced from 1500ms for faster animation
       vsync: this,
     );
 
@@ -618,109 +689,54 @@ class _SplashContentState extends State<_SplashContent>
               scale: _scaleAnimation.value,
               child: Opacity(
                 opacity: _fadeAnimation.value,
-                child: kIsWeb
-                    ? Image.network(
-                        'https://cpzaxdfxbamdsshdgjyg.supabase.co/storage/v1/object/public/Logos/app_logo(blue).png',
-                        width: 120,
-                        height: 120,
-                        fit: BoxFit.contain,
-                        // Pre-cache the image for faster loading
-                        cacheWidth: 240, // 2x for retina
-                        loadingBuilder: (context, child, loadingProgress) {
-                          // Show local asset immediately while network image loads
-                          if (loadingProgress == null) return child;
-                          return Image.asset(
-                            'assets/images/app_logo(blue).png',
-                            width: 120,
-                            height: 120,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              // Ultimate fallback - show placeholder
-                              return Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'PS',
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) {
-                          // Fallback to local asset if network fails
-                          return Image.asset(
-                            'assets/images/app_logo(blue).png',
-                            width: 120,
-                            height: 120,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              // Ultimate fallback - show placeholder
-                              return Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'PS',
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white,
-                                      fontSize: 32,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      )
-                    : Image.asset(
-                        'assets/images/app_logo(blue).png',
-                        width: 120,
-                        height: 120,
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          // Fallback placeholder if asset doesn't exist
-                          return Container(
-                            width: 120,
-                            height: 120,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Center(
-                              child: Text(
-                                'PS',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: kIsWeb
+                      ? Image.network(
+                          'https://cpzaxdfxbamdsshdgjyg.supabase.co/storage/v1/object/public/Logos/app_logo(blue).png',
+                          width: 120,
+                          height: 120,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return SizedBox(
+                              width: 120,
+                              height: 120,
+                              child: CircularProgressIndicator(
+                                value:
+                                    loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                    : null,
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  AppTheme.primaryColor,
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            // Fallback to local asset if network fails
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.asset(
+                                'assets/images/app_logo(blue).png',
+                                width: 120,
+                                height: 120,
+                              ),
+                            );
+                          },
+                        )
+                      : Image.asset(
+                          'assets/images/app_logo(blue).png',
+                          width: 120,
+                          height: 120,
+                        ),
+                ),
               ),
             );
           },
         ),
 
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         // App name with fade animation
         FadeTransition(
@@ -736,7 +752,7 @@ class _SplashContentState extends State<_SplashContent>
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Tagline with fade animation
         FadeTransition(
@@ -756,7 +772,7 @@ class _SplashContentState extends State<_SplashContent>
           ),
         ),
 
-        const SizedBox(height: 40),
+        const SizedBox(height: 24),
 
         // Loading indicator with fade animation
         FadeTransition(

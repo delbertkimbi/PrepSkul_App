@@ -11,6 +11,7 @@ class BookingRequest {
   final Map<String, String> times; // e.g., {'Monday': '4:00 PM'}
   final String location; // online, onsite, hybrid
   final String? address;
+  final String? locationDescription; // Brief description for onsite/hybrid
   final String paymentPlan; // monthly, biweekly, weekly
   final double monthlyTotal;
   final String status; // pending, approved, rejected
@@ -41,6 +42,7 @@ class BookingRequest {
     required this.times,
     required this.location,
     this.address,
+    this.locationDescription,
     required this.paymentPlan,
     required this.monthlyTotal,
     required this.status,
@@ -70,6 +72,7 @@ class BookingRequest {
       times: Map<String, String>.from(json['times'] as Map),
       location: json['location'] as String,
       address: json['address'] as String?,
+      locationDescription: json['location_description'] as String?,
       paymentPlan: json['payment_plan'] as String,
       monthlyTotal: (json['monthly_total'] as num).toDouble(),
       status: json['status'] as String,
@@ -102,6 +105,7 @@ class BookingRequest {
       'times': times,
       'location': location,
       'address': address,
+      'location_description': locationDescription,
       'payment_plan': paymentPlan,
       'monthly_total': monthlyTotal,
       'status': status,

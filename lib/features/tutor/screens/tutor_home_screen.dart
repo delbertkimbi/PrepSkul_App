@@ -7,6 +7,8 @@ import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
 import '../../../core/models/profile_completion.dart';
 import '../../../core/widgets/profile_completion_widget.dart';
+import '../../../features/notifications/widgets/notification_bell.dart';
+import 'tutor_admin_feedback_screen.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -65,6 +67,12 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const AppLogoHeader(),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: NotificationBell(),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -85,58 +93,84 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   const SizedBox(height: 24),
 
                   // Profile Completion Banner (if not complete)
-                  if (_completionStatus != null &&
-                      !_completionStatus!.isComplete)
-                    ProfileCompletionBanner(
-                      status: _completionStatus!,
-                      onTap: () {
-                        // Navigate back to onboarding to complete profile
-                        Navigator.of(context)
-                            .pushNamed(
-                              '/tutor-onboarding',
-                              arguments: {
-                                'userId': _userInfo?['userId'],
-                                'existingData': _tutorProfile,
-                              },
-                            )
-                            .then(
-                              (_) => _loadUserInfo(),
-                            ); // Reload after returning
-                      },
-                    ),
+                  // Hide when: 100% complete AND approved
+                  // Show when: Not complete OR (complete but not approved)
+                  Builder(
+                    builder: (context) {
+                      final shouldShowCompletionCard =
+                          _completionStatus != null &&
+                          (!_completionStatus!.isComplete ||
+                              (_completionStatus!.isComplete &&
+                                  _approvalStatus != 'approved'));
 
-                  if (_completionStatus != null &&
-                      !_completionStatus!.isComplete)
-                    const SizedBox(height: 16),
+                      if (!shouldShowCompletionCard) {
+                        return const SizedBox.shrink();
+                      }
 
-                  // Profile Completion Details
-                  if (_completionStatus != null)
-                    ProfileCompletionWidget(
-                      status: _completionStatus!,
-                      showDetails: true,
-                      onEditSection: () {
-                        // Navigate to onboarding to edit
-                        Navigator.of(context)
-                            .pushNamed(
-                              '/tutor-onboarding',
-                              arguments: {
-                                'userId': _userInfo?['userId'],
-                                'existingData': _tutorProfile,
-                              },
-                            )
-                            .then((_) => _loadUserInfo());
-                      },
-                    ),
+                      return Column(
+                        children: [
+                          ProfileCompletionBanner(
+                            status: _completionStatus!,
+                            onTap: () {
+                              // Navigate back to onboarding to complete profile
+                              Navigator.of(context)
+                                  .pushNamed(
+                                    '/tutor-onboarding',
+                                    arguments: {
+                                      'userId': _userInfo?['userId'],
+                                      'existingData': _tutorProfile,
+                                    },
+                                  )
+                                  .then(
+                                    (_) => _loadUserInfo(),
+                                  ); // Reload after returning
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          // Profile Completion Details
+                          ProfileCompletionWidget(
+                            status: _completionStatus!,
+                            showDetails: true,
+                            onEditSection: () {
+                              // Navigate to onboarding to edit
+                              Navigator.of(context)
+                                  .pushNamed(
+                                    '/tutor-onboarding',
+                                    arguments: {
+                                      'userId': _userInfo?['userId'],
+                                      'existingData': _tutorProfile,
+                                    },
+                                  )
+                                  .then((_) => _loadUserInfo());
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                      );
+                    },
+                  ),
 
-                  if (_completionStatus != null) const SizedBox(height: 24),
-
-                  // Approval Status Card (only if profile is complete)
-                  if (_completionStatus?.isComplete == true &&
-                      _approvalStatus != null)
+                  // Approval Status Card
+                  // Show if:
+                  // 1. Profile is complete AND status exists (and not approved), OR
+                  // 2. Status is 'needs_improvement', 'rejected', 'blocked', or 'suspended' (show even if incomplete so user knows what to do)
+                  // Don't show if status is 'approved' (they're good to go!)
+                  if ((_completionStatus?.isComplete == true &&
+                          _approvalStatus != null &&
+                          _approvalStatus != 'approved') ||
+                      (_approvalStatus == 'needs_improvement' ||
+                          _approvalStatus == 'rejected' ||
+                          _approvalStatus == 'blocked' ||
+                          _approvalStatus == 'suspended'))
                     _buildApprovalStatusCard(),
 
-                  if (_completionStatus?.isComplete == true &&
-                      _approvalStatus != null)
+                  if ((_completionStatus?.isComplete == true &&
+                          _approvalStatus != null &&
+                          _approvalStatus != 'approved') ||
+                      (_approvalStatus == 'needs_improvement' ||
+                          _approvalStatus == 'rejected' ||
+                          _approvalStatus == 'blocked' ||
+                          _approvalStatus == 'suspended'))
                     const SizedBox(height: 24),
 
                   // Quick Stats (mock data for now)
@@ -163,6 +197,71 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Widget _buildApprovalStatusCard() {
+    // Handle blocked/suspended status
+    if (_approvalStatus == 'blocked' || _approvalStatus == 'suspended') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.red.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.red.withOpacity(0.5), width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.block, size: 32, color: Colors.red[700]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _approvalStatus == 'blocked'
+                        ? 'Account Blocked'
+                        : 'Account Suspended',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red[900],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Your account has been ${_approvalStatus == 'blocked' ? 'blocked' : 'suspended'}. View details for more information and to request a review.',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textDark,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _viewAdminFeedback(),
+                icon: const Icon(Icons.visibility),
+                label: Text(
+                  'View Details',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (_approvalStatus == 'approved') {
       // Approved - show success card
       return Container(
@@ -207,18 +306,79 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           ],
         ),
       );
+    } else if (_approvalStatus == 'needs_improvement') {
+      // Needs Improvement - show warning card with "View Details" button
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.orange.withOpacity(0.5), width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.info_outline, size: 32, color: Colors.orange[700]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Profile Needs Improvement',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange[900],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Admin has requested changes to your profile. View details to see what needs to be updated.',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textDark,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _viewAdminFeedback(),
+                icon: const Icon(Icons.visibility),
+                label: Text(
+                  'View Details',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     } else if (_approvalStatus == 'rejected') {
-      // Rejected - show error card with reason
-      final rejectionReason =
-          _tutorProfile?['admin_review_notes'] as String? ??
-          'No reason provided';
+      // Rejected - show error card with "View Details" button
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: AppTheme.primaryColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3), width: 2),
+          border: Border.all(
+            color: AppTheme.primaryColor.withOpacity(0.3),
+            width: 2,
+          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,16 +401,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Reason:',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              rejectionReason,
+              'Your application was not approved. View details to see the reason and what needs to be corrected.',
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 color: AppTheme.textDark,
@@ -258,30 +409,22 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: () {
-                // Navigate to onboarding to make corrections
-                Navigator.of(context)
-                    .pushNamed(
-                      '/tutor-onboarding',
-                      arguments: {
-                        'userId': _userInfo?['userId'],
-                        'existingData': _tutorProfile,
-                      },
-                    )
-                    .then((_) => _loadUserInfo());
-              },
-              icon: const Icon(Icons.edit),
-              label: Text(
-                'Update Profile & Re-apply',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primaryColor,
-                side: BorderSide(color: AppTheme.primaryColor),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _viewAdminFeedback(),
+                icon: const Icon(Icons.visibility),
+                label: Text(
+                  'View Details',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
@@ -326,6 +469,22 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           ],
         ),
       );
+    }
+  }
+
+  Future<void> _viewAdminFeedback() async {
+    if (_tutorProfile == null) return;
+
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) =>
+            TutorAdminFeedbackScreen(tutorProfile: _tutorProfile!),
+      ),
+    );
+
+    // Reload profile if feedback screen returned true (indicating update)
+    if (result == true) {
+      await _loadUserInfo();
     }
   }
 

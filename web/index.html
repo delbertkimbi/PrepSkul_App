@@ -18,19 +18,123 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Get connected with verified home and online tutors who don't just teach, but mentor and inspire — offering personalized support for academics, skill development, and exam preparation in Cameroon and beyond.">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://app.prepskul.com/">
+  <meta property="og:title" content="PrepSkul - Find Trusted Home and Online Tutors in Cameroon">
+  <meta property="og:description" content="Get connected with verified home and online tutors who don't just teach, but mentor and inspire — offering personalized support for academics, skill development, and exam preparation in Cameroon and beyond.">
+  <meta property="og:image" content="https://app.prepskul.com/app_logo(blue).png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:url" content="https://app.prepskul.com/">
+  <meta property="twitter:title" content="PrepSkul - Quality Tutoring Platform">
+  <meta property="twitter:description" content="Get connected with verified home and online tutors who don't just teach, but mentor and inspire — offering personalized support for academics, skill development, and exam preparation in Cameroon and beyond.">
+  <meta property="twitter:image" content="https://app.prepskul.com/app_logo(blue).png">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="prepskul">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-title" content="PrepSkul">
+  <link rel="apple-touch-icon" href="app_logo(blue).png">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <!-- Favicon - Multiple formats for better compatibility -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png?v=2"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon.png?v=2"/>
+  <link rel="shortcut icon" type="image/png" href="favicon.png?v=2"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="app_logo(blue).png?v=2"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="app_logo(blue).png?v=2"/>
 
-  <title>prepskul</title>
+  <title>PrepSkul: Find Trusted Home and Online Tutors in Cameroon</title>
   <link rel="manifest" href="manifest.json">
+  
+  <style>
+    /* Rounded corners for images in the page */
+    img[src*="logo"],
+    img[alt*="logo"] {
+      border-radius: 12px !important;
+    }
+  </style>
+  <script>
+    // Apply rounded corners to favicon by creating a new rounded version
+    (function() {
+      function roundFavicon() {
+        const favicon = document.querySelector('link[rel="icon"]');
+        if (!favicon) return;
+        
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = function() {
+          try {
+            const canvas = document.createElement('canvas');
+            const size = Math.max(img.width, img.height, 32);
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            if (!ctx) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Create rounded rectangle path
+            const radius = Math.min(size * 0.15, 12); // 15% of size or 12px max
+            ctx.beginPath();
+            ctx.moveTo(radius, 0);
+            ctx.lineTo(size - radius, 0);
+            ctx.quadraticCurveTo(size, 0, size, radius);
+            ctx.lineTo(size, size - radius);
+            ctx.quadraticCurveTo(size, size, size - radius, size);
+            ctx.lineTo(radius, size);
+            ctx.quadraticCurveTo(0, size, 0, size - radius);
+            ctx.lineTo(0, radius);
+            ctx.quadraticCurveTo(0, 0, radius, 0);
+            ctx.closePath();
+            ctx.clip();
+            
+            // Draw the image centered
+            const x = (size - img.width) / 2;
+            const y = (size - img.height) / 2;
+            ctx.drawImage(img, x, y);
+            
+            // Update favicon
+            const newFavicon = canvas.toDataURL('image/png');
+            favicon.href = newFavicon;
+            
+            // Also update apple-touch-icon
+            const appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+            if (appleIcon) {
+              appleIcon.href = newFavicon;
+            }
+          } catch (e) {
+            console.warn('Could not round favicon:', e);
+          }
+        };
+        
+        img.onerror = function() {
+          console.warn('Could not load favicon for rounding');
+        };
+        
+        // Try to load the favicon - use absolute path if relative fails
+        const faviconSrc = favicon.href;
+        // Remove query params for initial load
+        const baseSrc = faviconSrc.split('?')[0];
+        // Try relative path first, then absolute if that fails
+        img.src = baseSrc + '?v=2&t=' + Date.now();
+      }
+      
+      // Run immediately and also on DOMContentLoaded
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', roundFavicon);
+      } else {
+        roundFavicon();
+      }
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

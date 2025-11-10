@@ -1,14 +1,19 @@
 {
-    "name": "prepskul",
-    "short_name": "prepskul",
+    "name": "PrepSkul: Find Trusted Home and Online Tutors in Cameroon",
+    "short_name": "PrepSkul",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "description": "Get connected with verified home and online tutors who don’t just teach, but mentor and inspire — offering personalized support for academics, skill development, and exam preparation in Cameroon and beyond.",
     "prefer_related_applications": false,
     "icons": [
+        {
+            "src": "app_logo(blue).png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
         {
             "src": "icons/Icon-192.png",
             "sizes": "192x192",

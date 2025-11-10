@@ -41,6 +41,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   Map<String, String> _selectedTimes = {}; // e.g., {"Monday": "3:00 PM"}
   String? _selectedLocation; // online, onsite, hybrid
   String? _onsiteAddress;
+  String? _locationDescription; // Brief description for onsite/hybrid
   String? _selectedPaymentPlan; // monthly, biweekly, weekly
 
   @override
@@ -105,8 +106,16 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
     // Pre-fill address (if onsite)
     if (survey['city'] != null && survey['quarter'] != null) {
-      _onsiteAddress = '${survey['city']}, ${survey['quarter']}';
+      final street = survey['street'] != null ? ', ${survey['street']}' : '';
+      _onsiteAddress = '${survey['city']}, ${survey['quarter']}$street';
       print('✅ Pre-filled address: $_onsiteAddress');
+    }
+
+    // Pre-fill location description if available
+    if (survey['location_description'] != null) {
+      _locationDescription = survey['location_description'] as String;
+    } else if (survey['additional_address_info'] != null) {
+      _locationDescription = survey['additional_address_info'] as String;
     }
   }
 
@@ -198,6 +207,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         times: _selectedTimes,
         location: _selectedLocation!,
         address: _onsiteAddress,
+        locationDescription: _locationDescription,
         paymentPlan: _selectedPaymentPlan!,
         monthlyTotal: monthlyTotal,
       );
@@ -432,10 +442,12 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             tutor: widget.tutor,
             initialLocation: _selectedLocation,
             initialAddress: _onsiteAddress,
-            onLocationSelected: (location, address) {
+            initialLocationDescription: _locationDescription,
+            onLocationSelected: (location, address, locationDescription) {
               setState(() {
                 _selectedLocation = location;
                 _onsiteAddress = address;
+                _locationDescription = locationDescription;
               });
             },
           ),

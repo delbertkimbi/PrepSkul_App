@@ -14,13 +14,16 @@ class LocationSelector extends StatefulWidget {
   final Map<String, dynamic> tutor;
   final String? initialLocation;
   final String? initialAddress;
-  final Function(String location, String? address) onLocationSelected;
+  final String? initialLocationDescription;
+  final Function(String location, String? address, String? locationDescription)
+  onLocationSelected;
 
   const LocationSelector({
     Key? key,
     required this.tutor,
     this.initialLocation,
     this.initialAddress,
+    this.initialLocationDescription,
     required this.onLocationSelected,
   }) : super(key: key);
 
@@ -31,6 +34,8 @@ class LocationSelector extends StatefulWidget {
 class _LocationSelectorState extends State<LocationSelector> {
   String? _selectedLocation;
   final TextEditingController _addressController = TextEditingController();
+  final TextEditingController _locationDescriptionController =
+      TextEditingController();
 
   // Parse tutor's teaching mode from demo data
   Set<String> _tutorTeachingModes = {};
@@ -40,6 +45,8 @@ class _LocationSelectorState extends State<LocationSelector> {
     super.initState();
     _selectedLocation = widget.initialLocation;
     _addressController.text = widget.initialAddress ?? '';
+    _locationDescriptionController.text =
+        widget.initialLocationDescription ?? '';
     _loadTutorTeachingModes();
   }
 
@@ -79,11 +86,14 @@ class _LocationSelectorState extends State<LocationSelector> {
   void _notifyParent() {
     if (_selectedLocation == null) return;
 
-    final needsAddress = _selectedLocation == 'onsite' ||
-        _selectedLocation == 'hybrid';
+    final needsAddress =
+        _selectedLocation == 'onsite' || _selectedLocation == 'hybrid';
     final address = needsAddress ? _addressController.text.trim() : null;
+    final locationDescription = needsAddress
+        ? _locationDescriptionController.text.trim()
+        : null;
 
-    widget.onLocationSelected(_selectedLocation!, address);
+    widget.onLocationSelected(_selectedLocation!, address, locationDescription);
   }
 
   @override
@@ -178,9 +188,48 @@ class _LocationSelectorState extends State<LocationSelector> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
                 ),
                 prefixIcon: Icon(Icons.location_on, color: Colors.grey[600]),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _locationDescriptionController,
+              onChanged: (_) => _notifyParent(),
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Location Description',
+                hintText:
+                    'Add landmarks, nearby buildings, or clear directions to help the tutor find your location easily',
+                hintStyle: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: Colors.grey[400],
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
+                ),
+                prefixIcon: Icon(
+                  Icons.description_outlined,
+                  color: Colors.grey[600],
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -198,7 +247,7 @@ class _LocationSelectorState extends State<LocationSelector> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Make sure to include landmarks or clear directions to help the tutor find your location easily.',
+                      'Include landmarks or clear directions to help the tutor find your location easily.',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: Colors.blue[900],
@@ -332,7 +381,9 @@ class _LocationSelectorState extends State<LocationSelector> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? AppTheme.primaryColor : Colors.grey[400]!,
+                    color: isSelected
+                        ? AppTheme.primaryColor
+                        : Colors.grey[400]!,
                     width: 2,
                   ),
                 ),
@@ -341,7 +392,9 @@ class _LocationSelectorState extends State<LocationSelector> {
                   height: 16,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                    color: isSelected
+                        ? AppTheme.primaryColor
+                        : Colors.transparent,
                   ),
                 ),
               )
@@ -369,6 +422,7 @@ class _LocationSelectorState extends State<LocationSelector> {
   @override
   void dispose() {
     _addressController.dispose();
+    _locationDescriptionController.dispose();
     super.dispose();
   }
 }

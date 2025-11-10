@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:table_calendar/table_calendar.dart';
 
@@ -53,6 +55,69 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   ];
 
   double get _trialFee => _selectedDuration == 30 ? 2000.0 : 3500.0;
+
+  // Location data (prefilled from survey)
+  String _selectedLocation = 'online'; // Default to online
+  String? _onsiteAddress;
+  String? _locationDescription;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillFromSurvey();
+  }
+
+  /// Pre-fill data from survey if available
+  Future<void> _prefillFromSurvey() async {
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      if (userProfile == null) return;
+
+      final userType = userProfile['user_type'] as String?;
+      if (userType == null) return;
+
+      Map<String, dynamic>? surveyData;
+
+      if (userType == 'student') {
+        surveyData = await SurveyRepository.getStudentSurvey(userProfile['id']);
+      } else if (userType == 'parent') {
+        surveyData = await SurveyRepository.getParentSurvey(userProfile['id']);
+      }
+
+      if (surveyData != null && mounted) {
+        setState(() {
+          // Pre-fill location preference
+          final preferredLocation = surveyData?['preferred_location'];
+          if (preferredLocation != null) {
+            _selectedLocation = preferredLocation.toString();
+          }
+
+          // Pre-fill address (if onsite)
+          final city = surveyData?['city'];
+          final quarter = surveyData?['quarter'];
+          if (city != null && quarter != null) {
+            final street = surveyData?['street'];
+            final streetStr = street != null ? ', ${street.toString()}' : '';
+            _onsiteAddress = '${city.toString()}, ${quarter.toString()}$streetStr';
+            print('✅ Pre-filled trial session address: $_onsiteAddress');
+          }
+
+          // Pre-fill location description if available
+          final locationDesc = surveyData?['location_description'];
+          if (locationDesc != null) {
+            _locationDescription = locationDesc.toString();
+          } else {
+            final additionalInfo = surveyData?['additional_address_info'];
+            if (additionalInfo != null) {
+              _locationDescription = additionalInfo.toString();
+            }
+          }
+        });
+      }
+    } catch (e) {
+      print('⚠️ Could not load survey data for trial session prefill: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -135,7 +200,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         scheduledDate: _selectedDate,
         scheduledTime: _selectedTime!,
         durationMinutes: _selectedDuration,
-        location: 'online',
+        location: _selectedLocation,
+        address: _onsiteAddress,
+        locationDescription: _locationDescription,
         trialGoal: _goalController.text.trim(),
         learnerChallenges: _challengesController.text.trim().isNotEmpty
             ? _challengesController.text.trim()

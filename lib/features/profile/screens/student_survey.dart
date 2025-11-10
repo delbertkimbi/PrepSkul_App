@@ -7,6 +7,8 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import '../../tutor/screens/instruction_screen.dart';
 
 class StudentSurvey extends StatefulWidget {
   const StudentSurvey({Key? key}) : super(key: key);
@@ -70,6 +72,112 @@ class _StudentSurveyState extends State<StudentSurvey> {
     super.initState();
     _initializeSteps();
     _loadStudentNameFromProfile();
+    _loadSavedData();
+  }
+
+  // Auto-save functionality
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = {
+      'currentStep': _currentStep,
+      'studentName': _studentName,
+      'studentDateOfBirth': _studentDateOfBirth?.toIso8601String(),
+      'studentGender': _studentGender,
+      'selectedCity': _selectedCity,
+      'selectedQuarter': _selectedQuarter,
+      'customQuarter': _customQuarter,
+      'isCustomQuarter': _isCustomQuarter,
+      'selectedLearningPath': _selectedLearningPath,
+      'selectedEducationLevel': _selectedEducationLevel,
+      'selectedClass': _selectedClass,
+      'selectedStream': _selectedStream,
+      'selectedSubjects': _selectedSubjects,
+      'universityCourses': _universityCoursesController.text,
+      'selectedSkillCategory': _selectedSkillCategory,
+      'selectedSkills': _selectedSkills,
+      'selectedExamType': _selectedExamType,
+      'selectedSpecificExam': _selectedSpecificExam,
+      'examSubjects': _examSubjects,
+      'minBudget': _minBudget,
+      'maxBudget': _maxBudget,
+      'tutorGenderPreference': _tutorGenderPreference,
+      'tutorQualificationPreference': _tutorQualificationPreference,
+      'preferredLocation': _preferredLocation,
+      'preferredSchedule': _preferredSchedule,
+      'learningStyle': _learningStyle,
+      'confidenceLevel': _confidenceLevel,
+      'learningGoals': _learningGoals,
+      'challenges': _challenges,
+    };
+    await prefs.setString('student_survey_data', jsonEncode(data));
+    print('✅ Auto-saved student survey data');
+  }
+
+  Future<void> _loadSavedData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedDataString = prefs.getString('student_survey_data');
+
+    if (savedDataString != null) {
+      try {
+        final data = jsonDecode(savedDataString) as Map<String, dynamic>;
+        setState(() {
+          _currentStep = data['currentStep'] ?? 0;
+          _studentName = data['studentName'];
+          if (data['studentDateOfBirth'] != null) {
+            _studentDateOfBirth = DateTime.parse(data['studentDateOfBirth']);
+          }
+          _studentGender = data['studentGender'];
+          _selectedCity = data['selectedCity'];
+          _selectedQuarter = data['selectedQuarter'];
+          _customQuarter = data['customQuarter'];
+          _isCustomQuarter = data['isCustomQuarter'] ?? false;
+          _selectedLearningPath = data['selectedLearningPath'];
+          _selectedEducationLevel = data['selectedEducationLevel'];
+          _selectedClass = data['selectedClass'];
+          _selectedStream = data['selectedStream'];
+          _selectedSubjects = List<String>.from(data['selectedSubjects'] ?? []);
+          _universityCoursesController.text = data['universityCourses'] ?? '';
+          _selectedSkillCategory = data['selectedSkillCategory'];
+          _selectedSkills = List<String>.from(data['selectedSkills'] ?? []);
+          _selectedExamType = data['selectedExamType'];
+          _selectedSpecificExam = data['selectedSpecificExam'];
+          _examSubjects = List<String>.from(data['examSubjects'] ?? []);
+          _minBudget = data['minBudget'] ?? 20000;
+          _maxBudget = data['maxBudget'] ?? 55000;
+          _tutorGenderPreference = data['tutorGenderPreference'];
+          _tutorQualificationPreference = data['tutorQualificationPreference'];
+          _preferredLocation = data['preferredLocation'];
+          _preferredSchedule = data['preferredSchedule'];
+          _learningStyle = data['learningStyle'];
+          _confidenceLevel = data['confidenceLevel'];
+          _learningGoals = List<String>.from(data['learningGoals'] ?? []);
+          _challenges = List<String>.from(data['challenges'] ?? []);
+        });
+
+        // Update quarters if city is selected
+        if (_selectedCity != null) {
+          _availableQuarters = AppData.cities[_selectedCity!] ?? [];
+        }
+
+        // Rebuild steps based on loaded learning path
+        if (_selectedLearningPath != null) {
+          _updateSteps();
+        }
+
+        print(
+          '✅ Loaded saved student survey data - resuming at step $_currentStep',
+        );
+
+        // Jump to saved step
+        if (_currentStep > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _pageController.jumpToPage(_currentStep);
+          });
+        }
+      } catch (e) {
+        print('⚠️ Error loading saved data: $e');
+      }
+    }
   }
 
   /// Load student name from profile to avoid redundant entry
@@ -349,6 +457,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   setState(() {
                     _currentStep = index;
                   });
+                  _saveData(); // Auto-save when step changes
                 },
                 itemCount: _steps.length,
                 itemBuilder: (context, index) {
@@ -1096,6 +1205,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 _resetDynamicFields();
                 _updateSteps();
               });
+              _saveData(); // Auto-save when learning path changes
             },
           ),
         );
@@ -2408,141 +2518,28 @@ class _StudentSurveyState extends State<StudentSurvey> {
   }
 
   void _showPaymentPolicy() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 500),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.policy_outlined,
-                        color: AppTheme.primaryColor,
-                        size: 24,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Payment Policy Agreement',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textDark,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
-                      color: AppTheme.textMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildPolicyPoint(
-                          'All payments for tutoring sessions are made through PrepSkul.',
-                        ),
-                        _buildPolicyPoint(
-                          'Sessions are paid for before the start of the learning period.',
-                        ),
-                        _buildPolicyPoint(
-                          'If a session needs to be rescheduled, please notify PrepSkul at least 6 hours in advance.',
-                        ),
-                        _buildPolicyPoint(
-                          'If a session is cancelled late or missed without notice, that session may still be charged.',
-                        ),
-                        _buildPolicyPoint(
-                          'If you have concerns or are not satisfied with a session, you may report it to PrepSkul within 24 hours.',
-                        ),
-                        _buildPolicyPoint(
-                          'PrepSkul handles tutor payments only after session confirmation, ensuring your learning experience is protected and monitored.',
-                        ),
-                        _buildPolicyPoint(
-                          'No direct payments should be made to tutors outside the platform.',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      'Got it',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+    const paymentPolicyContent =
+        '''All payments for tutoring sessions are made through PrepSkul.
 
-  Widget _buildPolicyPoint(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 6),
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.poppins(
-                fontSize: 12,
-                color: AppTheme.textDark,
-                height: 1.5,
-              ),
-            ),
-          ),
-        ],
+Sessions are paid for before the start of the learning period.
+
+If a session needs to be rescheduled, please notify PrepSkul at least 6 hours in advance.
+
+If a session is cancelled late or missed without notice, that session may still be charged.
+
+If you have concerns or are not satisfied with a session, you may report it to PrepSkul within 24 hours.
+
+PrepSkul handles tutor payments only after session confirmation, ensuring your learning experience is protected and monitored.
+
+No direct payments should be made to tutors outside the platform.''';
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => InstructionScreen(
+          title: 'Payment Policy Agreement',
+          content: paymentPolicyContent,
+          icon: Icons.policy_outlined,
+        ),
       ),
     );
   }
@@ -2629,9 +2626,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
       // Save to database
       await SurveyRepository.saveStudentSurvey(userId, surveyData);
 
-      // Mark survey as completed locally
+      // Clear saved onboarding data to prevent resuming on restart
       final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('student_survey_data');
       await prefs.setBool('survey_completed', true);
+      print('✅ Cleared saved student survey data after submission');
 
       print('✅ Student survey saved successfully!');
 

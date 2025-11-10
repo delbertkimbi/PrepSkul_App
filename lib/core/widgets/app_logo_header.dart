@@ -20,20 +20,26 @@ class AppLogoHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!showText) {
-      return Image.asset(
-        'assets/images/app_logo(blue).png',
-        width: logoSize,
-        height: logoSize,
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          'assets/images/app_logo(blue).png',
+          width: logoSize,
+          height: logoSize,
+        ),
       );
     }
 
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Image.asset(
-          'assets/images/app_logo(blue).png',
-          width: logoSize,
-          height: logoSize,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.asset(
+            'assets/images/app_logo(blue).png',
+            width: logoSize,
+            height: logoSize,
+          ),
         ),
         const SizedBox(width: 12),
         Text(
@@ -60,10 +66,13 @@ class AppLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      'assets/images/app_logo(blue).png',
-      width: size,
-      height: size,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.asset(
+        'assets/images/app_logo(blue).png',
+        width: size,
+        height: size,
+      ),
     );
   }
 }

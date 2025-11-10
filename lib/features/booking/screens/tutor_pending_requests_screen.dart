@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/features/booking/screens/tutor_request_detail_screen.dart';
+import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/booking/services/booking_service.dart';
+import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
 
 /// TutorPendingRequestsScreen
 ///
@@ -21,7 +23,7 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = true;
-  List<Map<String, dynamic>> _allRequests = [];
+  List<BookingRequest> _allRequests = [];
 
   @override
   void initState() {
@@ -31,86 +33,41 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
   }
 
   Future<void> _loadRequests() async {
-    // TODO: Replace with real Supabase data
-    await Future.delayed(const Duration(seconds: 1));
-
-    // Demo data
     setState(() {
-      _allRequests = [
-        {
-          'id': 'req_001',
-          'student': {
-            'full_name': 'Sarah Mbah',
-            'avatar_url': 'assets/images/prepskul_profile.png',
-            'user_type': 'student',
-          },
-          'frequency': 2,
-          'days': ['Monday', 'Wednesday'],
-          'times': {'Monday': '4:00 PM', 'Wednesday': '4:00 PM'},
-          'location': 'online',
-          'address': null,
-          'payment_plan': 'monthly',
-          'monthly_total': 40000.0,
-          'status': 'pending',
-          'created_at': '2025-10-25T10:30:00',
-          'has_conflict': true,
-          'conflict_details':
-              'You have another student (John Doe) at Monday 4:00 PM',
-        },
-        {
-          'id': 'req_002',
-          'student': {
-            'full_name': 'Mr. Kameni (Parent)',
-            'avatar_url': 'assets/images/prepskul_profile.png',
-            'user_type': 'parent',
-          },
-          'frequency': 3,
-          'days': ['Tuesday', 'Thursday', 'Saturday'],
-          'times': {
-            'Tuesday': '5:00 PM',
-            'Thursday': '5:00 PM',
-            'Saturday': '10:00 AM',
-          },
-          'location': 'hybrid',
-          'address': 'Douala, Akwa, Rue de la Joie',
-          'payment_plan': 'biweekly',
-          'monthly_total': 55000.0,
-          'status': 'pending',
-          'created_at': '2025-10-26T14:20:00',
-          'has_conflict': false,
-        },
-        {
-          'id': 'req_003',
-          'student': {
-            'full_name': 'Grace Fon',
-            'avatar_url': 'assets/images/prepskul_profile.png',
-            'user_type': 'student',
-          },
-          'frequency': 1,
-          'days': ['Friday'],
-          'times': {'Friday': '3:00 PM'},
-          'location': 'onsite',
-          'address': 'Yaoundé, Bastos',
-          'payment_plan': 'monthly',
-          'monthly_total': 25000.0,
-          'status': 'approved',
-          'created_at': '2025-10-20T09:15:00',
-          'has_conflict': false,
-        },
-      ];
-      _isLoading = false;
+      _isLoading = true;
     });
+
+    try {
+      final requests = await BookingService.getTutorBookingRequests();
+      setState(() {
+        _allRequests = requests;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('❌ Error loading booking requests: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load requests: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
-  List<Map<String, dynamic>> _getFilteredRequests(String status) {
+  List<BookingRequest> _getFilteredRequests(String status) {
     if (status == 'all') return _allRequests;
-    return _allRequests.where((req) => req['status'] == status).toList();
+    return _allRequests.where((req) => req.status == status).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     final pendingCount = _allRequests
-        .where((r) => r['status'] == 'pending')
+        .where((r) => r.status == 'pending')
         .length;
 
     return Scaffold(
@@ -237,20 +194,22 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
     );
   }
 
-  Widget _buildRequestCard(Map<String, dynamic> request) {
-    final student = request['student'] as Map<String, dynamic>;
-    final status = request['status'] as String;
-    final hasConflict = request['has_conflict'] == true;
-    final isPending = status == 'pending';
+  Widget _buildRequestCard(BookingRequest request) {
+    final hasConflict = request.hasConflict;
+    final isPending = request.isPending;
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        final result = await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => TutorRequestDetailScreen(request: request),
+            builder: (context) => TutorBookingDetailScreen(request: request),
           ),
         );
+        // Refresh if request was approved/rejected
+        if (result == true) {
+          _loadRequests();
+        }
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -321,10 +280,19 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                     children: [
                       CircleAvatar(
                         radius: 28,
-                        backgroundImage: AssetImage(
-                          student['avatar_url'] ??
-                              'assets/images/prepskul_profile.png',
-                        ),
+                        backgroundImage: request.studentAvatarUrl != null
+                            ? NetworkImage(request.studentAvatarUrl!)
+                            : null,
+                        child: request.studentAvatarUrl == null
+                            ? Text(
+                                request.studentName[0].toUpperCase(),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : null,
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -332,7 +300,7 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              student['full_name'] ?? 'Student',
+                              request.studentName,
                               style: GoogleFonts.poppins(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
@@ -346,19 +314,19 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: student['user_type'] == 'parent'
+                                color: request.studentType == 'parent'
                                     ? Colors.purple[50]
                                     : Colors.blue[50],
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                student['user_type'] == 'parent'
+                                request.studentType == 'parent'
                                     ? 'PARENT'
                                     : 'STUDENT',
                                 style: GoogleFonts.poppins(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
-                                  color: student['user_type'] == 'parent'
+                                  color: request.studentType == 'parent'
                                       ? Colors.purple[700]
                                       : Colors.blue[700],
                                 ),
@@ -373,15 +341,17 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: _getStatusColor(status).withOpacity(0.1),
+                          color: _getStatusColor(
+                            request.status,
+                          ).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          status.toUpperCase(),
+                          request.status.toUpperCase(),
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
-                            color: _getStatusColor(status),
+                            color: _getStatusColor(request.status),
                           ),
                         ),
                       ),
@@ -397,19 +367,19 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                       Expanded(
                         child: _buildDetailItem(
                           Icons.calendar_today,
-                          '${request['frequency']}x/week',
+                          '${request.frequency}x/week',
                         ),
                       ),
                       Expanded(
                         child: _buildDetailItem(
                           Icons.access_time,
-                          '${request['days'].length} days',
+                          '${request.days.length} days',
                         ),
                       ),
                       Expanded(
                         child: _buildDetailItem(
                           Icons.place,
-                          (request['location'] as String).toUpperCase(),
+                          request.location.toUpperCase(),
                         ),
                       ),
                     ],
@@ -428,7 +398,7 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                         ),
                       ),
                       Text(
-                        '${request['monthly_total'].toStringAsFixed(0)} XAF',
+                        '${request.monthlyTotal.toStringAsFixed(0)} XAF',
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
@@ -445,17 +415,19 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () {
-                              Navigator.push(
+                            onPressed: () async {
+                              final result = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      TutorRequestDetailScreen(
+                                      TutorBookingDetailScreen(
                                         request: request,
-                                        autoOpenReject: true,
                                       ),
                                 ),
                               );
+                              if (result == true) {
+                                _loadRequests();
+                              }
                             },
                             style: OutlinedButton.styleFrom(
                               side: BorderSide(color: Colors.red[300]!),
@@ -478,16 +450,19 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                         Expanded(
                           flex: 2,
                           child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.push(
+                            onPressed: () async {
+                              final result = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) =>
-                                      TutorRequestDetailScreen(
+                                      TutorBookingDetailScreen(
                                         request: request,
                                       ),
                                 ),
                               );
+                              if (result == true) {
+                                _loadRequests();
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryColor,

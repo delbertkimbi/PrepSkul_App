@@ -286,17 +286,27 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
     // Use provided height or default to original 280
     final containerHeight = imageHeight ?? 280.0;
 
-    return SizedBox(
-      height: containerHeight,
-      width: double.infinity,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Background decorative blob 1
-          Positioned(
-            top: 20,
-            left: 20,
-            child: TweenAnimationBuilder(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // For large screens, constrain width to prevent scattered appearance
+        final isLargeScreen = constraints.maxWidth > 600;
+        final maxWidth = isLargeScreen ? 400.0 : double.infinity;
+        
+        return SizedBox(
+          height: containerHeight,
+          width: maxWidth,
+          child: Center(
+            child: SizedBox(
+              height: containerHeight,
+              width: isLargeScreen ? 350.0 : double.infinity,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  // Background decorative blob 1
+                  Positioned(
+                    top: 20,
+                    left: 20,
+                    child: TweenAnimationBuilder(
               duration: const Duration(milliseconds: 1500),
               tween: Tween<double>(begin: 0.0, end: 1.0),
               builder: (context, double value, child) {
@@ -330,11 +340,11 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
             ),
           ),
 
-          // Background decorative blob 2
-          Positioned(
-            bottom: 30,
-            right: 30,
-            child: TweenAnimationBuilder(
+                  // Background decorative blob 2
+                  Positioned(
+                    bottom: 30,
+                    right: 30,
+                    child: TweenAnimationBuilder(
               duration: const Duration(milliseconds: 1800),
               tween: Tween<double>(begin: 0.0, end: 1.0),
               builder: (context, double value, child) {
@@ -368,9 +378,9 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
             ),
           ),
 
-          // Main image with stacked shadow effect
-          Center(
-            child: TweenAnimationBuilder(
+                  // Main image with stacked shadow effect
+                  Center(
+                    child: TweenAnimationBuilder(
               duration: const Duration(milliseconds: 1200),
               tween: Tween<double>(begin: 0.0, end: 1.0),
               curve: Curves.easeOutBack,
@@ -462,6 +472,8 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
                             fit: BoxFit.cover,
                             width: double.infinity,
                             height: double.infinity,
+                            cacheWidth: isLargeScreen ? 700 : null, // Cache optimized size for large screens
+                            cacheHeight: isLargeScreen ? 700 : null,
                             // Note: loadingBuilder is only for Image.network
                             // Image.asset loads synchronously from bundled assets
                             errorBuilder: (context, error, stackTrace) {
@@ -511,8 +523,12 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
               },
             ),
           ),
-        ],
-      ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

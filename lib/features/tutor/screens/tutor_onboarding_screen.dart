@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/app_data.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
@@ -12,6 +10,7 @@ import '../../../core/services/storage_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
+import '../../../core/services/supabase_service.dart';
 import 'instruction_screen.dart';
 
 class TutorOnboardingScreen extends StatefulWidget {
@@ -38,12 +37,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         _customQuarter = _customQuarterController.text;
       });
     });
-
-    // Add listeners for payment fields to auto-save
-    _paymentNumberController.addListener(() => _saveData());
-    _paymentNameController.addListener(() => _saveData());
-    _bankDetailsController.addListener(() => _saveData());
-
     _loadAuthMethod();
     _loadSavedData();
   }
@@ -56,78 +49,52 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     });
   }
 
-  // Auto-save functionality - Save ALL fields locally
+  // Auto-save functionality
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
     final data = {
       'currentStep': _currentStep,
-      // Contact Information
       'email': _emailController.text,
-      'phone': _phoneController.text,
-      'authMethod': _authMethod,
-      // Academic Background
       'selectedEducation': _selectedEducation,
       'institution': _institutionController.text,
       'fieldOfStudy': _fieldOfStudyController.text,
       'hasTraining': _hasTraining,
-      // Location
       'selectedCity': _selectedCity,
       'selectedQuarter': _selectedQuarter,
       'customQuarter': _customQuarter,
-      // Teaching Focus
       'selectedTutoringAreas': _selectedTutoringAreas,
       'selectedLearnerLevels': _selectedLearnerLevels,
-      // Specializations
       'selectedSpecializations': _selectedSpecializations,
-      // Experience
       'hasExperience': _hasExperience,
       'experienceDuration': _experienceDuration,
-      'previousOrganization': _previousOrganizationController.text,
-      'taughtLevels': _taughtLevels,
       'motivation': _motivationController.text,
-      // Teaching Style
       'preferredMode': _preferredMode,
       'teachingApproaches': _teachingApproaches,
       'preferredSessionType': _preferredSessionType,
-      'handlesMultipleLearners': _handlesMultipleLearners,
       'hoursPerWeek': _hoursPerWeek,
-      // Digital Readiness
-      'devices': _devices,
-      'hasInternet': _hasInternet,
-      'teachingTools': _teachingTools,
-      'hasMaterials': _hasMaterials,
-      'wantsTraining': _wantsTraining,
-      // Availability
-      'tutoringAvailability': _tutoringAvailability,
-      'testSessionAvailability': _testSessionAvailability,
-      // Payment
       'paymentMethod': _paymentMethod,
-      'paymentNumber': _paymentNumberController.text,
-      'paymentName': _paymentNameController.text,
-      'bankDetails': _bankDetailsController.text,
       'expectedRate': _expectedRate,
-      'pricingFactors': _pricingFactors,
       'agreesToPaymentPolicy': _agreesToPaymentPolicy,
-      // Verification
       'agreesToVerification': _agreesToVerification,
-      'videoLink': _videoLinkController.text,
-      'socialMediaLinks': _socialMediaLinks,
-      // Personal Statement
-      'statement': _statementController.text,
-      // Affirmations
-      'affirmations': _affirmations,
-      // Document URLs (from _uploadedDocuments)
-      'uploadedDocuments': _uploadedDocuments,
-      // Legacy URLs (for backward compatibility)
-      'profilePhotoUrl': _profilePhotoUrl,
-      'idCardFrontUrl': _idCardFrontUrl,
-      'idCardBackUrl': _idCardBackUrl,
     };
     await prefs.setString('tutor_onboarding_data', jsonEncode(data));
-    print('✅ Auto-saved tutor onboarding data (comprehensive)');
+    print('✅ Auto-saved tutor onboarding data');
   }
 
   Future<void> _loadSavedData() async {
+    // First, check if existingData was passed from navigation (needs improvement flow)
+    final existingData =
+        widget.basicInfo['existingData'] as Map<String, dynamic>?;
+    final needsImprovement = widget.basicInfo['needsImprovement'] == true;
+
+    if (existingData != null && needsImprovement) {
+      // Load from database (existing tutor profile)
+      print('📝 Loading existing tutor profile data for improvement');
+      await _loadFromDatabaseData(existingData);
+      return;
+    }
+
+    // Otherwise, try loading from SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     final savedDataString = prefs.getString('tutor_onboarding_data');
 
@@ -136,108 +103,36 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         final data = jsonDecode(savedDataString) as Map<String, dynamic>;
         setState(() {
           _currentStep = data['currentStep'] ?? 0;
-          // Contact Information
           _emailController.text = data['email'] ?? '';
-          _phoneController.text = data['phone'] ?? '';
-          _authMethod = data['authMethod'] ?? 'phone';
-          // Academic Background
           _selectedEducation = data['selectedEducation'];
           _institutionController.text = data['institution'] ?? '';
           _fieldOfStudyController.text = data['fieldOfStudy'] ?? '';
           _hasTraining = data['hasTraining'] ?? false;
-          // Location
           _selectedCity = data['selectedCity'];
           _selectedQuarter = data['selectedQuarter'];
-          _customQuarter = data['customQuarter'] ?? '';
-          // Teaching Focus
+          _customQuarter = data['customQuarter'];
           _selectedTutoringAreas = List<String>.from(
             data['selectedTutoringAreas'] ?? [],
           );
           _selectedLearnerLevels = List<String>.from(
             data['selectedLearnerLevels'] ?? [],
           );
-          // Specializations
           _selectedSpecializations = List<String>.from(
             data['selectedSpecializations'] ?? [],
           );
-          // Experience
           _hasExperience = data['hasExperience'] ?? false;
           _experienceDuration = data['experienceDuration'];
-          _previousOrganizationController.text =
-              data['previousOrganization'] ?? '';
-          _taughtLevels = List<String>.from(data['taughtLevels'] ?? []);
           _motivationController.text = data['motivation'] ?? '';
-          // Teaching Style
           _preferredMode = data['preferredMode'];
           _teachingApproaches = List<String>.from(
             data['teachingApproaches'] ?? [],
           );
           _preferredSessionType = data['preferredSessionType'];
-          _handlesMultipleLearners = data['handlesMultipleLearners'] ?? false;
           _hoursPerWeek = data['hoursPerWeek'];
-          // Digital Readiness
-          _devices = List<String>.from(data['devices'] ?? []);
-          _hasInternet = data['hasInternet'] ?? false;
-          _teachingTools = List<String>.from(data['teachingTools'] ?? []);
-          _hasMaterials = data['hasMaterials'] ?? false;
-          _wantsTraining = data['wantsTraining'] ?? false;
-          // Availability
-          if (data['tutoringAvailability'] != null) {
-            _tutoringAvailability = Map<String, List<String>>.from(
-              (data['tutoringAvailability'] as Map).map(
-                (key, value) =>
-                    MapEntry(key.toString(), List<String>.from(value as List)),
-              ),
-            );
-          }
-          if (data['testSessionAvailability'] != null) {
-            _testSessionAvailability = Map<String, List<String>>.from(
-              (data['testSessionAvailability'] as Map).map(
-                (key, value) =>
-                    MapEntry(key.toString(), List<String>.from(value as List)),
-              ),
-            );
-          }
-          // Payment
           _paymentMethod = data['paymentMethod'];
-          _paymentNumberController.text = data['paymentNumber'] ?? '';
-          _paymentNameController.text = data['paymentName'] ?? '';
-          _bankDetailsController.text = data['bankDetails'] ?? '';
           _expectedRate = data['expectedRate'];
-          _pricingFactors = List<String>.from(data['pricingFactors'] ?? []);
           _agreesToPaymentPolicy = data['agreesToPaymentPolicy'] ?? false;
-          // Verification
           _agreesToVerification = data['agreesToVerification'] ?? false;
-          _videoLinkController.text = data['videoLink'] ?? '';
-          if (data['socialMediaLinks'] != null) {
-            _socialMediaLinks = Map<String, String>.from(
-              (data['socialMediaLinks'] as Map).map(
-                (key, value) => MapEntry(key.toString(), value.toString()),
-              ),
-            );
-          }
-          // Personal Statement
-          _statementController.text = data['statement'] ?? '';
-          // Affirmations
-          if (data['affirmations'] != null) {
-            _affirmations = Map<String, bool>.from(
-              (data['affirmations'] as Map).map(
-                (key, value) => MapEntry(key.toString(), value as bool),
-              ),
-            );
-          }
-          // Document URLs
-          if (data['uploadedDocuments'] != null) {
-            _uploadedDocuments = Map<String, dynamic>.from(
-              (data['uploadedDocuments'] as Map).map(
-                (key, value) => MapEntry(key.toString(), value),
-              ),
-            );
-          }
-          // Legacy URLs (for backward compatibility)
-          _profilePhotoUrl = data['profilePhotoUrl'];
-          _idCardFrontUrl = data['idCardFrontUrl'];
-          _idCardBackUrl = data['idCardBackUrl'];
         });
 
         // Update quarters if city is selected
@@ -258,6 +153,395 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       } catch (e) {
         print('⚠️ Error loading saved data: $e');
       }
+    } else if (existingData != null) {
+      // If no saved data but existingData exists, load from it
+      await _loadFromDatabaseData(existingData);
+    }
+  }
+
+  /// Load data from database (tutor profile) - prefills all fields
+  Future<void> _loadFromDatabaseData(Map<String, dynamic> data) async {
+    try {
+      // Fetch phone and email from profiles table
+      final userId = data['user_id'] as String?;
+      Map<String, dynamic>? profileData;
+      if (userId != null) {
+        try {
+          final profileResponse = await SupabaseService.client
+              .from('profiles')
+              .select('email, phone_number')
+              .eq('id', userId)
+              .maybeSingle();
+          profileData = profileResponse;
+        } catch (e) {
+          print('⚠️ Error fetching profile data: $e');
+        }
+      }
+
+      setState(() {
+        // Email and Phone from profiles table
+        _emailController.text =
+            profileData?['email']?.toString() ??
+            data['email']?.toString() ??
+            '';
+        _phoneController.text =
+            profileData?['phone_number']?.toString() ??
+            data['phone_number']?.toString() ??
+            '';
+
+        // Academic Background
+        _selectedEducation =
+            data['highest_education'] ?? data['selected_education'];
+        _institutionController.text = data['institution']?.toString() ?? '';
+        _fieldOfStudyController.text = data['field_of_study']?.toString() ?? '';
+        _hasTraining = data['has_training'] ?? false;
+
+        // Location
+        _selectedCity = data['city'];
+        _selectedQuarter = data['quarter'];
+        _customQuarter = data['custom_quarter']?.toString() ?? '';
+        if (_selectedCity != null) {
+          _availableQuarters = AppData.cities[_selectedCity!] ?? [];
+        }
+
+        // Teaching Focus
+        _selectedTutoringAreas = List<String>.from(
+          data['tutoring_areas'] ?? data['selected_tutoring_areas'] ?? [],
+        );
+        _selectedLearnerLevels = List<String>.from(
+          data['learner_levels'] ?? data['selected_learner_levels'] ?? [],
+        );
+        _selectedSpecializations = List<String>.from(
+          data['specializations'] ?? data['selected_specializations'] ?? [],
+        );
+
+        // Experience
+        _hasExperience =
+            data['has_experience'] ?? data['teaching_experience'] ?? false;
+        _experienceDuration =
+            data['teaching_duration'] ?? data['experience_duration'];
+        _motivationController.text =
+            data['motivation']?.toString() ?? data['bio']?.toString() ?? '';
+        // Previous organization
+        if (data['previous_roles'] != null &&
+            (data['previous_roles'] as List).isNotEmpty) {
+          _previousOrganizationController.text =
+              (data['previous_roles'] as List).first.toString();
+        }
+
+        // Taught levels - handle JSON parsing
+        if (data['taught_levels'] != null) {
+          final levels = data['taught_levels'] is String
+              ? jsonDecode(data['taught_levels'])
+              : data['taught_levels'];
+          if (levels is List) {
+            _taughtLevels = List<String>.from(levels);
+          }
+        }
+
+        // Teaching Style & Availability
+        _preferredMode = data['preferred_mode']?.toString();
+
+        // Teaching approaches - handle JSON parsing
+        if (data['teaching_approaches'] != null) {
+          final approaches = data['teaching_approaches'] is String
+              ? jsonDecode(data['teaching_approaches'])
+              : data['teaching_approaches'];
+          if (approaches is List) {
+            _teachingApproaches = List<String>.from(approaches);
+          }
+        }
+
+        _preferredSessionType = data['preferred_session_type']?.toString();
+        _hoursPerWeek = data['hours_per_week']?.toString();
+        _handlesMultipleLearners = data['handles_multiple_learners'] ?? false;
+
+        // Availability - Load from tutoring_availability
+        if (data['tutoring_availability'] != null) {
+          final availability = data['tutoring_availability'] is String
+              ? jsonDecode(data['tutoring_availability'])
+              : data['tutoring_availability'];
+          if (availability is Map) {
+            // Normalize day names to match UI (capitalize first letter)
+            _tutoringAvailability = {};
+            availability.forEach((key, value) {
+              final dayKey = key.toString();
+              // Normalize to "Monday", "Tuesday", etc.
+              final normalizedDay = dayKey.isNotEmpty
+                  ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
+                  : dayKey;
+              _tutoringAvailability[normalizedDay] = List<String>.from(
+                value ?? [],
+              );
+            });
+          }
+        }
+        print(
+          '✅ Loaded tutoring availability: \${_tutoringAvailability.keys.toList()}',
+        );
+        // Also check test_session_availability if needed
+        if (data['test_session_availability'] != null) {
+          final testAvailability = data['test_session_availability'] is String
+              ? jsonDecode(data['test_session_availability'])
+              : data['test_session_availability'];
+          if (testAvailability is Map) {
+            // Normalize day names to match UI
+            _testSessionAvailability = {};
+            testAvailability.forEach((key, value) {
+              final dayKey = key.toString();
+              final normalizedDay = dayKey.isNotEmpty
+                  ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
+                  : dayKey;
+              _testSessionAvailability[normalizedDay] = List<String>.from(
+                value ?? [],
+              );
+            });
+          }
+        }
+
+        // Also check legacy 'availability_schedule' field for backward compatibility
+        if (_tutoringAvailability.isEmpty &&
+            data['availability_schedule'] != null) {
+          final availability = data['availability_schedule'] is String
+              ? jsonDecode(data['availability_schedule'])
+              : data['availability_schedule'];
+          if (availability is Map) {
+            _tutoringAvailability = {};
+            availability.forEach((key, value) {
+              final dayKey = key.toString();
+              final normalizedDay = dayKey.isNotEmpty
+                  ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
+                  : dayKey;
+              _tutoringAvailability[normalizedDay] = List<String>.from(
+                value ?? [],
+              );
+            });
+          }
+        }
+
+        // Digital Readiness
+        if (data['devices'] != null) {
+          final devices = data['devices'] is String
+              ? jsonDecode(data['devices'])
+              : data['devices'];
+          if (devices is List) {
+            _devices = List<String>.from(devices);
+          }
+        }
+        _hasInternet = data['has_internet'] ?? false;
+        if (data['teaching_tools'] != null) {
+          final tools = data['teaching_tools'] is String
+              ? jsonDecode(data['teaching_tools'])
+              : data['teaching_tools'];
+          if (tools is List) {
+            _teachingTools = List<String>.from(tools);
+          }
+        }
+        _hasMaterials = data['has_materials'] ?? false;
+        _wantsTraining = data['wants_training'] ?? false;
+
+        // Payment
+        _paymentMethod = data['payment_method'];
+        _expectedRate =
+            data['expected_rate']?.toString() ??
+            data['hourly_rate']?.toString();
+
+        // Pricing factors
+        if (data['pricing_factors'] != null) {
+          final factors = data['pricing_factors'] is String
+              ? jsonDecode(data['pricing_factors'])
+              : data['pricing_factors'];
+          if (factors is List) {
+            _pricingFactors = List<String>.from(factors);
+          }
+        }
+
+        // Payment details (if stored as JSON)
+        if (data['payment_details'] != null) {
+          final paymentDetails = data['payment_details'] is String
+              ? jsonDecode(data['payment_details'])
+              : data['payment_details'];
+          _paymentNumberController.text =
+              paymentDetails['phone']?.toString() ??
+              paymentDetails['account_number']?.toString() ??
+              '';
+          _paymentNameController.text =
+              paymentDetails['name']?.toString() ?? '';
+          _bankDetailsController.text =
+              paymentDetails['bank_name']?.toString() ??
+              paymentDetails['bank_details']?.toString() ??
+              '';
+        }
+
+        // Verification
+        _videoLinkController.text =
+            data['video_intro']?.toString() ??
+            data['video_link']?.toString() ??
+            '';
+
+        // Document URLs - Set both variables and _uploadedDocuments
+        _profilePhotoUrl = data['profile_photo_url']?.toString();
+        _idCardFrontUrl = data['id_card_front_url']?.toString();
+        _idCardBackUrl = data['id_card_back_url']?.toString();
+
+        // Also populate _uploadedDocuments for UI (CRITICAL: Must be done for images to display)
+        if (_profilePhotoUrl != null && _profilePhotoUrl!.isNotEmpty) {
+          _uploadedDocuments['profile_picture'] = _profilePhotoUrl!;
+          print('✅ Loaded profile photo URL: $_profilePhotoUrl');
+        }
+        if (_idCardFrontUrl != null && _idCardFrontUrl!.isNotEmpty) {
+          _uploadedDocuments['id_front'] = _idCardFrontUrl!;
+          print('✅ Loaded ID front URL: $_idCardFrontUrl');
+        }
+        if (_idCardBackUrl != null && _idCardBackUrl!.isNotEmpty) {
+          _uploadedDocuments['id_back'] = _idCardBackUrl!;
+          print('✅ Loaded ID back URL: $_idCardBackUrl');
+        }
+
+        // Social media links
+        if (data['social_media_links'] != null) {
+          final socialLinks = data['social_media_links'] is String
+              ? jsonDecode(data['social_media_links'])
+              : data['social_media_links'];
+          if (socialLinks is Map) {
+            _socialMediaLinks = {};
+            socialLinks.forEach((key, value) {
+              // Normalize platform names to match UI (capitalize properly)
+              final platformKey = key.toString();
+              // Handle common variations
+              String normalizedKey = platformKey;
+              if (platformKey.toLowerCase() == 'linkedin') {
+                normalizedKey = 'LinkedIn';
+              } else if (platformKey.toLowerCase() == 'youtube') {
+                normalizedKey = 'YouTube';
+              } else if (platformKey.toLowerCase() == 'facebook') {
+                normalizedKey = 'Facebook';
+              } else if (platformKey.toLowerCase() == 'instagram') {
+                normalizedKey = 'Instagram';
+              } else {
+                // Capitalize first letter
+                normalizedKey = platformKey.isNotEmpty
+                    ? platformKey[0].toUpperCase() +
+                          platformKey.substring(1).toLowerCase()
+                    : platformKey;
+              }
+              _socialMediaLinks[normalizedKey] = value.toString();
+            });
+            print('✅ Loaded social media links: $_socialMediaLinks');
+          }
+        } else if (data['social_links'] != null) {
+          // Try legacy field
+          final socialLinks = data['social_links'] is String
+              ? jsonDecode(data['social_links'])
+              : data['social_links'];
+          if (socialLinks is Map) {
+            _socialMediaLinks = {};
+            socialLinks.forEach((key, value) {
+              final platformKey = key.toString();
+              String normalizedKey = platformKey;
+              if (platformKey.toLowerCase() == 'linkedin') {
+                normalizedKey = 'LinkedIn';
+              } else if (platformKey.toLowerCase() == 'youtube') {
+                normalizedKey = 'YouTube';
+              } else {
+                normalizedKey = platformKey.isNotEmpty
+                    ? platformKey[0].toUpperCase() +
+                          platformKey.substring(1).toLowerCase()
+                    : platformKey;
+              }
+              _socialMediaLinks[normalizedKey] = value.toString();
+            });
+            print(
+              '✅ Loaded social media links from legacy field: $_socialMediaLinks',
+            );
+          }
+        }
+
+        // Certificates - Load from certificates_urls (CRITICAL: Must load for certificates to display)
+        if (data['certificates_urls'] != null) {
+          final certs = data['certificates_urls'] is String
+              ? jsonDecode(data['certificates_urls'])
+              : data['certificates_urls'];
+          print('📜 Loading certificates: $certs');
+          if (certs is List && certs.isNotEmpty) {
+            // Use the last certificate URL for "last_certificate"
+            final lastCertUrl = certs.last.toString();
+            _certificateUrls['last_certificate'] = lastCertUrl;
+            _uploadedDocuments['last_certificate'] = lastCertUrl;
+            print('✅ Loaded certificate URL: $lastCertUrl');
+            // Also store others if needed
+            for (var i = 0; i < certs.length; i++) {
+              _certificateUrls['certificate_${i + 1}'] = certs[i].toString();
+            }
+          } else if (certs is Map) {
+            _certificateUrls = Map<String, String>.from(
+              certs.map(
+                (key, value) => MapEntry(key.toString(), value.toString()),
+              ),
+            );
+            // Also populate _uploadedDocuments
+            _certificateUrls.forEach((key, url) {
+              if (key == 'last_certificate' || key.contains('certificate')) {
+                _uploadedDocuments[key] = url;
+                print('✅ Loaded certificate: $key = $url');
+              }
+            });
+          }
+        } else {
+          print('⚠️ No certificates_urls found in data');
+        }
+
+        // Personal Statement
+        _statementController.text =
+            data['personal_statement']?.toString() ?? '';
+
+        // Set agreements to true if profile exists (they've agreed before)
+        _agreesToPaymentPolicy = data['payment_agreement'] ?? true;
+        _agreesToVerification = data['verification_agreement'] ?? true;
+
+        // Final agreements (if stored separately)
+        if (data['final_agreements'] != null) {
+          final agreements = data['final_agreements'] is String
+              ? jsonDecode(data['final_agreements'])
+              : data['final_agreements'];
+          if (agreements is Map) {
+            _finalAgreements = Map<String, bool>.from(
+              agreements.map(
+                (key, value) =>
+                    MapEntry(key.toString(), value == true || value == 'true'),
+              ),
+            );
+          }
+        } else {
+          // If no agreements stored, set defaults to true (they've agreed before)
+          _finalAgreements = {
+            'professionalism': true,
+            'dedication': true,
+            'payment_understanding': true,
+            'no_external_payments': true,
+            'truthful_information': true,
+          };
+        }
+      });
+
+      print('✅ Loaded existing tutor profile data - all fields prefilled');
+
+      // Show a message that data is prefilled
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Your existing profile data has been loaded. Please review and update as needed.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      print('⚠️ Error loading from database data: $e');
     }
   }
 
@@ -329,37 +613,23 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   bool _agreesToVerification = false;
   Map<String, String> _socialMediaLinks = {}; // Platform -> Link
   final _videoLinkController = TextEditingController();
-
-  // File uploads
-  File? _profilePhotoFile;
-  String? _profilePhotoUrl;
-  bool _isUploadingProfilePhoto = false;
-
-  File? _idCardFrontFile;
-  String? _idCardFrontUrl;
-  bool _isUploadingIdCardFront = false;
-
-  File? _idCardBackFile;
-  String? _idCardBackUrl;
-  bool _isUploadingIdCardBack = false;
-
-  Map<String, File> _certificateFiles =
-      {}; // key: certificate name, value: File
-  Map<String, String> _certificateUrls =
-      {}; // key: certificate name, value: URL
-  Map<String, bool> _uploadingCertificates = {}; // track upload progress
-
-  // Personal Statement
-  final _statementController = TextEditingController();
-
-  // Affirmations
-  Map<String, bool> _affirmations = {
+  Map<String, bool> _finalAgreements = {
     'professionalism': false,
     'dedication': false,
     'payment_understanding': false,
     'no_external_payments': false,
     'truthful_information': false,
   };
+
+  // File uploads
+  String? _profilePhotoUrl;
+  String? _idCardFrontUrl;
+  String? _idCardBackUrl;
+  Map<String, String> _certificateUrls =
+      {}; // key: certificate name, value: URL
+
+  // Personal Statement
+  final _statementController = TextEditingController();
 
   // Document uploads
   Map<String, dynamic> _uploadedDocuments = {};
@@ -386,9 +656,19 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   bool _isValidPhoneNumber(String phone) {
     if (phone.isEmpty) return false;
     // Remove any spaces or dashes
-    final cleanPhone = phone.replaceAll(RegExp(r'[\s\-]'), '');
-    // Should be 9 digits (Cameroon phone number)
-    return RegExp(r'^\d{9}$').hasMatch(cleanPhone);
+    String cleanPhone = phone.replaceAll(RegExp(r'[\s\-]'), '');
+
+    // Handle country code
+    if (cleanPhone.startsWith('+237')) {
+      cleanPhone = cleanPhone.substring(4); // Remove +237
+    } else if (cleanPhone.startsWith('237')) {
+      cleanPhone = cleanPhone.substring(3); // Remove 237
+    } else if (cleanPhone.startsWith('0')) {
+      cleanPhone = cleanPhone.substring(1); // Remove leading 0
+    }
+
+    // Should be exactly 9 digits (Cameroon phone number)
+    return RegExp(r'^[0-9]{9}$').hasMatch(cleanPhone);
   }
 
   bool _isValidUrl(String url) {
@@ -446,7 +726,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         title: Text(
           'Tutor Onboarding',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -582,35 +862,21 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 height: 56,
                 child: ElevatedButton(
                   onPressed: _currentStep == _totalSteps - 1
-                      ? (_areAllAgreementsChecked() ? _submitApplication : null)
+                      ? (_canProceedFromCurrentStep()
+                            ? _submitApplication
+                            : null)
                       : _canProceedFromCurrentStep()
                       ? _nextStep
                       : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _currentStep == _totalSteps - 1
-                        ? (_areAllAgreementsChecked()
-                              ? AppTheme.primaryColor
-                              : AppTheme.neutral200)
-                        : (_canProceedFromCurrentStep()
-                              ? AppTheme.primaryColor
-                              : AppTheme.neutral200),
-                    foregroundColor: _currentStep == _totalSteps - 1
-                        ? (_areAllAgreementsChecked()
-                              ? Colors.white
-                              : AppTheme.textLight)
-                        : (_canProceedFromCurrentStep()
-                              ? Colors.white
-                              : AppTheme.textLight),
-                    elevation:
-                        (_currentStep == _totalSteps - 1
-                            ? _areAllAgreementsChecked()
-                            : _canProceedFromCurrentStep())
-                        ? 2
-                        : 0,
-                    shadowColor:
-                        (_currentStep == _totalSteps - 1
-                            ? _areAllAgreementsChecked()
-                            : _canProceedFromCurrentStep())
+                    backgroundColor: _canProceedFromCurrentStep()
+                        ? AppTheme.primaryColor
+                        : AppTheme.neutral200,
+                    foregroundColor: _canProceedFromCurrentStep()
+                        ? Colors.white
+                        : AppTheme.textLight,
+                    elevation: _canProceedFromCurrentStep() ? 2 : 0,
+                    shadowColor: _canProceedFromCurrentStep()
                         ? AppTheme.primaryColor.withOpacity(0.3)
                         : null,
                     shape: RoundedRectangleBorder(
@@ -622,7 +888,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         ? 'Submit Application'
                         : 'Next',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -704,10 +970,18 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       RegExp(r'[\s\-]'),
                       '',
                     );
-                    if (phone.startsWith('0')) {
-                      phone = phone.substring(1);
+
+                    // Handle country code
+                    if (phone.startsWith('+237')) {
+                      phone = phone.substring(4); // Remove +237
+                    } else if (phone.startsWith('237')) {
+                      phone = phone.substring(3); // Remove 237
+                    } else if (phone.startsWith('0')) {
+                      phone = phone.substring(1); // Remove leading 0
                     }
-                    if (!_isValidPhoneNumber(phone)) {
+
+                    // Validate: should be exactly 9 digits
+                    if (!RegExp(r'^[0-9]{9}$').hasMatch(phone)) {
                       return 'Please enter a valid phone number (9 digits)';
                     }
                     return null;
@@ -1645,7 +1919,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Select Service Type',
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -1681,24 +1955,32 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         size: 24,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        'Tutoring Sessions',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: _selectedServiceType == 'tutoring'
-                              ? Colors.white
-                              : AppTheme.textDark,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Tutoring Sessions',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _selectedServiceType == 'tutoring'
+                                ? Colors.white
+                                : AppTheme.textDark,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        'Online & Physical',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: _selectedServiceType == 'tutoring'
-                              ? Colors.white.withOpacity(0.8)
-                              : AppTheme.textMedium,
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Online & Physical',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: _selectedServiceType == 'tutoring'
+                                ? Colors.white.withOpacity(0.8)
+                                : AppTheme.textMedium,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ],
@@ -1811,7 +2093,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Set your weekly availability',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -1937,7 +2219,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         child: Text(
                           day,
                           style: GoogleFonts.poppins(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: selectedSlots.isNotEmpty
                                 ? Colors.white
@@ -2135,10 +2417,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               'Above 5,000 XAF',
             ],
             selectedValue: _expectedRate,
-            onSelectionChanged: (value) {
-              setState(() => _expectedRate = value);
-              _saveData(); // Auto-save when rate changes
-            },
+            onSelectionChanged: (value) =>
+                setState(() => _expectedRate = value),
             isSingleSelection: true,
           ),
 
@@ -2170,7 +2450,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               Text(
                 'Payment Method',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -2202,10 +2482,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: '',
             options: ['MTN Mobile Money', 'Orange Money', 'Bank Transfer'],
             selectedValue: _paymentMethod,
-            onSelectionChanged: (value) {
-              setState(() => _paymentMethod = value);
-              _saveData(); // Auto-save when payment method changes
-            },
+            onSelectionChanged: (value) =>
+                setState(() => _paymentMethod = value),
             isSingleSelection: true,
           ),
 
@@ -2336,7 +2614,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'What factors influence your pricing?',
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -2353,10 +2631,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Preparation Time Required',
           ],
           selectedValue: _pricingFactors,
-          onSelectionChanged: (values) {
-            setState(() => _pricingFactors = values);
-            _saveData(); // Auto-save when pricing factors change
-          },
+          onSelectionChanged: (values) =>
+              setState(() => _pricingFactors = values),
           isSingleSelection: false,
         ),
 
@@ -2624,7 +2900,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Upload Required Documents',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -2725,115 +3001,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     );
   }
 
-  /// Build upload preview thumbnail (image or PDF icon)
-  Widget _buildUploadPreview(String docType) {
-    final uploadedUrl = _uploadedDocuments[docType];
-    if (uploadedUrl == null) return const SizedBox.shrink();
-
-    // Document types that are typically PDFs/non-images
-    final isDocumentType = [
-      'degree_certificate',
-      'training_certificate',
-      'last_certificate',
-    ].contains(docType);
-
-    // Document types that are typically images
-    final isImageType = [
-      'profile_picture',
-      'id_front',
-      'id_back',
-    ].contains(docType);
-
-    // Check URL extension to determine file type
-    final urlLower = uploadedUrl.toString().toLowerCase();
-    final isPdfUrl = urlLower.contains('.pdf');
-    final isImageUrl =
-        urlLower.contains('.jpg') ||
-        urlLower.contains('.jpeg') ||
-        urlLower.contains('.png') ||
-        urlLower.contains('.gif') ||
-        urlLower.contains('.webp');
-
-    // Determine if we should show image or document icon
-    final shouldShowImage =
-        (isImageType && !isPdfUrl) ||
-        (isImageUrl && !isPdfUrl && !isDocumentType);
-
-    if (shouldShowImage) {
-      // Show image thumbnail
-      return Container(
-        width: 70,
-        height: 70,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.softBorder, width: 1),
-          color: Colors.white,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            uploadedUrl.toString(),
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                              loadingProgress.expectedTotalBytes!
-                        : null,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryColor,
-                    ),
-                  ),
-                ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              // If image fails to load, show document icon instead
-              return _buildDocumentIcon();
-            },
-          ),
-        ),
-      );
-    } else {
-      // Show PDF/document icon for PDFs and other documents
-      return _buildDocumentIcon();
-    }
-  }
-
-  /// Build document icon widget (for PDFs and other non-image documents)
-  Widget _buildDocumentIcon() {
-    return Container(
-      width: 70,
-      height: 70,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppTheme.softBorder, width: 1),
-        color: AppTheme.softCard,
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.picture_as_pdf, color: Colors.red[600], size: 32),
-          const SizedBox(height: 4),
-          Text(
-            'PDF',
-            style: GoogleFonts.poppins(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSelectedDocumentUploadCard(Map<String, dynamic> doc) {
     final docType = doc['type']!;
     final isUploaded = _uploadedDocuments[docType] != null;
@@ -2881,7 +3048,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     Text(
                       doc['title']!,
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textDark,
                       ),
@@ -2910,68 +3077,54 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
           // Upload preview or upload button
           if (isUploaded)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.softCard,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.softBorder),
-              ),
-              child: Row(
-                children: [
-                  // Image preview thumbnail
-                  _buildUploadPreview(docType),
-                  const SizedBox(width: 16),
-                  // Success message and reupload button in a column
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Success message
-                        Row(
-                          children: [
-                            // Icon(
-                            //   Icons.check_circle,
-                            //   color: Colors.green,
-                            //   size: 20,
-                            // ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                'Document uploaded successfully',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Reupload button
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: () => _uploadDocument(docType),
-                            icon: const Icon(Icons.refresh, size: 16),
-                            label: const Text('Reupload'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.primaryColor,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              minimumSize: const Size(0, 32),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Preview (compact)
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: AppTheme.softCard,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.softBorder),
                   ),
-                ],
-              ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: _buildDocumentPreview(docType),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Success message and reupload button (vertical)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Document uploaded successfully',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () => _uploadDocument(docType),
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Reupload'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppTheme.primaryColor,
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 32),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             )
           else
             SizedBox(
@@ -2981,14 +3134,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 onPressed: () => _uploadDocument(docType),
                 icon: const Icon(Icons.cloud_upload),
                 label: Text(
-                  // For certificate types, use generic "Upload Document" text
-                  (docType == 'last_certificate' ||
-                          docType == 'degree_certificate' ||
-                          docType == 'training_certificate')
-                      ? 'Upload Document'
+                  doc['title'] == 'Last Official Certificate'
+                      ? 'Upload Last Certificate'
                       : 'Upload ${doc['title']}',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -3003,6 +3153,184 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentPreview(String docType) {
+    // Check multiple sources for the URL
+    String? uploadedUrl = _uploadedDocuments[docType] as String?;
+
+    // If not found in _uploadedDocuments, check specific variables
+    if (uploadedUrl == null || uploadedUrl.isEmpty) {
+      switch (docType) {
+        case 'profile_picture':
+          uploadedUrl = _profilePhotoUrl;
+          break;
+        case 'id_front':
+          uploadedUrl = _idCardFrontUrl;
+          break;
+        case 'id_back':
+          uploadedUrl = _idCardBackUrl;
+          break;
+        case 'last_certificate':
+          uploadedUrl = _certificateUrls['last_certificate'];
+          break;
+      }
+      // Update _uploadedDocuments if found
+      if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+        _uploadedDocuments[docType] = uploadedUrl;
+      }
+    }
+
+    if (uploadedUrl == null || uploadedUrl.isEmpty) {
+      return Container(
+        color: AppTheme.softCard,
+        child: Center(
+          child: Icon(
+            _getDocumentIcon(docType),
+            size: 48,
+            color: AppTheme.textMedium,
+          ),
+        ),
+      );
+    }
+
+    // Check if file is an image (by extension or URL pattern)
+    final isImage = _isImageFile(uploadedUrl);
+
+    if (isImage) {
+      // Show image preview with click to enlarge
+      return GestureDetector(
+        onTap: () => _showFullScreenImage(uploadedUrl!),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              uploadedUrl,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return Center(
+                  child: CircularProgressIndicator(
+                    value: loadingProgress.expectedTotalBytes != null
+                        ? loadingProgress.cumulativeBytesLoaded /
+                              loadingProgress.expectedTotalBytes!
+                        : null,
+                  ),
+                );
+              },
+              errorBuilder: (context, error, stackTrace) {
+                print('❌ Error loading image $uploadedUrl: $error');
+                return _buildFileIcon(docType);
+              },
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Show icon for non-image files
+      return _buildFileIcon(docType);
+    }
+  }
+
+  Widget _buildFileIcon(String docType) {
+    // Determine icon based on document type and file extension
+    IconData icon;
+    Color iconColor = AppTheme.primaryColor;
+
+    // Check if we have a URL to determine file type
+    final uploadedUrl = _uploadedDocuments[docType] as String?;
+    if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+      final lowerUrl = uploadedUrl.toLowerCase();
+      if (lowerUrl.contains('.pdf')) {
+        icon = Icons.picture_as_pdf;
+        iconColor = Colors.red[700]!;
+      } else if (lowerUrl.contains('.doc') || lowerUrl.contains('.docx')) {
+        icon = Icons.description;
+        iconColor = Colors.blue[700]!;
+      } else if (lowerUrl.contains('.jpg') ||
+          lowerUrl.contains('.jpeg') ||
+          lowerUrl.contains('.png') ||
+          lowerUrl.contains('.gif')) {
+        // Should not reach here if image, but just in case
+        icon = Icons.image;
+        iconColor = Colors.green[700]!;
+      } else {
+        icon = Icons.insert_drive_file;
+      }
+    } else {
+      // Default icons based on document type
+      if (docType.contains('certificate')) {
+        icon = Icons.description;
+      } else if (docType.contains('id')) {
+        icon = Icons.badge;
+      } else if (docType.contains('profile')) {
+        icon = Icons.person;
+      } else {
+        icon = Icons.insert_drive_file;
+      }
+    }
+
+    return Container(
+      color: AppTheme.softCard,
+      child: Center(child: Icon(icon, size: 48, color: iconColor)),
+    );
+  }
+
+  bool _isImageFile(String url) {
+    final lowerUrl = url.toLowerCase();
+    // Remove query parameters for checking extension
+    final urlWithoutQuery = lowerUrl.split('?').first;
+    return urlWithoutQuery.endsWith('.jpg') ||
+        urlWithoutQuery.endsWith('.jpeg') ||
+        urlWithoutQuery.endsWith('.png') ||
+        urlWithoutQuery.endsWith('.gif') ||
+        urlWithoutQuery.endsWith('.webp') ||
+        urlWithoutQuery.endsWith('.bmp') ||
+        // Also check for common image URL patterns (Supabase storage)
+        lowerUrl.contains('/image/') ||
+        lowerUrl.contains('image/upload');
+  }
+
+  void _showFullScreenImage(String imageUrl) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.network(imageUrl, fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: Material(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(20),
+                child: InkWell(
+                  onTap: () => Navigator.of(context).pop(),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3066,7 +3394,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               child: Text(
                 'Social Media & Professional Links',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -3220,7 +3548,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         title: Text(
           'Add Social Media Link',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -3259,7 +3587,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Video Introduction',
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -3323,7 +3651,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                             title: 'Video Introduction Instructions',
                             icon: Icons.video_call,
                             content:
-                                'To complete your application, please share a short introductory video (1–3 minutes). This helps us and potential learners get to know you better — your teaching style, confidence, and communication approach. Don\'t worry, it\'s not an exam. Just be yourself!\n\n✅ What to do:\n\n1. Record a short video (1–3 minutes) introducing yourself.\n2. Answer the 5 guiding questions below.\n3. Upload the video to YouTube (Unlisted)\n4. Paste your video link in the field below.\n\nNeed help uploading your video on YouTube?\n\n1. Open YouTube and sign in.\n2. Tap the "+" icon → Upload a video.\n3. Choose your video.\n4. Under "Visibility," select Unlisted (so only people with the link can see it).\n5. Copy the link and paste it below.\n\nGuiding Questions for the Video:\n\n1. Who are you, and what subjects or skills do you teach best?\n2. Why do you enjoy teaching or tutoring?\n3. What makes your approach unique or effective?\n4. How do you help learners overcome challenges or build confidence?\n5. Why do you think you\'d be a great fit for PrepSkul?',
+                                'To complete your application, please share a short introductory video (1–3 minutes). This helps us and potential learners get to know you better — your teaching style, confidence, and communication approach. Don\'t worry, it\'s not an exam. Just be yourself!\n\n✅ What to do:\n\n1. Record a short video (1–3 minutes) introducing yourself in landscape orientation (horizontal, like Cameroon\'s landscape).\n2. Answer the 5 guiding questions below.\n3. Upload the video to YouTube as a regular video (NOT a YouTube Short).\n4. Set the video to Unlisted visibility.\n5. Paste your video link in the field below.\n\n📹 Important Video Requirements:\n\n• Record in LANDSCAPE orientation (horizontal, width > height)\n• Upload as a REGULAR YouTube video (not a YouTube Short)\n• Video should be 1–3 minutes long\n• Make sure you\'re well-lit and the audio is clear\n\nNeed help uploading your video on YouTube?\n\n1. Open YouTube and sign in.\n2. Tap the "+" icon → Upload a video (NOT "Create a Short").\n3. Choose your video file.\n4. Under "Visibility," select Unlisted (so only people with the link can see it).\n5. Make sure it\'s uploaded as a regular video, not a Short.\n6. Copy the link and paste it below.\n\nGuiding Questions for the Video:\n\n1. Who are you, and what subjects or skills do you teach best?\n2. Why do you enjoy teaching or tutoring?\n3. What makes your approach unique or effective?\n4. How do you help learners overcome challenges or build confidence?\n5. Why do you think you\'d be a great fit for PrepSkul?',
                           ),
                         ),
                       );
@@ -3463,15 +3791,70 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   }
 
   Widget _buildFinalAffirmations() {
+    final allAccepted = _finalAgreements.values.every(
+      (agreed) => agreed == true,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Final Agreements',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppTheme.primaryColor.withOpacity(0.1),
+                AppTheme.primaryColor.withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: allAccepted
+                  ? AppTheme.primaryColor.withOpacity(0.3)
+                  : Colors.orange.withOpacity(0.3),
+              width: 2,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                allAccepted ? Icons.check_circle : Icons.info_outline,
+                color: allAccepted ? Colors.green : Colors.orange,
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Final Agreements',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ),
+              if (allAccepted)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'All Accepted',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -3503,6 +3886,38 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           key: 'truthful_information',
           title: 'I confirm that all information provided is true and accurate',
         ),
+
+        if (!allAccepted) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange[700],
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Please accept all agreements to submit your application',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.orange[900],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -3540,7 +3955,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       child: Text(
                         title,
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
@@ -3663,7 +4078,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
@@ -3673,7 +4088,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               Text(
                 '*',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
                 ),
@@ -3842,25 +4257,56 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   }
 
   Widget _buildAffirmationToggle({required String key, required String title}) {
+    final isChecked = _finalAgreements[key] ?? false;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.softCard,
+        color: isChecked
+            ? AppTheme.primaryColor.withOpacity(0.05)
+            : AppTheme.softCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.softBorder),
+        border: Border.all(
+          color: isChecked
+              ? AppTheme.primaryColor.withOpacity(0.5)
+              : AppTheme.softBorder,
+          width: isChecked ? 2 : 1,
+        ),
+        boxShadow: isChecked
+            ? [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Checkbox(
-            value: _affirmations[key] ?? false,
-            onChanged: (value) {
-              setState(() {
-                _affirmations[key] = value ?? false;
-              });
-            },
-            activeColor: AppTheme.primaryColor,
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isChecked ? AppTheme.primaryColor : AppTheme.softBorder,
+                width: 2,
+              ),
+              color: isChecked ? AppTheme.primaryColor : Colors.transparent,
+            ),
+            child: Checkbox(
+              value: isChecked,
+              onChanged: (value) {
+                setState(() {
+                  _finalAgreements[key] = value ?? false;
+                });
+              },
+              activeColor: AppTheme.primaryColor,
+              checkColor: Colors.white,
+              shape: const CircleBorder(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -3868,8 +4314,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               title,
               style: GoogleFonts.poppins(
                 fontSize: 14,
-                fontWeight: FontWeight.w500,
+                fontWeight: isChecked ? FontWeight.w600 : FontWeight.w500,
                 color: AppTheme.textDark,
+                height: 1.5,
               ),
             ),
           ),
@@ -4041,21 +4488,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             _isValidYouTubeUrl(_videoLinkController.text.trim());
         return hasSocialLink && hasVideoLink;
       case 13: // Personal Statement
-        // Check if all affirmations are checked
-        return _areAllAgreementsChecked();
+        // Must agree to all final agreements
+        return _finalAgreements.values.every((agreed) => agreed == true);
       default:
         return true;
     }
-  }
-
-  /// Check if all final agreements/affirmations are checked
-  bool _areAllAgreementsChecked() {
-    // Check all 5 affirmations
-    return _affirmations['professionalism'] == true &&
-        _affirmations['dedication'] == true &&
-        _affirmations['payment_understanding'] == true &&
-        _affirmations['no_external_payments'] == true &&
-        _affirmations['truthful_information'] == true;
   }
 
   void _previousStep() {
@@ -4114,6 +4551,25 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
       setState(() {
         _uploadedDocuments[documentType] = uploadedUrl;
+
+        // Also update specific URL variables for database storage
+        switch (documentType) {
+          case 'profile_picture':
+            _profilePhotoUrl = uploadedUrl;
+            break;
+          case 'id_front':
+            _idCardFrontUrl = uploadedUrl;
+            break;
+          case 'id_back':
+            _idCardBackUrl = uploadedUrl;
+            break;
+          case 'last_certificate':
+          case 'degree_certificate':
+          case 'training_certificate':
+            // Store certificate URLs
+            _certificateUrls[documentType] = uploadedUrl;
+            break;
+        }
       });
 
       if (!mounted) return;
@@ -4212,6 +4668,41 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   }
 
   Future<void> _submitApplication() async {
+    // First check if all final agreements are accepted
+    final allAgreementsAccepted = _finalAgreements.values.every(
+      (agreed) => agreed == true,
+    );
+
+    if (!allAgreementsAccepted) {
+      // Show error dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Agreements Required',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          ),
+          content: Text(
+            'Please accept all final agreements before submitting your application.',
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'OK',
+                style: GoogleFonts.poppins(
+                  color: AppTheme.primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     // Show loading dialog
     showDialog(
       context: context,
@@ -4311,9 +4802,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         return;
       }
 
-      // Get current user ID
+      // Get current user ID and auth info
       final userInfo = await AuthService.getCurrentUser();
       final userId = userInfo['userId'];
+
+      // Get authenticated user from Supabase for email/phone
+      final supabaseUser = SupabaseService.client.auth.currentUser;
+      String? authEmail = supabaseUser?.email;
+      String? authPhone = supabaseUser?.phone;
 
       // Format phone if needed
       String? phoneNumber;
@@ -4326,12 +4822,23 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           phone = phone.substring(1);
         }
         phoneNumber = '+237$phone';
+      } else if (_authMethod == 'phone' && authPhone != null) {
+        // Use auth phone if available
+        phoneNumber = authPhone;
       }
 
       // Save to database (pass email or phone based on auth method)
-      String? contactInfo = _authMethod == 'email'
-          ? phoneNumber
-          : _emailController.text.trim();
+      // Priority: onboarding input > auth user data
+      String? contactInfo;
+      if (_authMethod == 'email') {
+        // Email auth: prefer phone from onboarding, fallback to auth email
+        contactInfo = phoneNumber ?? authEmail ?? _emailController.text.trim();
+      } else {
+        // Phone auth: prefer email from onboarding, fallback to auth phone
+        contactInfo = _emailController.text.trim().isNotEmpty
+            ? _emailController.text.trim()
+            : authPhone ?? phoneNumber;
+      }
 
       await SurveyRepository.saveTutorSurvey(
         userId,
@@ -4377,145 +4884,142 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     }
   }
 
-  /// Extract numeric value from hourly rate string like "3,000 – 4,000 XAF"
-  /// Returns the midpoint or a reasonable value for "Above 5,000 XAF"
-  double? _extractHourlyRateValue(String rateString) {
-    try {
-      // Remove commas and "XAF" text
-      final cleanString = rateString
-          .replaceAll(',', '')
-          .replaceAll('XAF', '')
-          .trim();
-
-      // Handle "Above 5,000" case
-      if (cleanString.toLowerCase().contains('above')) {
-        final numbers = RegExp(r'\d+').allMatches(cleanString);
-        if (numbers.isNotEmpty) {
-          final baseValue = double.parse(numbers.first.group(0)!);
-          return baseValue * 1.2; // 20% above the base
-        }
-        return 6000.0; // Default for "Above 5,000"
-      }
-
-      // Extract all numbers from range like "3000 – 4000"
-      final numbers = RegExp(r'\d+').allMatches(cleanString);
-      if (numbers.length >= 2) {
-        final min = double.parse(numbers.first.group(0)!);
-        final max = double.parse(numbers.last.group(0)!);
-        return (min + max) / 2; // Return midpoint
-      } else if (numbers.length == 1) {
-        return double.parse(numbers.first.group(0)!);
-      }
-    } catch (e) {
-      print('⚠️ Error parsing hourly rate: $e');
-    }
-    return null;
-  }
-
   Map<String, dynamic> _prepareTutorData() {
-    // Combine both availability maps
-    final combinedAvailability = <String, List<String>>{};
-    _tutoringAvailability.forEach((day, times) {
-      combinedAvailability[day] = times;
+    // Extract document URLs from _uploadedDocuments if specific variables are null
+    final profilePhotoUrl =
+        _profilePhotoUrl ?? (_uploadedDocuments['profile_picture'] as String?);
+    final idCardFrontUrl =
+        _idCardFrontUrl ?? (_uploadedDocuments['id_front'] as String?);
+    final idCardBackUrl =
+        _idCardBackUrl ?? (_uploadedDocuments['id_back'] as String?);
+
+    // Collect all certificate URLs from both _certificateUrls and _uploadedDocuments
+    final List<String> certificateUrls = [];
+
+    // Add from _certificateUrls map
+    _certificateUrls.values.forEach((url) {
+      if (url.isNotEmpty && !certificateUrls.contains(url)) {
+        certificateUrls.add(url);
+      }
     });
 
-    // Get document URLs from _uploadedDocuments (primary source) or fallback to individual variables
-    final profilePhotoUrl =
-        _uploadedDocuments['profile_picture'] as String? ?? _profilePhotoUrl;
-    final idCardFrontUrl =
-        _uploadedDocuments['id_front'] as String? ?? _idCardFrontUrl;
-    final idCardBackUrl =
-        _uploadedDocuments['id_back'] as String? ?? _idCardBackUrl;
+    // Add from _uploadedDocuments for certificate types
+    ['last_certificate', 'degree_certificate', 'training_certificate'].forEach((
+      docType,
+    ) {
+      final url = _uploadedDocuments[docType] as String?;
+      if (url != null && url.isNotEmpty && !certificateUrls.contains(url)) {
+        certificateUrls.add(url);
+      }
+    });
 
-    // Prepare previous roles - include organization if provided
-    final previousRoles =
-        _hasExperience && _previousOrganizationController.text.trim().isNotEmpty
-        ? [_previousOrganizationController.text.trim()]
-        : [];
-
-    // Prepare payment details - ensure it's not empty if payment method is selected
+    // Prepare payment details based on payment method
     Map<String, dynamic> paymentDetails = {};
     if (_paymentMethod == 'MTN Mobile Money' ||
         _paymentMethod == 'Orange Money') {
-      // Both require phone and name
-      if (_paymentNumberController.text.trim().isNotEmpty &&
-          _paymentNameController.text.trim().isNotEmpty) {
-        paymentDetails = {
-          'phone': _paymentNumberController.text.trim(),
-          'name': _paymentNameController.text.trim(),
-        };
-      }
+      paymentDetails = {
+        'phone': _paymentNumberController.text,
+        'name': _paymentNameController.text,
+        'account_type': _paymentMethod,
+      };
     } else if (_paymentMethod == 'Bank Transfer') {
-      if (_bankDetailsController.text.trim().isNotEmpty) {
-        paymentDetails = {'bank_details': _bankDetailsController.text.trim()};
-      }
+      paymentDetails = {
+        'bank_details': _bankDetailsController.text,
+        'account_type': _paymentMethod,
+      };
     }
 
-    // If payment method is selected but details are missing, still include method in map
-    // This helps with validation but won't pass final validation
-    if (paymentDetails.isEmpty && _paymentMethod != null) {
-      paymentDetails = {'method': _paymentMethod}; // Temporary marker
-    }
-
-    return {
+    // Build the data map
+    final Map<String, dynamic> tutorData = {
       // Personal Info
       // Note: email is saved separately to profiles table, not tutor_profiles
       'profile_photo_url': profilePhotoUrl,
       'city': _selectedCity,
       'quarter': _selectedQuarter ?? _customQuarter,
-      'bio': _motivationController.text.trim().isNotEmpty
-          ? _motivationController.text.trim()
-          : null, // Use motivation as bio
+      'bio': _motivationController.text, // Save as 'bio' for completion check
       // Academic Background
       'highest_education': _selectedEducation,
-      'institution': _institutionController.text.trim(),
-      'field_of_study': _fieldOfStudyController.text.trim(),
-      'certifications': _certificateUrls.isNotEmpty
-          ? _certificateUrls
-          : null, // JSONB format
-      'certifications_array': _certificateUrls.isNotEmpty
-          ? _certificateUrls.values.toList()
-          : null, // TEXT[] format
+      'institution': _institutionController.text,
+      'field_of_study': _fieldOfStudyController.text,
+      'has_training': _hasTraining,
+
       // Experience
       'has_teaching_experience': _hasExperience,
+      'has_experience': _hasExperience,
       'teaching_duration': _experienceDuration,
-      'previous_roles': previousRoles, // Include organization name if provided
-      'motivation': _motivationController.text.trim(),
+      'previous_roles':
+          _hasExperience &&
+              _previousOrganizationController.text.trim().isNotEmpty
+          ? [
+              _previousOrganizationController.text.trim(),
+            ] // Convert organization to list
+          : [],
+      'taught_levels': _taughtLevels, // Save taught levels
+      'motivation': _motivationController.text,
 
       // Tutoring Details
       'tutoring_areas': _selectedTutoringAreas,
       'learner_levels': _selectedLearnerLevels,
       'specializations': _selectedSpecializations,
-      'personal_statement': _statementController.text.trim(),
+      'personal_statement': _statementController.text,
 
-      // Availability
+      // Teaching Style & Preferences
+      'preferred_mode': _preferredMode,
+      'teaching_approaches': _teachingApproaches,
+      'preferred_session_type': _preferredSessionType,
+      'handles_multiple_learners': _handlesMultipleLearners,
+
+      // Availability - Store BOTH separately for admin dashboard
       'hours_per_week': _hoursPerWeek,
-      'availability': combinedAvailability,
+      'tutoring_availability': _tutoringAvailability.isNotEmpty
+          ? _tutoringAvailability
+          : null,
+      'test_session_availability': _testSessionAvailability.isNotEmpty
+          ? _testSessionAvailability
+          : null,
+      'availability_schedule':
+          _tutoringAvailability, // Legacy field for compatibility
+      'availability': _tutoringAvailability.isNotEmpty
+          ? _tutoringAvailability
+          : {}, // Also save as 'availability' for completion check
+      // Digital Readiness
+      'devices': _devices,
+      'has_internet': _hasInternet,
+      'teaching_tools': _teachingTools,
+      'has_materials': _hasMaterials,
+      'wants_training': _wantsTraining,
 
       // Payment
       'payment_method': _paymentMethod,
+      'expected_rate': _expectedRate,
       'hourly_rate': _expectedRate != null
-          ? _extractHourlyRateValue(_expectedRate!)
+          ? double.tryParse(_expectedRate!.replaceAll(RegExp(r'[^\d.]'), ''))
           : null,
-      // Only include payment_details if it has actual data (not just method marker)
-      'payment_details':
-          paymentDetails.containsKey('method') && paymentDetails.length == 1
-          ? <String, dynamic>{} // Return empty map if only method marker
-          : paymentDetails,
+      'payment_details': paymentDetails,
       'payment_agreement': _agreesToPaymentPolicy,
+      'pricing_factors': _pricingFactors,
 
       // Verification
       'id_card_front_url': idCardFrontUrl,
       'id_card_back_url': idCardBackUrl,
-      'video_link': _videoLinkController.text.trim(),
-      'video_url': _videoLinkController.text
-          .trim(), // Also map to existing video_url column
-      'social_links': _socialMediaLinks,
+      'id_card_url': idCardFrontUrl, // Legacy field for compatibility
+      'video_link': _videoLinkController.text,
+      'video_intro': _videoLinkController.text,
+      'social_media_links': _socialMediaLinks,
+      'social_links': _socialMediaLinks, // Legacy field
       'verification_agreement': _agreesToVerification,
-
+      'final_agreements': _finalAgreements, // Store all final agreements
       // Status - Always pending on submission (admin reviews)
+      // Note: If status was 'rejected' or 'needs_improvement', it will be set to 'pending' in SurveyRepository
       'status': 'pending',
     };
+
+    // Add certificates_urls only if not empty (to avoid database errors if column doesn't exist yet)
+    if (certificateUrls.isNotEmpty) {
+      tutorData['certificates_urls'] = certificateUrls;
+    }
+
+    return tutorData;
   }
 
   @override

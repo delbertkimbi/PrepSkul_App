@@ -18,6 +18,7 @@ class TutorRequestService {
     required List<String> preferredDays,
     required String preferredTime,
     required String location,
+    String? locationDescription,
     required String urgency,
     String? additionalNotes,
   }) async {
@@ -45,6 +46,7 @@ class TutorRequestService {
         'preferred_days': preferredDays,
         'preferred_time': preferredTime,
         'location': location,
+        'location_description': locationDescription,
         'urgency': urgency,
         'additional_notes': additionalNotes,
         'status': 'pending',
