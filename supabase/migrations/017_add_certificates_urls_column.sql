@@ -12,3 +12,8 @@ ON public.tutor_profiles USING gin (certificates_urls);
 
 COMMENT ON COLUMN public.tutor_profiles.certificates_urls IS 'Array of certificate document URLs uploaded by the tutor';
 
+
+
+
+
+

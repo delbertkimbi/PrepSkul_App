@@ -69,20 +69,20 @@ class FapshiConfig {
     : 'https://sandbox.fapshi.com';
   
   static String get collectionApiUser => _isProduction
-    ? '54652088-94b9-4642-8d04-fdab02beb71d'
-    : '4a148e87-e185-437d-a641-b465e2bd8d17';
+    ? 'your-fapshi-collection-api-user-here'
+    : 'your-fapshi-sandbox-api-user-here';
   
   static String get collectionApiKey => _isProduction
-    ? 'FAK_9194147b613e1fc4ba03237bb6640241'
-    : 'FAK_TEST_0293bda0f3ef142be85b';
+    ? 'your-fapshi-collection-api-key-here'
+    : 'your-fapshi-sandbox-api-key-here';
   
   static String get disburseApiUser => _isProduction
-    ? 'f4eec807-8e00-4edb-9bca-2cebe302cde0'
-    : '4a148e87-e185-437d-a641-b465e2bd8d17';
+    ? 'your-fapshi-disburse-api-user-here'
+    : 'your-fapshi-sandbox-api-user-here';
   
   static String get disburseApiKey => _isProduction
-    ? 'FAK_fa3eef96f98e9ec6b6c004d2cea6eeb2'
-    : 'FAK_TEST_0293bda0f3ef142be85b';
+    ? 'your-fapshi-disburse-api-key-here'
+    : 'your-fapshi-sandbox-api-key-here';
 }
 ```
 
@@ -857,12 +857,12 @@ class TrialConversionService {
 ```env
 # Fapshi Configuration
 FAPSHI_ENVIRONMENT=sandbox  # or 'live'
-FAPSHI_COLLECTION_API_USER_LIVE=54652088-94b9-4642-8d04-fdab02beb71d
-FAPSHI_COLLECTION_API_KEY_LIVE=FAK_9194147b613e1fc4ba03237bb6640241
-FAPSHI_DISBURSE_API_USER_LIVE=f4eec807-8e00-4edb-9bca-2cebe302cde0
-FAPSHI_DISBURSE_API_KEY_LIVE=FAK_fa3eef96f98e9ec6b6c004d2cea6eeb2
-FAPSHI_SANDBOX_API_USER=4a148e87-e185-437d-a641-b465e2bd8d17
-FAPSHI_SANDBOX_API_KEY=FAK_TEST_0293bda0f3ef142be85b
+FAPSHI_COLLECTION_API_USER_LIVE=your-fapshi-collection-api-user-here
+FAPSHI_COLLECTION_API_KEY_LIVE=your-fapshi-collection-api-key-here
+FAPSHI_DISBURSE_API_USER_LIVE=your-fapshi-disburse-api-user-here
+FAPSHI_DISBURSE_API_KEY_LIVE=your-fapshi-disburse-api-key-here
+FAPSHI_SANDBOX_API_USER=your-fapshi-sandbox-api-user-here
+FAPSHI_SANDBOX_API_KEY=your-fapshi-sandbox-api-key-here
 
 # Google Calendar API
 GOOGLE_CALENDAR_CLIENT_ID=your_client_id

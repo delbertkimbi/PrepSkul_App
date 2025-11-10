@@ -65,3 +65,8 @@
 
 **Action Required:** Run migration `017_add_certificates_urls_column.sql` in Supabase
 
+
+
+
+
+

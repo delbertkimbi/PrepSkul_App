@@ -66,3 +66,8 @@ COMMENT ON TABLE public.tutor_unblock_requests IS 'Stores requests from tutors t
 COMMENT ON COLUMN public.tutor_unblock_requests.request_type IS 'Type of request: unblock or unhide';
 COMMENT ON COLUMN public.tutor_unblock_requests.status IS 'Request status: pending, approved, or rejected';
 
+
+
+
+
+

@@ -7,7 +7,7 @@
 ### ✅ Completed Sections:
 
 1. **Supabase** ✅
-   - URL: `https://cpzaxdfxbamdsshdgjyg.supabase.co`
+   - URL: `[REDACTED - Get from Supabase Dashboard]`
    - Anon Key: Added
    - Service Role Key: Added
    - Both dev and prod use same project (can separate later)
@@ -21,13 +21,13 @@
    - Dev OAuth credentials: Added
    - Prod OAuth credentials: Added
    - Webhook secrets: Added
-   - PrepSkul VA email: `deltechhub237@gmail.com`
+   - PrepSkul VA email: `[REDACTED - Use your VA email]`
 
 4. **Google Calendar API** ✅ COMPLETE
-   - Client ID: `your-google-calendar-client-id-here`
-   - Client Secret: `your-google-calendar-client-secret-here`
+   - Client ID: `[REDACTED - Get from Google Cloud Console]`
+   - Client Secret: `[REDACTED - Get from Google Cloud Console]`
    - Project ID: `prepskul-475900`
-   - Project Number: `330494350717`
+   - Project Number: `[REDACTED - Get from Google Cloud Console]`
 
 ---
 
@@ -56,4 +56,6 @@ All required credentials have been added to `env.template`:
 ---
 
 **Status:** ✅ 100% Complete - All Credentials Ready!
+
+
 

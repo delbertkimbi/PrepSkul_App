@@ -3,12 +3,12 @@
 ## ✅ Email Account Setup
 
 **PrepSkul Virtual Assistant Email:**
-- ✅ Using: `deltechhub237@gmail.com` (temporary, can change later)
+- ✅ Using: `[REDACTED - Use your VA email]` (temporary, can change later)
 - ⚠️ **Consideration:** This is your personal Fathom account email
 - 📝 **Future:** Can migrate to `prepskul-va@prepskul.com` later if needed
 
 **Action Required:**
-- [ ] Ensure `deltechhub237@gmail.com` has Google Calendar access
+- [ ] Ensure `[REDACTED - Use your VA email]` has Google Calendar access
 - [ ] Verify email can receive calendar invites
 - [ ] Test calendar access from this account
 
@@ -17,14 +17,14 @@
 ## ✅ Fathom Account Setup
 
 **Current Status:**
-- ✅ Fathom account created with `deltechhub237@gmail.com`
+- ✅ Fathom account created with `[REDACTED - Use your VA email]`
 - ✅ App "PrepSkul VA" created
 - ✅ OAuth credentials obtained (dev & prod)
 - ✅ Redirect URLs configured
 - ✅ App signed up for marketplace
 
 **Action Required:**
-- [ ] Connect `deltechhub237@gmail.com` to Fathom account
+- [ ] Connect `[REDACTED - Use your VA email]` to Fathom account
 - [ ] Authorize Fathom to access Google Calendar for this email
 - [ ] Test Fathom can see calendar events
 - [ ] Generate API key (if using API key method instead of OAuth)
@@ -33,7 +33,7 @@
 1. Log into Fathom dashboard
 2. Go to Settings → Integrations
 3. Connect Google Calendar
-4. Authorize with `deltechhub237@gmail.com` account
+4. Authorize with `[REDACTED - Use your VA email]` account
 5. Verify Fathom can access calendar
 
 ---
@@ -79,10 +79,10 @@ GOOGLE_CALENDAR_PRIVATE_KEY=your_private_key (if using service account)
 **Credentials Needed:**
 ```
 FAPSHI_ENVIRONMENT=sandbox  # or 'live'
-FAPSHI_COLLECTION_API_USER_LIVE=54652088-94b9-4642-8d04-fdab02beb71d
-FAPSHI_COLLECTION_API_KEY_LIVE=FAK_9194147b613e1fc4ba03237bb6640241
-FAPSHI_SANDBOX_API_USER=4a148e87-e185-437d-a641-b465e2bd8d17
-FAPSHI_SANDBOX_API_KEY=FAK_TEST_0293bda0f3ef142be85b
+FAPSHI_COLLECTION_API_USER_LIVE=your-fapshi-collection-api-user-here
+FAPSHI_COLLECTION_API_KEY_LIVE=your-fapshi-collection-api-key-here
+FAPSHI_SANDBOX_API_USER=your-fapshi-sandbox-api-user-here
+FAPSHI_SANDBOX_API_KEY=your-fapshi-sandbox-api-key-here
 ```
 
 ---
@@ -121,18 +121,18 @@ GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL=...
 GOOGLE_CALENDAR_PRIVATE_KEY=...
 
 # Fathom OAuth
-FATHOM_CLIENT_ID_DEV=R93SgO5R3BkFnV5HkvVmKQJWLrxAzAaKSntj8UNY1-4
-FATHOM_CLIENT_SECRET_DEV=UknZ9sfoSNy2otV59k4_z600ERuXmHjd7edlrMrPRXY
-FATHOM_WEBHOOK_SECRET_DEV=whsec_zr7u8JUmfHY9VFtKyFRen23MbulcFKjb
-FATHOM_CLIENT_ID_PROD=o4W2hmB98DMRdPN7leYaf9kfOZ0nAq9rkolg41JEbZY
-FATHOM_CLIENT_SECRET_PROD=acgbMHXLjRgD280UxS3m1_ZBRdghC8sN1fS7oECd6zw
-FATHOM_WEBHOOK_SECRET_PROD=whsec_NJJSHL4KKraedQj8/CeGUSkwsehYEVxd
+FATHOM_CLIENT_ID_DEV=your-fathom-dev-client-id-here
+FATHOM_CLIENT_SECRET_DEV=your-fathom-dev-client-secret-here
+FATHOM_WEBHOOK_SECRET_DEV=your-fathom-dev-webhook-secret-here
+FATHOM_CLIENT_ID_PROD=your-fathom-prod-client-id-here
+FATHOM_CLIENT_SECRET_PROD=your-fathom-prod-client-secret-here
+FATHOM_WEBHOOK_SECRET_PROD=your-fathom-prod-webhook-secret-here
 
 # PrepSkul Virtual Assistant
-PREPSKUL_VA_EMAIL=deltechhub237@gmail.com
+PREPSKUL_VA_EMAIL=[REDACTED - Use your VA email]
 PREPSKUL_VA_NAME=PrepSkul Virtual Assistant
 PREPSKUL_VA_DISPLAY_NAME=PrepSkul VA
-FATHOM_ACCOUNT_EMAIL=deltechhub237@gmail.com
+FATHOM_ACCOUNT_EMAIL=[REDACTED - Use your VA email]
 
 # Admin
 ADMIN_EMAIL=admin@prepskul.com
@@ -165,7 +165,7 @@ FATHOM_REDIRECT_URI_PROD=https://app.prepskul.com/auth/fathom/callback
 - **Action:** Complete app details, launch, then request verification
 
 ### 3. Email Account Migration
-- **Current:** Using `deltechhub237@gmail.com`
+- **Current:** Using `[REDACTED - Use your VA email]`
 - **Future:** Can migrate to `prepskul-va@prepskul.com`
 - **Consideration:** Migration requires:
   - Creating new email account
@@ -201,7 +201,7 @@ FATHOM_REDIRECT_URI_PROD=https://app.prepskul.com/auth/fathom/callback
 4. ✅ Test calendar event creation
 
 ### Week 3: Fathom Integration
-1. ✅ Connect Fathom to `deltechhub237@gmail.com`
+1. ✅ Connect Fathom to `[REDACTED - Use your VA email]`
 2. ✅ Authorize Google Calendar access
 3. ✅ Create Fathom service
 4. ✅ Implement webhook handler
@@ -231,7 +231,7 @@ FATHOM_REDIRECT_URI_PROD=https://app.prepskul.com/auth/fathom/callback
    - [ ] Do you have OAuth credentials?
 
 2. **Fathom Connection:**
-   - [ ] Can you connect `deltechhub237@gmail.com` to Fathom?
+   - [ ] Can you connect `[REDACTED - Use your VA email]` to Fathom?
    - [ ] Can you authorize Google Calendar access?
    - [ ] Can Fathom see calendar events?
 
@@ -249,4 +249,9 @@ FATHOM_REDIRECT_URI_PROD=https://app.prepskul.com/auth/fathom/callback
 
 **Last Updated:** January 2025  
 **Status:** Pre-Implementation Checklist
+
+
+
+
+
 

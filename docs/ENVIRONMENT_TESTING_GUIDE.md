@@ -161,12 +161,12 @@ API_BASE_URL_DEV=https://www.prepskul.com/api
 
 # Fapshi (Sandbox for testing)
 FAPSHI_ENVIRONMENT=sandbox
-FAPSHI_SANDBOX_API_USER=4a148e87-e185-437d-a641-b465e2bd8d17
-FAPSHI_SANDBOX_API_KEY=FAK_TEST_0293bda0f3ef142be85b
+FAPSHI_SANDBOX_API_USER=your-fapshi-sandbox-api-user-here
+FAPSHI_SANDBOX_API_KEY=your-fapshi-sandbox-api-key-here
 
 # Fathom (Use DEV credentials for testing)
-FATHOM_CLIENT_ID_DEV=R93SgO5R3BkFnV5HkvVmKQJWLrxAzAaKSntj8UNY1-4
-FATHOM_CLIENT_SECRET_DEV=UknZ9sfoSNy2otV59k4_z600ERuXmHjd7edlrMrPRXY
+FATHOM_CLIENT_ID_DEV=your-fathom-dev-client-id-here
+FATHOM_CLIENT_SECRET_DEV=your-fathom-dev-client-secret-here
 FATHOM_REDIRECT_URI_DEV=https://app.prepskul.com/auth/fathom/callback
 
 # Google Calendar
@@ -286,4 +286,9 @@ Before pushing to app.prepskul.com:
 
 **Last Updated:** January 25, 2025  
 **Status:** ✅ Ready for Testing
+
+
+
+
+
 

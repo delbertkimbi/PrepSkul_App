@@ -97,3 +97,8 @@ flutter clean && flutter pub get && flutter run -d chrome
 - Check `.env` file has correct Supabase credentials
 - Check Supabase dashboard for connection
 
+
+
+
+
+

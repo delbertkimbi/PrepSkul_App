@@ -13,7 +13,7 @@
 - **File:** `supabase/migrations/019_notification_system.sql`
 
 ### **2. Added Resend API Key** ✅
-- **Key:** `re_gnKTDYZA_6gap7LLBTXqJZWWAbU5gxVFY`
+- **Key:** `your-resend-api-key-here`
 - **Updated:** `env.template` with Resend configuration
 - **Files:** 
   - `env.template` (Flutter)
@@ -210,4 +210,9 @@ All booking and trial session events now send notifications (in-app + email) aut
 - ✅ **Flexible:** Respects user preferences
 
 **Next:** Build the UI components so users can see and manage their notifications! 🚀
+
+
+
+
+
 

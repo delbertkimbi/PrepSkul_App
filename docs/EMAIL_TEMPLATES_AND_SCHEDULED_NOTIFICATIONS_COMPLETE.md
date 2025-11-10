@@ -287,3 +287,8 @@ All email templates are built and integrated:
 - Push notifications need Firebase setup (see plan)
 - Sound requires push notifications
 
+
+
+
+
+

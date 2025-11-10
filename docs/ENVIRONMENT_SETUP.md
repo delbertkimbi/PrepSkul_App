@@ -74,7 +74,7 @@ Ensure these files are in `.gitignore`:
    - ✅ Webhook secrets
 
 3. **Google Calendar:**
-   - ✅ OAuth Client ID: `330494350717-9ebevvvo8k6f0te9662n6np60oaeub6o.apps.googleusercontent.com`
+   - ✅ OAuth Client ID: `your-google-calendar-client-id-here`
    - ⚠️ Need: Client Secret (download from Google Cloud Console)
 
 4. **Supabase:**
@@ -260,4 +260,9 @@ For production, set environment variables in Vercel:
 
 **Last Updated:** January 2025  
 **Status:** Ready for Credential Setup
+
+
+
+
+
 

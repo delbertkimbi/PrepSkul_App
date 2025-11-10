@@ -39,3 +39,8 @@ COMMENT ON COLUMN public.trial_sessions.meet_link_generated_at IS 'Timestamp whe
 COMMENT ON COLUMN public.recurring_sessions.meet_link IS 'Permanent Google Meet link for recurring sessions';
 COMMENT ON COLUMN public.recurring_sessions.calendar_event_id IS 'Google Calendar event ID for recurring sessions';
 
+
+
+
+
+

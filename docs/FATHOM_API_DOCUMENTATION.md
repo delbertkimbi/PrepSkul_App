@@ -80,18 +80,18 @@ X-Api-Key: YOUR_API_KEY
 
 **Development Environment:**
 ```
-Client ID: R93SgO5R3BkFnV5HkvVmKQJWLrxAzAaKSntj8UNY1-4
-Client Secret: UknZ9sfoSNy2otV59k4_z600ERuXmHjd7edlrMrPRXY
-Webhook Secret: whsec_zr7u8JUmfHY9VFtKyFRen23MbulcFKjb
-Authorize Link: https://fathom.video/external/v1/oauth2/authorize?client_id=R93SgO5R3BkFnV5HkvVmKQJWLrxAzAaKSntj8UNY1-4&redirect_uri={redirect_uri}&response_type=code&scope=public_api&state={state}
+Client ID: [REDACTED - Get from Fathom Dashboard]
+Client Secret: [REDACTED - Get from Fathom Dashboard]
+Webhook Secret: [REDACTED - Get from Fathom Dashboard]
+Authorize Link: https://fathom.video/external/v1/oauth2/authorize?client_id={YOUR_CLIENT_ID}&redirect_uri={redirect_uri}&response_type=code&scope=public_api&state={state}
 ```
 
 **Production Environment:**
 ```
-Client ID: o4W2hmB98DMRdPN7leYaf9kfOZ0nAq9rkolg41JEbZY
-Client Secret: acgbMHXLjRgD280UxS3m1_ZBRdghC8sN1fS7oECd6zw
-Webhook Secret: whsec_NJJSHL4KKraedQj8/CeGUSkwsehYEVxd
-Authorize Link: https://fathom.video/external/v1/oauth2/authorize?client_id=o4W2hmB98DMRdPN7leYaf9kfOZ0nAq9rkolg41JEbZY&redirect_uri={redirect_uri}&response_type=code&scope=public_api&state={state}
+Client ID: [REDACTED - Get from Fathom Dashboard]
+Client Secret: [REDACTED - Get from Fathom Dashboard]
+Webhook Secret: [REDACTED - Get from Fathom Dashboard]
+Authorize Link: https://fathom.video/external/v1/oauth2/authorize?client_id={YOUR_CLIENT_ID}&redirect_uri={redirect_uri}&response_type=code&scope=public_api&state={state}
 ```
 
 **Redirect URLs Required:**
@@ -970,22 +970,22 @@ class FathomService {
 FATHOM_API_KEY=your_api_key_here
 
 # Fathom OAuth (Development)
-FATHOM_CLIENT_ID_DEV=R93SgO5R3BkFnV5HkvVmKQJWLrxAzAaKSntj8UNY1-4
-FATHOM_CLIENT_SECRET_DEV=UknZ9sfoSNy2otV59k4_z600ERuXmHjd7edlrMrPRXY
-FATHOM_WEBHOOK_SECRET_DEV=whsec_zr7u8JUmfHY9VFtKyFRen23MbulcFKjb
+FATHOM_CLIENT_ID_DEV=your-fathom-dev-client-id-here
+FATHOM_CLIENT_SECRET_DEV=your-fathom-dev-client-secret-here
+FATHOM_WEBHOOK_SECRET_DEV=your-fathom-dev-webhook-secret-here
 
 # Fathom OAuth (Production)
-FATHOM_CLIENT_ID_PROD=o4W2hmB98DMRdPN7leYaf9kfOZ0nAq9rkolg41JEbZY
-FATHOM_CLIENT_SECRET_PROD=acgbMHXLjRgD280UxS3m1_ZBRdghC8sN1fS7oECd6zw
-FATHOM_WEBHOOK_SECRET_PROD=whsec_NJJSHL4KKraedQj8/CeGUSkwsehYEVxd
+FATHOM_CLIENT_ID_PROD=your-fathom-prod-client-id-here
+FATHOM_CLIENT_SECRET_PROD=your-fathom-prod-client-secret-here
+FATHOM_WEBHOOK_SECRET_PROD=your-fathom-prod-webhook-secret-here
 
 # PrepSkul Virtual Assistant Account
 # Note: Using "Virtual Assistant" instead of "AI" for better trust-building with parents, tutors, investors
-# Using deltechhub237@gmail.com temporarily (Fathom account email), can migrate to prepskul-va@prepskul.com later
-PREPSKUL_VA_EMAIL=deltechhub237@gmail.com
+# Using your VA email (Fathom account email), can migrate to prepskul-va@prepskul.com later
+PREPSKUL_VA_EMAIL=your-va-email-here
 PREPSKUL_VA_NAME=PrepSkul Virtual Assistant
 PREPSKUL_VA_DISPLAY_NAME=PrepSkul VA  # Short form for UI
-FATHOM_ACCOUNT_EMAIL=deltechhub237@gmail.com  # Fathom account email
+FATHOM_ACCOUNT_EMAIL=your-fathom-account-email-here  # Fathom account email
 
 # Admin Email for Flags
 ADMIN_EMAIL=admin@prepskul.com
@@ -1322,4 +1322,9 @@ FATHOM_REDIRECT_URI_PROD=https://app.prepskul.com/auth/fathom/callback
 **Document Version:** 1.0  
 **Last Updated:** January 2025  
 **Maintained By:** PrepSkul Development Team
+
+
+
+
+
 

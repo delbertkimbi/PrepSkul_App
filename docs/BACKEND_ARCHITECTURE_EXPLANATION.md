@@ -171,3 +171,8 @@ I mean the **Next.js API server** (`/Users/user/Desktop/PrepSkul/PrepSkul_Web/`)
 
 **Next Step:** Install Firebase Admin SDK in Next.js and create the push notification sending service! 🚀
 
+
+
+
+
+

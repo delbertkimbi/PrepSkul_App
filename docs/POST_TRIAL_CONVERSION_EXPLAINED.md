@@ -180,3 +180,8 @@ The conversion screen appears **after a trial session is completed**:
 
 **Think of it as:** "I tried this tutor, I liked them, now I want to book them regularly" → Fill form → Request sent → Tutor approves → Done!
 
+
+
+
+
+

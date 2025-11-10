@@ -91,3 +91,8 @@ Only missing: Resend API key (for email notifications).
 
 All other services (Fapshi, Fathom, Google Calendar, Supabase) are fully configured and ready to go! 🚀
 
+
+
+
+
+

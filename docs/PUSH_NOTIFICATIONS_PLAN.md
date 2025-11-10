@@ -224,3 +224,8 @@ CREATE TABLE fcm_tokens (
 
 **Let's continue with email templates and scheduled notifications first, then add push notifications! 🚀**
 
+
+
+
+
+
