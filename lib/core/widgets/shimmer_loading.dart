@@ -296,4 +296,162 @@ class ShimmerLoading {
       ),
     );
   }
+
+  /// Profile screen shimmer (hero section + info cards)
+  static Widget profileScreen() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // Hero section shimmer
+          Container(
+            width: double.infinity,
+            color: AppTheme.primaryColor,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+              child: Shimmer.fromColors(
+                baseColor: Colors.white.withOpacity(0.2),
+                highlightColor: Colors.white.withOpacity(0.4),
+                child: Column(
+                  children: [
+                    // Profile picture shimmer
+                    Container(
+                      width: 94,
+                      height: 94,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Name shimmer
+                    Container(
+                      width: 150,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Role badge shimmer
+                    Container(
+                      width: 80,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Info cards shimmer
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(child: ShimmerLoading.metricCard()),
+                const SizedBox(width: 12),
+                Expanded(child: ShimmerLoading.metricCard()),
+              ],
+            ),
+          ),
+          // Settings section shimmer
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.softBorder),
+              ),
+              child: Shimmer.fromColors(
+                baseColor: Colors.grey[300]!,
+                highlightColor: Colors.grey[100]!,
+                child: Column(
+                  children: List.generate(
+                    4,
+                    (index) => Padding(
+                      padding: EdgeInsets.only(bottom: index < 3 ? 12 : 0),
+                      child: ShimmerLoading.listTile(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Edit profile screen shimmer
+  static Widget editProfileScreen() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: Column(
+          children: [
+            // Profile picture section
+            Container(
+              width: 120,
+              height: 120,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Form fields shimmer
+            ...List.generate(
+              5,
+              (index) => Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Save button shimmer
+            Container(
+              width: double.infinity,
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

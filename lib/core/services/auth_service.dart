@@ -548,10 +548,24 @@ class AuthService {
     }
 
     // Password-related errors
+    // Note: Supabase returns "invalid_credentials" for both non-existent users and wrong passwords
+    // for security reasons (to prevent email enumeration). We can't differentiate between them.
+    // However, we can check if the error code is specifically "invalid_credentials" and provide
+    // a more helpful message that covers both cases.
     if (errorString.contains('invalid login credentials') ||
         errorString.contains('invalid password') ||
-        errorString.contains('wrong password')) {
-      return 'Invalid email or password. Please check and try again.';
+        errorString.contains('wrong password') ||
+        errorCode == 'invalid_credentials') {
+      // Check if we can determine if it's a user not found vs wrong password
+      // Supabase doesn't differentiate, but we can provide a more helpful message
+      if (errorString.contains('user not found') ||
+          errorString.contains('no user found') ||
+          errorString.contains('email not found')) {
+        return 'No account found with this email address. Please sign up first.';
+      }
+      // For invalid_credentials, it could be either wrong password or non-existent user
+      // Provide a message that covers both cases
+      return 'The email or password you entered is incorrect. Please check and try again, or sign up if you don\'t have an account.';
     }
 
     if (errorString.contains('password') && errorString.contains('weak')) {
@@ -592,17 +606,32 @@ class AuthService {
       return 'No account found with this email. Please sign up first.';
     }
 
+    // Profile not found - user needs to complete signup
+    if (errorString.contains('profile not found')) {
+      return 'Your account is not fully set up. Please complete your profile setup first.';
+    }
+
     // Expired token
     if (errorString.contains('expired') ||
         errorString.contains('otp_expired')) {
       return 'Verification link has expired. Please request a new one.';
     }
 
-    // Default fallback
+    // Default fallback - show more specific error if available
     print(
       '🔍 [DEBUG] ⚠️ No matching error pattern found, using default message',
     );
     print('🔍 [DEBUG] Original error was: ${error.toString()}');
+    
+    // If error is an Exception with a message, try to extract it
+    if (errorStr.startsWith('Exception: ')) {
+      final message = errorStr.substring(11).trim();
+      // If it's a short, readable message, use it
+      if (message.length < 100 && !message.contains('Exception') && !message.contains('Error:')) {
+        return message;
+      }
+    }
+    
     return 'Unable to complete this action. Please try again.';
   }
 

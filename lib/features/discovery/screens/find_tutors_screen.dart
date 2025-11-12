@@ -391,25 +391,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           ],
                         ),
                         child: ClipOval(
-                          child: Image.asset(
-                            tutor['avatar_url'] ??
-                                'assets/images/prepskul_profile.png',
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: AppTheme.primaryColor.withOpacity(0.1),
-                                child: Center(
-                                  child: Text(
-                                    name[0].toUpperCase(),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
+                          child: _buildAvatarImage(
+                            tutor['avatar_url'],
+                            name,
                           ),
                         ),
                       ),
@@ -942,6 +926,98 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
+  Widget _buildAvatarImage(String? avatarUrl, String name, {bool isLarge = false}) {
+    // Check if avatarUrl is a network URL or asset path
+    final isNetworkUrl = avatarUrl != null &&
+        (avatarUrl.startsWith('http://') ||
+            avatarUrl.startsWith('https://') ||
+            avatarUrl.startsWith('//'));
+    
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      if (isNetworkUrl) {
+        // Use NetworkImage for URLs from Supabase storage
+        return Image.network(
+          avatarUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder(name, isLarge: isLarge);
+          },
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                        loadingProgress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2,
+              ),
+            );
+          },
+        );
+      } else {
+        // Use Image.asset for local asset paths
+        return Image.asset(
+          avatarUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder(name, isLarge: isLarge);
+          },
+        );
+      }
+    }
+    
+    // Fallback to placeholder
+    return _buildAvatarPlaceholder(name, isLarge: isLarge);
+  }
+
+  Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
+    if (isLarge) {
+      return Container(
+        height: 300,
+        color: AppTheme.primaryColor.withOpacity(0.1),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'T',
+                style: GoogleFonts.poppins(
+                  fontSize: 80,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    return Container(
+      color: AppTheme.primaryColor.withOpacity(0.1),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : 'T',
+          style: GoogleFonts.poppins(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showProfileImage(BuildContext context, Map<String, dynamic> tutor) {
     final name = tutor['full_name'] ?? 'Tutor';
     showDialog(
@@ -970,39 +1046,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: Image.asset(
-                    tutor['avatar_url'] ?? 'assets/images/prepskul_profile.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 300,
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                name[0].toUpperCase(),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 80,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                name,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                  child: _buildAvatarImage(
+                    tutor['avatar_url'],
+                    name,
+                    isLarge: true,
                   ),
                 ),
               ),

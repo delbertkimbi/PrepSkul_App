@@ -5,6 +5,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
+import '../../../core/widgets/shimmer_loading.dart';
 import 'package:image_picker/image_picker.dart';
 
 /// Edit Profile Screen
@@ -66,9 +67,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _profileData = tutorResponse;
       }
 
+      // Format phone number to remove duplicates
+      final rawPhone = profileResponse?['phone_number']?.toString() ?? '';
+      final formattedPhone = _formatPhoneNumber(rawPhone);
+
       setState(() {
         _nameController.text = profileResponse?['full_name']?.toString() ?? '';
-        _phoneController.text = profileResponse?['phone_number']?.toString() ?? '';
+        _phoneController.text = formattedPhone;
         _emailController.text = profileResponse?['email']?.toString() ?? '';
         _selectedCity = _profileData?['city']?.toString();
         _selectedQuarter = _profileData?['quarter']?.toString();
@@ -179,10 +184,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
 
+      // Format phone number before saving to prevent duplicates
+      final formattedPhone = _formatPhoneNumber(_phoneController.text.trim());
+
       // Update profiles table
       final profileUpdates = <String, dynamic>{
         'full_name': _nameController.text.trim(),
-        'phone_number': _phoneController.text.trim(),
+        'phone_number': formattedPhone,
         'updated_at': DateTime.now().toIso8601String(),
       };
 
@@ -306,7 +314,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? ShimmerLoading.editProfileScreen()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Form(
@@ -539,15 +547,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.7),
-            blurRadius: 10,
-            offset: const Offset(-4, -4),
+            color: Colors.white.withOpacity(0.6),
+            blurRadius: 8,
+            offset: const Offset(-3, -3),
             spreadRadius: 0,
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(4, 4),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(3, 3),
             spreadRadius: 0,
           ),
         ],
@@ -620,14 +628,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
+          borderSide: BorderSide(color: Colors.red),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
+          borderSide: BorderSide(color: Colors.red, width: 2),
         ),
       ),
     );
   }
-}
 
+  /// Format phone number to avoid duplicate country code
+  /// Handles: +237+237..., 237237..., +237..., 237..., 0..., or 9 digits
+  String _formatPhoneNumber(String phone) {
+    if (phone.isEmpty) return phone;
+
+    // Remove all spaces and special characters except +
+    String cleaned = phone.trim().replaceAll(RegExp(r'[\s\-\(\)]'), '');
+
+    // Remove ALL instances of +237 (including duplicates)
+    cleaned = cleaned.replaceAll('+237', '');
+    cleaned = cleaned.replaceAll('237', '');
+
+    // If it starts with 0, remove it
+    if (cleaned.startsWith('0')) {
+      cleaned = cleaned.substring(1);
+    }
+
+    // Extract only digits (should be 9 digits for Cameroon)
+    cleaned = cleaned.replaceAll(RegExp(r'[^\d]'), '');
+
+    // If we have 9 digits, format as +237 + 9 digits
+    if (cleaned.length == 9) {
+      return '+237$cleaned';
+    }
+    // If we have more than 9 digits, take first 9
+    else if (cleaned.length > 9) {
+      return '+237${cleaned.substring(0, 9)}';
+    }
+    // If we have less than 9, return as is (might be incomplete)
+    else if (cleaned.isNotEmpty) {
+      return '+237$cleaned';
+    }
+
+    // Fallback: return original if we can't parse it
+    return phone;
+  }
+}

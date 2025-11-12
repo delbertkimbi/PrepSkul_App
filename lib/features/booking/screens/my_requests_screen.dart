@@ -624,169 +624,259 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
   Widget _buildTrialSessionCard(TrialSession session) {
-    return Card(
+    // Neumorphic styling like tutor request cards
+    return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Trial Session',
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.blue[900],
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _getStatusColor(session.status).withOpacity(0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
+        onTap: () {
+          // Could navigate to detail screen if needed
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                  ),
-                ),
-                const Spacer(),
-                _buildStatusChip(session.status),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              session.subject,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _buildInfoRow(Icons.calendar_today, session.formattedDate),
-            const SizedBox(height: 4),
-            _buildInfoRow(Icons.access_time, session.formattedTime),
-            const SizedBox(height: 4),
-            _buildInfoRow(Icons.timer, session.formattedDuration),
-            const SizedBox(height: 4),
-            _buildInfoRow(
-              Icons.location_on,
-              session.location == 'online' ? 'Online' : 'On-site',
-            ),
-            if (session.trialGoal != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Goal:',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textMedium,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      session.trialGoal!,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              '${session.trialFee.toStringAsFixed(0)} XAF',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-            // Show "Continue with Tutor" button for completed trials
-            if (session.status == 'completed' &&
-                !session.convertedToRecurring) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    // Fetch tutor data and show conversion screen
-                    try {
-                      final supabase = Supabase.instance.client;
-                      final tutorData = await supabase
-                          .from('tutor_profiles')
-                          .select('*, profiles!inner(full_name, avatar_url)')
-                          .eq('user_id', session.tutorId)
-                          .single();
-
-                      if (!mounted) return;
-
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PostTrialConversionScreen(
-                            trialSession: session,
-                            tutor: {
-                              ...tutorData,
-                              'user_id': session.tutorId,
-                              'id': session.tutorId,
-                              'full_name':
-                                  tutorData['profiles']?['full_name'] ??
-                                  'Tutor',
-                            },
-                          ),
-                        ),
-                      ).then((_) {
-                        // Refresh after conversion
-                        _loadRequests();
-                      });
-                    } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Error: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
+                    decoration: BoxDecoration(
+                      color: Colors.blue[100],
                       borderRadius: BorderRadius.circular(8),
                     ),
+                    child: Text(
+                      'Trial Session',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue[900],
+                      ),
+                    ),
                   ),
-                  child: Text(
-                    'Continue with Tutor',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                  const Spacer(),
+                  _buildStatusChip(session.status),
+                  // Delete button for pending/cancelled sessions
+                  if (session.status == 'pending' ||
+                      session.status == 'cancelled') ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, size: 20),
+                      color: Colors.red[300],
+                      onPressed: () => _deleteTrialSession(session.id),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                session.subject,
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.calendar_today, session.formattedDate),
+              const SizedBox(height: 4),
+              _buildInfoRow(Icons.access_time, session.formattedTime),
+              const SizedBox(height: 4),
+              _buildInfoRow(Icons.timer, session.formattedDuration),
+              const SizedBox(height: 4),
+              _buildInfoRow(
+                Icons.location_on,
+                session.location == 'online' ? 'Online' : 'On-site',
+              ),
+              if (session.trialGoal != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.softCard,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Goal:',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        session.trialGoal!,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Text(
+                '${session.trialFee.toStringAsFixed(0)} XAF',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              // Show "Continue with Tutor" button for completed trials
+              if (session.status == 'completed' &&
+                  !session.convertedToRecurring) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      // Fetch tutor data and show conversion screen
+                      try {
+                        final supabase = Supabase.instance.client;
+                        final tutorData = await supabase
+                            .from('tutor_profiles')
+                            .select('*, profiles!inner(full_name, avatar_url)')
+                            .eq('user_id', session.tutorId)
+                            .single();
+
+                        if (!mounted) return;
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PostTrialConversionScreen(
+                              trialSession: session,
+                              tutor: {
+                                ...tutorData,
+                                'user_id': session.tutorId,
+                                'id': session.tutorId,
+                                'full_name':
+                                    tutorData['profiles']?['full_name'] ??
+                                    'Tutor',
+                              },
+                            ),
+                          ),
+                        ).then((_) {
+                          // Refresh after conversion
+                          _loadRequests();
+                        });
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Continue with Tutor',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.orange;
+      case 'approved':
+      case 'scheduled':
+        return Colors.green;
+      case 'rejected':
+      case 'cancelled':
+        return Colors.grey;
+      case 'completed':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Future<void> _deleteTrialSession(String sessionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Delete Trial Session',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'Are you sure you want to delete this trial session request?',
+          style: GoogleFonts.poppins(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text('Delete', style: GoogleFonts.poppins()),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await TrialSessionService.cancelTrialSession(sessionId);
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Trial session deleted')));
+        _loadRequests();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Widget _buildStatusChip(String status) {
@@ -900,6 +990,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 }
+
 // Helper class to combine different request types
 class _RequestItem {
   final String type; // 'booking', 'custom', 'trial'
@@ -909,4 +1000,3 @@ class _RequestItem {
 
   _RequestItem({required this.type, this.booking, this.custom, this.trial});
 }
-

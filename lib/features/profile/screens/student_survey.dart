@@ -2594,19 +2594,27 @@ No direct payments should be made to tutors outside the platform.''';
           'education_level': _selectedEducationLevel,
           'class_level': _selectedClass,
           'stream': _selectedStream,
-          'subjects': _selectedSubjects,
-          'university_courses': _universityCoursesController.text,
+          'subjects': (_selectedSubjects != null && _selectedSubjects.isNotEmpty)
+              ? _selectedSubjects
+              : null,
+          'university_courses': _universityCoursesController.text.trim().isNotEmpty
+              ? _universityCoursesController.text.trim()
+              : null,
         },
         // Skill Development
         if (_selectedLearningPath == 'Skill Development') ...{
           'skill_category': _selectedSkillCategory,
-          'skills': _selectedSkills,
+          'skills': (_selectedSkills != null && _selectedSkills.isNotEmpty)
+              ? _selectedSkills
+              : null,
         },
         // Exam Preparation
         if (_selectedLearningPath == 'Exam Preparation') ...{
           'exam_type': _selectedExamType,
           'specific_exam': _selectedSpecificExam,
-          'exam_subjects': _examSubjects,
+          'exam_subjects': (_examSubjects != null && _examSubjects.isNotEmpty)
+              ? _examSubjects
+              : null,
         },
         // Preferences
         'budget_min': _minBudget,
@@ -2619,8 +2627,12 @@ No direct payments should be made to tutors outside the platform.''';
             : null,
         'learning_style': _learningStyle,
         'confidence_level': _confidenceLevel,
-        'learning_goals': _learningGoals,
-        'challenges': _challenges,
+        'learning_goals': (_learningGoals != null && _learningGoals.isNotEmpty)
+            ? _learningGoals
+            : null,
+        'challenges': (_challenges != null && _challenges.isNotEmpty)
+            ? _challenges
+            : null,
       };
 
       // Save to database

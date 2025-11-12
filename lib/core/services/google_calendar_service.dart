@@ -1,5 +1,6 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:googleapis/calendar/v3.dart' as cal;
+import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 
 /// Calendar Event Model
 class CalendarEvent {
@@ -24,29 +25,29 @@ class GoogleCalendarService {
 
   /// Initialize Google Calendar API client
   ///
-  /// Note: This is a placeholder implementation.
-  /// For production, you'll need to implement OAuth2 flow or use service account.
+  /// Uses OAuth2 authentication via GoogleCalendarAuthService
   static Future<void> _initializeApi() async {
     if (_calendarApi != null) return;
 
     try {
-      final clientId = dotenv.env['GOOGLE_CALENDAR_CLIENT_ID'] ?? '';
-      final clientSecret = dotenv.env['GOOGLE_CALENDAR_CLIENT_SECRET'] ?? '';
-
-      if (clientId.isEmpty || clientSecret.isEmpty) {
-        throw Exception('Google Calendar credentials not configured');
+      // Check if user is authenticated
+      final isAuth = await GoogleCalendarAuthService.isAuthenticated();
+      if (!isAuth) {
+        throw Exception(
+          'Google Calendar not authenticated. Please sign in first using GoogleCalendarAuthService.signIn()',
+        );
       }
 
-      // TODO: Implement proper OAuth2 flow for calendar access
-      // For now, this will throw an error - actual implementation needed
-      throw Exception(
-        'Google Calendar API initialization not yet implemented. OAuth2 flow required.',
-      );
+      // Get authenticated HTTP client
+      final client = await GoogleCalendarAuthService.getAuthenticatedClient();
+      if (client == null) {
+        throw Exception('Failed to get authenticated client for Google Calendar');
+      }
 
-      // Placeholder for future implementation:
-      // 1. Implement OAuth2 flow to get access token
-      // 2. Create authenticated HTTP client
-      // 3. Initialize CalendarApi with authenticated client
+      // Initialize Calendar API with authenticated client
+      _calendarApi = cal.CalendarApi(client);
+
+      print('✅ Google Calendar API initialized successfully');
     } catch (e) {
       print('❌ Error initializing Google Calendar API: $e');
       rethrow;
@@ -209,3 +210,5 @@ class GoogleCalendarService {
     }
   }
 }
+
+

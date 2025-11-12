@@ -93,6 +93,9 @@ dependencies:
   # HTTP Client
   http: ^1.1.0
   
+  # Deep Linking
+  app_links: ^6.3.3
+  
   # Environment Variables
   flutter_dotenv: ^5.1.0
   
@@ -152,5 +155,11 @@ flutter:
   #         weight: 700
   #
   # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
+
+
+  # see https://flutter.dev/to/font-from-package
+
+
   # see https://flutter.dev/to/font-from-package
 

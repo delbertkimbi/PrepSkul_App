@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
-import 'package:prepskul/features/booking/screens/book_session_screen.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 
@@ -28,10 +27,15 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
   void _initializeVideo() {
     try {
-      final videoUrl = widget.tutor['video_intro'] ?? '';
+      // Use video_url (primary), fallback to video_intro or video_link
+      final videoUrl =
+          widget.tutor['video_url'] ??
+          widget.tutor['video_intro'] ??
+          widget.tutor['video_link'] ??
+          '';
       if (videoUrl.isNotEmpty) {
         final videoId = YoutubePlayer.convertUrlToId(videoUrl);
-        if (videoId != null) {
+        if (videoId != null && videoId.isNotEmpty) {
           _youtubeController = YoutubePlayerController(
             initialVideoId: videoId,
             flags: const YoutubePlayerFlags(
@@ -39,13 +43,19 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               mute: false,
               enableCaption: true,
               controlsVisibleAtStart: true,
+              hideControls: false,
             ),
           );
           setState(() => _isVideoInitialized = true);
+        } else {
+          print('⚠️ Could not extract video ID from URL: $videoUrl');
         }
+      } else {
+        print('ℹ️ No video URL provided for tutor');
       }
     } catch (e) {
-      print('Error initializing video: $e');
+      print('❌ Error initializing video: $e');
+      print('Stack trace: ${StackTrace.current}');
     }
   }
 
@@ -61,16 +71,41 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget build(BuildContext context) {
     final name = widget.tutor['full_name'] ?? 'Unknown';
     final bio = widget.tutor['bio'] ?? '';
-    final education = widget.tutor['education'] ?? '';
+    final education =
+        widget.tutor['education'] ?? ''; // Formatted education string
     final experience = widget.tutor['experience'] ?? '';
     final rating = (widget.tutor['rating'] ?? 0.0).toDouble();
     final totalReviews = widget.tutor['total_reviews'] ?? 0;
-    final studentCount = widget.tutor['student_count'] ?? 0;
-    final completedSessions = widget.tutor['completed_sessions'] ?? 0;
+    final totalStudents = widget.tutor['total_students'] ?? 0;
+    final totalHoursTaught = widget.tutor['total_hours_taught'] ?? 0;
+    final completedSessions =
+        widget.tutor['completed_sessions'] ??
+        widget.tutor['total_reviews'] ??
+        0;
     final teachingStyle = widget.tutor['teaching_style'] ?? '';
-    final successStories = widget.tutor['success_stories'] ?? '';
     final city = widget.tutor['city'] ?? '';
     final quarter = widget.tutor['quarter'] ?? '';
+
+    // Build student success text from metrics
+    final successMetrics = <String>[];
+    if (totalStudents > 0) {
+      successMetrics.add(
+        '$totalStudents student${totalStudents > 1 ? 's' : ''}',
+      );
+    }
+    if (totalHoursTaught > 0) {
+      successMetrics.add(
+        '$totalHoursTaught hour${totalHoursTaught > 1 ? 's' : ''} taught',
+      );
+    }
+    if (completedSessions > 0) {
+      successMetrics.add(
+        '$completedSessions session${completedSessions > 1 ? 's' : ''} completed',
+      );
+    }
+    final studentSuccessText = successMetrics.isNotEmpty
+        ? successMetrics.join(' • ')
+        : 'No sessions completed yet';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -125,14 +160,23 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             ],
             flexibleSpace: FlexibleSpaceBar(
               background: _isVideoInitialized
-                  ? YoutubePlayer(
-                      controller: _youtubeController,
-                      showVideoProgressIndicator: true,
-                      progressIndicatorColor: AppTheme.primaryColor,
-                      progressColors: ProgressBarColors(
-                        playedColor: AppTheme.primaryColor,
-                        handleColor: AppTheme.primaryColor,
+                  ? YoutubePlayerBuilder(
+                      onExitFullScreen: () {},
+                      player: YoutubePlayer(
+                        controller: _youtubeController,
+                        showVideoProgressIndicator:
+                            false, // Hide default progress indicator
+                        progressIndicatorColor: AppTheme.primaryColor,
+                        progressColors: ProgressBarColors(
+                          playedColor: AppTheme.primaryColor,
+                          handleColor: AppTheme.primaryColor,
+                          bufferedColor: Colors.grey[300]!,
+                          backgroundColor: Colors.grey[200]!,
+                        ),
                       ),
+                      builder: (context, player) {
+                        return player;
+                      },
                     )
                   : Container(
                       color: Colors.grey[200],
@@ -181,27 +225,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                 ],
                               ),
                               child: ClipOval(
-                                child: Image.asset(
-                                  widget.tutor['avatar_url'] ??
-                                      'assets/images/prepskul_profile.png',
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: AppTheme.primaryColor.withOpacity(
-                                        0.1,
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          name[0].toUpperCase(),
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 36,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppTheme.primaryColor,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                child: _buildAvatarImage(
+                                  widget.tutor['avatar_url'],
+                                  widget.tutor['full_name'] ?? 'Tutor',
                                 ),
                               ),
                             ),
@@ -332,7 +358,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     children: [
                       _buildQuickStat(
                         Icons.people_outline,
-                        '$studentCount',
+                        '$totalStudents',
                         'Students',
                       ),
                       Container(width: 1, height: 30, color: Colors.grey[300]),
@@ -427,62 +453,36 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
                 const SizedBox(height: 20),
 
-                // Success Stories
+                // Student Success
                 _buildSection(
                   'Student Success',
-                  successStories,
+                  studentSuccessText,
                   Icons.emoji_events_outlined,
                 ),
 
                 const SizedBox(height: 20),
 
                 // Certifications
-                if (widget.tutor['certifications'] != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Certifications',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black,
-                          ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Certifications',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
                         ),
-                        const SizedBox(height: 12),
-                        ...((widget.tutor['certifications'] as List).map(
-                          (cert) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  Icons.workspace_premium,
-                                  size: 20,
-                                  color: Colors.amber[700],
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    cert.toString(),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      color: Colors.grey[700],
-                                      height: 1.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildCertificationsSection(),
+                    ],
                   ),
+                ),
 
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
 
                 // Pricing & Availability (AFTER all information)
                 _buildPricingSection(),
@@ -620,20 +620,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    ...(widget.tutor['available_schedule'] as List? ?? [])
-                        .map(
-                          (schedule) => Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              schedule.toString(),
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
+                    _buildAvailabilitySchedule(
+                      widget.tutor['combined_availability']
+                          as Map<String, dynamic>?,
+                    ),
                   ],
                 ),
               ),
@@ -769,8 +759,194 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     );
   }
 
+  Widget _buildCertificationsSection() {
+    final certifications = widget.tutor['certificates_urls'] as List?;
+    final certificationsJson = widget.tutor['certifications'] as List?;
+
+    final certList = certifications ?? certificationsJson;
+
+    if (certList == null || certList.isEmpty) {
+      return Text(
+        'No certifications yet',
+        style: GoogleFonts.poppins(
+          fontSize: 14,
+          color: Colors.grey[600],
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: certList.map((cert) {
+        final certText = cert is Map
+            ? cert['name']?.toString() ?? cert.toString()
+            : cert.toString();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.workspace_premium, size: 20, color: Colors.amber[700]),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  certText,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.grey[700],
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildAvatarImage(
+    String? avatarUrl,
+    String name, {
+    bool isLarge = false,
+  }) {
+    // Check if avatarUrl is a network URL or asset path
+    final isNetworkUrl =
+        avatarUrl != null &&
+        (avatarUrl.startsWith('http://') ||
+            avatarUrl.startsWith('https://') ||
+            avatarUrl.startsWith('//'));
+
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      if (isNetworkUrl) {
+        // Use NetworkImage for URLs from Supabase storage
+        return Image.network(
+          avatarUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder(name, isLarge: isLarge);
+          },
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Center(
+              child: CircularProgressIndicator(
+                value: loadingProgress.expectedTotalBytes != null
+                    ? loadingProgress.cumulativeBytesLoaded /
+                          loadingProgress.expectedTotalBytes!
+                    : null,
+                strokeWidth: 2,
+              ),
+            );
+          },
+        );
+      } else {
+        // Use Image.asset for local asset paths
+        return Image.asset(
+          avatarUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildAvatarPlaceholder(name, isLarge: isLarge);
+          },
+        );
+      }
+    }
+
+    // Fallback to placeholder
+    return _buildAvatarPlaceholder(name, isLarge: isLarge);
+  }
+
+  Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
+    if (isLarge) {
+      return Container(
+        height: 300,
+        color: AppTheme.primaryColor.withOpacity(0.1),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'T',
+                style: GoogleFonts.poppins(
+                  fontSize: 80,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      color: AppTheme.primaryColor.withOpacity(0.1),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : 'T',
+          style: GoogleFonts.poppins(
+            fontSize: 36,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvailabilitySchedule(Map<String, dynamic>? availability) {
+    if (availability == null || availability.isEmpty) {
+      return Text(
+        'Schedule not available',
+        style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
+      );
+    }
+
+    // Format availability as day: times
+    final scheduleItems = <Widget>[];
+    availability.forEach((day, times) {
+      if (times != null) {
+        final timesList = times is List ? times : [times];
+        if (timesList.isNotEmpty) {
+          scheduleItems.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '$day: ${timesList.join(', ')}',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          );
+        }
+      }
+    });
+
+    if (scheduleItems.isEmpty) {
+      return Text(
+        'Schedule not available',
+        style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: scheduleItems,
+    );
+  }
+
   void _showProfileImage(BuildContext context) {
-    final name = widget.tutor['full_name'] ?? 'Tutor';
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -797,40 +973,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: Image.asset(
-                    widget.tutor['avatar_url'] ??
-                        'assets/images/prepskul_profile.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 300,
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                name[0].toUpperCase(),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 80,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                name,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
+                  child: _buildAvatarImage(
+                    widget.tutor['avatar_url'],
+                    widget.tutor['full_name'] ?? 'Tutor',
+                    isLarge: true,
                   ),
                 ),
               ),

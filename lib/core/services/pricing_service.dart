@@ -209,18 +209,35 @@ class PricingService {
     Map<String, dynamic> tutorData, {
     int? overrideSessionsPerWeek,
   }) {
-    // Extract tutor data
+    // Extract pricing data with priority: base_session_price > admin_price_override > hourly_rate
+    final baseSessionPrice = tutorData['base_session_price']?.toDouble();
+    final adminPriceOverride = tutorData['admin_price_override']?.toDouble();
     final hourlyRate = (tutorData['hourly_rate'] ?? 3000).toDouble();
+    final perSessionRate = tutorData['per_session_rate']?.toDouble();
+    
+    // Determine effective base rate (priority order)
+    final effectiveBaseRate = (baseSessionPrice != null && baseSessionPrice > 0)
+        ? baseSessionPrice
+        : (adminPriceOverride != null && adminPriceOverride > 0)
+            ? adminPriceOverride
+            : (perSessionRate != null && perSessionRate > 0)
+                ? perSessionRate
+                : hourlyRate;
+    
     final rating = (tutorData['rating'] ?? 4.0).toDouble();
     final qualification = tutorData['tutor_qualification'] ?? 'Professional';
-    final adminOverride = tutorData['admin_price_override']?.toDouble();
+    
+    // If admin has set base_session_price or admin_price_override, use it directly
+    final adminOverride = (baseSessionPrice != null && baseSessionPrice > 0)
+        ? baseSessionPrice
+        : adminPriceOverride;
 
     // Default sessions per week
     final sessionsPerWeek = overrideSessionsPerWeek ?? 2;
 
     // Calculate pricing
     return calculateMonthlyPricing(
-      baseTutorRate: hourlyRate,
+      baseTutorRate: effectiveBaseRate,
       rating: rating,
       qualification: qualification,
       sessionsPerWeek: sessionsPerWeek,

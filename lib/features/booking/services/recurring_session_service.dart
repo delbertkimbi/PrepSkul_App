@@ -1,3 +1,4 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 
@@ -6,7 +7,7 @@ import 'package:prepskul/features/booking/models/booking_request_model.dart';
 /// Handles creation and management of recurring sessions
 /// from approved booking requests
 class RecurringSessionService {
-  static final _supabase = SupabaseService.client;
+  static SupabaseClient get _supabase => SupabaseService.client;
 
   /// Create a recurring session from an approved booking request
   static Future<Map<String, dynamic>> createRecurringSessionFromBooking(
@@ -56,6 +57,19 @@ class RecurringSessionService {
           .single();
 
       print('✅ Recurring session created: ${response['id']}');
+
+      // Generate initial individual sessions (next 8 weeks)
+      try {
+        await generateIndividualSessions(
+          recurringSessionId: response['id'] as String,
+          weeksAhead: 8,
+        );
+        print('✅ Initial individual sessions generated');
+      } catch (e) {
+        print('⚠️ Failed to generate initial individual sessions: $e');
+        // Don't fail the recurring session creation if individual session generation fails
+      }
+
       return response;
     } catch (e) {
       print('❌ Error creating recurring session: $e');
@@ -185,9 +199,135 @@ class RecurringSessionService {
       rethrow;
     }
   }
+
+  /// Generate individual session instances from a recurring session
+  ///
+  /// Creates individual sessions for the next [weeksAhead] weeks
+  /// based on the recurring session's schedule (days, times, frequency)
+  static Future<void> generateIndividualSessions({
+    required String recurringSessionId,
+    int weeksAhead = 8,
+  }) async {
+    try {
+      // Get recurring session details
+      final recurringSession = await _supabase
+          .from('recurring_sessions')
+          .select()
+          .eq('id', recurringSessionId)
+          .single();
+
+      final startDate = DateTime.parse(recurringSession['start_date'] as String);
+      final days = (recurringSession['days'] as List).cast<String>();
+      final times = recurringSession['times'] as Map<String, dynamic>;
+      final location = recurringSession['location'] as String;
+      final address = recurringSession['address'] as String?;
+      final tutorId = recurringSession['tutor_id'] as String;
+      final studentId = recurringSession['student_id'] as String;
+
+      // Get subject from booking request or use default
+      String subject = 'Tutoring Session';
+      if (recurringSession['request_id'] != null) {
+        final request = await _supabase
+            .from('booking_requests')
+            .select('subject')
+            .eq('id', recurringSession['request_id'])
+            .maybeSingle();
+        subject = request?['subject'] as String? ?? subject;
+      }
+
+      // Default duration (can be made configurable)
+      const durationMinutes = 60;
+
+      // Calculate end date (weeksAhead weeks from start)
+      final endDate = startDate.add(Duration(days: weeksAhead * 7));
+
+      // Generate sessions for each day in the schedule
+      final sessionsToCreate = <Map<String, dynamic>>[];
+      final currentDate = DateTime(startDate.year, startDate.month, startDate.day);
+      final targetDate = DateTime(endDate.year, endDate.month, endDate.day);
+
+      // Iterate through each week
+      for (var week = 0; week < weeksAhead; week++) {
+        // For each day in the schedule
+        for (final day in days) {
+          final dayIndex = _getDayIndex(day);
+          final timeStr = times[day] as String?;
+          
+          if (timeStr == null || timeStr.isEmpty) continue;
+
+          // Calculate date for this day
+          final weekStart = currentDate.add(Duration(days: week * 7));
+          final daysOffset = (dayIndex - weekStart.weekday) % 7;
+          final sessionDate = weekStart.add(Duration(days: daysOffset));
+
+          // Skip if before start date or after end date
+          if (sessionDate.isBefore(currentDate) || sessionDate.isAfter(targetDate)) {
+            continue;
+          }
+
+          // Parse time
+          final timeParts = timeStr.replaceAll(' ', '').split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minuteStr = timeParts.length > 1 
+              ? timeParts[1].replaceAll(RegExp(r'[^\d]'), '')
+              : '0';
+          final minute = int.tryParse(minuteStr) ?? 0;
+          final isPM = timeStr.toUpperCase().contains('PM');
+          final hour24 = isPM && hour != 12 
+              ? hour + 12 
+              : (hour == 12 && !isPM ? 0 : hour);
+
+          // Format time as HH:MM:SS
+          final timeFormatted = '${hour24.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}:00';
+          final dateFormatted = sessionDate.toIso8601String().split('T')[0];
+
+          // Check if session already exists
+          final existingSession = await _supabase
+              .from('individual_sessions')
+              .select('id')
+              .eq('recurring_session_id', recurringSessionId)
+              .eq('scheduled_date', dateFormatted)
+              .eq('scheduled_time', timeFormatted)
+              .maybeSingle();
+
+          if (existingSession != null) {
+            continue; // Session already exists, skip
+          }
+
+          // Create session data
+          final sessionData = <String, dynamic>{
+            'recurring_session_id': recurringSessionId,
+            'tutor_id': tutorId,
+            'learner_id': studentId,
+            'parent_id': recurringSession['student_type'] == 'parent' ? studentId : null,
+            'subject': subject,
+            'scheduled_date': dateFormatted,
+            'scheduled_time': timeFormatted,
+            'duration_minutes': durationMinutes,
+            'location': location == 'hybrid' ? 'online' : location, // Default hybrid to online
+            'onsite_address': location == 'onsite' || location == 'hybrid' ? address : null,
+            'status': 'scheduled',
+            'created_at': DateTime.now().toIso8601String(),
+          };
+
+          sessionsToCreate.add(sessionData);
+        }
+      }
+
+      // Batch insert sessions (in chunks of 100 to avoid payload limits)
+      if (sessionsToCreate.isNotEmpty) {
+        const chunkSize = 100;
+        for (var i = 0; i < sessionsToCreate.length; i += chunkSize) {
+          final chunk = sessionsToCreate.skip(i).take(chunkSize).toList();
+          await _supabase.from('individual_sessions').insert(chunk);
+        }
+        print('✅ Generated ${sessionsToCreate.length} individual sessions');
+      } else {
+        print('ℹ️ No new individual sessions to generate');
+      }
+    } catch (e) {
+      print('❌ Error generating individual sessions: $e');
+      rethrow;
+    }
+  }
 }
-
-
-
-
-

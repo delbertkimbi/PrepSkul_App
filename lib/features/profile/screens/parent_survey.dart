@@ -1176,17 +1176,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
 
   // Individual step methods for single questions per page
   Widget _buildBudgetRange() {
+    // Title and subtitle are already shown in _buildStep
+    // Only show additional description if it's different from the subtitle
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'What is your budget range per month?',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
         const SizedBox(height: 8),
         Text(
           'Drag the handles to adjust your budget range',
@@ -1347,23 +1341,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
   }
 
   Widget _buildTutorGenderPreference() {
+    // Title and subtitle are already shown in _buildStep
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Tutor Gender Preference',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Do you have a gender preference for your child\'s tutor?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -1439,23 +1421,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
       },
     ];
 
+    // Title and subtitle are already shown in _buildStep
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Tutor Qualification Preference',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'What level of tutor qualification would you prefer?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         ...qualifications.map((qual) {
           bool isSelected = _tutorQualificationPreference == qual['value'];
           return Padding(
@@ -1567,23 +1537,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
       },
     ];
 
+    // Title and subtitle are already shown in _buildStep, so we don't need to repeat them here
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Confidence Level',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'How confident is your child in this subject/skill?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         ...confidenceLevels.map((level) {
           bool isSelected = _childConfidenceLevel == level['value'];
           return Padding(
@@ -1672,23 +1630,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
   }
 
   Widget _buildLearningLocation() {
+    // Title and subtitle are already shown in _buildStep
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Learning Location',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Where would you prefer your child to have sessions?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -1741,23 +1687,11 @@ class _ParentSurveyState extends State<ParentSurvey> {
   }
 
   Widget _buildSchedulePreference() {
+    // Title and subtitle are already shown in _buildStep
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Schedule Preference',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'When do you prefer your child to have learning sessions?',
-          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -2564,19 +2498,27 @@ No direct payments should be made to tutors outside the platform.''';
           'education_level': _selectedEducationLevel,
           'class_level': _selectedClass,
           'stream': _selectedStream,
-          'subjects': _selectedSubjects,
-          'university_courses': _universityCoursesController.text,
+          'subjects': (_selectedSubjects != null && _selectedSubjects.isNotEmpty)
+              ? _selectedSubjects
+              : null,
+          'university_courses': _universityCoursesController.text.trim().isNotEmpty
+              ? _universityCoursesController.text.trim()
+              : null,
         },
         // Skill Development
         if (_selectedLearningPath == 'Skill Development') ...{
           'skill_category': _selectedSkillCategory,
-          'skills': _selectedSkills,
+          'skills': (_selectedSkills != null && _selectedSkills.isNotEmpty)
+              ? _selectedSkills
+              : null,
         },
         // Exam Preparation
         if (_selectedLearningPath == 'Exam Preparation') ...{
           'exam_type': _selectedExamType,
           'specific_exam': _selectedSpecificExam,
-          'exam_subjects': _examSubjects,
+          'exam_subjects': (_examSubjects != null && _examSubjects.isNotEmpty)
+              ? _examSubjects
+              : null,
         },
         // Preferences
         'budget_min': _minBudget,
@@ -2588,8 +2530,12 @@ No direct payments should be made to tutors outside the platform.''';
             ? [_preferredSchedule!]
             : null,
         'child_confidence_level': _childConfidenceLevel,
-        'learning_goals': _learningGoals,
-        'challenges': _challenges,
+        'learning_goals': (_learningGoals != null && _learningGoals.isNotEmpty)
+            ? _learningGoals
+            : null,
+        'challenges': (_challenges != null && _challenges.isNotEmpty)
+            ? _challenges
+            : null,
       };
 
       // Save to database

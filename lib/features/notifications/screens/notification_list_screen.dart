@@ -5,7 +5,6 @@ import 'package:prepskul/core/services/notification_navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/widgets/notification_item.dart';
 import 'package:prepskul/features/notifications/screens/notification_preferences_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 
 /// Notification List Screen
@@ -181,101 +180,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       ),
       body: Column(
         children: [
-          // LinkedIn-style Header with Logo and Name
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                // PrepSkul Logo
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: kIsWeb
-                      ? Image.network(
-                          'https://prepskul.com/logo-blue.png',
-                          width: 40,
-                          height: 40,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.school,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            );
-                          },
-                        )
-                      : Image.asset(
-                          'assets/images/app_logo(blue).png',
-                          width: 40,
-                          height: 40,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.school,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                const SizedBox(width: 12),
-                // PrepSkul Name
-                Text(
-                  'PrepSkul',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textDark,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const Spacer(),
-                // Notification count badge
-                if (_notifications.any((n) => n['is_read'] == false))
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${_notifications.where((n) => n['is_read'] == false).length}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -407,33 +311,21 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   void _handleNotificationTap(Map<String, dynamic> notification) async {
-    // Mark as read
+    // Mark as read first
     if (notification['is_read'] == false) {
       NotificationService.markAsRead(notification['id'] as String);
     }
 
-    // Navigate to related content if action URL exists
+    // Use NotificationNavigationService to handle deep linking
     final actionUrl = notification['action_url'] as String?;
     final notificationType = notification['type'] as String?;
     final metadata = notification['metadata'] as Map<String, dynamic>?;
 
-    if (actionUrl != null) {
-      // Import and use NotificationNavigationService
-      // Note: We'll need to import it at the top of the file
-      await NotificationNavigationService.navigateToAction(
-        context: context,
-        actionUrl: actionUrl,
-        notificationType: notificationType,
-        metadata: metadata,
-      );
-    } else if (notificationType != null) {
-      // Fallback: navigate based on notification type
-      await NotificationNavigationService.navigateToAction(
-        context: context,
-        actionUrl: null,
-        notificationType: notificationType,
-        metadata: metadata,
-      );
-    }
+    await NotificationNavigationService.navigateToAction(
+      context: context,
+      actionUrl: actionUrl,
+      notificationType: notificationType,
+      metadata: metadata,
+    );
   }
 }

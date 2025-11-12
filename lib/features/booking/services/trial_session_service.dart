@@ -33,6 +33,11 @@ class TrialSessionService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
+      // Default to ONLINE trials unless explicitly set otherwise
+      final normalizedLocation =
+          (location.trim().isEmpty) ? 'Online' : location.trim();
+      final isOnline = normalizedLocation.toLowerCase() == 'online';
+
       // Calculate trial fee based on duration
       // Base: 30 min = 2000 XAF, 60 min = 3500 XAF
       final trialFee = durationMinutes == 30 ? 2000.0 : 3500.0;
@@ -66,9 +71,10 @@ class TrialSessionService {
         'scheduled_date': scheduledDate.toIso8601String().split('T')[0],
         'scheduled_time': scheduledTime,
         'duration_minutes': durationMinutes,
-        'location': location,
-        'onsite_address': address, // Use onsite_address instead of address
-        'location_description': locationDescription,
+        'location': normalizedLocation,
+        // For online trials, ignore physical address fields
+        'onsite_address': isOnline ? null : address,
+        'location_description': isOnline ? null : locationDescription,
         'trial_goal': trialGoal,
         'learner_challenges': learnerChallenges,
         'learner_level': learnerLevel,
@@ -497,3 +503,4 @@ class TrialSessionService {
     }
   }
 }
+

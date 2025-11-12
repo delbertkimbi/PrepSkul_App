@@ -1,0 +1,448 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/google_calendar_auth_service.dart';
+import 'package:prepskul/core/services/google_calendar_service.dart';
+
+/// IndividualSessionService
+///
+/// Handles individual session instances (generated from recurring sessions)
+/// Includes start/end tracking, Google Meet link generation, and status management
+class IndividualSessionService {
+  static SupabaseClient get _supabase => SupabaseService.client;
+
+  /// Get individual sessions for a recurring session
+  static Future<List<Map<String, dynamic>>> getSessionsForRecurring(
+    String recurringSessionId, {
+    String? status,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      var query = _supabase
+          .from('individual_sessions')
+          .select()
+          .eq('recurring_session_id', recurringSessionId);
+
+      if (status != null) {
+        query = query.eq('status', status);
+      }
+
+      if (startDate != null) {
+        query = query.gte('scheduled_date', startDate.toIso8601String().split('T')[0]);
+      }
+
+      if (endDate != null) {
+        query = query.lte('scheduled_date', endDate.toIso8601String().split('T')[0]);
+      }
+
+      final response = await query
+          .order('scheduled_date', ascending: false)
+          .order('scheduled_time', ascending: false);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching individual sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Get upcoming individual sessions for a tutor
+  static Future<List<Map<String, dynamic>>> getTutorUpcomingSessions({
+    int limit = 10,
+    DateTime? afterDate,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now();
+      final queryDate = afterDate ?? now;
+
+      var query = _supabase
+          .from('individual_sessions')
+          .select('''
+            *,
+            recurring_sessions!inner(
+              student_name,
+              student_avatar_url,
+              subject
+            )
+          ''')
+          .eq('tutor_id', userId)
+          .inFilter('status', ['scheduled', 'in_progress'])
+          .gte('scheduled_date', queryDate.toIso8601String().split('T')[0]);
+
+      final response = await query
+          .order('scheduled_date', ascending: true)
+          .order('scheduled_time', ascending: true)
+          .limit(limit);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching tutor upcoming sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Get past individual sessions for a tutor
+  static Future<List<Map<String, dynamic>>> getTutorPastSessions({
+    int limit = 20,
+    DateTime? beforeDate,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now();
+      final queryDate = beforeDate ?? now;
+
+      var query = _supabase
+          .from('individual_sessions')
+          .select('''
+            *,
+            recurring_sessions!inner(
+              student_name,
+              student_avatar_url,
+              subject
+            )
+          ''')
+          .eq('tutor_id', userId)
+          .inFilter('status', ['completed', 'cancelled', 'no_show_tutor', 'no_show_learner'])
+          .lte('scheduled_date', queryDate.toIso8601String().split('T')[0]);
+
+      final response = await query
+          .order('scheduled_date', ascending: false)
+          .order('scheduled_time', ascending: false)
+          .limit(limit);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching tutor past sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Start a session (tutor joins)
+  static Future<void> startSession(String sessionId) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now().toIso8601String();
+
+      // Check if session exists and tutor is authorized
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('tutor_id, status')
+          .eq('id', sessionId)
+          .single();
+
+      if (session['tutor_id'] != userId) {
+        throw Exception('Unauthorized: Not the tutor for this session');
+      }
+
+      if (session['status'] != 'scheduled' && session['status'] != 'in_progress') {
+        throw Exception('Session cannot be started. Current status: ${session['status']}');
+      }
+
+      // Update session: mark tutor as joined and start session
+      final updateData = <String, dynamic>{
+        'tutor_joined_at': now,
+        'status': 'in_progress',
+        'updated_at': now,
+      };
+
+      // If session hasn't started yet, set session_started_at
+      final existingSession = await _supabase
+          .from('individual_sessions')
+          .select('session_started_at')
+          .eq('id', sessionId)
+          .single();
+
+      if (existingSession['session_started_at'] == null) {
+        updateData['session_started_at'] = now;
+      }
+
+      await _supabase
+          .from('individual_sessions')
+          .update(updateData)
+          .eq('id', sessionId);
+
+      print('✅ Session started: $sessionId');
+    } catch (e) {
+      print('❌ Error starting session: $e');
+      rethrow;
+    }
+  }
+
+  /// End a session
+  static Future<void> endSession(String sessionId, {String? notes}) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now();
+
+      // Check if session exists and tutor is authorized
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('tutor_id, status, session_started_at, duration_minutes')
+          .eq('id', sessionId)
+          .single();
+
+      if (session['tutor_id'] != userId) {
+        throw Exception('Unauthorized: Not the tutor for this session');
+      }
+
+      if (session['status'] != 'in_progress') {
+        throw Exception('Session is not in progress. Current status: ${session['status']}');
+      }
+
+      // Calculate actual duration
+      int? actualDurationMinutes;
+      if (session['session_started_at'] != null) {
+        final startTime = DateTime.parse(session['session_started_at'] as String);
+        actualDurationMinutes = now.difference(startTime).inMinutes;
+      } else {
+        // Fallback to scheduled duration if start time not recorded
+        actualDurationMinutes = session['duration_minutes'] as int?;
+      }
+
+      // Update session: mark as completed
+      final updateData = <String, dynamic>{
+        'session_ended_at': now.toIso8601String(),
+        'status': 'completed',
+        'actual_duration_minutes': actualDurationMinutes,
+        'updated_at': now.toIso8601String(),
+      };
+
+      if (notes != null && notes.isNotEmpty) {
+        updateData['session_notes'] = notes;
+      }
+
+      await _supabase
+          .from('individual_sessions')
+          .update(updateData)
+          .eq('id', sessionId);
+
+      // Update recurring session totals
+      await _updateRecurringSessionTotals(session['recurring_session_id'] as String);
+
+      print('✅ Session ended: $sessionId');
+    } catch (e) {
+      print('❌ Error ending session: $e');
+      rethrow;
+    }
+  }
+
+  /// Update recurring session totals after a session is completed
+  static Future<void> _updateRecurringSessionTotals(String recurringSessionId) async {
+    try {
+      // Count completed sessions
+      final completedSessions = await _supabase
+          .from('individual_sessions')
+          .select('id')
+          .eq('recurring_session_id', recurringSessionId)
+          .eq('status', 'completed');
+
+      final totalCompleted = (completedSessions as List).length;
+
+      // Get last session date
+      final lastSession = await _supabase
+          .from('individual_sessions')
+          .select('scheduled_date')
+          .eq('recurring_session_id', recurringSessionId)
+          .eq('status', 'completed')
+          .order('scheduled_date', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      final updateData = <String, dynamic>{
+        'total_sessions_completed': totalCompleted,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (lastSession != null && lastSession['scheduled_date'] != null) {
+        updateData['last_session_date'] = lastSession['scheduled_date'];
+      }
+
+      await _supabase
+          .from('recurring_sessions')
+          .update(updateData)
+          .eq('id', recurringSessionId);
+
+      print('✅ Updated recurring session totals: $recurringSessionId');
+    } catch (e) {
+      print('❌ Error updating recurring session totals: $e');
+      // Don't rethrow - this is a background update
+    }
+  }
+
+  /// Generate or retrieve Google Meet link for a session
+  ///
+  /// Checks if link exists, otherwise generates one via Google Calendar API
+  static Future<String?> getOrGenerateMeetLink(String sessionId) async {
+    try {
+      // First, check if link already exists
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('''
+            meeting_link,
+            location,
+            scheduled_date,
+            scheduled_time,
+            duration_minutes,
+            recurring_sessions!inner(
+              tutor_id,
+              student_name,
+              subject
+            )
+          ''')
+          .eq('id', sessionId)
+          .single();
+
+      if (session['meeting_link'] != null && (session['meeting_link'] as String).isNotEmpty) {
+        return session['meeting_link'] as String;
+      }
+
+      // If no link exists and session is online, generate one
+      if (session['location'] == 'online') {
+        // Check if Google Calendar is authenticated
+        final isAuth = await GoogleCalendarAuthService.isAuthenticated();
+        if (!isAuth) {
+          print('⚠️ Google Calendar not authenticated. Please sign in first.');
+          return null;
+        }
+
+        // Get session details
+        final scheduledDate = DateTime.parse(session['scheduled_date'] as String);
+        final scheduledTime = session['scheduled_time'] as String;
+        final durationMinutes = session['duration_minutes'] as int;
+        final recurringData = session['recurring_sessions'] as Map<String, dynamic>;
+        final tutorId = recurringData['tutor_id'] as String;
+        final subject = recurringData['subject'] as String? ?? 'Tutoring Session';
+
+        // Parse time
+        final timeParts = scheduledTime.split(':');
+        final hour = int.parse(timeParts[0]);
+        final minute = int.parse(timeParts[1].split(' ')[0]);
+        final isPM = scheduledTime.toUpperCase().contains('PM');
+        final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
+
+        final startTime = DateTime(
+          scheduledDate.year,
+          scheduledDate.month,
+          scheduledDate.day,
+          hour24,
+          minute,
+        );
+
+        // Get tutor and student emails
+        final tutorProfile = await _supabase
+            .from('profiles')
+            .select('email')
+            .eq('id', tutorId)
+            .maybeSingle();
+
+        final recurringSessionId = session['recurring_session_id'] as String;
+        final studentProfile = await _supabase
+            .from('recurring_sessions')
+            .select('student_id')
+            .eq('id', recurringSessionId)
+            .maybeSingle();
+
+        final studentId = studentProfile?['student_id'] as String?;
+        if (studentId != null) {
+          final studentEmailData = await _supabase
+              .from('profiles')
+              .select('email')
+              .eq('id', studentId)
+              .maybeSingle();
+
+          final tutorEmail = tutorProfile?['email'] as String?;
+          final studentEmail = studentEmailData?['email'] as String?;
+
+          if (tutorEmail != null && studentEmail != null) {
+            // Generate Meet link via Google Calendar
+            final calendarEvent = await GoogleCalendarService.createSessionEvent(
+              title: 'Session: $subject',
+              startTime: startTime,
+              durationMinutes: durationMinutes,
+              attendeeEmails: [tutorEmail, studentEmail],
+              description: 'PrepSkul tutoring session',
+            );
+
+            // Update session with Meet link
+            await _supabase
+                .from('individual_sessions')
+                .update({
+                  'meeting_link': calendarEvent.meetLink,
+                  'calendar_event_id': calendarEvent.id,
+                  'updated_at': DateTime.now().toIso8601String(),
+                })
+                .eq('id', sessionId);
+
+            print('✅ Meet link generated for session: $sessionId');
+            return calendarEvent.meetLink;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('❌ Error getting/generating Meet link: $e');
+      return null;
+    }
+  }
+
+  /// Cancel a session
+  static Future<void> cancelSession(
+    String sessionId, {
+    required String reason,
+    String? cancelledBy,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id ?? cancelledBy;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('tutor_id, status')
+          .eq('id', sessionId)
+          .single();
+
+      if (session['status'] == 'completed') {
+        throw Exception('Cannot cancel a completed session');
+      }
+
+      if (session['status'] == 'cancelled') {
+        throw Exception('Session is already cancelled');
+      }
+
+      await _supabase
+          .from('individual_sessions')
+          .update({
+            'status': 'cancelled',
+            'cancellation_reason': reason,
+            'cancelled_by': userId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', sessionId);
+
+      print('✅ Session cancelled: $sessionId');
+    } catch (e) {
+      print('❌ Error cancelling session: $e');
+      rethrow;
+    }
+  }
+}

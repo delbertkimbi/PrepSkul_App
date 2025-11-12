@@ -385,7 +385,16 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           .maybeSingle();
 
       if (profile == null) {
-        throw Exception('Profile not found');
+        // Profile doesn't exist - user needs to complete signup
+        // Redirect to profile setup instead of throwing error
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/profile-setup',
+            arguments: {'userRole': 'learner'}, // Default to learner
+          );
+        }
+        return; // Exit early, don't throw error
       }
 
       // Save session

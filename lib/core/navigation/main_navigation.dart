@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
 import '../../features/dashboard/screens/student_home_screen.dart';
-import '../../features/booking/screens/tutor_pending_requests_screen.dart';
-import '../../features/tutor/screens/tutor_students_screen.dart';
+import '../../features/tutor/screens/tutor_requests_screen.dart';
+import '../../features/tutor/screens/tutor_sessions_screen.dart';
 import '../../features/discovery/screens/find_tutors_screen.dart';
 import '../../features/booking/screens/my_requests_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
@@ -32,18 +32,20 @@ class _MainNavigationState extends State<MainNavigation> {
   // Tutor screens (4 items)
   final List<Widget> _tutorScreens = [
     const TutorHomeScreen(), // Home Dashboard
-    const TutorPendingRequestsScreen(), // Booking Requests
-    const TutorStudentsScreen(), // Active Sessions
+    const TutorRequestsScreen(), // Booking Requests
+    const TutorSessionsScreen(), // Sessions
     const ProfileScreen(userType: 'tutor'), // Profile & Settings
   ];
 
-  // Student/Parent screens (4 items)
-  final List<Widget> _studentScreens = [
-    const StudentHomeScreen(), // Home Dashboard
-    const FindTutorsScreen(), // Find Tutors
-    const MyRequestsScreen(), // My Booking Requests
-    const ProfileScreen(userType: 'student'), // Profile & Settings
-  ];
+  // Student screens (4 items)
+  List<Widget> _getStudentScreens(String userType) {
+    return [
+      const StudentHomeScreen(), // Home Dashboard
+      const FindTutorsScreen(), // Find Tutors
+      const MyRequestsScreen(), // My Booking Requests
+      ProfileScreen(userType: userType), // Profile & Settings (student or parent)
+    ];
+  }
 
   // Tutor navigation items (4 items)
   final List<BottomNavigationBarItem> _tutorItems = [
@@ -96,7 +98,9 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final isTutor = widget.userRole == 'tutor';
-    final screens = isTutor ? _tutorScreens : _studentScreens;
+    final userType = widget.userRole == 'parent' ? 'parent' : 'student';
+    
+    final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
     final items = isTutor ? _tutorItems : _studentItems;
 
     return Scaffold(
