@@ -718,9 +718,21 @@ class _SplashScreenState extends State<SplashScreen> {
     // Start background tasks (non-blocking)
     _preloadOnboardingImages();
     _setupAuthListeners();
+    
+    // Check for password reset or email confirmation FIRST (web only)
+    // If either is detected, they will handle navigation and we should skip normal navigation
+    bool handledByCallback = false;
     if (kIsWeb) {
-      _checkPasswordResetCallback();
-      _checkEmailConfirmationCallback();
+      handledByCallback = await _checkPasswordResetCallback();
+      if (!handledByCallback) {
+        handledByCallback = await _checkEmailConfirmationCallback();
+      }
+    }
+
+    // If password reset or email confirmation handled navigation, don't navigate normally
+    if (handledByCallback) {
+      print('✅ [SPLASH] Navigation handled by password reset or email confirmation');
+      return;
     }
 
     // Reduced delay - start navigation immediately
@@ -836,7 +848,8 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   /// Check if URL contains email confirmation code (web only)
-  Future<void> _checkEmailConfirmationCallback() async {
+  /// Returns true if email confirmation was detected and navigation was handled
+  Future<bool> _checkEmailConfirmationCallback() async {
     try {
       final uri = Uri.base;
       final code = uri.queryParameters['code'];
@@ -858,6 +871,7 @@ class _SplashScreenState extends State<SplashScreen> {
           // The auth state change listener will handle navigation
           // But we can also directly navigate here if needed
           Future.microtask(() => _handleEmailConfirmation());
+          return true; // Indicate that navigation was handled
         } catch (e) {
           print('❌ Error verifying email confirmation code: $e');
           // Show error but continue to normal flow
@@ -880,10 +894,12 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (e) {
       print('⚠️ Error checking email confirmation callback: $e');
     }
+    return false; // No email confirmation detected, continue normal navigation
   }
 
   /// Check if URL contains password reset code (web only)
-  Future<void> _checkPasswordResetCallback() async {
+  /// Returns true if password reset was detected and navigation was handled
+  Future<bool> _checkPasswordResetCallback() async {
     try {
       final uri = Uri.base;
       final code = uri.queryParameters['code'];
@@ -915,7 +931,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 arguments: {'isEmailRecovery': true},
               );
             }
-            return;
+            return true; // Indicate that navigation was handled
           } catch (e) {
             print('❌ Error verifying password reset code: $e');
             // Show error and continue to normal flow
@@ -939,6 +955,7 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (e) {
       print('⚠️ Error checking password reset callback: $e');
     }
+    return false; // No password reset detected, continue normal navigation
   }
 
   Future<void> _handleEmailConfirmation() async {

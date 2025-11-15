@@ -524,6 +524,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     final perSession = pricing['perSession'] as double;
     final perMonth = pricing['perMonth'] as double;
     final sessionsPerWeek = pricing['sessionsPerWeek'] as int;
+    final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
+    final originalPerMonth = pricing['originalPerMonth'] as double?;
+    final originalPerSession = pricing['originalPerSession'] as double?;
+    final discountPercent = pricing['discountPercent'] as double? ?? 0.0;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -569,13 +573,48 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         color: Colors.grey[700],
                       ),
                     ),
-                    Text(
-                      PricingService.formatPrice(perMonth),
-                      style: GoogleFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primaryColor,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (hasDiscount && originalPerMonth != null) ...[
+                          Text(
+                            PricingService.formatPrice(originalPerMonth),
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[500],
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+                        Text(
+                          PricingService.formatPrice(perMonth),
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        if (hasDiscount && discountPercent > 0) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${discountPercent.toStringAsFixed(0)}% OFF',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.green[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -604,13 +643,30 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         color: Colors.grey[700],
                       ),
                     ),
-                    Text(
-                      PricingService.formatPrice(perSession),
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black87,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (hasDiscount && originalPerSession != null) ...[
+                          Text(
+                            PricingService.formatPrice(originalPerSession),
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[500],
+                              decoration: TextDecoration.lineThrough,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                        ],
+                        Text(
+                          PricingService.formatPrice(perSession),
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -1214,27 +1270,27 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     ),
                   ),
                 ),
-          // Play button overlay
+          // Play button overlay (smaller)
           Container(
             color: Colors.black.withOpacity(0.3),
             child: Center(
               child: Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.red.withOpacity(0.9),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+                      blurRadius: 15,
+                      spreadRadius: 3,
                     ),
                   ],
                 ),
                 child: const Icon(
                   Icons.play_arrow,
                   color: Colors.white,
-                  size: 60,
+                  size: 40,
                 ),
               ),
             ),

@@ -1,9 +1,13 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+
 /// Pricing Service - Calculates tutor pricing based on multiple factors
 ///
 /// MARKET CONTEXT: In Cameroon & Africa, people think in monthly payments
 /// This service converts per-session rates to monthly estimates
 
 class PricingService {
+  static SupabaseClient get _supabase => SupabaseService.client;
   /// Calculate monthly estimate from tutor data
   ///
   /// Formula:
@@ -204,25 +208,70 @@ class PricingService {
     return 2;
   }
 
+  /// Get trial session pricing from database
+  static Future<Map<int, int>> getTrialSessionPricing() async {
+    try {
+      final response = await _supabase
+          .from('trial_session_pricing')
+          .select('duration_minutes, price_xaf')
+          .eq('is_active', true);
+
+      final pricing = <int, int>{};
+      for (final row in response) {
+        pricing[row['duration_minutes'] as int] = row['price_xaf'] as int;
+      }
+
+      // Default fallback if database is empty
+      if (pricing.isEmpty) {
+        pricing[30] = 2000;
+        pricing[60] = 3500;
+      }
+
+      return pricing;
+    } catch (e) {
+      print('⚠️ Error fetching trial session pricing: $e');
+      // Return defaults on error
+      return {30: 2000, 60: 3500};
+    }
+  }
+
+  /// Get trial session price for a specific duration
+  static Future<int> getTrialSessionPrice(int durationMinutes) async {
+    final pricing = await getTrialSessionPricing();
+    return pricing[durationMinutes] ?? (durationMinutes == 30 ? 2000 : 3500);
+  }
+
   /// Calculate pricing for tutor from JSON data (for demo mode)
   static Map<String, dynamic> calculateFromTutorData(
     Map<String, dynamic> tutorData, {
     int? overrideSessionsPerWeek,
   }) {
-    // Extract pricing data with priority: base_session_price > admin_price_override > hourly_rate
+    // Extract pricing data with priority: discounted_price > base_session_price > admin_price_override > hourly_rate
+    final discountedPrice = tutorData['discounted_price']?.toDouble();
     final baseSessionPrice = tutorData['base_session_price']?.toDouble();
     final adminPriceOverride = tutorData['admin_price_override']?.toDouble();
     final hourlyRate = (tutorData['hourly_rate'] ?? 3000).toDouble();
     final perSessionRate = tutorData['per_session_rate']?.toDouble();
     
+    // Check if tutor has discount
+    final discountPercent = (tutorData['discount_percent'] ?? 0.0).toDouble();
+    final discountAmount = (tutorData['discount_amount_xaf'] ?? 0).toInt();
+    final hasDiscount = discountPercent > 0 || discountAmount > 0;
+    
     // Determine effective base rate (priority order)
-    final effectiveBaseRate = (baseSessionPrice != null && baseSessionPrice > 0)
-        ? baseSessionPrice
-        : (adminPriceOverride != null && adminPriceOverride > 0)
-            ? adminPriceOverride
-            : (perSessionRate != null && perSessionRate > 0)
-                ? perSessionRate
-                : hourlyRate;
+    double effectiveBaseRate;
+    if (discountedPrice != null && discountedPrice > 0 && hasDiscount) {
+      // Use discounted price if available
+      effectiveBaseRate = discountedPrice;
+    } else if (baseSessionPrice != null && baseSessionPrice > 0) {
+      effectiveBaseRate = baseSessionPrice;
+    } else if (adminPriceOverride != null && adminPriceOverride > 0) {
+      effectiveBaseRate = adminPriceOverride;
+    } else if (perSessionRate != null && perSessionRate > 0) {
+      effectiveBaseRate = perSessionRate;
+    } else {
+      effectiveBaseRate = hourlyRate;
+    }
     
     final rating = (tutorData['rating'] ?? 4.0).toDouble();
     final qualification = tutorData['tutor_qualification'] ?? 'Professional';
@@ -236,7 +285,7 @@ class PricingService {
     final sessionsPerWeek = overrideSessionsPerWeek ?? 2;
 
     // Calculate pricing
-    return calculateMonthlyPricing(
+    final pricing = calculateMonthlyPricing(
       baseTutorRate: effectiveBaseRate,
       rating: rating,
       qualification: qualification,
@@ -246,6 +295,31 @@ class PricingService {
       hasVisibilitySubscription: tutorData['visibility_subscription'] ?? false,
       hasPrepSkulCertification: tutorData['prepskul_certified'] ?? false,
     );
+
+    // Add discount information if available
+    if (hasDiscount) {
+      // Calculate original price (before discount)
+      double originalPerSession;
+      if (discountPercent > 0) {
+        originalPerSession = effectiveBaseRate / (1 - discountPercent / 100);
+      } else if (discountAmount > 0) {
+        originalPerSession = effectiveBaseRate + discountAmount;
+      } else {
+        originalPerSession = baseSessionPrice ?? effectiveBaseRate;
+      }
+
+      final originalPerMonth = originalPerSession * sessionsPerWeek * 4;
+
+      pricing['hasDiscount'] = true;
+      pricing['originalPerSession'] = originalPerSession;
+      pricing['originalPerMonth'] = originalPerMonth;
+      pricing['discountPercent'] = discountPercent;
+      pricing['discountAmount'] = discountAmount;
+    } else {
+      pricing['hasDiscount'] = false;
+    }
+
+    return pricing;
   }
 
   /// Get pricing summary for display (human-readable)

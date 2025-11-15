@@ -10,6 +10,7 @@ import 'package:prepskul/features/booking/widgets/post_trial_dialog.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/booking/screens/post_trial_conversion_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({Key? key}) : super(key: key);
@@ -130,57 +131,106 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       
       if (tutorIds.isEmpty) return;
 
-      // Fetch all tutor profiles at once
-      // Use OR condition for multiple tutor IDs
-      var query = supabase
-          .from('tutor_profiles')
-          .select('user_id, rating, admin_approved_rating, total_reviews, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)');
-      
-      // Filter by tutor IDs using OR
-      if (tutorIds.length == 1) {
-        query = query.eq('user_id', tutorIds[0]);
-      } else {
-        // For multiple IDs, we'll fetch them one by one or use a different approach
-        // For now, fetch all and filter in memory
-        final allTutors = await query;
-        final tutorProfiles = (allTutors as List).where((t) => tutorIds.contains(t['user_id'])).toList();
-        
+      // Fetch tutor profiles with profile data
+      // Try using the relationship join first
+      try {
+        final tutorProfiles = await supabase
+            .from('tutor_profiles')
+            .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)')
+            .inFilter('user_id', tutorIds);
+
         // Cache tutor info
         for (var tutor in tutorProfiles) {
           final userId = tutor['user_id'] as String;
-          final profile = tutor['profiles'] as Map<String, dynamic>?;
+          
+          // Safely extract profile data - handle both Map and List responses
+          Map<String, dynamic>? profile;
+          final profilesData = tutor['profiles'];
+          if (profilesData is Map) {
+            profile = Map<String, dynamic>.from(profilesData);
+          } else if (profilesData is List && profilesData.isNotEmpty) {
+            profile = Map<String, dynamic>.from(profilesData[0]);
+          }
+          
+          // Get avatar URL - prioritize profile_photo_url from tutor_profiles, then avatar_url from profiles
+          final profilePhotoUrl = tutor['profile_photo_url'] as String?;
+          final avatarUrl = profile?['avatar_url'] as String?;
+          final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+              ? profilePhotoUrl
+              : (avatarUrl != null && avatarUrl.isNotEmpty)
+                  ? avatarUrl
+                  : null;
+          
+          // Calculate effective rating (same logic as tutor_service.dart)
+          final totalReviews = (tutor['total_reviews'] ?? 0) as int;
+          final adminApprovedRating = tutor['admin_approved_rating'] as double?;
+          final calculatedRating = (tutor['rating'] ?? 0.0) as double;
+          
+          // Use admin rating until we have at least 3 real reviews
+          final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+              ? adminApprovedRating
+              : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
+          
           _tutorInfoCache[userId] = {
             'full_name': profile?['full_name'] ?? 'Tutor',
-            'avatar_url': profile?['avatar_url'],
+            'avatar_url': effectiveAvatarUrl,
+            'rating': effectiveRating,
           };
         }
-        return;
+      } catch (e) {
+        print('⚠️ Error loading tutor info with relationship join: $e');
+        // Fallback: fetch profiles separately
+        for (final tutorId in tutorIds) {
+          try {
+            // Fetch tutor profile
+            final tutorProfile = await supabase
+                .from('tutor_profiles')
+                .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url')
+                .eq('user_id', tutorId)
+                .maybeSingle();
+            
+            if (tutorProfile == null) continue;
+            
+            // Fetch profile separately
+            final profile = await supabase
+                .from('profiles')
+                .select('full_name, avatar_url')
+                .eq('id', tutorId)
+                .maybeSingle();
+            
+            final profilePhotoUrl = tutorProfile['profile_photo_url'] as String?;
+            final avatarUrl = profile?['avatar_url'] as String?;
+            final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+                ? profilePhotoUrl
+                : (avatarUrl != null && avatarUrl.isNotEmpty)
+                    ? avatarUrl
+                    : null;
+            
+            final totalReviews = (tutorProfile['total_reviews'] ?? 0) as int;
+            final adminApprovedRating = tutorProfile['admin_approved_rating'] as double?;
+            final calculatedRating = (tutorProfile['rating'] ?? 0.0) as double;
+            
+            final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+                ? adminApprovedRating
+                : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
+            
+            _tutorInfoCache[tutorId] = {
+              'full_name': profile?['full_name'] ?? 'Tutor',
+              'avatar_url': effectiveAvatarUrl,
+              'rating': effectiveRating,
+            };
+          } catch (e2) {
+            print('⚠️ Error loading tutor info for $tutorId: $e2');
+          }
+        }
       }
       
-      final tutorProfiles = await query;
-
-      // Cache tutor info
-      for (var tutor in tutorProfiles) {
-        final userId = tutor['user_id'] as String;
-        final profile = tutor['profiles'] as Map<String, dynamic>?;
-        
-        // Calculate effective rating (same logic as tutor_service.dart)
-        final totalReviews = (tutor['total_reviews'] ?? 0) as int;
-        final adminApprovedRating = tutor['admin_approved_rating'] as double?;
-        final calculatedRating = (tutor['rating'] ?? 0.0) as double;
-        
-        // Use admin rating until we have at least 3 real reviews
-        final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
-            ? adminApprovedRating
-            : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
-        
-        _tutorInfoCache[userId] = {
-          'full_name': profile?['full_name'] ?? 'Tutor',
-          'avatar_url': profile?['avatar_url'],
-          'rating': effectiveRating,
-        };
+      // Trigger rebuild to show loaded tutor info
+      if (mounted) {
+        setState(() {});
       }
     } catch (e) {
+      print('⚠️ Error loading tutor info for trials: $e');
       // Silently fail - tutor info will show defaults
     }
   }
@@ -795,27 +845,64 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               // Tutor Info Row (matching booking request style)
               Row(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: AppTheme.primaryColor,
-                    backgroundImage: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
-                        ? NetworkImage(tutorAvatarUrl)
-                        : null,
-                    onBackgroundImageError: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
-                        ? (exception, stackTrace) {
-                            // Image failed to load, will show fallback
-                          }
-                        : null,
-                    child: tutorAvatarUrl == null || tutorAvatarUrl.isEmpty
-                        ? Text(
-                            tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
+                  ClipOval(
+                    child: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: tutorAvatarUrl,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              width: 48,
+                              height: 48,
+                              color: AppTheme.primaryColor,
+                              child: Center(
+                                child: Text(
+                                  tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
+                            errorWidget: (context, url, error) {
+                              print('⚠️ Failed to load tutor avatar: $url, error: $error');
+                              return Container(
+                                width: 48,
+                                height: 48,
+                                color: AppTheme.primaryColor,
+                                child: Center(
+                                  child: Text(
+                                    tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            fadeInDuration: const Duration(milliseconds: 300),
+                            fadeOutDuration: const Duration(milliseconds: 100),
                           )
-                        : null,
+                        : Container(
+                            width: 48,
+                            height: 48,
+                            color: AppTheme.primaryColor,
+                            child: Center(
+                              child: Text(
+                                tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

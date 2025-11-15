@@ -8,6 +8,7 @@
 /// - User with incomplete survey
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/navigation/navigation_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

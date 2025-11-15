@@ -2,7 +2,13 @@
  * Email Rate Limit Service
  * 
  * Manages email sending rate limits, retries, and cooldown periods
- * to prevent hitting Supabase email rate limits (429 errors)
+ * to prevent abuse and ensure good user experience.
+ * 
+ * Note: We use Resend as SMTP provider (via Supabase), which has much higher limits:
+ * - Free tier: 3,000 emails/month
+ * - Pro tier: 50,000 emails/month
+ * 
+ * Client-side rate limiting prevents spam/abuse while allowing reasonable retries.
  */
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +22,10 @@ class EmailRateLimitService {
   static const String _keyRetryCount = 'email_retry_count_';
   
   // Rate limit constants
-  static const Duration _cooldownPeriod = Duration(minutes: 5);
+  // Reduced cooldown since we're using Resend (much higher limits than Supabase)
+  // Resend free tier: 3,000 emails/month, Pro: 50,000/month
+  // Keep 1 minute cooldown to prevent abuse, but allow reasonable retries
+  static const Duration _cooldownPeriod = Duration(minutes: 1);
   static const Duration _minTimeBetweenEmails = Duration(seconds: 30);
   static const int _maxRetries = 3;
   static const Duration _initialRetryDelay = Duration(seconds: 2);

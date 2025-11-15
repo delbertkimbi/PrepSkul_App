@@ -98,17 +98,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
       setState(() => _isLoading = false);
 
-      // Only show error if ALL payment types failed
-      if (_paymentRequests.isEmpty &&
-          _trialPayments.isEmpty &&
-          _sessionPayments.isEmpty) {
-        if (mounted) {
-          BrandedSnackBar.showError(
-            context,
-            'Unable to load payment history. Please try again later.',
-          );
-        }
-      }
+      // Don't show error if all lists are empty - empty states will handle it gracefully
+      // This is expected for new users who haven't made any payments yet
     } catch (e) {
       print('❌ Critical error loading payments: $e');
       setState(() => _isLoading = false);
@@ -134,13 +125,12 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
             payment_status,
             fapshi_trans_id,
             payment_initiated_at,
-            payment_confirmed_at,
             scheduled_date,
             scheduled_time,
             status,
             created_at
           ''')
-          .eq('requester_id', userId)
+          .or('learner_id.eq.$userId,parent_id.eq.$userId,requester_id.eq.$userId')
           .order('created_at', ascending: false);
 
       // Safely handle response
@@ -166,46 +156,87 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
   Future<List<Map<String, dynamic>>> _loadSessionPayments(String userId) async {
     try {
-      // Try with inner join first (if individual_sessions exists)
+      // Check if session_payments table exists by trying a simple query first
       try {
+        // Try to load session payments with proper join to individual_sessions
+        // Use the correct relationship name
         final response = await SupabaseService.client
             .from('session_payments')
             .select('''
               *,
-              individual_sessions!inner(
+              individual_sessions:session_id(
                 id,
-                session_date,
-                session_time,
+                scheduled_date,
+                scheduled_time,
                 subject,
                 tutor_id,
-                student_id
+                learner_id,
+                parent_id
               )
             ''')
-            .eq('individual_sessions.student_id', userId)
             .order('created_at', ascending: false);
 
-        try {
-          return List<Map<String, dynamic>>.from(response);
-        } catch (castError) {
-          print('⚠️ Error casting session payments response: $castError');
-          return (response as List).whereType<Map<String, dynamic>>().toList();
-        }
-      } catch (innerJoinError) {
-        // If inner join fails (table doesn't exist), try without the join
-        print('⚠️ Inner join failed, trying without join: $innerJoinError');
+        // Filter by user ID manually since we can't filter on joined table directly
+        final allPayments = List<Map<String, dynamic>>.from(response);
+        final userPayments = allPayments.where((payment) {
+          final session = payment['individual_sessions'] as Map<String, dynamic>?;
+          if (session == null) return false;
+          final learnerId = session['learner_id'] as String?;
+          final parentId = session['parent_id'] as String?;
+          return learnerId == userId || parentId == userId;
+        }).toList();
 
-        // Load session_payments directly and filter by user
-        final response = await SupabaseService.client
-            .from('session_payments')
-            .select('*')
-            .order('created_at', ascending: false);
-
-        // Filter manually if we can't use the join
+        return userPayments;
+      } catch (joinError) {
+        print('⚠️ Join query failed, trying direct query: $joinError');
+        
+        // If join fails, try loading from individual_sessions and get payment info
         try {
-          return List<Map<String, dynamic>>.from(response);
-        } catch (castError) {
-          print('⚠️ Error casting session payments (no join): $castError');
-          return (response as List).whereType<Map<String, dynamic>>().toList();
+          final sessionsResponse = await SupabaseService.client
+              .from('individual_sessions')
+              .select('''
+                id,
+                scheduled_date,
+                scheduled_time,
+                subject,
+                tutor_id,
+                learner_id,
+                parent_id
+              ''')
+              .or('learner_id.eq.$userId,parent_id.eq.$userId')
+              .order('scheduled_date', ascending: false)
+              .limit(50); // Limit to prevent too much data
+
+          final sessions = List<Map<String, dynamic>>.from(sessionsResponse);
+          
+          // For each session, try to get payment info
+          final paymentsWithSessions = <Map<String, dynamic>>[];
+          for (final session in sessions) {
+            try {
+              final sessionId = session['id'] as String;
+              final paymentResponse = await SupabaseService.client
+                  .from('session_payments')
+                  .select('*')
+                  .eq('session_id', sessionId)
+                  .maybeSingle();
+              
+              if (paymentResponse != null) {
+                paymentsWithSessions.add({
+                  ...Map<String, dynamic>.from(paymentResponse),
+                  'individual_sessions': session,
+                });
+              }
+            } catch (e) {
+              // Skip if payment not found for this session
+              continue;
+            }
+          }
+          
+          return paymentsWithSessions;
+        } catch (directError) {
+          print('⚠️ Direct query also failed: $directError');
+          // If both fail, return empty list (table might not exist)
+          return [];
         }
       }
     } catch (e) {
@@ -214,7 +245,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       // Check if it's a table not found error
       if (e.toString().contains('does not exist') ||
           e.toString().contains('relation') ||
-          e.toString().contains('PGRST')) {
+          e.toString().contains('PGRST') ||
+          e.toString().contains('schema cache')) {
         print(
           '⚠️ Session payments or individual_sessions table might not exist yet',
         );

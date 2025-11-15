@@ -231,7 +231,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         // Show debug message if no tutors found
         if (tutors.isEmpty) {
           print('⚠️ FindTutorsScreen: No tutors found! Check TutorService logs for details.');
-        }
+      }
       }
     } catch (e, stackTrace) {
       print('❌ FindTutorsScreen: Error loading tutors: $e');
@@ -776,6 +776,19 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     // Calculate monthly pricing but display it subtly
     final pricing = PricingService.calculateFromTutorData(tutor);
     final monthlyAmount = pricing['perMonth'] as double;
+    final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
+
+    // On cards, show only discount price if available
+    if (hasDiscount) {
+      return Text(
+        'From ${PricingService.formatPrice(monthlyAmount)}/mo',
+        style: GoogleFonts.poppins(
+          fontSize: 12,
+          color: AppTheme.primaryColor,
+          fontWeight: FontWeight.w700,
+        ),
+      );
+    }
 
     return Text(
       'From ${PricingService.formatPrice(monthlyAmount)}/mo',
@@ -969,14 +982,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      children: [
-                        Text(
-                          'Subject',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black,
-                          ),
+                  children: [
+                    Text(
+                      'Subject',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
                         ),
                         if (_userPreferredSubjects.isNotEmpty) ...[
                           const SizedBox(width: 8),
@@ -996,36 +1009,36 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     // Show loading indicator if subjects haven't loaded yet
                     _subjectsLoaded
                         ? Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _subjects.map((subject) {
-                              final isSelected = _selectedSubject == subject;
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _subjects.map((subject) {
+                        final isSelected = _selectedSubject == subject;
                               final isUserPreferred = _userPreferredSubjects.contains(subject);
-                              return GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedSubject = isSelected ? null : subject;
-                                  });
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedSubject = isSelected ? null : subject;
+                            });
                                   _filterTutors(); // Apply filter when subject changes
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 10,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? AppTheme.primaryColor
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppTheme.primaryColor
                                         : isUserPreferred
                                             ? AppTheme.primaryColor.withOpacity(0.1)
-                                            : Colors.grey[100],
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? AppTheme.primaryColor
+                                  : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.primaryColor
                                           : isUserPreferred
                                               ? AppTheme.primaryColor.withOpacity(0.5)
-                                              : Colors.grey[300]!,
+                                    : Colors.grey[300]!,
                                       width: isUserPreferred && !isSelected ? 2 : 1,
                                     ),
                                   ),
@@ -1041,31 +1054,31 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                         const SizedBox(width: 4),
                                       ],
                                       Text(
-                                        subject,
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
+                              subject,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
                                           fontWeight: isUserPreferred
                                               ? FontWeight.w600
                                               : FontWeight.w500,
-                                          color: isSelected
-                                              ? Colors.white
+                                color: isSelected
+                                    ? Colors.white
                                               : isUserPreferred
                                                   ? AppTheme.primaryColor
-                                                  : Colors.grey[700],
-                                        ),
+                                    : Colors.grey[700],
+                              ),
                                       ),
                                     ],
-                                  ),
-                                ),
-                              );
-                            }).toList(),
+                            ),
+                          ),
+                        );
+                      }).toList(),
                           )
                         : const Center(
                             child: Padding(
                               padding: EdgeInsets.all(20.0),
                               child: CircularProgressIndicator(),
                             ),
-                          ),
+                    ),
                     const SizedBox(height: 24),
                     Text(
                       'Monthly Price Range',
@@ -1241,18 +1254,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         return CachedNetworkImage(
           imageUrl: avatarUrl,
           fit: BoxFit.cover,
-          placeholder: (context, url) => Container(
-            color: AppTheme.primaryColor.withOpacity(0.1),
-            child: Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-              ),
-            ),
-          ),
+          placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge),
           errorWidget: (context, url, error) {
+            // Log error for debugging
+            print('⚠️ Failed to load avatar image: $url, error: $error');
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
+          fadeInDuration: const Duration(milliseconds: 300),
+          fadeOutDuration: const Duration(milliseconds: 100),
+          // Add timeout to prevent infinite loading
+          httpHeaders: const {'Cache-Control': 'max-age=3600'},
         );
       } else {
         // Use Image.asset for local asset paths
