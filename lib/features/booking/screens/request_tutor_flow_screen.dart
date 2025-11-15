@@ -28,9 +28,11 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   // Step 1: Subject & Level
   List<String> _selectedSubjects = [];
   List<String> _userSubjects = []; // User's subjects from survey (pre-selected)
-  List<String> _availableSubjects = []; // All available subjects for user's niche
+  List<String> _availableSubjects =
+      []; // All available subjects for user's niche
   String? _educationLevel;
-  List<String> _selectedRequirements = []; // Changed from text field to multi-select
+  List<String> _selectedRequirements =
+      []; // Changed from text field to multi-select
 
   // Step 2: Tutor Preferences
   String? _tutorGender;
@@ -102,18 +104,16 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
         if (surveyData != null && mounted) {
           // Get user's subjects from survey
-          final userSubjects = List<String>.from(
-            surveyData['subjects'] ?? [],
-          );
-          
+          final userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+
           // Map education level from survey to display format
           String? educationLevel = _mapEducationLevel(surveyData);
-          
+
           // Get system (anglophone/francophone) - default to anglophone
           final system = surveyData['system'] ?? 'anglophone';
           final stream = surveyData['stream'];
           final eduLevel = surveyData['education_level'];
-          
+
           // Load available subjects based on user's niche
           List<String> availableSubjects = [];
           if (eduLevel != null) {
@@ -124,7 +124,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
               stream: stream?.toString(),
             );
           }
-          
+
           // If no subjects found, use a default list
           if (availableSubjects.isEmpty) {
             availableSubjects = [
@@ -140,33 +140,40 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
               'History',
             ];
           }
-          
+
           setState(() {
             _userSubjects = userSubjects;
-            _selectedSubjects = List<String>.from(userSubjects); // Pre-select user's subjects
+            _selectedSubjects = List<String>.from(
+              userSubjects,
+            ); // Pre-select user's subjects
             _availableSubjects = availableSubjects;
             _educationLevel = educationLevel;
             _minBudget = surveyData?['budget_min'] as int? ?? 2500;
             _maxBudget = surveyData?['budget_max'] as int? ?? 15000;
             _tutorGender = surveyData?['tutor_gender_preference']?.toString();
-            _tutorQualification = surveyData?['tutor_qualification_preference']?.toString();
+            _tutorQualification = surveyData?['tutor_qualification_preference']
+                ?.toString();
             _teachingMode = surveyData?['preferred_location']?.toString();
 
             final city = surveyData?['city']?.toString();
             final quarter = surveyData?['quarter']?.toString();
             if (city != null && quarter != null) {
               final street = surveyData?['street']?.toString();
-              final streetStr = street != null && street.isNotEmpty ? ', $street' : '';
+              final streetStr = street != null && street.isNotEmpty
+                  ? ', $street'
+                  : '';
               _location = '$city, $quarter$streetStr';
               _locationController.text = _location!;
             }
 
             // Pre-fill location description if available
-            final locationDesc = surveyData?['location_description']?.toString();
+            final locationDesc = surveyData?['location_description']
+                ?.toString();
             if (locationDesc != null && locationDesc.isNotEmpty) {
               _locationDescriptionController.text = locationDesc;
             } else {
-              final additionalInfo = surveyData?['additional_address_info']?.toString();
+              final additionalInfo = surveyData?['additional_address_info']
+                  ?.toString();
               if (additionalInfo != null && additionalInfo.isNotEmpty) {
                 _locationDescriptionController.text = additionalInfo;
               }
@@ -204,11 +211,12 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
   /// Map education level from survey to display format
   String? _mapEducationLevel(Map<String, dynamic> surveyData) {
-    final eduLevel = surveyData['education_level']?.toString() ?? 
-                     surveyData['selected_education_level']?.toString();
-    
+    final eduLevel =
+        surveyData['education_level']?.toString() ??
+        surveyData['selected_education_level']?.toString();
+
     if (eduLevel == null) return null;
-    
+
     // Map survey education level to request tutor format
     final levelMap = {
       'Primary School': 'Primary School',
@@ -224,7 +232,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
       'University': 'University',
       'higher_education': 'University',
     };
-    
+
     return levelMap[eduLevel] ?? eduLevel;
   }
 
@@ -415,8 +423,8 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
   Widget _buildStep1SubjectLevel() {
     // Use available subjects (from user's niche) or default
-    final subjects = _availableSubjects.isNotEmpty 
-        ? _availableSubjects 
+    final subjects = _availableSubjects.isNotEmpty
+        ? _availableSubjects
         : [
             'Mathematics',
             'Physics',
@@ -487,25 +495,27 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                   });
                 },
                 selectedColor: isUserSubject
-                    ? AppTheme.primaryColor.withOpacity(0.3) // Highlighted for user's subjects
+                    ? AppTheme.primaryColor.withOpacity(
+                        0.3,
+                      ) // Highlighted for user's subjects
                     : AppTheme.primaryColor.withOpacity(0.2),
                 checkmarkColor: AppTheme.primaryColor,
                 side: isUserSubject && isSelected
-                    ? BorderSide(color: AppTheme.primaryColor, width: 2) // Highlight border
+                    ? BorderSide(
+                        color: AppTheme.primaryColor,
+                        width: 2,
+                      ) // Highlight border
                     : null,
                 labelStyle: GoogleFonts.poppins(
                   fontSize: 14,
-                  fontWeight: isUserSubject && isSelected 
-                      ? FontWeight.w600 // Bold for user's subjects
+                  fontWeight: isUserSubject && isSelected
+                      ? FontWeight
+                            .w600 // Bold for user's subjects
                       : FontWeight.w500,
                   color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                 ),
                 avatar: isUserSubject && isSelected
-                    ? Icon(
-                        Icons.star,
-                        size: 16,
-                        color: AppTheme.primaryColor,
-                      )
+                    ? Icon(Icons.star, size: 16, color: AppTheme.primaryColor)
                     : null,
               );
             }).toList(),
@@ -534,7 +544,9 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                     level,
                     style: GoogleFonts.poppins(
                       fontSize: 14,
-                      fontWeight: isPreSelected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: isPreSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                     ),
                   ),
                   if (isPreSelected) ...[
@@ -586,7 +598,9 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                       Icon(
                         req['icon'] as IconData,
                         size: 16,
-                        color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : AppTheme.textMedium,
                       ),
                       const SizedBox(width: 6),
                     ],
@@ -617,7 +631,10 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                   fontWeight: FontWeight.w500,
                   color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
               );
             }).toList(),
           ),
@@ -633,11 +650,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         'label': 'Exam Preparation',
         'icon': Icons.assignment_turned_in,
       },
-      {
-        'value': 'gce_exams',
-        'label': 'GCE Exams',
-        'icon': Icons.school,
-      },
+      {'value': 'gce_exams', 'label': 'GCE Exams', 'icon': Icons.school},
       {
         'value': 'homework_help',
         'label': 'Homework Help',
@@ -663,11 +676,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         'label': 'Advanced Learning',
         'icon': Icons.lightbulb_outline,
       },
-      {
-        'value': 'test_practice',
-        'label': 'Test Practice',
-        'icon': Icons.quiz,
-      },
+      {'value': 'test_practice', 'label': 'Test Practice', 'icon': Icons.quiz},
       {
         'value': 'project_help',
         'label': 'Project Help',
@@ -1031,11 +1040,15 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                   const Divider(height: 24),
                   _buildReviewItem(
                     'Requirements',
-                    _selectedRequirements.map((r) {
-                      final options = _getRequirementOptions();
-                      final option = options.firstWhere((o) => o['value'] == r);
-                      return option['label'] as String;
-                    }).join(', '),
+                    _selectedRequirements
+                        .map((r) {
+                          final options = _getRequirementOptions();
+                          final option = options.firstWhere(
+                            (o) => o['value'] == r,
+                          );
+                          return option['label'] as String;
+                        })
+                        .join(', '),
                   ),
                 ],
                 const Divider(height: 24),
@@ -1365,11 +1378,13 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         subjects: _selectedSubjects,
         educationLevel: _educationLevel!,
         specificRequirements: _selectedRequirements.isNotEmpty
-            ? _selectedRequirements.map((r) {
-                final options = _getRequirementOptions();
-                final option = options.firstWhere((o) => o['value'] == r);
-                return option['label'] as String;
-              }).join(', ')
+            ? _selectedRequirements
+                  .map((r) {
+                    final options = _getRequirementOptions();
+                    final option = options.firstWhere((o) => o['value'] == r);
+                    return option['label'] as String;
+                  })
+                  .join(', ')
             : '',
         teachingMode: _teachingMode!,
         budgetMin: _minBudget,
