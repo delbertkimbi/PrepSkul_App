@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 
 /// Service for handling tutor requests (custom tutors not on platform)
@@ -63,7 +64,12 @@ class TutorRequestService {
           .select('id')
           .single();
 
-      return response['id'] as String;
+      final requestId = response['id'] as String;
+
+      // Notify admins about the new tutor request
+      await _notifyAdmins(requestId, userProfile['full_name'] as String? ?? 'User');
+
+      return requestId;
     } catch (e) {
       print('❌ Error creating tutor request: $e');
       throw Exception('Failed to create tutor request: $e');
@@ -178,6 +184,39 @@ class TutorRequestService {
     } catch (e) {
       print('❌ Error fetching pending tutor requests: $e');
       throw Exception('Failed to fetch pending tutor requests: $e');
+    }
+  }
+
+  /// Notify all admins about a new tutor request
+  static Future<void> _notifyAdmins(String requestId, String requesterName) async {
+    try {
+      // Get all admin users
+      final adminResponse = await _supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('is_admin', true);
+
+      if (adminResponse.isEmpty) {
+        print('⚠️ No admin users found to notify');
+        return;
+      }
+
+      // Send notification to each admin
+      for (final admin in adminResponse) {
+        final adminId = admin['id'] as String;
+        
+        // Create in-app notification for admin
+        await NotificationHelperService.notifyTutorRequestCreated(
+          adminId: adminId,
+          requestId: requestId,
+          requesterName: requesterName,
+        );
+      }
+
+      print('✅ Notified ${adminResponse.length} admin(s) about tutor request $requestId');
+    } catch (e) {
+      print('⚠️ Error notifying admins about tutor request: $e');
+      // Don't throw - notification failure shouldn't block request creation
     }
   }
 }

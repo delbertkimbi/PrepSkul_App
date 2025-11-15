@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 
 class FindTutorsScreen extends StatefulWidget {
@@ -24,7 +28,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   String? _selectedPriceRange;
   double _minRating = 0.0;
 
-  final List<String> _subjects = [
+  // Smart subject list based on user preferences
+  List<String> _subjects = [];
+  List<String> _userPreferredSubjects = []; // User's subjects from survey
+  bool _subjectsLoaded = false;
+
+  // Default fallback subjects
+  final List<String> _defaultSubjects = [
     'Mathematics',
     'Physics',
     'Chemistry',
@@ -39,26 +49,176 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     'JavaScript',
   ];
 
+  // Monthly price ranges (in XAF per month)
+  // Based on typical monthly pricing: 2-3 sessions/week × 4 weeks
+  // Example: 3k/session × 2 sessions/week × 4 weeks = 24k/month
   final List<Map<String, dynamic>> _priceRanges = [
-    {'label': 'Under 3k', 'min': 0, 'max': 3000},
-    {'label': '3k - 5k', 'min': 3000, 'max': 5000},
-    {'label': '5k - 8k', 'min': 5000, 'max': 8000},
-    {'label': 'Above 8k', 'min': 8000, 'max': 50000},
+    {'label': 'Under 20k/mo', 'min': 0, 'max': 20000},
+    {'label': '20k - 30k/mo', 'min': 20000, 'max': 30000},
+    {'label': '30k - 40k/mo', 'min': 30000, 'max': 40000},
+    {'label': '40k - 50k/mo', 'min': 40000, 'max': 50000},
+    {'label': 'Above 50k/mo', 'min': 50000, 'max': 200000},
   ];
 
   @override
   void initState() {
     super.initState();
+    _loadUserSubjects(); // Load user's preferred subjects first
     _loadTutors();
+    
+    // Listen to search text changes and filter tutors
+    _searchController.addListener(_filterTutors);
+  }
+
+  /// Load user's subjects from survey and build smart subject list
+  Future<void> _loadUserSubjects() async {
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      if (userProfile == null) {
+        // No user profile - use default subjects
+        setState(() {
+          _subjects = _defaultSubjects;
+          _subjectsLoaded = true;
+        });
+        return;
+      }
+
+      final userType = userProfile['user_type']?.toString();
+      if (userType != 'student' && userType != 'parent') {
+        // Not a student/parent - use default subjects
+        setState(() {
+          _subjects = _defaultSubjects;
+          _subjectsLoaded = true;
+        });
+        return;
+      }
+
+      // Load survey data
+      Map<String, dynamic>? surveyData;
+      if (userType == 'student') {
+        surveyData = await SurveyRepository.getStudentSurvey(userProfile['id']);
+      } else if (userType == 'parent') {
+        surveyData = await SurveyRepository.getParentSurvey(userProfile['id']);
+      }
+
+      if (surveyData != null && mounted) {
+        // Get user's preferred subjects from survey
+        final userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+        
+        // Get education level, system, and stream for dynamic subject loading
+        final system = surveyData['system']?.toString() ?? 'anglophone';
+        final stream = surveyData['stream']?.toString();
+        final eduLevel = surveyData['education_level']?.toString();
+
+        // Load available subjects based on user's niche
+        List<String> availableSubjects = [];
+        if (eduLevel != null) {
+          String levelKey = _mapEducationLevelToKey(eduLevel);
+          availableSubjects = AppData.getSubjectsForLevel(
+            levelKey,
+            system,
+            stream: stream,
+          );
+        }
+
+        // Combine user's subjects with available subjects
+        // Priority: User's subjects first, then other available subjects, then default
+        final Set<String> allSubjectsSet = {};
+        
+        // Add user's preferred subjects first (these will be highlighted)
+        for (var subject in userSubjects) {
+          allSubjectsSet.add(subject);
+        }
+        
+        // Add available subjects based on education level/stream
+        for (var subject in availableSubjects) {
+          allSubjectsSet.add(subject);
+        }
+        
+        // If still empty or very few, add default subjects
+        if (allSubjectsSet.length < 5) {
+          for (var subject in _defaultSubjects) {
+            allSubjectsSet.add(subject);
+          }
+        }
+
+        // Convert to list and sort: user's subjects first, then alphabetically
+        final List<String> sortedSubjects = [];
+        
+        // Add user's preferred subjects first
+        for (var subject in userSubjects) {
+          if (allSubjectsSet.contains(subject) && !sortedSubjects.contains(subject)) {
+            sortedSubjects.add(subject);
+          }
+        }
+        
+        // Add other available subjects (alphabetically)
+        final otherSubjects = allSubjectsSet
+            .where((s) => !userSubjects.contains(s))
+            .toList()
+          ..sort();
+        sortedSubjects.addAll(otherSubjects);
+
+        if (mounted) {
+          setState(() {
+            _userPreferredSubjects = userSubjects;
+            _subjects = sortedSubjects.isNotEmpty ? sortedSubjects : _defaultSubjects;
+            _subjectsLoaded = true;
+          });
+        }
+      } else {
+        // No survey data - use default subjects
+        if (mounted) {
+          setState(() {
+            _subjects = _defaultSubjects;
+            _subjectsLoaded = true;
+          });
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error loading user subjects: $e');
+      // Fallback to default subjects
+      if (mounted) {
+        setState(() {
+          _subjects = _defaultSubjects;
+          _subjectsLoaded = true;
+        });
+      }
+    }
+  }
+
+  /// Map education level from survey to AppData key format
+  String _mapEducationLevelToKey(String eduLevel) {
+    final level = eduLevel.toLowerCase();
+    if (level.contains('primary')) return 'primary';
+    if (level.contains('secondary') || level.contains('high school')) {
+      if (level.contains('lower') || level.contains('form 1') || level.contains('form 2') || 
+          level.contains('form 3') || level.contains('grade 7') || level.contains('grade 8') || 
+          level.contains('grade 9')) {
+        return 'lower_secondary';
+      }
+      if (level.contains('upper') || level.contains('form 4') || level.contains('form 5') || 
+          level.contains('form 6') || level.contains('grade 10') || level.contains('grade 11') || 
+          level.contains('grade 12')) {
+        return 'upper_secondary';
+      }
+      return 'upper_secondary'; // Default to upper secondary
+    }
+    if (level.contains('university') || level.contains('college') || level.contains('undergraduate')) {
+      return 'university';
+    }
+    return 'upper_secondary'; // Default fallback
   }
 
   Future<void> _loadTutors() async {
     setState(() => _isLoading = true);
 
     try {
+      print('🔍 FindTutorsScreen: Starting to load tutors...');
       // ✅ USING TutorService - Easy to swap demo/real data!
       // Change TutorService.USE_DEMO_DATA to false when ready for Supabase
       final tutors = await TutorService.fetchTutors();
+      print('🔍 FindTutorsScreen: Received ${tutors.length} tutors from TutorService');
 
       if (mounted) {
         setState(() {
@@ -66,13 +226,24 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           _filteredTutors = _tutors;
           _isLoading = false;
         });
+        print('🔍 FindTutorsScreen: Updated state with ${_tutors.length} tutors, ${_filteredTutors.length} filtered');
+        
+        // Show debug message if no tutors found
+        if (tutors.isEmpty) {
+          print('⚠️ FindTutorsScreen: No tutors found! Check TutorService logs for details.');
+        }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('❌ FindTutorsScreen: Error loading tutors: $e');
+      print('❌ Stack trace: $stackTrace');
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading tutors: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading tutors: $e'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     }
   }
@@ -101,8 +272,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           final priceRange = _priceRanges.firstWhere(
             (range) => range['label'] == _selectedPriceRange,
           );
-          final rate = (tutor['hourly_rate'] ?? 0).toDouble();
-          if (rate < priceRange['min'] || rate > priceRange['max']) {
+          // Calculate monthly price for this tutor
+          final pricing = PricingService.calculateFromTutorData(tutor);
+          final monthlyPrice = (pricing['perMonth'] ?? 0.0) as double;
+          if (monthlyPrice < priceRange['min'] || monthlyPrice > priceRange['max']) {
             return false;
           }
         }
@@ -123,8 +296,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       _selectedSubject = null;
       _selectedPriceRange = null;
       _minRating = 0.0;
-      _filteredTutors = _tutors;
     });
+    _filterTutors(); // Apply cleared filters
   }
 
   @override
@@ -300,6 +473,43 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
+  Widget _buildRatingIndicator(int rating, String label) {
+    // Show as selected if this exact rating value is closest to current minRating
+    // Round to nearest integer for selection
+    final currentRating = _minRating.round();
+    final isSelected = currentRating == rating;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _minRating = rating.toDouble();
+        });
+        _filterTutors(); // Apply filter when rating indicator is tapped
+      },
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[200],
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+            width: isSelected ? 2.5 : 2,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              color: isSelected ? Colors.white : Colors.grey[600],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilterChip(String label, VoidCallback onDelete) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -335,18 +545,35 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     final totalReviews = tutor['total_reviews'] ?? 0;
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
+    
+    // Remove "Hello!" from bio if it starts with it (for cards)
+    String displayBio = bio;
+    if (displayBio.toLowerCase().startsWith('hello!')) {
+      displayBio = displayBio.substring(6).trim();
+      // Remove "I am" if it follows
+      if (displayBio.toLowerCase().startsWith('i am')) {
+        displayBio = displayBio.substring(4).trim();
+      }
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppTheme.surfaceColor, // Use theme surface color for neumorphic
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[200]!),
+        // Neumorphic shadows: light top-left, dark bottom-right
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.white.withOpacity(0.7),
+            blurRadius: 10,
+            offset: const Offset(-4, -4),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(4, 4),
+            spreadRadius: 0,
           ),
         ],
       ),
@@ -378,6 +605,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         height: 70,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
+                          color: AppTheme.primaryColor.withOpacity(0.1), // Background for fallback
                           border: Border.all(
                             color: AppTheme.primaryColor.withOpacity(0.3),
                             width: 2.5,
@@ -392,7 +620,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         ),
                         child: ClipOval(
                           child: _buildAvatarImage(
-                            tutor['avatar_url'],
+                            tutor['avatar_url'] ?? tutor['profile_photo_url'],
                             name,
                           ),
                         ),
@@ -434,13 +662,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                rating.toStringAsFixed(1),
+                                rating > 0 ? rating.toStringAsFixed(1) : 'N/A',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black,
                                 ),
                               ),
+                              if (rating > 0 && totalReviews > 0)
                               Text(
                                 ' ($totalReviews)',
                                 style: GoogleFonts.poppins(
@@ -487,9 +716,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                       [],
                 ),
                 const SizedBox(height: 12),
-                // Bio
+                // Bio (personal statement, with "Hello!" removed for cards)
+                if (displayBio.isNotEmpty)
                 Text(
-                  bio,
+                    displayBio,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
@@ -738,59 +968,107 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Subject',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _subjects.map((subject) {
-                        final isSelected = _selectedSubject == subject;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedSubject = isSelected ? null : subject;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? AppTheme.primaryColor
-                                  : Colors.grey[100],
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppTheme.primaryColor
-                                    : Colors.grey[300]!,
-                              ),
-                            ),
-                            child: Text(
-                              subject,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: isSelected
-                                    ? Colors.white
-                                    : Colors.grey[700],
-                              ),
+                    Row(
+                      children: [
+                        Text(
+                          'Subject',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black,
+                          ),
+                        ),
+                        if (_userPreferredSubjects.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            '(⭐ = Your preferences)',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
                             ),
                           ),
-                        );
-                      }).toList(),
+                        ],
+                      ],
                     ),
+                    const SizedBox(height: 12),
+                    // Show loading indicator if subjects haven't loaded yet
+                    _subjectsLoaded
+                        ? Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _subjects.map((subject) {
+                              final isSelected = _selectedSubject == subject;
+                              final isUserPreferred = _userPreferredSubjects.contains(subject);
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _selectedSubject = isSelected ? null : subject;
+                                  });
+                                  _filterTutors(); // Apply filter when subject changes
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? AppTheme.primaryColor
+                                        : isUserPreferred
+                                            ? AppTheme.primaryColor.withOpacity(0.1)
+                                            : Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppTheme.primaryColor
+                                          : isUserPreferred
+                                              ? AppTheme.primaryColor.withOpacity(0.5)
+                                              : Colors.grey[300]!,
+                                      width: isUserPreferred && !isSelected ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (isUserPreferred && !isSelected) ...[
+                                        Icon(
+                                          Icons.star,
+                                          size: 14,
+                                          color: AppTheme.primaryColor,
+                                        ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Text(
+                                        subject,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          fontWeight: isUserPreferred
+                                              ? FontWeight.w600
+                                              : FontWeight.w500,
+                                          color: isSelected
+                                              ? Colors.white
+                                              : isUserPreferred
+                                                  ? AppTheme.primaryColor
+                                                  : Colors.grey[700],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          )
+                        : const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(20.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          ),
                     const SizedBox(height: 24),
                     Text(
-                      'Price Range',
+                      'Monthly Price Range',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -809,6 +1087,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             setState(() {
                               _selectedPriceRange = isSelected ? null : label;
                             });
+                            _filterTutors(); // Apply filter when price range changes
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -850,6 +1129,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    Column(
+                      children: [
                     Row(
                       children: [
                         Expanded(
@@ -858,23 +1139,44 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             min: 0,
                             max: 5,
                             divisions: 5,
+                                label: _minRating == 0 ? 'Any' : '${_minRating.toStringAsFixed(1)} ⭐',
                             activeColor: AppTheme.primaryColor,
+                                inactiveColor: Colors.grey[300],
                             onChanged: (value) {
-                              setState(() => _minRating = value);
+                              setState(() {
+                                _minRating = value;
+                              });
+                              _filterTutors(); // Apply filter when rating changes
                             },
                           ),
                         ),
+                            const SizedBox(width: 12),
                         Container(
                           width: 60,
                           alignment: Alignment.center,
                           child: Text(
-                            _minRating == 0 ? 'Any' : '${_minRating.toInt()}+',
+                                _minRating == 0 ? 'Any' : '${_minRating.toStringAsFixed(1)}+',
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.primaryColor,
                             ),
                           ),
+                        ),
+                      ],
+                    ),
+                        const SizedBox(height: 8),
+                        // Rating value indicators
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildRatingIndicator(0, 'Any'),
+                            _buildRatingIndicator(1, '1'),
+                            _buildRatingIndicator(2, '2'),
+                            _buildRatingIndicator(3, '3'),
+                            _buildRatingIndicator(4, '4'),
+                            _buildRatingIndicator(5, '5'),
+                          ],
                         ),
                       ],
                     ),
@@ -935,32 +1237,29 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       if (isNetworkUrl) {
-        // Use NetworkImage for URLs from Supabase storage
-        return Image.network(
-          avatarUrl,
+        // Use CachedNetworkImage for better performance and caching
+        return CachedNetworkImage(
+          imageUrl: avatarUrl,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildAvatarPlaceholder(name, isLarge: isLarge);
-          },
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Center(
+          placeholder: (context, url) => Container(
+            color: AppTheme.primaryColor.withOpacity(0.1),
+            child: Center(
               child: CircularProgressIndicator(
-                value: loadingProgress.expectedTotalBytes != null
-                    ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                    : null,
                 strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
               ),
-            );
+            ),
+          ),
+          errorWidget: (context, url, error) {
+            return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
         );
       } else {
         // Use Image.asset for local asset paths
         return Image.asset(
           avatarUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
         );
@@ -973,34 +1272,34 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
   Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
     if (isLarge) {
-      return Container(
-        height: 300,
-        color: AppTheme.primaryColor.withOpacity(0.1),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
+                      return Container(
+                        height: 300,
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
                 name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                style: GoogleFonts.poppins(
-                  fontSize: 80,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                name,
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+                                style: GoogleFonts.poppins(
+                                  fontSize: 80,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                name,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
     }
     
     return Container(
@@ -1078,6 +1377,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
   @override
   void dispose() {
+    _searchController.removeListener(_filterTutors);
     _searchController.dispose();
     super.dispose();
   }

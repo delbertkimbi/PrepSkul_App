@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -113,6 +114,17 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               // survey_completed, is_admin, last_seen have defaults in DB
             },
           );
+          
+          // Notify admins about new user signup (async, don't block)
+          NotificationHelperService.notifyAdminsAboutNewUserSignup(
+            userId: response.user!.id,
+            userType: widget.userRole,
+            userName: widget.fullName,
+            userEmail: response.user!.email ?? widget.phoneNumber, // Use phone if email is null
+          ).catchError((e) {
+            print('⚠️ Error notifying admins about new user signup: $e');
+            // Don't block signup if notification fails
+          });
         }
 
         // Save session using AuthService

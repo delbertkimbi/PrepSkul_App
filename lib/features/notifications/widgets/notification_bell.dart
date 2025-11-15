@@ -10,7 +10,9 @@ import 'package:prepskul/features/notifications/screens/notification_list_screen
 /// Displays a bell icon with unread notification badge
 /// Tappable to open notification list
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key});
+  final Color? iconColor;
+  
+  const NotificationBell({super.key, this.iconColor});
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -72,10 +74,19 @@ class _NotificationBellState extends State<NotificationBell> {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Icon(
-            Icons.notifications_outlined,
-            color: AppTheme.textDark,
-            size: 24,
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: widget.iconColor != null 
+                  ? Colors.white.withOpacity(0.2)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.notifications_outlined,
+              color: widget.iconColor ?? AppTheme.textDark,
+              size: 24,
+            ),
           ),
           if (_unreadCount > 0)
             Positioned(

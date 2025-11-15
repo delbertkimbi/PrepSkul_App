@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Repository for saving and retrieving survey data
 class SurveyRepository {
@@ -372,10 +373,35 @@ class SurveyRepository {
         }
 
         try {
+          // Get stored signup data if available
+          final prefs = await SharedPreferences.getInstance();
+          final storedName = prefs.getString('signup_full_name');
+          
+          // Determine the best name to use (priority: storedName > metadata > email extraction > empty string)
+          String? nameToUse;
+          if (storedName != null && storedName.isNotEmpty && 
+              storedName != 'User' && storedName != 'Student') {
+            nameToUse = storedName;
+          } else if (user.userMetadata?['full_name'] != null) {
+            final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
+            if (metadataName.isNotEmpty && 
+                metadataName != 'User' && metadataName != 'Student') {
+              nameToUse = metadataName;
+            }
+          } else if (user.email != null) {
+            // Extract name from email as last resort
+            final emailName = user.email!.split('@')[0];
+            if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
+              nameToUse = emailName.split('.').map((s) => 
+                s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : ''
+              ).where((s) => s.isNotEmpty).join(' ');
+            }
+          }
+          
           await SupabaseService.client.from('profiles').upsert({
             'id': userId,
             'email': user.email ?? '',
-            'full_name': user.userMetadata?['full_name'] ?? 'Student',
+            'full_name': nameToUse ?? '', // Use empty string instead of 'Student'
             'phone_number': user.phone,
             'user_type': 'student',
             'survey_completed': false,

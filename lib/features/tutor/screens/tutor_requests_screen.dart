@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
@@ -118,22 +119,10 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Request approved! Recurring sessions created.',
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: AppTheme.accentGreen,
-              duration: const Duration(seconds: 3),
-            ),
+          BrandedSnackBar.showSuccess(
+            context,
+            'Request approved! Recurring sessions created.',
+            duration: const Duration(seconds: 3),
           );
         }
         _loadRequests(); // Refresh list
@@ -146,11 +135,9 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to approve request: $e'),
-              backgroundColor: Colors.red,
-            ),
+          BrandedSnackBar.showError(
+            context,
+            'Failed to approve request: $e',
           );
         }
       }
@@ -167,28 +154,20 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
       try {
         await BookingService.rejectBookingRequest(request.id, reason: result);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text('Request rejected'),
-                ],
-              ),
-              backgroundColor: Colors.orange,
-            ),
+          BrandedSnackBar.show(
+            context,
+            message: 'Request rejected',
+            backgroundColor: Colors.orange,
+            icon: Icons.info_outline,
           );
         }
         _loadRequests(); // Refresh list
       } catch (e) {
         print('❌ Error rejecting request: $e');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to reject request: $e'),
-              backgroundColor: Colors.red,
-            ),
+          BrandedSnackBar.showError(
+            context,
+            'Failed to reject request: $e',
           );
         }
       }

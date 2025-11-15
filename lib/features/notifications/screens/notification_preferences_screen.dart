@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/branded_snackbar.dart';
 
 /// Notification Preferences Screen
 /// 
@@ -72,22 +73,12 @@ class _NotificationPreferencesScreenState
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Preferences saved successfully'),
-            backgroundColor: AppTheme.accentGreen,
-          ),
-        );
+        BrandedSnackBar.showSuccess(context, 'Preferences saved successfully');
       }
     } catch (e) {
       print('Error saving preferences: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save preferences: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        BrandedSnackBar.showError(context, 'Failed to save preferences: $e');
       }
     } finally {
       if (mounted) {

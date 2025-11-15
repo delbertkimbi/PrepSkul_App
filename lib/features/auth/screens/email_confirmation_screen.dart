@@ -103,38 +103,54 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         throw Exception('User not found');
       }
 
-      // Create profile entry (use upsert to avoid duplicates if user already exists)
-      await SupabaseService.client.from('profiles').upsert({
-        'id': user.id,
-        'email': widget.email,
-        'full_name': widget.fullName,
-        'phone_number': null,
-        'user_type': widget.userRole,
-        'avatar_url': null,
-        'survey_completed': false,
-        'is_admin': false,
-      }, onConflict: 'id');
+      // Get stored signup data (in case profile wasn't created yet)
+      final prefs = await SharedPreferences.getInstance();
+      final storedRole = prefs.getString('signup_user_role') ?? widget.userRole;
+      final storedName = prefs.getString('signup_full_name') ?? widget.fullName;
+      final storedEmail = prefs.getString('signup_email') ?? widget.email;
+
+      // Create/update profile entry (use upsert to avoid duplicates)
+      try {
+        await SupabaseService.client.from('profiles').upsert({
+          'id': user.id,
+          'email': storedEmail,
+          'full_name': storedName,
+          'phone_number': null,
+          'user_type': storedRole,
+          'avatar_url': null,
+          'survey_completed': false,
+          'is_admin': false,
+        }, onConflict: 'id');
+        print('✅ Profile created/updated for user: ${user.id}');
+      } catch (e) {
+        print('⚠️ Error creating profile: $e');
+        // Continue anyway - profile might already exist
+      }
 
       // Save session
       await AuthService.saveSession(
         userId: user.id,
-        userRole: widget.userRole,
+        userRole: storedRole,
         phone: '',
-        fullName: widget.fullName,
+        fullName: storedName,
         surveyCompleted: false,
         rememberMe: true,
       );
 
       // Save auth method preference
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_method', 'email');
+
+      // Clear stored signup data (no longer needed)
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('signup_email');
 
       // Navigate to survey
       if (mounted) {
         Navigator.pushReplacementNamed(
           context,
           '/profile-setup',
-          arguments: {'userRole': widget.userRole},
+          arguments: {'userRole': storedRole},
         );
       }
     } catch (e) {

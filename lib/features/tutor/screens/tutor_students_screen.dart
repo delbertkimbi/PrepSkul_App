@@ -118,28 +118,28 @@ class _TutorStudentsScreenState extends State<TutorStudentsScreen> {
 
   Widget _buildEmptyState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.school_outlined, size: 80, color: AppTheme.textLight),
-          const SizedBox(height: 16),
-          Text(
-            'No students yet',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.school_outlined, size: 80, color: AppTheme.textLight),
+            const SizedBox(height: 16),
+            Text(
+              'No students yet',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Your students will appear here',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: AppTheme.textMedium,
+            const SizedBox(height: 8),
+            Text(
+              'Your students will appear here',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.textMedium,
+              ),
             ),
-          ),
-        ],
+          ],
       ),
     );
   }

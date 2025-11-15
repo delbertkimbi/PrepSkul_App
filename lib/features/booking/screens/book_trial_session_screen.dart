@@ -215,7 +215,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
-      _showErrorDialog();
+      _showErrorDialog(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -296,7 +296,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     );
   }
 
-  void _showErrorDialog() {
+  void _showErrorDialog([String? errorMessage]) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -864,7 +864,31 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     );
   }
 
+  /// Get tutor avatar image - handles both network URLs and asset paths
+  ImageProvider? _getTutorAvatarImage() {
+    final avatarUrl = widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'];
+    
+    if (avatarUrl == null || avatarUrl.toString().isEmpty) {
+      return null;
+    }
+    
+    final urlString = avatarUrl.toString();
+    
+    // Check if it's a network URL
+    if (urlString.startsWith('http://') || 
+        urlString.startsWith('https://') ||
+        urlString.startsWith('//')) {
+      return NetworkImage(urlString);
+    }
+    
+    // Otherwise, treat as asset path
+    return AssetImage(urlString);
+  }
+
   Widget _buildTutorCard() {
+    final avatarImage = _getTutorAvatarImage();
+    final tutorName = widget.tutor['full_name'] ?? 'Tutor';
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -876,10 +900,23 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         children: [
           CircleAvatar(
             radius: 30,
-            backgroundImage: AssetImage(
-              widget.tutor['avatar_url'] ??
-                  'assets/images/prepskul_profile.png',
-            ),
+            backgroundColor: AppTheme.primaryColor,
+            backgroundImage: avatarImage,
+            onBackgroundImageError: avatarImage != null
+                ? (exception, stackTrace) {
+                    // Image failed to load, will show fallback
+                  }
+                : null,
+            child: avatarImage == null
+                ? Text(
+                    tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                    style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
+// Conditional import for web-specific video helper
+import 'web_video_helper_stub.dart'
+    if (dart.library.html) 'web_video_helper.dart'
+    as web_video;
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -16,61 +22,102 @@ class TutorDetailScreen extends StatefulWidget {
 }
 
 class _TutorDetailScreenState extends State<TutorDetailScreen> {
-  late YoutubePlayerController _youtubeController;
+  YoutubePlayerController? _youtubeController; // Nullable for web
   bool _isVideoInitialized = false;
+  bool _isVideoLoading = false;
+  String? _videoId; // For web iframe embed
+  String? _videoUrl; // Store original URL for thumbnail
 
   @override
   void initState() {
     super.initState();
-    _initializeVideo();
+    _extractVideoId(); // Only extract ID, don't initialize player yet
   }
 
-  void _initializeVideo() {
+  void _extractVideoId() {
     try {
       // Use video_url (primary), fallback to video_intro or video_link
-      final videoUrl =
+      _videoUrl =
           widget.tutor['video_url'] ??
           widget.tutor['video_intro'] ??
           widget.tutor['video_link'] ??
           '';
-      if (videoUrl.isNotEmpty) {
-        final videoId = YoutubePlayer.convertUrlToId(videoUrl);
+      if (_videoUrl!.isNotEmpty) {
+        final videoId = YoutubePlayer.convertUrlToId(_videoUrl!);
         if (videoId != null && videoId.isNotEmpty) {
-          _youtubeController = YoutubePlayerController(
-            initialVideoId: videoId,
-            flags: const YoutubePlayerFlags(
-              autoPlay: false,
-              mute: false,
-              enableCaption: true,
-              controlsVisibleAtStart: true,
-              hideControls: false,
-            ),
-          );
-          setState(() => _isVideoInitialized = true);
+          setState(() {
+            _videoId = videoId;
+          });
         } else {
-          print('⚠️ Could not extract video ID from URL: $videoUrl');
+          print('⚠️ Could not extract video ID from URL: $_videoUrl');
         }
       } else {
         print('ℹ️ No video URL provided for tutor');
       }
     } catch (e) {
-      print('❌ Error initializing video: $e');
-      print('Stack trace: ${StackTrace.current}');
+      print('❌ Error extracting video ID: $e');
     }
+  }
+
+  void _initializeVideo() {
+    if (_isVideoInitialized || _isVideoLoading || _videoId == null) return;
+
+    setState(() {
+      _isVideoLoading = true;
+    });
+
+    try {
+      // Check if running on web - use iframe embed instead
+      if (kIsWeb) {
+        // For web, we'll use an iframe embed (handled in build method)
+        setState(() {
+          _isVideoInitialized = true;
+          _isVideoLoading = false;
+        });
+      } else {
+        // For mobile, use YoutubePlayerController
+        _youtubeController = YoutubePlayerController(
+          initialVideoId: _videoId!,
+          flags: const YoutubePlayerFlags(
+            autoPlay: false,
+            mute: false,
+            enableCaption: true,
+            controlsVisibleAtStart: true,
+            hideControls: false,
+          ),
+        );
+        setState(() {
+          _isVideoInitialized = true;
+          _isVideoLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error initializing video: $e');
+      setState(() {
+        _isVideoLoading = false;
+      });
+    }
+  }
+
+  /// Get YouTube thumbnail URL
+  String? _getThumbnailUrl() {
+    if (_videoId == null) return null;
+    // Use maxresdefault for best quality, fallback to hqdefault
+    return 'https://img.youtube.com/vi/$_videoId/maxresdefault.jpg';
   }
 
   @override
   void dispose() {
-    if (_isVideoInitialized) {
-      _youtubeController.dispose();
-    }
+    _youtubeController?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final name = widget.tutor['full_name'] ?? 'Unknown';
-    final bio = widget.tutor['bio'] ?? '';
+    // Use personal_statement (with "Hello!") for detail page "About" section
+    // Fallback to bio (dynamic) if personal_statement not available
+    final bio = widget.tutor['personal_statement'] ?? widget.tutor['bio'] ?? '';
     final education =
         widget.tutor['education'] ?? ''; // Formatted education string
     final experience = widget.tutor['experience'] ?? '';
@@ -158,37 +205,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
               const SizedBox(width: 8),
             ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: _isVideoInitialized
-                  ? YoutubePlayerBuilder(
-                      onExitFullScreen: () {},
-                      player: YoutubePlayer(
-                        controller: _youtubeController,
-                        showVideoProgressIndicator:
-                            false, // Hide default progress indicator
-                        progressIndicatorColor: AppTheme.primaryColor,
-                        progressColors: ProgressBarColors(
-                          playedColor: AppTheme.primaryColor,
-                          handleColor: AppTheme.primaryColor,
-                          bufferedColor: Colors.grey[300]!,
-                          backgroundColor: Colors.grey[200]!,
-                        ),
-                      ),
-                      builder: (context, player) {
-                        return player;
-                      },
-                    )
-                  : Container(
-                      color: Colors.grey[200],
-                      child: Center(
-                        child: Icon(
-                          Icons.play_circle_outline,
-                          size: 80,
-                          color: Colors.grey[400],
-                        ),
-                      ),
-                    ),
-            ),
+            flexibleSpace: FlexibleSpaceBar(background: _buildVideoSection()),
           ),
 
           // Content
@@ -760,12 +777,43 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   Widget _buildCertificationsSection() {
+    // Get highest education level (this is the main certificate/degree)
+    // Only show the level, NOT program/university (they might be currently in uni)
+    final highestEducation = widget.tutor['highest_education'] as String?;
+
+    // Get additional certifications
     final certifications = widget.tutor['certificates_urls'] as List?;
     final certificationsJson = widget.tutor['certifications'] as List?;
-
     final certList = certifications ?? certificationsJson;
 
-    if (certList == null || certList.isEmpty) {
+    // Build list of items to display
+    final List<Map<String, dynamic>> displayItems = [];
+
+    // 1. Add highest education first (if available)
+    // Only show the education level, NOT the program/university (they might be currently in uni)
+    if (highestEducation != null && highestEducation.isNotEmpty) {
+      displayItems.add({
+        'text':
+            highestEducation, // Just the level, e.g., "Advanced Level", "Bachelor's Degree"
+        'type': 'education',
+        'level': highestEducation.toLowerCase(),
+      });
+    }
+
+    // 2. Add additional certifications
+    if (certList != null && certList.isNotEmpty) {
+      for (var cert in certList) {
+        final certText = cert is Map
+            ? cert['name']?.toString() ?? cert.toString()
+            : cert.toString();
+        if (certText.isNotEmpty) {
+          displayItems.add({'text': certText, 'type': 'certification'});
+        }
+      }
+    }
+
+    // If no certifications at all
+    if (displayItems.isEmpty) {
       return Text(
         'No certifications yet',
         style: GoogleFonts.poppins(
@@ -778,31 +826,126 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: certList.map((cert) {
-        final certText = cert is Map
-            ? cert['name']?.toString() ?? cert.toString()
-            : cert.toString();
+      children: displayItems.map((item) {
         return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.workspace_premium, size: 20, color: Colors.amber[700]),
-              const SizedBox(width: 10),
+              // Icon based on type and level
+              _getEducationIcon(
+                item['type'] as String,
+                item['level'] as String?,
+              ),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  certText,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.grey[700],
-                    height: 1.5,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (item['type'] == 'education') ...[
+                      Text(
+                        'Highest Certificate',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                    ],
+                    Text(
+                      item['text'] as String,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: item['type'] == 'education'
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                        color: item['type'] == 'education'
+                            ? Colors.black
+                            : Colors.grey[700],
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _getEducationIcon(String type, String? level) {
+    if (type == 'education' && level != null) {
+      final levelLower = level.toLowerCase();
+
+      // Different icons for different education levels
+      if (levelLower.contains('phd') ||
+          levelLower.contains('doctorate') ||
+          levelLower.contains('doctoral')) {
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(Icons.school, size: 24, color: Colors.purple[700]),
+        );
+      } else if (levelLower.contains('master') ||
+          levelLower.contains('msc') ||
+          levelLower.contains('mba') ||
+          levelLower.contains('ms')) {
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.workspace_premium,
+            size: 24,
+            color: Colors.blue[700],
+          ),
+        );
+      } else if (levelLower.contains('bachelor') ||
+          levelLower.contains('bsc') ||
+          levelLower.contains('ba') ||
+          levelLower.contains('bachelor')) {
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(Icons.verified, size: 24, color: Colors.green[700]),
+        );
+      } else if (levelLower.contains('diploma') ||
+          levelLower.contains('certificate')) {
+        return Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.card_membership,
+            size: 24,
+            color: Colors.orange[700],
+          ),
+        );
+      }
+    }
+
+    // Default icon for additional certifications
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.amber.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(Icons.workspace_premium, size: 24, color: Colors.amber[700]),
     );
   }
 
@@ -944,6 +1087,194 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: scheduleItems,
     );
+  }
+
+  /// Build video section with lazy loading and thumbnail preview
+  Widget _buildVideoSection() {
+    // If no video URL, show placeholder
+    if (_videoId == null) {
+      return Container(
+        color: Colors.grey[200],
+        child: Center(
+          child: Icon(
+            Icons.video_library_outlined,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+        ),
+      );
+    }
+
+    // If video is initialized, show player
+    if (_isVideoInitialized) {
+      return kIsWeb && _videoId != null
+          ? _buildWebVideoPlayer(_videoId!)
+          : (_youtubeController != null
+                ? YoutubePlayerBuilder(
+                    onExitFullScreen: () {},
+                    player: YoutubePlayer(
+                      controller: _youtubeController!,
+                      showVideoProgressIndicator: false,
+                      progressIndicatorColor: AppTheme.primaryColor,
+                      progressColors: ProgressBarColors(
+                        playedColor: AppTheme.primaryColor,
+                        handleColor: AppTheme.primaryColor,
+                        bufferedColor: Colors.grey[300]!,
+                        backgroundColor: Colors.grey[200]!,
+                      ),
+                    ),
+                    builder: (context, player) => player,
+                  )
+                : _buildThumbnailPreview());
+    }
+
+    // Show loading state
+    if (_isVideoLoading) {
+      return Container(
+        color: Colors.black,
+        child: Stack(
+          children: [
+            // Show thumbnail while loading
+            if (_getThumbnailUrl() != null)
+              CachedNetworkImage(
+                imageUrl: _getThumbnailUrl()!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                placeholder: (context, url) => Container(
+                  color: Colors.grey[900],
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
+                ),
+                errorWidget: (context, url, error) =>
+                    Container(color: Colors.grey[900]),
+              ),
+            // Loading overlay
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show thumbnail preview with play button (lazy load)
+    return _buildThumbnailPreview();
+  }
+
+  /// Build thumbnail preview with play button overlay
+  Widget _buildThumbnailPreview() {
+    final thumbnailUrl = _getThumbnailUrl();
+
+    return GestureDetector(
+      onTap: () {
+        // Initialize video when user taps
+        _initializeVideo();
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Thumbnail image with caching
+          thumbnailUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: thumbnailUrl,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey[900],
+                    child: const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) {
+                    return Container(
+                      color: Colors.grey[900],
+                      child: const Center(
+                        child: Icon(
+                          Icons.video_library_outlined,
+                          size: 80,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    );
+                  },
+                )
+              : Container(
+                  color: Colors.grey[900],
+                  child: const Center(
+                    child: Icon(
+                      Icons.video_library_outlined,
+                      size: 80,
+                      color: Colors.white54,
+                    ),
+                  ),
+                ),
+          // Play button overlay
+          Container(
+            color: Colors.black.withOpacity(0.3),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.9),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 60,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build web-compatible YouTube video player using iframe
+  Widget _buildWebVideoPlayer(String videoId) {
+    if (kIsWeb) {
+      // Use HtmlElementView for web
+      final String viewType = 'youtube-iframe-$videoId';
+
+      // Register the platform view (will be idempotent if already registered)
+      try {
+        web_video.registerYouTubeIframe(viewType, videoId);
+      } catch (e) {
+        // View factory might already be registered, that's okay
+        print('ℹ️ View factory registration: $e');
+      }
+
+      return Container(
+        color: Colors.black,
+        child: HtmlElementView(viewType: viewType),
+      );
+    } else {
+      // Fallback for non-web platforms
+      return Container(
+        color: Colors.grey[200],
+        child: Center(
+          child: Icon(
+            Icons.play_circle_outline,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+        ),
+      );
+    }
   }
 
   void _showProfileImage(BuildContext context) {

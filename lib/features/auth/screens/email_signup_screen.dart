@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
@@ -594,13 +595,10 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         throw Exception('Failed to create account');
       }
 
-      // Check if email confirmation is required
-      final emailConfirmed = response.user?.emailConfirmedAt != null;
-
-      // If email is confirmed, create profile and navigate to survey
-      if (emailConfirmed) {
-        // Create profile entry
-        await SupabaseService.client.from('profiles').insert({
+      // CRITICAL: Save profile data immediately (before email confirmation)
+      // This ensures profile exists when user clicks email verification link
+      try {
+        await SupabaseService.client.from('profiles').upsert({
           'id': response.user!.id,
           'email': email,
           'full_name': fullName,
@@ -609,8 +607,36 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
           'avatar_url': null,
           'survey_completed': false,
           'is_admin': false,
+        }, onConflict: 'id');
+        print('✅ Profile created/updated for user: ${response.user!.id}');
+        
+        // Notify admins about new user signup (async, don't block)
+        NotificationHelperService.notifyAdminsAboutNewUserSignup(
+          userId: response.user!.id,
+          userType: _selectedRole!,
+          userName: fullName,
+          userEmail: email,
+        ).catchError((e) {
+          print('⚠️ Error notifying admins about new user signup: $e');
+          // Don't block signup if notification fails
         });
+      } catch (e) {
+        print('⚠️ Error creating profile: $e');
+        // Continue anyway - profile might already exist or will be created later
+      }
 
+      // Store user role in SharedPreferences for email verification redirect
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('signup_user_role', _selectedRole!);
+      await prefs.setString('signup_full_name', fullName);
+      await prefs.setString('signup_email', email);
+      await prefs.setString('auth_method', 'email');
+
+      // Check if email confirmation is required
+      final emailConfirmed = response.user?.emailConfirmedAt != null;
+
+      // If email is confirmed, navigate directly to survey
+      if (emailConfirmed) {
         // Save session
         await AuthService.saveSession(
           userId: response.user!.id,
@@ -620,10 +646,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
           surveyCompleted: false,
           rememberMe: true,
         );
-
-        // Save auth method preference
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_method', 'email');
 
         // Navigate to profile setup/survey
         if (mounted) {

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/services/individual_session_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
 
@@ -114,11 +115,26 @@ class SessionLifecycleService {
       // Send notifications
       final studentId = session['learner_id'] ?? session['parent_id'];
       if (studentId != null) {
+        // Get the final Meet link (either existing or newly generated)
+        String? finalMeetLink;
+        if (isSessionOnline) {
+          finalMeetLink = session['meeting_link'] as String?;
+          // If Meet link was just generated, fetch it from the updated session
+          if (finalMeetLink == null || finalMeetLink.isEmpty) {
+            final updatedSession = await _supabase
+                .from('individual_sessions')
+                .select('meeting_link')
+                .eq('id', sessionId)
+                .maybeSingle();
+            finalMeetLink = updatedSession?['meeting_link'] as String?;
+          }
+        }
+        
         await _sendSessionStartedNotification(
           sessionId: sessionId,
           studentId: studentId as String,
           isOnline: isSessionOnline,
-          meetLink: isSessionOnline ? (session['meeting_link'] as String?) : null,
+          meetLink: finalMeetLink,
         );
       }
 
@@ -256,6 +272,18 @@ class SessionLifecycleService {
           sessionId: sessionId,
           studentId: studentId as String,
         );
+        
+        // Schedule feedback reminder for 24 hours after session end
+        try {
+          await _scheduleFeedbackReminder(
+            sessionId: sessionId,
+            studentId: studentId as String,
+            sessionEndTime: now,
+          );
+        } catch (e) {
+          print('⚠️ Error scheduling feedback reminder: $e');
+          // Don't fail session end if reminder scheduling fails
+        }
       }
 
       print('✅ Session ended: $sessionId');
@@ -614,9 +642,10 @@ class SessionLifecycleService {
   }) async {
     try {
       final message = isOnline
-          ? 'Your session has started! ${meetLink != null ? "Join the meeting now." : ""}'
+          ? 'Your session has started! ${meetLink != null ? "Join the meeting now: $meetLink" : ""}'
           : 'Your session has started!';
 
+      // Create in-app notification
       await NotificationService.createNotification(
         userId: studentId,
         type: 'session_started',
@@ -632,6 +661,20 @@ class SessionLifecycleService {
           'meet_link': meetLink,
         },
       );
+
+      // Send email/push notification via API (if available)
+      if (isOnline && meetLink != null) {
+        try {
+          await NotificationHelperService.notifySessionStarted(
+            userId: studentId,
+            sessionId: sessionId,
+            meetLink: meetLink,
+          );
+        } catch (e) {
+          // Silently fail - in-app notification already sent
+          print('⚠️ Could not send email/push notification for session start: $e');
+        }
+      }
     } catch (e) {
       print('⚠️ Error sending session started notification: $e');
     }
@@ -658,6 +701,30 @@ class SessionLifecycleService {
       );
     } catch (e) {
       print('⚠️ Error sending session completed notification: $e');
+    }
+  }
+
+  /// Schedule feedback reminder for 24 hours after session end
+  static Future<void> _scheduleFeedbackReminder({
+    required String sessionId,
+    required String studentId,
+    required DateTime sessionEndTime,
+  }) async {
+    try {
+      // Calculate 24 hours from session end
+      final reminderTime = sessionEndTime.add(const Duration(hours: 24));
+      
+      // Schedule via NotificationHelperService
+      await NotificationHelperService.scheduleFeedbackReminder(
+        userId: studentId,
+        sessionId: sessionId,
+        reminderTime: reminderTime,
+      );
+      
+      print('✅ Feedback reminder scheduled for session: $sessionId at $reminderTime');
+    } catch (e) {
+      print('⚠️ Error scheduling feedback reminder: $e');
+      // Don't rethrow - reminder scheduling shouldn't fail session end
     }
   }
 

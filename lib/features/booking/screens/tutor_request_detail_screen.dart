@@ -395,9 +395,23 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
         children: [
           CircleAvatar(
             radius: 36,
+            backgroundColor: AppTheme.primaryColor,
             backgroundImage: AssetImage(
               student['avatar_url'] ?? 'assets/images/prepskul_profile.png',
             ),
+            onBackgroundImageError: (exception, stackTrace) {
+              // Image failed to load, will show fallback
+            },
+            child: student['avatar_url'] == null
+                ? Text(
+                    (student['full_name'] ?? 'S')[0].toUpperCase(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 16),
           Expanded(

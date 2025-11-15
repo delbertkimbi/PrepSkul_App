@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart';
@@ -6,7 +7,9 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import '../../../core/widgets/shimmer_loading.dart';
+import '../../../core/widgets/branded_snackbar.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 
 /// Edit Profile Screen
 /// 
@@ -89,40 +92,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _pickProfilePhoto() async {
     try {
-      final imageSource = await showModalBottomSheet<ImageSource>(
+      // ImagePickerBottomSheet returns XFile or PlatformFile directly
+      final pickedFile = await showModalBottomSheet<dynamic>(
         context: context,
         builder: (context) => ImagePickerBottomSheet(),
+        isScrollControlled: true,
       );
 
-      if (imageSource == null) return;
+      if (pickedFile == null || !mounted) return;
 
-      final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: imageSource);
+      // Wait for the next frame to ensure bottom sheet is fully closed
+      await SchedulerBinding.instance.endOfFrame;
 
-      if (pickedFile == null) return;
+      if (!mounted) return;
+
+      // StorageService.uploadDocument can handle XFile, PlatformFile, or File
+      // So we can pass the picked file directly
+      dynamic fileToUpload;
+      if (pickedFile is XFile) {
+        fileToUpload = pickedFile;
+      } else if (pickedFile is PlatformFile) {
+        // StorageService handles PlatformFile directly (works on web and mobile)
+        fileToUpload = pickedFile;
+      } else {
+        return; // Unknown type
+      }
 
       // Show loading
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text('Uploading profile photo...', style: GoogleFonts.poppins()),
-            ],
-          ),
-          backgroundColor: AppTheme.primaryColor,
-          duration: const Duration(seconds: 30),
-        ),
-      );
+      BrandedSnackBar.showLoading(context, 'Uploading profile photo...');
 
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
@@ -130,42 +128,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       // Upload to Supabase Storage
       final uploadedUrl = await StorageService.uploadDocument(
         userId: userId,
-        documentFile: pickedFile,
+        documentFile: fileToUpload,
         documentType: 'profile_picture',
       );
 
-      setState(() {
-        _uploadedProfilePhotoUrl = uploadedUrl;
-        _profilePhotoUrl = uploadedUrl;
-      });
+      // Add cache-busting parameter to ensure image refreshes
+      final cacheBustUrl = uploadedUrl.contains('?')
+          ? '$uploadedUrl&t=${DateTime.now().millisecondsSinceEpoch}'
+          : '$uploadedUrl?t=${DateTime.now().millisecondsSinceEpoch}';
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Profile photo uploaded successfully!',
-                style: GoogleFonts.poppins(),
-              ),
-            ],
-          ),
-          backgroundColor: AppTheme.accentGreen,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
+      
+      setState(() {
+        _uploadedProfilePhotoUrl = uploadedUrl;
+        _profilePhotoUrl = cacheBustUrl; // Use cache-busted URL for immediate display
+      });
+
+      // Wait for the next frame to ensure state update is complete
+      await SchedulerBinding.instance.endOfFrame;
+      
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error uploading photo: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      BrandedSnackBar.showSuccess(context, 'Profile photo uploaded successfully!');
+    } catch (e) {
+      print('❌ Error uploading profile photo: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      BrandedSnackBar.showError(context, 'Error uploading photo: ${e.toString()}');
     }
   }
 
@@ -231,33 +220,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Profile updated successfully!',
-                style: GoogleFonts.poppins(),
-              ),
-            ],
-          ),
-          backgroundColor: AppTheme.accentGreen,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      BrandedSnackBar.showSuccess(context, 'Profile updated successfully!');
 
       // Navigate back
       Navigator.of(context).pop(true); // Return true to refresh
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error updating profile: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      BrandedSnackBar.showError(context, 'Error updating profile: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);

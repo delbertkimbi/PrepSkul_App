@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
 /// Session Reschedule Service
 ///
@@ -630,6 +631,20 @@ class SessionRescheduleService {
     Map<String, dynamic>? metadata,
     bool sendEmail = true,
   }) async {
+    // Always create in-app notification first (this always works)
+    await NotificationService.createNotification(
+      userId: userId,
+      type: type,
+      title: title,
+      message: message,
+      priority: priority,
+      actionUrl: actionUrl,
+      actionText: actionText,
+      icon: icon,
+      metadata: metadata,
+    );
+
+    // Try to send via API for email/push notifications (optional - API might not be deployed)
     try {
       const apiBaseUrl = String.fromEnvironment(
         'API_BASE_URL',
@@ -653,39 +668,22 @@ class SessionRescheduleService {
           'metadata': metadata,
           'sendEmail': sendEmail,
         }),
+      ).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          throw TimeoutException('Notification API request timed out');
+        },
       );
 
       if (response.statusCode == 200) {
-        print('✅ Notification sent via API to user: $userId');
-      } else {
-        print('⚠️ Failed to send notification via API: ${response.statusCode}');
-        // Fallback to in-app only
-        await NotificationService.createNotification(
-          userId: userId,
-          type: type,
-          title: title,
-          message: message,
-          priority: priority,
-          actionUrl: actionUrl,
-          actionText: actionText,
-          icon: icon,
-          metadata: metadata,
-        );
+        // Success - email/push notifications sent via API
+        // In-app notification already created above
       }
+      // If API returns error, in-app notification is still created (silent fail)
     } catch (e) {
-      print('❌ Error sending notification via API: $e');
-      // Fallback to in-app only
-      await NotificationService.createNotification(
-        userId: userId,
-        type: type,
-        title: title,
-        message: message,
-        priority: priority,
-        actionUrl: actionUrl,
-        actionText: actionText,
-        icon: icon,
-        metadata: metadata,
-      );
+      // API call failed (network error, timeout, or API not deployed)
+      // This is expected if API is not deployed - in-app notification already created above
+      // Silent fail - notification still works via in-app
     }
   }
 }

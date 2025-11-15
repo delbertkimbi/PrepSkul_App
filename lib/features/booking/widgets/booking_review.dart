@@ -278,7 +278,31 @@ class _BookingReviewState extends State<BookingReview> {
     );
   }
 
+  /// Get tutor avatar image - handles both network URLs and asset paths
+  ImageProvider? _getTutorAvatarImage() {
+    final avatarUrl = widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'];
+    
+    if (avatarUrl == null || avatarUrl.toString().isEmpty) {
+      return null;
+    }
+    
+    final urlString = avatarUrl.toString();
+    
+    // Check if it's a network URL
+    if (urlString.startsWith('http://') || 
+        urlString.startsWith('https://') ||
+        urlString.startsWith('//')) {
+      return NetworkImage(urlString);
+    }
+    
+    // Otherwise, treat as asset path
+    return AssetImage(urlString);
+  }
+
   Widget _buildTutorCard() {
+    final avatarImage = _getTutorAvatarImage();
+    final tutorName = widget.tutor['full_name'] ?? 'Tutor';
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -297,10 +321,21 @@ class _BookingReviewState extends State<BookingReview> {
         children: [
           CircleAvatar(
             radius: 32,
-            backgroundImage: AssetImage(
-              widget.tutor['avatar_url'] ??
-                  'assets/images/prepskul_profile.png',
-            ),
+            backgroundColor: AppTheme.primaryColor,
+            backgroundImage: avatarImage,
+            onBackgroundImageError: (exception, stackTrace) {
+              // Image failed to load, will show fallback
+            },
+            child: avatarImage == null
+                ? Text(
+                    tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                    style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -308,7 +343,7 @@ class _BookingReviewState extends State<BookingReview> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.tutor['full_name'] ?? 'Tutor',
+                  tutorName,
                   style: GoogleFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -512,34 +547,41 @@ class _BookingReviewState extends State<BookingReview> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     children: [
-                      Text(
-                        title,
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black,
+                      Flexible(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (badge != null) ...[
                         const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green[100],
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            badge,
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.green[800],
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green[100],
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              badge,
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.green[800],
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
@@ -553,18 +595,25 @@ class _BookingReviewState extends State<BookingReview> {
                       fontSize: 12,
                       color: Colors.grey[600],
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
 
+            const SizedBox(width: 12),
+
             // Amount
-            Text(
-              PricingService.formatPrice(amount),
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.primaryColor,
+            Flexible(
+              child: Text(
+                PricingService.formatPrice(amount),
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryColor,
+                ),
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
               ),
             ),
           ],

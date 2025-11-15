@@ -9,10 +9,8 @@ import '../services/session_feedback_service.dart';
 class SessionFeedbackScreen extends StatefulWidget {
   final String sessionId;
 
-  const SessionFeedbackScreen({
-    Key? key,
-    required this.sessionId,
-  }) : super(key: key);
+  const SessionFeedbackScreen({Key? key, required this.sessionId})
+    : super(key: key);
 
   @override
   State<SessionFeedbackScreen> createState() => _SessionFeedbackScreenState();
@@ -26,11 +24,13 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
   bool? _wouldRecommend;
   bool _isSubmitting = false;
   bool _canSubmit = false;
+  Duration? _timeRemaining;
 
   @override
   void initState() {
     super.initState();
     _checkCanSubmit();
+    _checkTimeRemaining();
   }
 
   @override
@@ -42,10 +42,41 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
   }
 
   Future<void> _checkCanSubmit() async {
-    final canSubmit = await SessionFeedbackService.canSubmitFeedback(widget.sessionId);
+    final canSubmit = await SessionFeedbackService.canSubmitFeedback(
+      widget.sessionId,
+    );
     setState(() {
       _canSubmit = canSubmit;
     });
+  }
+
+  Future<void> _checkTimeRemaining() async {
+    final timeRemaining =
+        await SessionFeedbackService.getTimeUntilFeedbackAvailable(
+          widget.sessionId,
+        );
+    setState(() {
+      _timeRemaining = timeRemaining;
+    });
+
+    // Update countdown every minute if there's time remaining
+    if (timeRemaining != null && timeRemaining.inMinutes > 0) {
+      Future.delayed(const Duration(minutes: 1), () {
+        if (mounted) {
+          _checkTimeRemaining();
+        }
+      });
+    }
+  }
+
+  String _formatTimeRemaining(Duration duration) {
+    if (duration.inDays > 0) {
+      return '${duration.inDays} day${duration.inDays > 1 ? 's' : ''} and ${duration.inHours % 24} hour${(duration.inHours % 24) > 1 ? 's' : ''}';
+    } else if (duration.inHours > 0) {
+      return '${duration.inHours} hour${duration.inHours > 1 ? 's' : ''} and ${duration.inMinutes % 60} minute${(duration.inMinutes % 60) > 1 ? 's' : ''}';
+    } else {
+      return '${duration.inMinutes} minute${duration.inMinutes > 1 ? 's' : ''}';
+    }
   }
 
   Future<void> _submitFeedback() async {
@@ -65,14 +96,14 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
       await SessionFeedbackService.submitStudentFeedback(
         sessionId: widget.sessionId,
         rating: _selectedRating!,
-        review: _reviewController.text.trim().isEmpty 
-            ? null 
+        review: _reviewController.text.trim().isEmpty
+            ? null
             : _reviewController.text.trim(),
-        whatWentWell: _whatWentWellController.text.trim().isEmpty 
-            ? null 
+        whatWentWell: _whatWentWellController.text.trim().isEmpty
+            ? null
             : _whatWentWellController.text.trim(),
-        whatCouldImprove: _whatCouldImproveController.text.trim().isEmpty 
-            ? null 
+        whatCouldImprove: _whatCouldImproveController.text.trim().isEmpty
+            ? null
             : _whatCouldImproveController.text.trim(),
         wouldRecommend: _wouldRecommend,
       );
@@ -84,9 +115,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Thank you for your feedback!'),
-                ),
+                Expanded(child: Text('Thank you for your feedback!')),
               ],
             ),
             backgroundColor: AppTheme.accentGreen,
@@ -130,10 +159,18 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.info_outline, size: 64, color: AppTheme.textLight),
+                Icon(
+                  _timeRemaining != null ? Icons.schedule : Icons.info_outline,
+                  size: 64,
+                  color: _timeRemaining != null
+                      ? AppTheme.primaryColor
+                      : AppTheme.textLight,
+                ),
                 const SizedBox(height: 16),
                 Text(
-                  'Feedback Not Available',
+                  _timeRemaining != null
+                      ? 'Feedback Available Soon'
+                      : 'Feedback Not Available',
                   style: GoogleFonts.poppins(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -142,13 +179,43 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Feedback can only be submitted for completed sessions.',
+                  _timeRemaining != null
+                      ? 'You can provide feedback in ${_formatTimeRemaining(_timeRemaining!)}.\n\nWe wait 24 hours after your session ends to ensure you have time to reflect on your experience.'
+                      : 'Feedback can only be submitted for completed sessions that ended at least 24 hours ago.',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textMedium,
                   ),
                   textAlign: TextAlign.center,
                 ),
+                if (_timeRemaining != null) ...[
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryColor.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.access_time, color: AppTheme.primaryColor),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatTimeRemaining(_timeRemaining!),
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -219,10 +286,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
                       ),
                     ),
                     child: Center(
-                      child: Text(
-                        '⭐',
-                        style: TextStyle(fontSize: 28),
-                      ),
+                      child: Text('⭐', style: TextStyle(fontSize: 28)),
                     ),
                   ),
                 );
@@ -264,7 +328,10 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
                 ),
                 filled: true,
                 fillColor: Colors.white,
@@ -293,7 +360,10 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
                 ),
                 filled: true,
                 fillColor: Colors.white,
@@ -322,7 +392,10 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
                 ),
                 filled: true,
                 fillColor: Colors.white,
@@ -342,13 +415,9 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                  child: _buildRecommendButton(true),
-                ),
+                Expanded(child: _buildRecommendButton(true)),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: _buildRecommendButton(false),
-                ),
+                Expanded(child: _buildRecommendButton(false)),
               ],
             ),
             const SizedBox(height: 32),
@@ -371,7 +440,9 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : Text(
@@ -399,13 +470,11 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
           color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
           width: isSelected ? 2 : 1,
         ),
-        backgroundColor: isSelected 
-            ? AppTheme.primaryColor.withOpacity(0.1) 
+        backgroundColor: isSelected
+            ? AppTheme.primaryColor.withOpacity(0.1)
             : Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -429,8 +498,3 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
     );
   }
 }
-
-
-
-
-

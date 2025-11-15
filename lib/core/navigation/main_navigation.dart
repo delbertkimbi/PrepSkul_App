@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../features/tutor/screens/tutor_home_screen.dart';
 import '../../features/dashboard/screens/student_home_screen.dart';
 import '../../features/tutor/screens/tutor_requests_screen.dart';
@@ -7,6 +8,8 @@ import '../../features/tutor/screens/tutor_sessions_screen.dart';
 import '../../features/discovery/screens/find_tutors_screen.dart';
 import '../../features/booking/screens/my_requests_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/supabase_service.dart';
 import '../theme/app_theme.dart';
 
 class MainNavigation extends StatefulWidget {
@@ -40,11 +43,11 @@ class _MainNavigationState extends State<MainNavigation> {
   // Student screens (4 items)
   List<Widget> _getStudentScreens(String userType) {
     return [
-      const StudentHomeScreen(), // Home Dashboard
-      const FindTutorsScreen(), // Find Tutors
-      const MyRequestsScreen(), // My Booking Requests
+    const StudentHomeScreen(), // Home Dashboard
+    const FindTutorsScreen(), // Find Tutors
+    const MyRequestsScreen(), // My Booking Requests
       ProfileScreen(userType: userType), // Profile & Settings (student or parent)
-    ];
+  ];
   }
 
   // Tutor navigation items (4 items)
@@ -103,7 +106,102 @@ class _MainNavigationState extends State<MainNavigation> {
     final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
     final items = isTutor ? _tutorItems : _studentItems;
 
-    return Scaffold(
+    // Wrap with PopScope to prevent back navigation to auth screens
+    return PopScope(
+      canPop: false, // Prevent back navigation by default
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        // Check if user is authenticated
+        final isAuthenticated = await AuthService.isLoggedIn();
+        final hasSupabaseSession = SupabaseService.isAuthenticated;
+        
+        if (!isAuthenticated && !hasSupabaseSession) {
+          // Not authenticated - allow back navigation (shouldn't happen, but safety check)
+          return;
+        }
+        
+        // On web, show confirmation dialog when trying to leave app
+        if (kIsWeb) {
+          if (!mounted) return;
+          
+          final shouldExit = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.exit_to_app, color: AppTheme.primaryColor, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Leave PrepSkul?',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'Are you sure you want to leave the app? You will be logged out.',
+                style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.poppins(color: AppTheme.textMedium),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  child: Text(
+                    'Leave',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          );
+          
+          if (shouldExit == true && mounted) {
+            // User confirmed exit - log out and allow navigation
+            // The route guard will handle redirecting to auth screen if needed
+            try {
+              await AuthService.logout();
+            } catch (e) {
+              print('⚠️ Error logging out: $e');
+            }
+            // Allow navigation after logout
+            return;
+          }
+        } else {
+          // On mobile, prevent back navigation to auth screens
+          // Just prevent back navigation - user stays in app
+          // Could show a snackbar message if needed
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Use the navigation bar to switch screens',
+                  style: GoogleFonts.poppins(),
+                ),
+                duration: const Duration(seconds: 2),
+                backgroundColor: AppTheme.primaryColor,
+                behavior: SnackBarBehavior.floating,
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
+        }
+      },
+      child: Scaffold(
       body: IndexedStack(index: _selectedIndex, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
@@ -124,6 +222,7 @@ class _MainNavigationState extends State<MainNavigation> {
           fontWeight: FontWeight.w400,
         ),
         items: items,
+        ),
       ),
     );
   }

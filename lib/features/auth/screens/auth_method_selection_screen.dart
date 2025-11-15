@@ -3,8 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'beautiful_login_screen.dart';
-import 'beautiful_signup_screen.dart';
 import 'email_login_screen.dart';
+import 'email_signup_screen.dart';
 
 class AuthMethodSelectionScreen extends StatelessWidget {
   const AuthMethodSelectionScreen({Key? key}) : super(key: key);
@@ -138,14 +138,20 @@ class AuthMethodSelectionScreen extends StatelessWidget {
                               ),
                             ),
                             GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const BeautifulSignupScreen(),
-                                  ),
-                                );
+                              onTap: () async {
+                                // Set auth method to email for signup
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setString('auth_method', 'email');
+                                
+                                if (context.mounted) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const EmailSignupScreen(),
+                                    ),
+                                  );
+                                }
                               },
                               child: Text(
                                 'Sign up',

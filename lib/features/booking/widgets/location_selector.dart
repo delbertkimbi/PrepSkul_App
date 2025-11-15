@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
 
 /// Step 4: Location Selector
 ///
@@ -9,7 +11,11 @@ import 'package:prepskul/core/theme/app_theme.dart';
 /// - Onsite (at student's location - requires address)
 /// - Hybrid (mix of both)
 ///
-/// Pre-fills from survey data
+/// Features:
+/// - Auto-populates address from onboarding survey when hybrid/onsite is selected
+/// - User can edit the auto-filled address
+/// - Validates that address is not empty before proceeding
+/// - Location description field for additional details
 class LocationSelector extends StatefulWidget {
   final Map<String, dynamic> tutor;
   final String? initialLocation;
@@ -36,6 +42,7 @@ class _LocationSelectorState extends State<LocationSelector> {
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _locationDescriptionController =
       TextEditingController();
+  bool _showAddressError = false;
 
   // Parse tutor's teaching mode from demo data
   Set<String> _tutorTeachingModes = {};
@@ -78,9 +85,69 @@ class _LocationSelectorState extends State<LocationSelector> {
     return _tutorTeachingModes.contains(location);
   }
 
-  void _selectLocation(String location) {
+  void _selectLocation(String location) async {
     setState(() => _selectedLocation = location);
+    
+    // Auto-populate address from survey if hybrid/onsite selected and address is empty
+    if ((location == 'onsite' || location == 'hybrid') && 
+        _addressController.text.trim().isEmpty) {
+      await _autoFillAddressFromSurvey();
+    }
+    
     _notifyParent();
+  }
+
+  /// Auto-fill address from user's onboarding survey data
+  Future<void> _autoFillAddressFromSurvey() async {
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      if (userProfile == null) return;
+
+      final userType = userProfile['user_type'] as String?;
+      if (userType == null) return;
+
+      Map<String, dynamic>? surveyData;
+
+      if (userType == 'student') {
+        surveyData = await SurveyRepository.getStudentSurvey(userProfile['id']);
+      } else if (userType == 'parent') {
+        surveyData = await SurveyRepository.getParentSurvey(userProfile['id']);
+      }
+
+      if (surveyData != null && mounted) {
+        final city = surveyData['city'];
+        final quarter = surveyData['quarter'];
+        
+        if (city != null && quarter != null) {
+          final street = surveyData['street'];
+          final streetStr = street != null && street.toString().isNotEmpty 
+              ? ', ${street.toString()}' 
+              : '';
+          
+          final address = '${city.toString()}, ${quarter.toString()}$streetStr';
+          
+          setState(() {
+            _addressController.text = address;
+          });
+          
+          // Also pre-fill location description if available
+          final locationDesc = surveyData['location_description'];
+          if (locationDesc != null && locationDesc.toString().isNotEmpty) {
+            _locationDescriptionController.text = locationDesc.toString();
+          } else {
+            final additionalInfo = surveyData['additional_address_info'];
+            if (additionalInfo != null && additionalInfo.toString().isNotEmpty) {
+              _locationDescriptionController.text = additionalInfo.toString();
+            }
+          }
+          
+          _notifyParent();
+        }
+      }
+    } catch (e) {
+      print('⚠️ Could not auto-fill address from survey: $e');
+      // Silent fail - user can still type manually
+    }
   }
 
   void _notifyParent() {
@@ -88,6 +155,19 @@ class _LocationSelectorState extends State<LocationSelector> {
 
     final needsAddress =
         _selectedLocation == 'onsite' || _selectedLocation == 'hybrid';
+    
+    // Validate address if needed
+    if (needsAddress) {
+      final addressText = _addressController.text.trim();
+      setState(() {
+        _showAddressError = addressText.isEmpty;
+      });
+    } else {
+      setState(() {
+        _showAddressError = false;
+      });
+    }
+    
     final address = needsAddress ? _addressController.text.trim() : null;
     final locationDescription = needsAddress
         ? _locationDescriptionController.text.trim()
@@ -168,9 +248,18 @@ class _LocationSelectorState extends State<LocationSelector> {
             const SizedBox(height: 12),
             TextField(
               controller: _addressController,
-              onChanged: (_) => _notifyParent(),
+              onChanged: (_) {
+                // Clear error when user starts typing
+                if (_showAddressError && _addressController.text.trim().isNotEmpty) {
+                  setState(() {
+                    _showAddressError = false;
+                  });
+                }
+                _notifyParent();
+              },
               maxLines: 3,
               decoration: InputDecoration(
+                labelText: 'Address *',
                 hintText: 'Enter your full address\nCity, Quarter, Street...',
                 hintStyle: GoogleFonts.poppins(
                   fontSize: 14,
@@ -193,7 +282,24 @@ class _LocationSelectorState extends State<LocationSelector> {
                     width: 2,
                   ),
                 ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.red[300]!,
+                    width: 1,
+                  ),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: Colors.red[400]!,
+                    width: 2,
+                  ),
+                ),
                 prefixIcon: Icon(Icons.location_on, color: Colors.grey[600]),
+                errorText: _showAddressError
+                    ? 'Address is required for ${_selectedLocation == 'onsite' ? 'onsite' : 'hybrid'} sessions'
+                    : null,
               ),
             ),
             const SizedBox(height: 12),

@@ -39,6 +39,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     super.dispose();
   }
 
+  // Cache tutor info for trial sessions
+  final Map<String, Map<String, dynamic>> _tutorInfoCache = {};
+
   Future<void> _loadRequests() async {
     setState(() {
       _isLoading = true;
@@ -47,6 +50,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     try {
       // Load trial sessions
       final trials = await TrialSessionService.getStudentTrialSessions();
+
+      // Load tutor info for all trials
+      await _loadTutorInfoForTrials(trials);
 
       setState(() {
         _trialSessions = trials;
@@ -87,7 +93,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       final supabase = Supabase.instance.client;
       final tutorData = await supabase
           .from('tutor_profiles')
-          .select('*, profiles!inner(full_name, avatar_url)')
+          .select('*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)')
           .eq('user_id', trial.tutorId)
           .single();
 
@@ -113,6 +119,69 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       );
     } catch (e) {
       print('❌ Error fetching tutor data: $e');
+    }
+  }
+
+  /// Load tutor information for trial sessions
+  Future<void> _loadTutorInfoForTrials(List<TrialSession> trials) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final tutorIds = trials.map((t) => t.tutorId).toSet().toList();
+      
+      if (tutorIds.isEmpty) return;
+
+      // Fetch all tutor profiles at once
+      // Use OR condition for multiple tutor IDs
+      var query = supabase
+          .from('tutor_profiles')
+          .select('user_id, rating, admin_approved_rating, total_reviews, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)');
+      
+      // Filter by tutor IDs using OR
+      if (tutorIds.length == 1) {
+        query = query.eq('user_id', tutorIds[0]);
+      } else {
+        // For multiple IDs, we'll fetch them one by one or use a different approach
+        // For now, fetch all and filter in memory
+        final allTutors = await query;
+        final tutorProfiles = (allTutors as List).where((t) => tutorIds.contains(t['user_id'])).toList();
+        
+        // Cache tutor info
+        for (var tutor in tutorProfiles) {
+          final userId = tutor['user_id'] as String;
+          final profile = tutor['profiles'] as Map<String, dynamic>?;
+          _tutorInfoCache[userId] = {
+            'full_name': profile?['full_name'] ?? 'Tutor',
+            'avatar_url': profile?['avatar_url'],
+          };
+        }
+        return;
+      }
+      
+      final tutorProfiles = await query;
+
+      // Cache tutor info
+      for (var tutor in tutorProfiles) {
+        final userId = tutor['user_id'] as String;
+        final profile = tutor['profiles'] as Map<String, dynamic>?;
+        
+        // Calculate effective rating (same logic as tutor_service.dart)
+        final totalReviews = (tutor['total_reviews'] ?? 0) as int;
+        final adminApprovedRating = tutor['admin_approved_rating'] as double?;
+        final calculatedRating = (tutor['rating'] ?? 0.0) as double;
+        
+        // Use admin rating until we have at least 3 real reviews
+        final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+            ? adminApprovedRating
+            : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
+        
+        _tutorInfoCache[userId] = {
+          'full_name': profile?['full_name'] ?? 'Tutor',
+          'avatar_url': profile?['avatar_url'],
+          'rating': effectiveRating,
+        };
+      }
+    } catch (e) {
+      // Silently fail - tutor info will show defaults
     }
   }
 
@@ -473,11 +542,26 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               Row(
                 children: [
                   CircleAvatar(
-                    backgroundImage: request.tutorAvatarUrl != null
+                    backgroundColor: AppTheme.primaryColor,
+                    backgroundImage: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
                         ? NetworkImage(request.tutorAvatarUrl!)
                         : null,
-                    child: request.tutorAvatarUrl == null
-                        ? Text(request.tutorName[0].toUpperCase())
+                    onBackgroundImageError: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
+                        ? (exception, stackTrace) {
+                            // Image failed to load, will show fallback
+                          }
+                        : null,
+                    child: request.tutorAvatarUrl == null || request.tutorAvatarUrl!.isEmpty
+                        ? Text(
+                            request.tutorName.isNotEmpty 
+                                ? request.tutorName[0].toUpperCase() 
+                                : 'T',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          )
                         : null,
                   ),
                   const SizedBox(width: 12),
@@ -624,34 +708,32 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
   Widget _buildTrialSessionCard(TrialSession session) {
-    // Neumorphic styling like tutor request cards
-    return Container(
+    // Get tutor info from cache
+    final tutorInfo = _tutorInfoCache[session.tutorId] ?? {};
+    final tutorName = tutorInfo['full_name'] ?? 'Tutor';
+    final tutorAvatarUrl = tutorInfo['avatar_url'];
+    final tutorRating = (tutorInfo['rating'] ?? 0.0) as double;
+
+    // Determine action buttons based on status and payment
+    final canDelete = session.status == 'pending'; // Only if tutor hasn't responded
+    final canReject = session.status == 'approved' && session.paymentStatus == 'unpaid';
+    final canReschedule = session.status == 'approved' && session.paymentStatus == 'paid';
+
+    return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _getStatusColor(session.status).withOpacity(0.3),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
           // Could navigate to detail screen if needed
         },
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header: Badge and Status
               Row(
                 children: [
                   Container(
@@ -674,77 +756,171 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                   const Spacer(),
                   _buildStatusChip(session.status),
-                  // Delete button for pending/cancelled sessions
-                  if (session.status == 'pending' ||
-                      session.status == 'cancelled') ...[
+                  // Action buttons
+                  if (canDelete) ...[
                     const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.delete_outline, size: 20),
                       color: Colors.red[300],
                       onPressed: () => _deleteTrialSession(session.id),
+                      tooltip: 'Delete request',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ] else if (canReject) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      color: Colors.orange[300],
+                      onPressed: () => _rejectApprovedTrial(session),
+                      tooltip: 'Reject approved session',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ] else if (canReschedule) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.schedule, size: 20),
+                      color: AppTheme.primaryColor,
+                      onPressed: () => _showRescheduleDialog(session),
+                      tooltip: 'Reschedule session',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
                   ],
                 ],
               ),
               const SizedBox(height: 12),
-              Text(
-                session.subject,
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildInfoRow(Icons.calendar_today, session.formattedDate),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.access_time, session.formattedTime),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.timer, session.formattedDuration),
-              const SizedBox(height: 4),
-              _buildInfoRow(
-                Icons.location_on,
-                session.location == 'online' ? 'Online' : 'On-site',
-              ),
-              if (session.trialGoal != null) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.softCard,
-                    borderRadius: BorderRadius.circular(8),
+              
+              // Tutor Info Row (matching booking request style)
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: AppTheme.primaryColor,
+                    backgroundImage: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                        ? NetworkImage(tutorAvatarUrl)
+                        : null,
+                    onBackgroundImageError: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                        ? (exception, stackTrace) {
+                            // Image failed to load, will show fallback
+                          }
+                        : null,
+                    child: tutorAvatarUrl == null || tutorAvatarUrl.isEmpty
+                        ? Text(
+                            tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          )
+                        : null,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Goal:',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textMedium,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tutorName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        session.trialGoal!,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: AppTheme.textDark,
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.star, size: 16, color: Colors.amber[700]),
+                            const SizedBox(width: 4),
+                            Text(
+                              tutorRating > 0 ? tutorRating.toStringAsFixed(1) : 'N/A',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Session Details - Horizontal Layout
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
+                children: [
+                  _buildInlineInfo(Icons.calendar_today, session.formattedDate),
+                  _buildInlineInfo(Icons.access_time, session.formattedTime),
+                  _buildInlineInfo(Icons.timer, session.formattedDuration),
+                  _buildInlineInfo(
+                    Icons.location_on,
+                    session.location == 'online' ? 'Online' : 'On-site',
+                  ),
+                ],
+              ),
+              
+              // Goal (without heading, just text)
+              if (session.trialGoal != null && session.trialGoal!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  session.trialGoal!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppTheme.textDark,
+                    height: 1.4,
                   ),
                 ),
               ],
-              const SizedBox(height: 8),
-              Text(
-                '${session.trialFee.toStringAsFixed(0)} XAF',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
+              
+              // Price and Payment Status
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${session.trialFee.toStringAsFixed(0)} XAF',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  if (session.paymentStatus == 'paid')
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.green[200]!),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, size: 14, color: Colors.green[700]),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Paid',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
               // Show "Continue with Tutor" button for completed trials
               if (session.status == 'completed' &&
@@ -759,7 +935,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         final supabase = Supabase.instance.client;
                         final tutorData = await supabase
                             .from('tutor_profiles')
-                            .select('*, profiles!inner(full_name, avatar_url)')
+                            .select('*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)')
                             .eq('user_id', session.tutorId)
                             .single();
 
@@ -819,22 +995,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return Colors.orange;
-      case 'approved':
-      case 'scheduled':
-        return Colors.green;
-      case 'rejected':
-      case 'cancelled':
-        return Colors.grey;
-      case 'completed':
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
 
   Future<void> _deleteTrialSession(String sessionId) async {
     final confirmed = await showDialog<bool>(
@@ -877,6 +1037,104 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         );
       }
     }
+  }
+
+  /// Reject an approved trial session (before payment)
+  Future<void> _rejectApprovedTrial(TrialSession session) async {
+    final reasonController = TextEditingController();
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Reject Approved Session',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Please provide a reason for rejecting this approved session:',
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Enter reason...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+              style: GoogleFonts.poppins(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
+          ),
+          TextButton(
+            onPressed: () {
+              if (reasonController.text.trim().isNotEmpty) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            child: Text('Reject', style: GoogleFonts.poppins()),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && reasonController.text.trim().isNotEmpty) {
+      try {
+        // Update session status to rejected with reason
+        final supabase = Supabase.instance.client;
+        await supabase
+            .from('trial_sessions')
+            .update({
+              'status': 'rejected',
+              'rejection_reason': reasonController.text.trim(),
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', session.id);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Session rejected successfully')),
+        );
+        _loadRequests();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Show reschedule dialog for paid sessions
+  Future<void> _showRescheduleDialog(TrialSession session) async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Reschedule feature coming soon. Please contact support if you need to reschedule.',
+          style: GoogleFonts.poppins(),
+        ),
+        duration: const Duration(seconds: 3),
+        backgroundColor: AppTheme.primaryColor,
+      ),
+    );
   }
 
   Widget _buildStatusChip(String status) {
@@ -948,6 +1206,23 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               fontSize: 13,
               color: AppTheme.textMedium,
             ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInlineInfo(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: AppTheme.textMedium),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: AppTheme.textMedium,
           ),
         ),
       ],

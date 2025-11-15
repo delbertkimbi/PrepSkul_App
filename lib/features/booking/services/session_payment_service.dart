@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/payment/models/fapshi_transaction_model.dart';
 
@@ -40,7 +41,8 @@ class SessionPaymentService {
           .eq('id', sessionId)
           .single();
 
-      final recurringData = session['recurring_sessions'] as Map<String, dynamic>;
+      final recurringData =
+          session['recurring_sessions'] as Map<String, dynamic>;
       final monthlyTotal = (recurringData['monthly_total'] as num).toDouble();
       final frequency = recurringData['frequency'] as int;
 
@@ -82,7 +84,8 @@ class SessionPaymentService {
         'session_fee': sessionFee,
         'platform_fee': platformFee,
         'tutor_earnings': tutorEarnings,
-        'earnings_status': 'pending', // Will become 'active' when payment confirmed
+        'earnings_status':
+            'pending', // Will become 'active' when payment confirmed
         'session_payment_id': paymentId,
         'created_at': now.toIso8601String(),
         'updated_at': now.toIso8601String(),
@@ -101,9 +104,28 @@ class SessionPaymentService {
           .eq('id', sessionId);
 
       // Add to pending balance
-      await _addToPendingBalance(session['tutor_id'] as String, tutorEarnings, paymentId);
+      await _addToPendingBalance(
+        session['tutor_id'] as String,
+        tutorEarnings,
+        paymentId,
+      );
+
+      // Send notification to tutor about earnings
+      try {
+        await _notifyTutorEarningsAdded(
+          tutorId: session['tutor_id'] as String,
+          sessionId: sessionId,
+          earnings: tutorEarnings,
+        );
+      } catch (e) {
+        print('⚠️ Error sending earnings notification: $e');
+        // Don't fail payment creation if notification fails
+      }
 
       print('✅ Payment record created for session: $sessionId');
+      print(
+        '✅ Earnings: ${tutorEarnings.toStringAsFixed(2)} XAF (85% of ${sessionFee.toStringAsFixed(2)} XAF)',
+      );
       return paymentId;
     } catch (e) {
       print('❌ Error creating session payment: $e');
@@ -151,7 +173,7 @@ class SessionPaymentService {
             .select('session_fee, payment_status')
             .eq('session_id', sessionId)
             .single();
-        
+
         if (newPayment['payment_status'] != 'unpaid') {
           throw Exception('Payment already processed');
         }
@@ -172,7 +194,8 @@ class SessionPaymentService {
       final amount = sessionFee.toInt();
 
       // Verify authorization - must be student or parent
-      final session = payment?['individual_sessions'] ?? 
+      final session =
+          payment?['individual_sessions'] ??
           (await _supabase
               .from('individual_sessions')
               .select('learner_id, parent_id')
@@ -183,7 +206,9 @@ class SessionPaymentService {
       final isParent = session['parent_id'] == userId;
 
       if (!isStudent && !isParent) {
-        throw Exception('Unauthorized: Only the student or parent can initiate payment');
+        throw Exception(
+          'Unauthorized: Only the student or parent can initiate payment',
+        );
       }
 
       // Initiate Fapshi payment
@@ -208,7 +233,9 @@ class SessionPaymentService {
           })
           .eq('id', finalPayment['id']);
 
-      print('✅ Payment initiated for session: $sessionId (Fapshi: ${paymentResponse.transId})');
+      print(
+        '✅ Payment initiated for session: $sessionId (Fapshi: ${paymentResponse.transId})',
+      );
       return paymentResponse;
     } catch (e) {
       print('❌ Error initiating payment: $e');
@@ -282,7 +309,9 @@ class SessionPaymentService {
         );
 
         print('✅ Payment confirmed for session: $sessionId');
-      } else if (status == 'FAILED' || status == 'failed' || status == 'EXPIRED') {
+      } else if (status == 'FAILED' ||
+          status == 'failed' ||
+          status == 'EXPIRED') {
         // Payment failed
         await _supabase
             .from('session_payments')
@@ -326,7 +355,7 @@ class SessionPaymentService {
       // TODO: Process refund via Fapshi API when available
       // final refundAmountValue = refundAmount ?? (payment['session_fee'] as num).toDouble();
       // final fapshiTransId = payment['fapshi_trans_id'] as String?;
-      
+
       // For now, just mark as refunded
       await _supabase
           .from('session_payments')
@@ -358,7 +387,9 @@ class SessionPaymentService {
   }
 
   /// Get payment status for a session
-  static Future<Map<String, dynamic>?> getSessionPayment(String sessionId) async {
+  static Future<Map<String, dynamic>?> getSessionPayment(
+    String sessionId,
+  ) async {
     try {
       final payment = await _supabase
           .from('session_payments')
@@ -376,7 +407,9 @@ class SessionPaymentService {
   /// Get tutor's wallet balances
   ///
   /// Calculates pending and active balances from tutor_earnings
-  static Future<Map<String, dynamic>> getTutorWalletBalances(String tutorId) async {
+  static Future<Map<String, dynamic>> getTutorWalletBalances(
+    String tutorId,
+  ) async {
     try {
       // Pending balance (earnings_status = 'pending')
       final pendingEarnings = await _supabase
@@ -490,14 +523,13 @@ class SessionPaymentService {
         userId: tutorId,
         type: 'payment_confirmed',
         title: '💰 Payment Received',
-        message: 'Payment for your session has been confirmed. Earnings are now available.',
+        message:
+            'Payment for your session has been confirmed. Earnings are now available.',
         priority: 'normal',
         actionUrl: '/earnings',
         actionText: 'View Earnings',
         icon: '💰',
-        metadata: {
-          'session_id': sessionId,
-        },
+        metadata: {'session_id': sessionId},
       );
 
       // Get student ID to notify
@@ -518,9 +550,7 @@ class SessionPaymentService {
           actionUrl: '/sessions/$sessionId',
           actionText: 'View Session',
           icon: '✅',
-          metadata: {
-            'session_id': sessionId,
-          },
+          metadata: {'session_id': sessionId},
         );
       }
     } catch (e) {
@@ -550,13 +580,52 @@ class SessionPaymentService {
           actionUrl: '/sessions/$sessionId/payment',
           actionText: 'Retry Payment',
           icon: '⚠️',
-          metadata: {
-            'session_id': sessionId,
-          },
+          metadata: {'session_id': sessionId},
         );
       }
     } catch (e) {
       print('⚠️ Error sending payment failed notification: $e');
+    }
+  }
+
+  /// Notify tutor when earnings are added to pending balance
+  static Future<void> _notifyTutorEarningsAdded({
+    required String tutorId,
+    required String sessionId,
+    required double earnings,
+  }) async {
+    try {
+      // Create in-app notification
+      await NotificationService.createNotification(
+        userId: tutorId,
+        type: 'earnings_added',
+        title: '💰 Earnings Added',
+        message:
+            '${earnings.toStringAsFixed(2)} XAF has been added to your pending balance. It will become active after payment confirmation.',
+        priority: 'normal',
+        actionUrl: '/earnings',
+        actionText: 'View Earnings',
+        icon: '💰',
+        metadata: {
+          'session_id': sessionId,
+          'earnings': earnings,
+          'status': 'pending',
+        },
+      );
+
+      // Send email/push notification via API (if available)
+      try {
+        await NotificationHelperService.notifyTutorEarningsAdded(
+          tutorId: tutorId,
+          sessionId: sessionId,
+          earnings: earnings,
+        );
+      } catch (e) {
+        // Silently fail - in-app notification already sent
+        print('⚠️ Could not send email/push notification for earnings: $e');
+      }
+    } catch (e) {
+      print('⚠️ Error sending earnings notification: $e');
     }
   }
 }

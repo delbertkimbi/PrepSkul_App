@@ -280,12 +280,20 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
                     children: [
                       CircleAvatar(
                         radius: 28,
-                        backgroundImage: request.studentAvatarUrl != null
+                        backgroundColor: AppTheme.primaryColor,
+                        backgroundImage: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
                             ? NetworkImage(request.studentAvatarUrl!)
                             : null,
-                        child: request.studentAvatarUrl == null
+                        onBackgroundImageError: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
+                            ? (exception, stackTrace) {
+                                // Image failed to load, will show fallback
+                              }
+                            : null,
+                        child: request.studentAvatarUrl == null || request.studentAvatarUrl!.isEmpty
                             ? Text(
-                                request.studentName[0].toUpperCase(),
+                                request.studentName.isNotEmpty
+                                    ? request.studentName[0].toUpperCase()
+                                    : 'S',
                                 style: GoogleFonts.poppins(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w600,

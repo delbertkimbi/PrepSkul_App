@@ -79,7 +79,7 @@ class PushNotificationService {
         return;
       }
 
-      // Initialize local notifications immediately (doesn't require permission)
+      // Initialize local notifications immediately (without requesting permission)
       // Do this first so it's ready when permission is granted
       _initializeLocalNotifications().catchError((error) {
         print('⚠️ Error initializing local notifications: $error');
@@ -90,28 +90,15 @@ class PushNotificationService {
         print('⚠️ Error setting up message handlers: $error');
       });
 
+      // Check if permission was already granted and complete initialization if so
+      // This handles cases where user previously granted permission
+      _checkAndCompleteInitialization();
+
       // Mark as initialized immediately so app doesn't block
       // The splash screen should transition without waiting for push notifications
+      // Permission will be requested later when appropriate (after onboarding/login)
       _initialized = true;
-      print('✅ PushNotificationService initialized (permission request will happen in background)');
-
-      // Request permission asynchronously (completely non-blocking)
-      // Don't await - let the app continue
-      Future.microtask(() async {
-        try {
-          final permission = await requestPermission();
-          if (permission == AuthorizationStatus.authorized || 
-              permission == AuthorizationStatus.provisional) {
-            print('✅ Push notification permission granted');
-            // Complete initialization after permission is granted
-            await _completeMobileInitialization();
-          } else {
-            print('⚠️ Push notification permission not granted');
-          }
-        } catch (error) {
-          print('⚠️ Error requesting permission (non-blocking): $error');
-        }
-      });
+      print('✅ PushNotificationService initialized (permission will be requested when appropriate)');
 
       return;
     } catch (e) {
@@ -120,9 +107,48 @@ class PushNotificationService {
     }
   }
 
+  /// Check current notification permission status
+  Future<AuthorizationStatus> getPermissionStatus() async {
+    try {
+      if (kIsWeb) {
+        // On web, check Notification API permission
+        // For now, return authorized if available
+        return AuthorizationStatus.authorized;
+      }
+      
+      final settings = await _firebaseMessaging.getNotificationSettings();
+      print('📱 Current notification permission: ${settings.authorizationStatus}');
+      return settings.authorizationStatus;
+    } catch (e) {
+      print('❌ Error checking permission status: $e');
+      return AuthorizationStatus.notDetermined;
+    }
+  }
+
   /// Request notification permission
+  /// Only call this when it's appropriate (e.g., after onboarding or login)
   Future<AuthorizationStatus> requestPermission() async {
     try {
+      // Check current status first
+      final currentStatus = await getPermissionStatus();
+      
+      // If already authorized or provisional, don't request again
+      if (currentStatus == AuthorizationStatus.authorized ||
+          currentStatus == AuthorizationStatus.provisional) {
+        print('✅ Notification permission already granted');
+        // Complete initialization if not already done
+        await _completeMobileInitialization();
+        return currentStatus;
+      }
+      
+      // If denied, don't request again (user must enable in settings)
+      if (currentStatus == AuthorizationStatus.denied) {
+        print('⚠️ Notification permission was denied - user must enable in settings');
+        return currentStatus;
+      }
+
+      // Only request if status is notDetermined
+      print('📱 Requesting notification permission...');
       final settings = await _firebaseMessaging.requestPermission(
         alert: true,
         announcement: false,
@@ -133,11 +159,35 @@ class PushNotificationService {
         sound: true,
       );
 
-      print('📱 Notification permission: ${settings.authorizationStatus}');
+      print('📱 Notification permission result: ${settings.authorizationStatus}');
+      
+      // Complete initialization if permission was granted
+      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional) {
+        print('✅ Push notification permission granted');
+        await _completeMobileInitialization();
+      } else {
+        print('⚠️ Push notification permission not granted (status: ${settings.authorizationStatus})');
+      }
+      
       return settings.authorizationStatus;
     } catch (e) {
       print('❌ Error requesting permission: $e');
       return AuthorizationStatus.notDetermined;
+    }
+  }
+
+  /// Check permission status and complete initialization if granted
+  Future<void> _checkAndCompleteInitialization() async {
+    try {
+      final status = await getPermissionStatus();
+      if (status == AuthorizationStatus.authorized ||
+          status == AuthorizationStatus.provisional) {
+        print('✅ Notification permission already granted, completing initialization');
+        await _completeMobileInitialization();
+      }
+    } catch (e) {
+      print('⚠️ Error checking permission for initialization: $e');
     }
   }
 
@@ -152,11 +202,12 @@ class PushNotificationService {
     // Android initialization
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     
-    // iOS initialization
+    // iOS initialization - DO NOT request permission here
+    // Permission will be requested explicitly when appropriate
     const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     const initSettings = InitializationSettings(

@@ -446,19 +446,57 @@ class SessionFeedbackService {
         return false;
       }
 
-      // Check if session ended at least 1 hour ago (give time for session to complete)
+      // Check if session ended at least 24 hours ago (required for feedback)
       if (session['session_ended_at'] != null) {
         final endedAt = DateTime.parse(session['session_ended_at'] as String);
         final now = DateTime.now();
-        if (now.difference(endedAt).inHours < 1) {
-          return false; // Too soon after session end
+        if (now.difference(endedAt).inHours < 24) {
+          return false; // Must wait 24 hours after session end
         }
+      } else {
+        // If session_ended_at is null, check if it's been 24h since status changed to completed
+        // This is a fallback for sessions that might not have session_ended_at set
+        return false; // Cannot submit without session end time
       }
 
       return true;
     } catch (e) {
       print('❌ Error checking if can submit feedback: $e');
       return false;
+    }
+  }
+
+  /// Get time remaining until feedback can be submitted
+  /// Returns null if feedback can be submitted now, or Duration until it can be submitted
+  static Future<Duration?> getTimeUntilFeedbackAvailable(String sessionId) async {
+    try {
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('session_ended_at, status')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (session == null || session['status'] != 'completed') {
+        return null; // Session not completed
+      }
+
+      if (session['session_ended_at'] == null) {
+        return null; // Cannot determine without end time
+      }
+
+      final endedAt = DateTime.parse(session['session_ended_at'] as String);
+      final now = DateTime.now();
+      final timeSinceEnd = now.difference(endedAt);
+      final requiredWait = const Duration(hours: 24);
+
+      if (timeSinceEnd >= requiredWait) {
+        return null; // Can submit now
+      }
+
+      return requiredWait - timeSinceEnd; // Time remaining
+    } catch (e) {
+      print('❌ Error getting time until feedback available: $e');
+      return null;
     }
   }
 }

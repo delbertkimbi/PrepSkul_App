@@ -458,34 +458,31 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         }
 
         // Certificates - Load from certificates_urls (CRITICAL: Must load for certificates to display)
+        // Clear old certificate entries first to avoid duplicates
+        _certificateUrls.clear();
         if (data['certificates_urls'] != null) {
           final certs = data['certificates_urls'] is String
               ? jsonDecode(data['certificates_urls'])
               : data['certificates_urls'];
           print('📜 Loading certificates: $certs');
           if (certs is List && certs.isNotEmpty) {
-            // Use the last certificate URL for "last_certificate"
+            // Only use the LAST certificate URL (most recent upload) for "last_certificate"
+            // This replaces any previous certificates when a tutor re-uploads
             final lastCertUrl = certs.last.toString();
             _certificateUrls['last_certificate'] = lastCertUrl;
             _uploadedDocuments['last_certificate'] = lastCertUrl;
-            print('✅ Loaded certificate URL: $lastCertUrl');
-            // Also store others if needed
-            for (var i = 0; i < certs.length; i++) {
-              _certificateUrls['certificate_${i + 1}'] = certs[i].toString();
-            }
-          } else if (certs is Map) {
-            _certificateUrls = Map<String, String>.from(
-              certs.map(
-                (key, value) => MapEntry(key.toString(), value.toString()),
-              ),
+            print(
+              '✅ Loaded latest certificate URL: $lastCertUrl (replacing ${certs.length - 1} previous certificate(s))',
             );
-            // Also populate _uploadedDocuments
-            _certificateUrls.forEach((key, url) {
-              if (key == 'last_certificate' || key.contains('certificate')) {
-                _uploadedDocuments[key] = url;
-                print('✅ Loaded certificate: $key = $url');
-              }
-            });
+            // Clear old numbered certificate entries - we only keep the latest
+          } else if (certs is Map) {
+            // If it's a map, only keep 'last_certificate' if it exists, ignore numbered certificates
+            final lastCert = certs['last_certificate']?.toString();
+            if (lastCert != null && lastCert.isNotEmpty) {
+              _certificateUrls['last_certificate'] = lastCert;
+              _uploadedDocuments['last_certificate'] = lastCert;
+              print('✅ Loaded certificate: last_certificate = $lastCert');
+            }
           }
         } else {
           print('⚠️ No certificates_urls found in data');
@@ -4628,39 +4625,103 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     });
   }
 
-  String _createPersonalStatement() {
-    String statement = 'Hello! I am a passionate educator with ';
+  /// Create dynamic bio for tutor cards (starts with subjects, no "Hello!")
+  /// This is used in discovery cards and should be engaging and dynamic
+  String _createDynamicBio() {
+    final parts = <String>[];
 
-    if (_selectedEducation != null) {
-      statement += '${_selectedEducation!.toLowerCase()} education ';
+    // Start with subjects/specializations (most engaging for cards)
+    if (_selectedSpecializations.isNotEmpty) {
+      final subjects = _selectedSpecializations.join(', ');
+      parts.add('Specializes in $subjects');
+    } else if (_selectedTutoringAreas.isNotEmpty) {
+      final areas = _selectedTutoringAreas.join(' and ');
+      parts.add('Specializes in $areas');
     }
 
+    // Add experience if available
+    if (_hasExperience && _experienceDuration != null) {
+      parts.add(
+        'with ${_experienceDuration!.toLowerCase()} of teaching experience',
+      );
+    }
+
+    // Add learner levels
+    if (_selectedLearnerLevels.isNotEmpty) {
+      parts.add(
+        'working with ${_selectedLearnerLevels.join(' and ').toLowerCase()} students',
+      );
+    }
+
+    // Add motivation if provided (their personal touch)
+    if (_motivationController.text.isNotEmpty) {
+      final motivation = _motivationController.text.trim();
+      parts.add(motivation);
+    }
+
+    // If no parts, create a basic bio
+    if (parts.isEmpty) {
+      return 'Passionate educator committed to helping students achieve their academic goals.';
+    }
+
+    return parts.join('. ') + '.';
+  }
+
+  /// Create personal statement for detail page (starts with "Hello! I am...")
+  /// This is the full bio shown in the tutor's detail page "About" section
+  String _createPersonalStatement() {
+    // Start with greeting - for detail page only
+    String statement = 'Hello! I am ';
+
+    // Add education level if available
+    if (_selectedEducation != null) {
+      final education = _selectedEducation!.toLowerCase();
+      // Format education nicely
+      if (education.contains('phd') || education.contains('doctorate')) {
+        statement += 'a passionate educator with a ${education} ';
+      } else if (education.contains('master')) {
+        statement += 'a passionate educator with ${education} education ';
+      } else {
+        statement += 'a passionate educator with ${education} education ';
+      }
+    } else {
+      statement += 'a passionate educator ';
+    }
+
+    // Add experience
     if (_hasExperience && _experienceDuration != null) {
       statement +=
-          'and ${_experienceDuration!.toLowerCase()} of teaching experience. ';
+          'with ${_experienceDuration!.toLowerCase()} of teaching experience. ';
     } else {
-      statement += 'and I am excited to start my teaching journey. ';
+      statement += 'excited to start my teaching journey. ';
     }
 
+    // Add specialization areas
     if (_selectedTutoringAreas.isNotEmpty) {
       statement +=
           'I specialize in ${_selectedTutoringAreas.join(' and ').toLowerCase()}, ';
     }
 
+    // Add learner levels
     if (_selectedLearnerLevels.isNotEmpty) {
       statement +=
           'working with ${_selectedLearnerLevels.join(' and ').toLowerCase()} students. ';
     }
 
+    // Add subjects/specializations
     if (_selectedSpecializations.isNotEmpty) {
       statement +=
           'My areas of expertise include ${_selectedSpecializations.join(', ').toLowerCase()}. ';
     }
 
+    // Incorporate motivation (this is the key part - their personal touch)
     if (_motivationController.text.isNotEmpty) {
-      statement += '${_motivationController.text} ';
+      final motivation = _motivationController.text.trim();
+      // Add motivation naturally into the flow
+      statement += '$motivation ';
     }
 
+    // Closing statement
     statement +=
         'I am committed to providing quality education and helping students achieve their academic goals.';
 
@@ -4893,25 +4954,29 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     final idCardBackUrl =
         _idCardBackUrl ?? (_uploadedDocuments['id_back'] as String?);
 
-    // Collect all certificate URLs from both _certificateUrls and _uploadedDocuments
+    // Collect certificate URLs - only use the latest certificate (last_certificate)
+    // This ensures we replace old certificates instead of creating duplicates
     final List<String> certificateUrls = [];
 
-    // Add from _certificateUrls map
-    _certificateUrls.values.forEach((url) {
-      if (url.isNotEmpty && !certificateUrls.contains(url)) {
-        certificateUrls.add(url);
-      }
-    });
+    // Priority: Use 'last_certificate' from _certificateUrls or _uploadedDocuments
+    final lastCertUrl =
+        _certificateUrls['last_certificate'] ??
+        (_uploadedDocuments['last_certificate'] as String?);
 
-    // Add from _uploadedDocuments for certificate types
-    ['last_certificate', 'degree_certificate', 'training_certificate'].forEach((
-      docType,
-    ) {
-      final url = _uploadedDocuments[docType] as String?;
-      if (url != null && url.isNotEmpty && !certificateUrls.contains(url)) {
-        certificateUrls.add(url);
-      }
-    });
+    if (lastCertUrl != null && lastCertUrl.isNotEmpty) {
+      certificateUrls.add(lastCertUrl);
+      print('✅ Adding latest certificate to submission: $lastCertUrl');
+    } else {
+      // Fallback: Check other certificate types only if last_certificate doesn't exist
+      ['degree_certificate', 'training_certificate'].forEach((docType) {
+        final url =
+            _certificateUrls[docType] ??
+            (_uploadedDocuments[docType] as String?);
+        if (url != null && url.isNotEmpty && !certificateUrls.contains(url)) {
+          certificateUrls.add(url);
+        }
+      });
+    }
 
     // Prepare payment details based on payment method
     Map<String, dynamic> paymentDetails = {};
@@ -4936,7 +5001,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       'profile_photo_url': profilePhotoUrl,
       'city': _selectedCity,
       'quarter': _selectedQuarter ?? _customQuarter,
-      'bio': _motivationController.text, // Save as 'bio' for completion check
+      // Bio: Dynamic bio for cards (starts with subjects, no "Hello!")
+      'bio': _createDynamicBio(),
+      // Motivation: Raw motivation text (for reference)
+      'motivation': _motivationController.text,
       // Academic Background
       'highest_education': _selectedEducation,
       'institution': _institutionController.text,
@@ -4955,8 +5023,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ] // Convert organization to list
           : [],
       'taught_levels': _taughtLevels, // Save taught levels
-      'motivation': _motivationController.text,
-
       // Tutoring Details
       'tutoring_areas': _selectedTutoringAreas,
       'learner_levels': _selectedLearnerLevels,
@@ -5015,8 +5081,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     };
 
     // Add certificates_urls only if not empty (to avoid database errors if column doesn't exist yet)
-    if (certificateUrls.isNotEmpty) {
-      tutorData['certificates_urls'] = certificateUrls;
+    // Use unique URLs to avoid duplicates
+    final uniqueCertificateUrls = certificateUrls.toSet().toList();
+    if (uniqueCertificateUrls.isNotEmpty) {
+      tutorData['certificates_urls'] = uniqueCertificateUrls;
     }
 
     return tutorData;

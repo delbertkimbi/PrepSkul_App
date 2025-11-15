@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,7 +16,6 @@ class StudentHomeScreen extends StatefulWidget {
 
 class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _userName = '';
-  String? _avatarUrl;
   bool _isLoading = true;
   bool _isFirstVisit = false;
   Map<String, dynamic>? _surveyData;
@@ -33,8 +33,43 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
 
-      _userName = userProfile?['full_name'] ?? 'Student';
-      _avatarUrl = userProfile?['avatar_url'];
+      // Get user name with priority: profile > stored signup data > session > auth metadata > default
+      var userName = userProfile?['full_name'] != null
+          ? userProfile!['full_name'].toString()
+          : null;
+      if (userName == null || userName.isEmpty || userName == 'User') {
+        // Try stored signup data
+        final storedName = prefs.getString('signup_full_name');
+        if (storedName != null && storedName.isNotEmpty) {
+          userName = storedName;
+        }
+      }
+      if (userName == null || userName.isEmpty || userName == 'User') {
+        // Try session data
+        final currentUser = await AuthService.getCurrentUser();
+        final sessionName = currentUser['fullName']?.toString();
+        if (sessionName != null &&
+            sessionName.isNotEmpty &&
+            sessionName != 'User') {
+          userName = sessionName;
+        }
+      }
+      if (userName == null || userName.isEmpty || userName == 'User') {
+        // Try auth user metadata
+        final authUser = SupabaseService.currentUser;
+        if (authUser != null && authUser.userMetadata?['full_name'] != null) {
+          final metadataName = authUser.userMetadata!['full_name']?.toString();
+          if (metadataName != null && metadataName.isNotEmpty) {
+            userName = metadataName;
+          }
+        }
+      }
+      if (userName == null || userName.isEmpty || userName == 'User') {
+        // Default fallback
+        userName = 'Student';
+      }
+
+      _userName = userName;
       _userType = userProfile?['user_type'] ?? 'student';
       _isFirstVisit = !hasVisitedHome;
 
@@ -77,27 +112,270 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     }
   }
 
+  Widget _buildSkeletonLoader() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Hero Header skeleton
+            Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppTheme.primaryColor,
+                    AppTheme.primaryColor.withOpacity(0.8),
+                  ],
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Greeting skeleton
+                            Container(
+                              width: 120,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            // Name skeleton
+                            Container(
+                              width: 180,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.4),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Notification bell skeleton
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Section title skeleton
+                  Container(
+                    width: 150,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Stats cards skeleton
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: 40,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                width: 80,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey[200]!),
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: 40,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                width: 80,
+                                height: 14,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Section title skeleton
+                  Container(
+                    width: 130,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Action cards skeleton (3 cards)
+                  ...List.generate(3, (index) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[200]!),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: double.infinity,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[300],
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: 200,
+                                    height: 14,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: AppTheme.primaryColor,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(color: Colors.white),
-              const SizedBox(height: 16),
-              Text(
-                _isFirstVisit
-                    ? 'Finding perfect tutors for you...'
-                    : 'Loading your dashboard...',
-                style: GoogleFonts.poppins(color: Colors.white, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildSkeletonLoader();
     }
 
     // Get greeting based on time
@@ -112,11 +390,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       greetingEmoji = '🌙';
     }
 
-    // Extract personalized data from survey
-    final learningPath = _surveyData?['learning_path'];
-    final subjects = _surveyData?['subjects'] as List?;
-    final skills = _surveyData?['skills'] as List?;
-    final learningGoals = _surveyData?['learning_goals'] as List?;
+    // Extract city for quick actions (only actionable data)
     final city = _surveyData?['city'];
 
     return Scaffold(
@@ -143,6 +417,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
                         child: Column(
@@ -168,75 +443,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ],
                         ),
                       ),
-                      const NotificationBell(),
-                      const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: () {
-                          // Navigate to Profile tab (index 3)
-                          Navigator.pushReplacementNamed(
-                            context,
-                            _userType == 'parent'
-                                ? '/parent-nav'
-                                : '/student-nav',
-                            arguments: {'initialTab': 3},
-                          );
-                        },
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 2,
-                            ),
-                          ),
-                          child: _avatarUrl != null && _avatarUrl!.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.network(
-                                    _avatarUrl!,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stack) {
-                                      return const Icon(
-                                        Icons.person_outline,
-                                        color: Colors.white,
-                                        size: 24,
-                                      );
-                                    },
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.person_outline,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                        ),
-                      ),
+                      const NotificationBell(iconColor: Colors.white),
                     ],
                   ),
-                  if (learningPath != null) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '📚 $learningPath',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
+                  // Removed learning path badge - this info is for platform matching, not display
                 ],
               ),
             ),
@@ -246,130 +456,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Your Learning Journey
-                  if (subjects != null && subjects.isNotEmpty ||
-                      skills != null && skills.isNotEmpty) ...[
-                    _buildSectionTitle('Your Learning Journey'),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppTheme.primaryColor.withOpacity(0.1),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (subjects != null && subjects.isNotEmpty) ...[
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.book_outlined,
-                                  size: 20,
-                                  color: AppTheme.primaryColor,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Subjects',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: subjects.take(3).map((subject) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: AppTheme.primaryColor.withOpacity(
-                                        0.3,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    subject.toString(),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: AppTheme.primaryColor,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                          if (skills != null && skills.isNotEmpty) ...[
-                            if (subjects != null && subjects.isNotEmpty)
-                              const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.emoji_objects_outlined,
-                                  size: 20,
-                                  color: AppTheme.primaryColor,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Skills',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textDark,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: skills.take(3).map((skill) {
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: AppTheme.primaryColor.withOpacity(
-                                        0.3,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    skill.toString(),
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      color: AppTheme.primaryColor,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+                  // Removed "Your Learning Journey" section - personal info belongs in profile
+                  // This data is used behind the scenes for tutor matching, not for display
 
                   // Quick Stats
                   _buildSectionTitle('Your Progress'),
@@ -429,43 +517,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       );
                     },
                   ),
+                  const SizedBox(height: 12),
+                  _buildActionCard(
+                    icon: Icons.payment,
+                    title: 'Payment History',
+                    subtitle: 'View and manage your payments',
+                    color: Colors.green,
+                    onTap: () {
+                      Navigator.pushNamed(context, '/payment-history');
+                    },
+                  ),
 
-                  if (learningGoals != null && learningGoals.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    _buildSectionTitle('Your Goals'),
-                    const SizedBox(height: 12),
-                    ...learningGoals.take(3).map((goal) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              margin: const EdgeInsets.only(top: 6),
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                goal.toString(),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  color: AppTheme.textDark,
-                                  height: 1.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
-                  ],
-
+                  // Removed "Your Goals" section - personal info belongs in profile
+                  // This data is used behind the scenes for tutor matching, not for display
                   const SizedBox(height: 32),
                 ],
               ),

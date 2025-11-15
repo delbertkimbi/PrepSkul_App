@@ -120,6 +120,27 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   }
 
   void _nextStep() {
+    // Validate current step before proceeding
+    if (!_canProceed()) {
+      // Show error message for location step if address is missing
+      if (_currentStep == 3 && 
+          (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') &&
+          (_onsiteAddress == null || _onsiteAddress!.trim().isEmpty)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Please enter your address to continue with ${_selectedLocation == 'onsite' ? 'onsite' : 'hybrid'} sessions',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red[600],
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+    
     if (_currentStep < _totalSteps - 1) {
       setState(() => _currentStep++);
       _pageController.animateToPage(
@@ -151,8 +172,13 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       case 2: // Times
         return _selectedTimes.length == _selectedDays.length;
       case 3: // Location
-        return _selectedLocation != null &&
-            (_selectedLocation != 'onsite' || _onsiteAddress != null);
+        if (_selectedLocation == null) return false;
+        // For onsite or hybrid, address is required
+        if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') {
+          return _onsiteAddress != null && _onsiteAddress!.trim().isNotEmpty;
+        }
+        // For online, no address needed
+        return true;
       case 4: // Review
         return _selectedPaymentPlan != null;
       default:

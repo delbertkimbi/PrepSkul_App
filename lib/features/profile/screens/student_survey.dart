@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
@@ -22,9 +24,14 @@ class _StudentSurveyState extends State<StudentSurvey> {
   final PageController _pageController = PageController();
 
   // Basic Student Information
-  String? _studentName;
+  String? _studentName; // Kept for backward compatibility but not shown in UI
   DateTime? _studentDateOfBirth;
   String? _studentGender;
+
+  // Date of Birth fields
+  String? _selectedDay;
+  String? _selectedMonth;
+  final TextEditingController _yearController = TextEditingController();
 
   // Location Information
   String? _selectedCity;
@@ -60,10 +67,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
   String? _tutorQualificationPreference;
   String? _preferredLocation;
   String? _preferredSchedule;
-  String? _learningStyle;
+  List<String> _learningStyles = [];
   String? _confidenceLevel;
   List<String> _learningGoals = [];
   List<String> _challenges = [];
+  bool _paymentPolicyAgreed = false;
 
   List<SurveyStep> _steps = [];
 
@@ -71,8 +79,19 @@ class _StudentSurveyState extends State<StudentSurvey> {
   void initState() {
     super.initState();
     _initializeSteps();
-    _loadStudentNameFromProfile();
-    _loadSavedData();
+    // Load name from database FIRST, then load saved data
+    // This ensures name is available before UI renders
+    _loadStudentNameFromProfile().then((_) {
+      // After name is loaded, load any saved survey data
+      _loadSavedData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _universityCoursesController.dispose();
+    _yearController.dispose();
+    super.dispose();
   }
 
   // Auto-save functionality
@@ -82,6 +101,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
       'currentStep': _currentStep,
       'studentName': _studentName,
       'studentDateOfBirth': _studentDateOfBirth?.toIso8601String(),
+      'selectedDay': _selectedDay,
+      'selectedMonth': _selectedMonth,
+      'selectedYear': _yearController.text.isNotEmpty
+          ? int.tryParse(_yearController.text)
+          : null,
       'studentGender': _studentGender,
       'selectedCity': _selectedCity,
       'selectedQuarter': _selectedQuarter,
@@ -104,10 +128,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
       'tutorQualificationPreference': _tutorQualificationPreference,
       'preferredLocation': _preferredLocation,
       'preferredSchedule': _preferredSchedule,
-      'learningStyle': _learningStyle,
+      'learningStyles': _learningStyles,
       'confidenceLevel': _confidenceLevel,
       'learningGoals': _learningGoals,
       'challenges': _challenges,
+      'paymentPolicyAgreed': _paymentPolicyAgreed,
     };
     await prefs.setString('student_survey_data', jsonEncode(data));
     print('✅ Auto-saved student survey data');
@@ -122,9 +147,37 @@ class _StudentSurveyState extends State<StudentSurvey> {
         final data = jsonDecode(savedDataString) as Map<String, dynamic>;
         setState(() {
           _currentStep = data['currentStep'] ?? 0;
-          _studentName = data['studentName'];
+          _studentName = data['studentName']; // Keep for backward compatibility
           if (data['studentDateOfBirth'] != null) {
             _studentDateOfBirth = DateTime.parse(data['studentDateOfBirth']);
+            // Populate day, month, year fields from loaded date
+            _selectedDay = _studentDateOfBirth!.day.toString().padLeft(2, '0');
+            _selectedMonth = _studentDateOfBirth!.month.toString().padLeft(
+              2,
+              '0',
+            );
+            _yearController.text = _studentDateOfBirth!.year.toString();
+          } else {
+            // Also check if day/month/year are saved separately
+            _selectedMonth = data['selectedMonth'];
+            if (data['selectedYear'] != null) {
+              _yearController.text = data['selectedYear'].toString();
+            }
+            // Set day after month/year are set, so validation can work
+            final savedDay = data['selectedDay'];
+            if (savedDay != null) {
+              // Validate that the saved day is valid for the current month/year
+              final availableDays = _getDaysForMonth();
+              if (availableDays.contains(savedDay)) {
+                _selectedDay = savedDay;
+              } else if (availableDays.isNotEmpty) {
+                // If saved day is not valid, use the last valid day
+                _selectedDay = availableDays.last;
+              } else {
+                _selectedDay = null;
+              }
+            }
+            _updateDateOfBirth();
           }
           _studentGender = data['studentGender'];
           _selectedCity = data['selectedCity'];
@@ -148,10 +201,17 @@ class _StudentSurveyState extends State<StudentSurvey> {
           _tutorQualificationPreference = data['tutorQualificationPreference'];
           _preferredLocation = data['preferredLocation'];
           _preferredSchedule = data['preferredSchedule'];
-          _learningStyle = data['learningStyle'];
+          // Handle both old single value and new list format
+          if (data['learningStyles'] != null) {
+            _learningStyles = List<String>.from(data['learningStyles'] ?? []);
+          } else if (data['learningStyle'] != null) {
+            // Migrate old single value to list
+            _learningStyles = [data['learningStyle'] as String];
+          }
           _confidenceLevel = data['confidenceLevel'];
           _learningGoals = List<String>.from(data['learningGoals'] ?? []);
           _challenges = List<String>.from(data['challenges'] ?? []);
+          _paymentPolicyAgreed = data['paymentPolicyAgreed'] ?? false;
         });
 
         // Update quarters if city is selected
@@ -183,13 +243,236 @@ class _StudentSurveyState extends State<StudentSurvey> {
   /// Load student name from profile to avoid redundant entry
   Future<void> _loadStudentNameFromProfile() async {
     try {
-      final userProfile = await AuthService.getUserProfile();
-      if (userProfile != null && userProfile['full_name'] != null) {
-        setState(() {
-          _studentName = userProfile['full_name'] as String;
-        });
-        print('✅ Pre-populated student name from profile: $_studentName');
+      // Only pre-populate if name is still empty (user hasn't typed anything)
+      if (_studentName != null && _studentName!.isNotEmpty) {
+        print('ℹ️ [NAME_LOAD] Name already set, skipping pre-population');
+        return;
       }
+
+      // Add a small delay to ensure Supabase is fully initialized
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Get user ID directly from Supabase auth (more reliable than SharedPreferences)
+      final authUser = SupabaseService.currentUser;
+      if (authUser == null) {
+        print('⚠️ [NAME_LOAD] No authenticated user found');
+        return;
+      }
+
+      final userId = authUser.id;
+      final userEmail = authUser.email;
+
+      // Try to load profile from database using userId
+      Map<String, dynamic>? userProfile;
+      try {
+        final profileResponse = await SupabaseService.client
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', userId)
+            .maybeSingle();
+
+        userProfile = profileResponse;
+        print(
+          '🔍 [NAME_LOAD] Profile lookup by userId: ${userProfile?['full_name']}',
+        );
+      } catch (e) {
+        print('⚠️ [NAME_LOAD] Error loading profile by userId: $e');
+      }
+
+      // If profile doesn't exist, try to create it or find by email
+      if (userProfile == null && userEmail != null) {
+        try {
+          // Try to find profile by email
+          final emailProfileResponse = await SupabaseService.client
+              .from('profiles')
+              .select('full_name, email, id')
+              .eq('email', userEmail)
+              .maybeSingle();
+
+          if (emailProfileResponse != null) {
+            userProfile = emailProfileResponse;
+            print(
+              '🔍 [NAME_LOAD] Found profile by email: ${userProfile['full_name']}',
+            );
+          } else {
+            // Profile doesn't exist - try to create it
+            print('⚠️ [NAME_LOAD] Profile not found, attempting to create...');
+            try {
+              // Get stored signup data as fallback
+              final prefs = await SharedPreferences.getInstance();
+              final storedName = prefs.getString('signup_full_name');
+              final storedRole = prefs.getString('signup_user_role');
+
+              // Try to get user role from various sources
+              String? userRole =
+                  storedRole ??
+                  authUser.userMetadata?['user_type']?.toString() ??
+                  authUser.userMetadata?['user_role']?.toString();
+
+              // Create profile with available data
+              await SupabaseService.client.from('profiles').upsert({
+                'id': userId,
+                'email': userEmail,
+                'full_name':
+                    storedName ?? authUser.userMetadata?['full_name'] ?? 'User',
+                'phone_number': authUser.phone,
+                'user_type':
+                    userRole ??
+                    'student', // Use stored role or default to student
+                'avatar_url': null,
+                'survey_completed': false,
+                'is_admin': false,
+              }, onConflict: 'id');
+
+              // Fetch the created profile
+              final newProfileResponse = await SupabaseService.client
+                  .from('profiles')
+                  .select('full_name, email')
+                  .eq('id', userId)
+                  .maybeSingle();
+
+              userProfile = newProfileResponse;
+              print('✅ [NAME_LOAD] Profile created for user: $userId');
+            } catch (createError) {
+              print('⚠️ [NAME_LOAD] Error creating profile: $createError');
+            }
+          }
+        } catch (e) {
+          print('⚠️ [NAME_LOAD] Error in email lookup/profile creation: $e');
+        }
+      }
+
+      // If we have a profile with a name, use it
+      if (userProfile != null &&
+          userProfile['full_name'] != null &&
+          userProfile['full_name'].toString().trim().isNotEmpty &&
+          userProfile['full_name'].toString().trim() != 'User') {
+        final profileName = userProfile['full_name'].toString().trim();
+        // Only set if still empty (check again after async operations)
+        if (_studentName == null || _studentName!.isEmpty) {
+          setState(() {
+            _studentName = profileName;
+            // Name loaded from profile
+          });
+          print('✅ Pre-populated student name from profile: $_studentName');
+          return;
+        } else {
+          print(
+            'ℹ️ [NAME_LOAD] Name was set while loading, skipping pre-population',
+          );
+          return;
+        }
+      }
+
+      // If not in profile, try to load from stored signup data
+      final prefs = await SharedPreferences.getInstance();
+      final storedName = prefs.getString('signup_full_name');
+      if (storedName != null && storedName.trim().isNotEmpty) {
+        // Only set if still empty
+        if (_studentName == null || _studentName!.isEmpty) {
+          setState(() {
+            _studentName = storedName.trim();
+            // Name loaded from stored signup data
+            // Mark as pre-populated
+          });
+          print(
+            '✅ Pre-populated student name from stored signup data: $_studentName',
+          );
+        }
+        return;
+      }
+
+      // If not in stored signup data, try to load from current user session
+      if (_studentName == null || _studentName!.isEmpty) {
+        final currentUser = await AuthService.getCurrentUser();
+        final sessionName = currentUser['fullName'] as String?;
+        if (sessionName != null &&
+            sessionName.trim().isNotEmpty &&
+            sessionName.trim() != 'User') {
+          setState(() {
+            _studentName = sessionName.trim();
+            // Name loaded from session
+            // Mark as pre-populated
+          });
+          print('✅ Pre-populated student name from session: $_studentName');
+          return;
+        }
+      }
+
+      // If still not found, try to load from Supabase Auth user metadata
+      if (_studentName == null || _studentName!.isEmpty) {
+        final authUser = SupabaseService.currentUser;
+        if (authUser != null && authUser.userMetadata?['full_name'] != null) {
+          final metadataName = authUser.userMetadata!['full_name'] as String;
+          if (metadataName.trim().isNotEmpty && metadataName.trim() != 'User') {
+            setState(() {
+              _studentName = metadataName.trim();
+              // Name loaded from auth metadata
+              // Mark as pre-populated
+            });
+            print(
+              '✅ Pre-populated student name from auth metadata: $_studentName',
+            );
+            return;
+          }
+        }
+      }
+
+      // Try to get from SupabaseService directly
+      try {
+        final supabaseUser = SupabaseService.currentUser;
+        if (supabaseUser != null) {
+          // Try email as fallback identifier
+          final email = supabaseUser.email;
+          if (email != null && email.isNotEmpty) {
+            // Try to fetch profile by email
+            final profileResponse = await SupabaseService.client
+                .from('profiles')
+                .select('full_name')
+                .eq('email', email)
+                .maybeSingle();
+
+            if (profileResponse != null &&
+                profileResponse['full_name'] != null &&
+                profileResponse['full_name'].toString().trim().isNotEmpty &&
+                profileResponse['full_name'].toString().trim() != 'User') {
+              final fetchedName = profileResponse['full_name']
+                  .toString()
+                  .trim();
+              // Only set if still empty (check again after async database call)
+              if (_studentName == null || _studentName!.isEmpty) {
+                setState(() {
+                  _studentName = fetchedName;
+                  // Name loaded from email lookup
+                  // Mark as pre-populated
+                });
+                print(
+                  '✅ Pre-populated student name from email lookup: $_studentName',
+                );
+              }
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        print('⚠️ Error in email lookup for name: $e');
+      }
+
+      // Debug: Print all attempted sources
+      print('🔍 [NAME_LOAD] Attempted sources:');
+      print('  - Profile: ${userProfile?['full_name']}');
+      final debugPrefs = await SharedPreferences.getInstance();
+      print('  - Stored signup: ${debugPrefs.getString('signup_full_name')}');
+      final debugCurrentUser = await AuthService.getCurrentUser();
+      print('  - Session: ${debugCurrentUser['fullName']}');
+      final debugAuthUserForLogging = SupabaseService.currentUser;
+      print(
+        '  - Auth metadata: ${debugAuthUserForLogging?.userMetadata?['full_name']}',
+      );
+      print('  - Auth email: ${debugAuthUserForLogging?.email}');
+      print(
+        '⚠️ Could not find student name in profile, stored data, session, or metadata',
+      );
     } catch (e) {
       print('⚠️ Could not load student name from profile: $e');
       // Continue without pre-population - user can enter manually
@@ -260,7 +543,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
         ),
         const SurveyStep(
           title: 'Budget Range',
-          subtitle: 'What\'s your monthly budget for tutoring?',
+          subtitle:
+              'What\'s your monthly budget for tutoring? Drag the handles to adjust your budget range',
         ),
         const SurveyStep(
           title: 'Review & Confirm',
@@ -611,58 +895,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
   Widget _buildStudentInfo() {
     return Column(
       children: [
-        // Show name as read-only if already populated from profile
-        if (_studentName != null && _studentName!.isNotEmpty)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppTheme.primaryColor.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.person, color: AppTheme.primaryColor, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Name',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: AppTheme.textMedium,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _studentName!,
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          color: AppTheme.textDark,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          _buildInputField(
-            label: 'Your Name',
-            hint: 'Enter your full name',
-            value: _studentName,
-            onChanged: (value) => setState(() => _studentName = value),
-            isRequired: true,
-          ),
-        const SizedBox(height: 20),
+        // Name field removed - already collected during signup
         _buildDateField(),
         const SizedBox(height: 20),
         _buildDropdownField(
@@ -676,7 +909,105 @@ class _StudentSurveyState extends State<StudentSurvey> {
     );
   }
 
+  /// Update date of birth from day/month/year fields
+  void _updateDateOfBirth() {
+    if (_selectedDay != null &&
+        _selectedMonth != null &&
+        _yearController.text.isNotEmpty) {
+      try {
+        final day = int.parse(_selectedDay!);
+        final month = int.parse(_selectedMonth!);
+        final year = int.parse(_yearController.text);
+
+        // Validate year (reasonable range: 1930 to current year)
+        final currentYear = DateTime.now().year;
+        if (year < 1930 || year > currentYear) {
+          _studentDateOfBirth = null;
+          return;
+        }
+
+        // Validate day based on month (DateTime(year, month + 1, 0) gives last day of month)
+        final daysInMonth = DateTime(year, month + 1, 0).day;
+        if (day < 1 || day > daysInMonth) {
+          _studentDateOfBirth = null;
+          return;
+        }
+
+        // Validate that date is not in the future
+        final selectedDate = DateTime(year, month, day);
+        if (selectedDate.isAfter(DateTime.now())) {
+          _studentDateOfBirth = null;
+          return;
+        }
+
+        setState(() {
+          _studentDateOfBirth = selectedDate;
+        });
+        _saveData();
+      } catch (e) {
+        print('⚠️ Error parsing date: $e');
+        _studentDateOfBirth = null;
+      }
+    } else {
+      _studentDateOfBirth = null;
+    }
+  }
+
+  /// Get list of days based on selected month and year
+  List<String> _getDaysForMonth() {
+    if (_selectedMonth == null || _yearController.text.isEmpty) {
+      return List.generate(31, (i) => (i + 1).toString().padLeft(2, '0'));
+    }
+
+    try {
+      final month = int.parse(_selectedMonth!);
+      final year = int.parse(_yearController.text);
+      // DateTime(year, month + 1, 0) gives the last day of the specified month
+      final daysInMonth = DateTime(year, month + 1, 0).day;
+      return List.generate(
+        daysInMonth,
+        (i) => (i + 1).toString().padLeft(2, '0'),
+      );
+    } catch (e) {
+      return List.generate(31, (i) => (i + 1).toString().padLeft(2, '0'));
+    }
+  }
+
+  /// Get a valid day value for the current month/year
+  /// Returns null if no valid day, or the selected day if valid, or adjusts to max valid day
+  String? _getValidDayValue() {
+    if (_selectedDay == null) {
+      return null;
+    }
+
+    final availableDays = _getDaysForMonth();
+    if (availableDays.contains(_selectedDay)) {
+      return _selectedDay;
+    }
+
+    // If selected day is not valid, return the last valid day or null
+    if (availableDays.isNotEmpty) {
+      return availableDays.last;
+    }
+
+    return null;
+  }
+
   Widget _buildDateField() {
+    // Calculate age if date is selected
+    int? age;
+    String? ageText;
+    if (_studentDateOfBirth != null) {
+      final today = DateTime.now();
+      age = today.year - _studentDateOfBirth!.year;
+      if (today.month < _studentDateOfBirth!.month ||
+          (today.month == _studentDateOfBirth!.month &&
+              today.day < _studentDateOfBirth!.day)) {
+        age--;
+      }
+      ageText = 'Age: $age years old';
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -701,53 +1032,266 @@ class _StudentSurveyState extends State<StudentSurvey> {
             ),
           ],
         ),
-        const SizedBox(height: 4),
-        GestureDetector(
-          onTap: () async {
-            final date = await showDatePicker(
-              context: context,
-              initialDate:
-                  _studentDateOfBirth ??
-                  DateTime.now().subtract(const Duration(days: 365 * 10)),
-              firstDate: DateTime(1930, 1, 1), // Allow dates from 1930 onwards
-              lastDate: DateTime.now(), // Today is the latest date
-            );
-            if (date != null) {
-              setState(() => _studentDateOfBirth = date);
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-            decoration: BoxDecoration(
-              color: AppTheme.softCard,
-              border: Border.all(color: AppTheme.softBorder),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.calendar_today,
-                  color: AppTheme.textMedium,
-                  size: 18,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _studentDateOfBirth != null
-                        ? '${_studentDateOfBirth!.day}/${_studentDateOfBirth!.month}/${_studentDateOfBirth!.year}'
-                        : 'Select your date of birth',
-                    style: GoogleFonts.poppins(
-                      color: _studentDateOfBirth != null
-                          ? AppTheme.textDark
-                          : AppTheme.textLight,
-                      fontSize: 12,
+        const SizedBox(height: 12),
+        // Three input fields in a row - aligned with consistent styling
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Day dropdown
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _getValidDayValue(),
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  hintText: 'Day',
+                  hintStyle: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textLight,
+                  ),
+                  filled: true,
+                  fillColor: AppTheme.softCard,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: AppTheme.primaryColor,
+                      width: 2,
                     ),
                   ),
                 ),
-              ],
+                dropdownColor: Colors.white,
+                menuMaxHeight: 300,
+                items: _getDaysForMonth().map((day) {
+                  return DropdownMenuItem(
+                    value: day,
+                    child: Text(
+                      day,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedDay = value;
+                  });
+                  _updateDateOfBirth();
+                },
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textDark,
+                ),
+                isExpanded: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Month dropdown
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _selectedMonth,
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  hintText: 'Month',
+                  hintStyle: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textLight,
+                  ),
+                  filled: true,
+                  fillColor: AppTheme.softCard,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: AppTheme.primaryColor,
+                      width: 2,
+                    ),
+                  ),
+                ),
+                dropdownColor: Colors.white,
+                menuMaxHeight: 300,
+                items: List.generate(12, (i) {
+                  final month = (i + 1).toString().padLeft(2, '0');
+                  final monthNames = [
+                    'Jan',
+                    'Feb',
+                    'Mar',
+                    'Apr',
+                    'May',
+                    'Jun',
+                    'Jul',
+                    'Aug',
+                    'Sep',
+                    'Oct',
+                    'Nov',
+                    'Dec',
+                  ];
+                  return DropdownMenuItem(
+                    value: month,
+                    child: Text(
+                      monthNames[i],
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedMonth = value;
+                    // Reset day if it's invalid for the new month
+                    if (_selectedDay != null) {
+                      final availableDays = _getDaysForMonth();
+                      if (!availableDays.contains(_selectedDay)) {
+                        // If selected day is not valid, set to last valid day or null
+                        _selectedDay = availableDays.isNotEmpty
+                            ? availableDays.last
+                            : null;
+                      }
+                    }
+                  });
+                  _updateDateOfBirth();
+                },
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textDark,
+                ),
+                isExpanded: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Year text input
+            Expanded(
+              child: TextFormField(
+                controller: _yearController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  hintText: 'Year',
+                  hintStyle: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textLight,
+                  ),
+                  filled: true,
+                  fillColor: AppTheme.softCard,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.softBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: AppTheme.primaryColor,
+                      width: 2,
+                    ),
+                  ),
+                  suffix: Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Text(
+                      '${_yearController.text.length}/4',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.textLight,
+                      ),
+                    ),
+                  ),
+                ),
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textDark,
+                ),
+                maxLength: 4,
+                buildCounter:
+                    (
+                      context, {
+                      required currentLength,
+                      required isFocused,
+                      maxLength,
+                    }) => null,
+                onChanged: (value) {
+                  // Only allow digits
+                  if (value.isNotEmpty && !RegExp(r'^\d+$').hasMatch(value)) {
+                    _yearController.text = value.replaceAll(
+                      RegExp(r'[^\d]'),
+                      '',
+                    );
+                    _yearController.selection = TextSelection.fromPosition(
+                      TextPosition(offset: _yearController.text.length),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    // Validate day when year changes
+                    if (_selectedDay != null) {
+                      final availableDays = _getDaysForMonth();
+                      if (!availableDays.contains(_selectedDay)) {
+                        // If selected day is not valid, set to last valid day or null
+                        _selectedDay = availableDays.isNotEmpty
+                            ? availableDays.last
+                            : null;
+                      }
+                    }
+                  });
+                  _updateDateOfBirth();
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return null; // Required validation is handled elsewhere
+                  }
+                  final year = int.tryParse(value);
+                  if (year == null) {
+                    return 'Invalid year';
+                  }
+                  final currentYear = DateTime.now().year;
+                  if (year < 1930 || year > currentYear) {
+                    return 'Year must be between 1930 and $currentYear';
+                  }
+                  return null;
+                },
+              ),
+            ),
+          ],
+        ),
+        // Show age if date is valid
+        if (ageText != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            ageText,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppTheme.textMedium,
             ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -833,30 +1377,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Review & Confirm',
-            style: GoogleFonts.poppins(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Please review all information',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: AppTheme.textMedium,
-            ),
-          ),
-          const SizedBox(height: 16),
-
           // Personal Information Card
           _buildReviewCard(
             title: 'Personal Information',
             icon: Icons.person_outline,
             children: [
-              _buildReviewItem('Name', _studentName),
+              // Name field removed - already collected during signup
               if (_studentDateOfBirth != null)
                 _buildReviewItem(
                   'Date of Birth',
@@ -923,7 +1449,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
               ),
               _buildReviewItem('Preferred Location', _preferredLocation),
               _buildReviewItem('Preferred Schedule', _preferredSchedule),
-              _buildReviewItem('Learning Style', _learningStyle),
+              _buildReviewItem(
+                'Learning Style(s)',
+                _learningStyles.isNotEmpty
+                    ? _learningStyles.join(', ')
+                    : 'Not selected',
+              ),
               _buildReviewItem('Confidence Level', _confidenceLevel),
             ],
           ),
@@ -1428,12 +1959,172 @@ class _StudentSurveyState extends State<StudentSurvey> {
     }
 
     // Regular subject selection for other education levels
+    // Check if education level is selected
+    if (_selectedEducationLevel == null || _selectedEducationLevel!.isEmpty) {
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.softCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.softBorder),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  color: AppTheme.primaryColor,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Please select your education level first to see available subjects.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppTheme.textMedium,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Check if stream is required but not selected
+    final isStreamRequired = SurveyConfig.isStreamRequired(
+      _selectedEducationLevel!,
+    );
+    final levelConfig = SurveyConfig.getEducationLevelConfig(
+      _selectedEducationLevel!,
+    );
+    final hasStreams = levelConfig?.hasStreams == true;
+
+    // Get subjects based on education level and stream
     final subjects = SurveyConfig.getSubjectsForEducationLevel(
       _selectedEducationLevel!,
       _selectedStream,
     );
 
+    // If stream is required but not selected, show helpful message
+    if (isStreamRequired &&
+        hasStreams &&
+        (_selectedStream == null || _selectedStream!.isEmpty)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children:
+            [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.school, color: AppTheme.primaryColor, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Select a stream to see stream-specific subjects',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'You can also select from all available subjects below, then filter by stream if needed.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.textMedium,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (subjects.isNotEmpty) ...[
+                Text(
+                  'Available Subjects (${subjects.length})',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ] +
+            subjects.map((subject) {
+              final isSelected = _selectedSubjects.contains(subject);
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: _buildOptionCard(
+                  title: subject,
+                  isSelected: isSelected,
+                  onTap: () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedSubjects.remove(subject);
+                      } else {
+                        _selectedSubjects.add(subject);
+                      }
+                    });
+                  },
+                ),
+              );
+            }).toList(),
+      );
+    }
+
+    // Stream is selected or not required - show subjects normally
+    if (subjects.isEmpty) {
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.softCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.softBorder),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: AppTheme.textMedium, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No subjects available for this education level. Please select a different level.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppTheme.textMedium,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: subjects.map((subject) {
         final isSelected = _selectedSubjects.contains(subject);
         return Container(
@@ -1587,21 +2278,14 @@ class _StudentSurveyState extends State<StudentSurvey> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'What is your budget range per month?',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Drag the handles to adjust your budget range',
-          style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textMedium),
-        ),
-        const SizedBox(height: 24),
-
+        // Text(
+        //   'What is your budget range per month?',
+        //   style: GoogleFonts.poppins(
+        //     fontSize: 16,
+        //     fontWeight: FontWeight.w600,
+        //     color: AppTheme.textDark,
+        //   ),
+        // ),
         Text(
           '$_minBudget XAF - $_maxBudget XAF',
           style: GoogleFonts.poppins(
@@ -1621,22 +2305,30 @@ class _StudentSurveyState extends State<StudentSurvey> {
         ),
         const SizedBox(height: 24),
 
-        RangeSlider(
-          values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
-          min: 20000,
-          max: 55000,
-          divisions: 35,
-          activeColor: AppTheme.primaryColor,
-          inactiveColor: AppTheme.softBorder,
-          onChanged: (RangeValues values) {
-            setState(() {
-              _minBudget = values.start.round();
-              _maxBudget = values.end.round();
-            });
-          },
-          // Make the slider handles bigger and more visible
-          overlayColor: WidgetStateProperty.all(
-            AppTheme.primaryColor.withOpacity(0.1),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            rangeThumbShape: _RoundedRectangleRangeSliderThumbShape(
+              enabledThumbRadius: 18.0,
+            ),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 28.0),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 18.0),
+          ),
+          child: RangeSlider(
+            values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
+            min: 20000,
+            max: 55000,
+            divisions: 35,
+            activeColor: AppTheme.primaryColor,
+            inactiveColor: AppTheme.softBorder,
+            onChanged: (RangeValues values) {
+              setState(() {
+                _minBudget = values.start.round();
+                _maxBudget = values.end.round();
+              });
+            },
+            overlayColor: WidgetStateProperty.all(
+              AppTheme.primaryColor.withOpacity(0.1),
+            ),
           ),
         ),
 
@@ -1724,27 +2416,63 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 12),
-              GestureDetector(
-                onTap: _showPaymentPolicy,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.description_outlined,
-                      color: AppTheme.primaryColor,
-                      size: 16,
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        // Payment Policy Agreement Checkbox
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _paymentPolicyAgreed
+                ? AppTheme.primaryColor.withOpacity(0.05)
+                : AppTheme.softCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _paymentPolicyAgreed
+                  ? AppTheme.primaryColor
+                  : AppTheme.softBorder,
+              width: _paymentPolicyAgreed ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _paymentPolicyAgreed,
+                onChanged: (value) {
+                  setState(() {
+                    _paymentPolicyAgreed = value ?? false;
+                  });
+                },
+                activeColor: AppTheme.primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: AppTheme.textDark,
+                      height: 1.4,
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'View Payment Policy',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                        decoration: TextDecoration.underline,
+                    children: [
+                      const TextSpan(text: 'I agree to the '),
+                      TextSpan(
+                        text: 'Payment Policy',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                          decoration: TextDecoration.underline,
+                        ),
+                        recognizer: TapGestureRecognizer()
+                          ..onTap = _showPaymentPolicy,
                       ),
-                    ),
-                  ],
+                      const TextSpan(text: ' *'),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2157,58 +2885,128 @@ class _StudentSurveyState extends State<StudentSurvey> {
   }
 
   Widget _buildLearningStyle() {
+    final learningStyles = [
+      {
+        'value': 'Visual',
+        'label': 'Visual',
+        'description': 'Learn best by seeing images, diagrams, and visual aids',
+      },
+      {
+        'value': 'Auditory',
+        'label': 'Auditory',
+        'description': 'Learn best by listening and discussing concepts',
+      },
+      {
+        'value': 'Kinesthetic',
+        'label': 'Kinesthetic',
+        'description': 'Learn best by doing hands-on activities and practice',
+      },
+      {
+        'value': 'Reading/Writing',
+        'label': 'Reading/Writing',
+        'description': 'Learn best by reading and writing notes',
+      },
+      {
+        'value': 'Mixed',
+        'label': 'Mixed',
+        'description': 'A combination of different learning styles',
+      },
+    ];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Title/subtitle are shown in _buildStep, so no need to repeat here
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          alignment: WrapAlignment.start,
-          children: SurveyConfig.learningStyles.map((option) {
-            bool isSelected = _learningStyle == option;
-            return GestureDetector(
-              onTap: () => setState(() => _learningStyle = option),
+        ...learningStyles.map((style) {
+          bool isSelected = _learningStyles.contains(style['value']);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (isSelected) {
+                    _learningStyles.remove(style['value']);
+                  } else {
+                    _learningStyles.add(style['value'] as String);
+                  }
+                });
+              },
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white,
                   border: Border.all(
                     color: isSelected
                         ? AppTheme.primaryColor
                         : AppTheme.softBorder,
-                    width: 2,
+                    width: isSelected ? 2 : 1.5,
                   ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: isSelected
+                      ? [
+                          BoxShadow(
+                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : [],
                 ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isSelected)
-                      const Icon(
-                        Icons.check_circle,
-                        color: Colors.white,
-                        size: 18,
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected
+                              ? AppTheme.primaryColor
+                              : AppTheme.softBorder,
+                          width: 2,
+                        ),
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : Colors.white,
                       ),
-                    if (isSelected) const SizedBox(width: 6),
-                    Text(
-                      option,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: isSelected ? Colors.white : AppTheme.textDark,
+                      child: isSelected
+                          ? const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 14,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            style['label'] as String,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            style['description'] as String,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            );
-          }).toList(),
-        ),
+            ),
+          );
+        }),
       ],
     );
   }
@@ -2423,10 +3221,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
     final step = _steps[_currentStep];
 
     if (step.title == 'Tell us about yourself') {
-      return _studentName != null &&
-          _studentName!.isNotEmpty &&
-          _studentDateOfBirth != null &&
-          _studentGender != null;
+      // Name is only required if the field is shown (name doesn't exist in DB)
+      // If name exists in DB, field is hidden and name is not required
+      // Name field removed - already collected during signup
+      // Only require date of birth and gender
+      return _studentDateOfBirth != null && _studentGender != null;
     } else if (step.title == 'What do you want to learn?' ||
         step.title == 'Choose your learning path') {
       return _selectedLearningPath != null;
@@ -2456,7 +3255,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
       return _examSubjects.isNotEmpty;
     } else if (step.title == 'Budget Range' ||
         step.title == 'What\'s your budget per session?') {
-      return true; // Budget range always has a default value
+      // Budget range always has a default value, but payment policy agreement is required
+      return _paymentPolicyAgreed;
     } else if (step.title == 'Tutor Qualification') {
       return _tutorQualificationPreference != null;
     } else if (step.title == 'Tutor Gender') {
@@ -2466,7 +3266,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     } else if (step.title == 'Schedule Preference') {
       return _preferredSchedule != null;
     } else if (step.title == 'Learning Style') {
-      return _learningStyle != null;
+      return _learningStyles.isNotEmpty;
     } else if (step.title == 'Confidence Level') {
       return _confidenceLevel != null;
     } else if (step.title == 'Location' ||
@@ -2594,10 +3394,12 @@ No direct payments should be made to tutors outside the platform.''';
           'education_level': _selectedEducationLevel,
           'class_level': _selectedClass,
           'stream': _selectedStream,
-          'subjects': (_selectedSubjects != null && _selectedSubjects.isNotEmpty)
+          'subjects':
+              (_selectedSubjects != null && _selectedSubjects.isNotEmpty)
               ? _selectedSubjects
               : null,
-          'university_courses': _universityCoursesController.text.trim().isNotEmpty
+          'university_courses':
+              _universityCoursesController.text.trim().isNotEmpty
               ? _universityCoursesController.text.trim()
               : null,
         },
@@ -2625,18 +3427,47 @@ No direct payments should be made to tutors outside the platform.''';
         'preferred_schedule': _preferredSchedule != null
             ? [_preferredSchedule!]
             : null,
-        'learning_style': _learningStyle,
+        'learning_styles': _learningStyles.isNotEmpty
+            ? _learningStyles
+            : null, // TEXT[] array
         'confidence_level': _confidenceLevel,
-        'learning_goals': (_learningGoals != null && _learningGoals.isNotEmpty)
-            ? _learningGoals
-            : null,
-        'challenges': (_challenges != null && _challenges.isNotEmpty)
-            ? _challenges
-            : null,
+        'learning_goals': _learningGoals.isNotEmpty ? _learningGoals : null,
+        'challenges': _challenges.isNotEmpty ? _challenges : null,
+        'payment_policy_agreed': _paymentPolicyAgreed,
       };
 
       // Save to database
       await SurveyRepository.saveStudentSurvey(userId, surveyData);
+
+      // Get user profile for notification
+      final userProfile = await SupabaseService.client
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .single();
+
+      final userName = userProfile['full_name'] as String? ?? 'Student';
+
+      // Notify admins about survey completion
+      try {
+        await NotificationHelperService.notifyAdminsAboutSurveyCompletion(
+          userId: userId,
+          userType: 'student',
+          userName: userName,
+          learningPath: _selectedLearningPath ?? '',
+          surveyDetails: {
+            'subjects': surveyData['subjects'],
+            'skills': surveyData['skills'],
+            'exam_type': surveyData['exam_type'],
+            'city': surveyData['city'],
+            'budget_min': surveyData['budget_min'],
+            'budget_max': surveyData['budget_max'],
+          },
+        );
+      } catch (e) {
+        print('⚠️ Error notifying admins about survey: $e');
+        // Don't block survey completion if notification fails
+      }
 
       // Clear saved onboarding data to prevent resuming on restart
       final prefs = await SharedPreferences.getInstance();
@@ -2687,6 +3518,84 @@ No direct payments should be made to tutors outside the platform.''';
         ),
       );
     }
+  }
+}
+
+/// Custom range slider thumb shape with rounded rectangle instead of circle
+class _RoundedRectangleRangeSliderThumbShape extends RangeSliderThumbShape {
+  const _RoundedRectangleRangeSliderThumbShape({
+    this.enabledThumbRadius = 12.0,
+    this.disabledThumbRadius = 8.0,
+  });
+
+  final double enabledThumbRadius;
+  final double disabledThumbRadius;
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) {
+    return Size.fromRadius(
+      isEnabled ? enabledThumbRadius : disabledThumbRadius,
+    );
+  }
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    bool isDiscrete = false,
+    bool isEnabled = true,
+    bool isOnTop = false,
+    TextDirection textDirection = TextDirection.ltr,
+    required SliderThemeData sliderTheme,
+    Thumb thumb = Thumb.start,
+    bool isPressed = false,
+  }) {
+    final Canvas canvas = context.canvas;
+    final ColorTween colorTween = ColorTween(
+      begin: sliderTheme.disabledThumbColor,
+      end: sliderTheme.thumbColor,
+    );
+    final ColorTween borderColorTween = ColorTween(
+      begin: sliderTheme.disabledThumbColor,
+      end: isPressed
+          ? sliderTheme.thumbColor?.withOpacity(0.8)
+          : sliderTheme.thumbColor,
+    );
+
+    final Color color = colorTween.evaluate(enableAnimation)!;
+    final Color borderColor = borderColorTween.evaluate(enableAnimation)!;
+
+    final double radius = isEnabled ? enabledThumbRadius : disabledThumbRadius;
+
+    // Create rounded rectangle instead of circle
+    final RRect thumbRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: center, width: radius * 2, height: radius * 2),
+      Radius.circular(radius * 0.4), // Rounded corners (40% of radius)
+    );
+
+    // Draw shadow/elevation
+    final Paint shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.2)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+
+    canvas.drawRRect(thumbRect.shift(const Offset(0, 2)), shadowPaint);
+
+    // Draw border
+    final Paint borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5;
+
+    canvas.drawRRect(thumbRect, borderPaint);
+
+    // Draw fill
+    final Paint fillPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    canvas.drawRRect(thumbRect, fillPaint);
   }
 }
 

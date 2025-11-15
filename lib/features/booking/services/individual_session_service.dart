@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
-import 'package:prepskul/core/services/google_calendar_service.dart';
+import 'package:prepskul/features/sessions/services/meet_service.dart';
 
 /// IndividualSessionService
 ///
@@ -122,6 +122,86 @@ class IndividualSessionService {
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
       print('❌ Error fetching tutor past sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Get upcoming individual sessions for a student/parent
+  static Future<List<Map<String, dynamic>>> getStudentUpcomingSessions({
+    int limit = 10,
+    DateTime? afterDate,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now();
+      final queryDate = afterDate ?? now;
+
+      var query = _supabase
+          .from('individual_sessions')
+          .select('''
+            *,
+            recurring_sessions!inner(
+              tutor_name,
+              tutor_avatar_url,
+              subject
+            )
+          ''')
+          .or('learner_id.eq.$userId,parent_id.eq.$userId')
+          .inFilter('status', ['scheduled', 'in_progress'])
+          .gte('scheduled_date', queryDate.toIso8601String().split('T')[0]);
+
+      final response = await query
+          .order('scheduled_date', ascending: true)
+          .order('scheduled_time', ascending: true)
+          .limit(limit);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching student upcoming sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Get past individual sessions for a student/parent
+  static Future<List<Map<String, dynamic>>> getStudentPastSessions({
+    int limit = 20,
+    DateTime? beforeDate,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now();
+      final queryDate = beforeDate ?? now;
+
+      var query = _supabase
+          .from('individual_sessions')
+          .select('''
+            *,
+            recurring_sessions!inner(
+              tutor_name,
+              tutor_avatar_url,
+              subject
+            )
+          ''')
+          .or('learner_id.eq.$userId,parent_id.eq.$userId')
+          .inFilter('status', ['completed', 'cancelled', 'no_show_tutor', 'no_show_learner'])
+          .lte('scheduled_date', queryDate.toIso8601String().split('T')[0]);
+
+      final response = await query
+          .order('scheduled_date', ascending: false)
+          .order('scheduled_time', ascending: false)
+          .limit(limit);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('❌ Error fetching student past sessions: $e');
       rethrow;
     }
   }
@@ -330,69 +410,29 @@ class IndividualSessionService {
         final tutorId = recurringData['tutor_id'] as String;
         final subject = recurringData['subject'] as String? ?? 'Tutoring Session';
 
-        // Parse time
-        final timeParts = scheduledTime.split(':');
-        final hour = int.parse(timeParts[0]);
-        final minute = int.parse(timeParts[1].split(' ')[0]);
-        final isPM = scheduledTime.toUpperCase().contains('PM');
-        final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
+        // Get student ID from individual session (learner_id or parent_id)
+        final sessionData = await _supabase
+            .from('individual_sessions')
+            .select('learner_id, parent_id')
+            .eq('id', sessionId)
+            .single();
 
-        final startTime = DateTime(
-          scheduledDate.year,
-          scheduledDate.month,
-          scheduledDate.day,
-          hour24,
-          minute,
-        );
-
-        // Get tutor and student emails
-        final tutorProfile = await _supabase
-            .from('profiles')
-            .select('email')
-            .eq('id', tutorId)
-            .maybeSingle();
-
-        final recurringSessionId = session['recurring_session_id'] as String;
-        final studentProfile = await _supabase
-            .from('recurring_sessions')
-            .select('student_id')
-            .eq('id', recurringSessionId)
-            .maybeSingle();
-
-        final studentId = studentProfile?['student_id'] as String?;
+        final studentId = sessionData['learner_id'] as String? ?? sessionData['parent_id'] as String?;
+        
         if (studentId != null) {
-          final studentEmailData = await _supabase
-              .from('profiles')
-              .select('email')
-              .eq('id', studentId)
-              .maybeSingle();
+          // Use MeetService for consistent Meet link generation
+          final meetLink = await MeetService.generateIndividualSessionMeetLink(
+            sessionId: sessionId,
+            tutorId: tutorId,
+            studentId: studentId,
+            scheduledDate: scheduledDate,
+            scheduledTime: scheduledTime,
+            durationMinutes: durationMinutes,
+            subject: subject,
+          );
 
-          final tutorEmail = tutorProfile?['email'] as String?;
-          final studentEmail = studentEmailData?['email'] as String?;
-
-          if (tutorEmail != null && studentEmail != null) {
-            // Generate Meet link via Google Calendar
-            final calendarEvent = await GoogleCalendarService.createSessionEvent(
-              title: 'Session: $subject',
-              startTime: startTime,
-              durationMinutes: durationMinutes,
-              attendeeEmails: [tutorEmail, studentEmail],
-              description: 'PrepSkul tutoring session',
-            );
-
-            // Update session with Meet link
-            await _supabase
-                .from('individual_sessions')
-                .update({
-                  'meeting_link': calendarEvent.meetLink,
-                  'calendar_event_id': calendarEvent.id,
-                  'updated_at': DateTime.now().toIso8601String(),
-                })
-                .eq('id', sessionId);
-
-            print('✅ Meet link generated for session: $sessionId');
-            return calendarEvent.meetLink;
-          }
+          print('✅ Meet link generated for session: $sessionId');
+          return meetLink;
         }
       }
 

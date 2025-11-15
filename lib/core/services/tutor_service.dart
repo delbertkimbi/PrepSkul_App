@@ -2,6 +2,14 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 
+// Helper function to safely cast dynamic values
+T? _safeCast<T>(dynamic value) {
+  if (value is T) {
+    return value;
+  }
+  return null;
+}
+
 /// Tutor Service - Handles fetching tutor data
 ///
 /// DESIGN: Easy to swap between demo data and real Supabase data
@@ -180,15 +188,18 @@ class TutorService {
     bool? isVerified,
   }) async {
     try {
-      // Build query - use LEFT join to include tutors even if profile data is incomplete
+      // Build query - use INNER join to ensure we only get tutors with profiles
       // The relationship is: tutor_profiles.user_id -> profiles.id
-      // Must specify the exact foreign key name to avoid ambiguity
-      // Include all rating and pricing fields
+      // Try multiple relationship syntaxes for compatibility
+      print(
+        '🔍 Query: Fetching approved tutors with profile data via user_id relationship',
+      );
+      
       var query = SupabaseService.client
           .from('tutor_profiles')
           .select('''
             *,
-            profiles!tutor_profiles_user_id_fkey(
+            profiles!inner(
               full_name,
               avatar_url,
               email
@@ -196,9 +207,7 @@ class TutorService {
           ''')
           .eq('status', 'approved'); // Only show approved tutors
 
-      print(
-        '🔍 Query: Fetching approved tutors with profile data via user_id relationship',
-      );
+      // Also fetch profile_photo_url from tutor_profiles (if it exists)
 
       // Apply filters
       if (subject != null && subject.isNotEmpty) {
@@ -221,25 +230,90 @@ class TutorService {
         query = query.eq('is_verified', isVerified);
       }
 
-      final response = await query.order('rating', ascending: false);
-
-      final rawTutors = response as List;
-      print(
-        '📊 Raw query returned ${rawTutors.length} approved tutors from Supabase',
-      );
+      print('🔍 Executing query...');
+      List rawTutors;
+      try {
+        final response = await query.order('rating', ascending: false);
+        rawTutors = response as List;
+        print(
+          '✅ Query successful! Raw query returned ${rawTutors.length} approved tutors from Supabase',
+        );
+      } catch (queryError) {
+        print('❌ Query failed with error: $queryError');
+        print('❌ Query error type: ${queryError.runtimeType}');
+        
+        // Try fallback query without relationship join
+        print('🔄 Attempting fallback query without relationship join...');
+        try {
+          final fallbackQuery = SupabaseService.client
+              .from('tutor_profiles')
+              .select('*')
+              .eq('status', 'approved');
+          
+          final fallbackResponse = await fallbackQuery.order('rating', ascending: false);
+          final fallbackTutors = fallbackResponse as List;
+          print('✅ Fallback query returned ${fallbackTutors.length} tutors');
+          
+          if (fallbackTutors.isEmpty) {
+            print('⚠️ Fallback query also returned no tutors');
+            return [];
+          }
+          
+          // Fetch profiles separately for each tutor
+          print('🔄 Fetching profiles separately...');
+          final tutorsWithProfiles = <Map<String, dynamic>>[];
+          for (var tutor in fallbackTutors) {
+            try {
+              final userId = tutor['user_id']?.toString();
+              if (userId == null) continue;
+              
+              final profileResponse = await SupabaseService.client
+                  .from('profiles')
+                  .select('full_name, avatar_url, email')
+                  .eq('id', userId)
+                  .maybeSingle();
+              
+              if (profileResponse != null) {
+                tutor['profiles'] = profileResponse;
+                tutorsWithProfiles.add(tutor);
+              }
+            } catch (e) {
+              print('⚠️ Could not fetch profile for tutor ${tutor['user_id']}: $e');
+            }
+          }
+          
+          print('✅ Successfully fetched ${tutorsWithProfiles.length} tutors with profiles');
+          rawTutors = tutorsWithProfiles;
+        } catch (fallbackError) {
+          print('❌ Fallback query also failed: $fallbackError');
+          rethrow; // Re-throw the original error
+        }
+      }
 
       if (rawTutors.isEmpty) {
         print('⚠️ No tutors found with status="approved"');
-        // Let's check what statuses exist
+        // Let's check what statuses exist and if there are any tutors at all
         try {
           final statusCheck = await SupabaseService.client
               .from('tutor_profiles')
               .select('status, user_id')
               .limit(10);
           print('📋 Sample tutor statuses: $statusCheck');
+          
+          // Also check total tutors without filter
+          final allTutors = await SupabaseService.client
+              .from('tutor_profiles')
+              .select('status')
+              .limit(100);
+          print('📋 Total tutors checked: ${(allTutors as List).length}');
+          if ((allTutors as List).isNotEmpty) {
+            final statuses = (allTutors as List).map((t) => t['status']).toSet();
+            print('📋 Available statuses: $statuses');
+          }
         } catch (e) {
           print('⚠️ Could not check tutor statuses: $e');
         }
+        return []; // Return empty list if no tutors found
       } else {
         // Debug: Print details of each tutor found
         for (var tutor in rawTutors) {
@@ -266,9 +340,40 @@ class TutorService {
         final userId = tutor['user_id']?.toString() ?? 'unknown';
 
         // Ensure tutor has a profile and required fields
-        final profile = tutor['profiles'];
-        if (profile == null) {
+        final profilesData = tutor['profiles'];
+        if (profilesData == null) {
           print('❌ FILTERED OUT: Tutor $userId has no profile data');
+          return false;
+        }
+
+        // Safely handle profiles - might be Map, String (JSON), or List
+        Map<String, dynamic>? profile;
+        if (profilesData is Map) {
+          profile = Map<String, dynamic>.from(profilesData);
+        } else if (profilesData is String) {
+          // Try to parse JSON string
+          try {
+            final decoded = json.decode(profilesData);
+            if (decoded is Map) {
+              profile = Map<String, dynamic>.from(decoded);
+            } else if (decoded is List && decoded.isNotEmpty) {
+              // Sometimes Supabase returns a list with one item
+              profile = Map<String, dynamic>.from(decoded[0]);
+            }
+          } catch (e) {
+            print('⚠️ Tutor $userId: Could not parse profile JSON string: $e');
+            return false;
+          }
+        } else if (profilesData is List && profilesData.isNotEmpty) {
+          // Profile might be returned as a list
+          final firstItem = profilesData[0];
+          if (firstItem is Map) {
+            profile = Map<String, dynamic>.from(firstItem);
+          }
+        }
+
+        if (profile == null) {
+          print('❌ FILTERED OUT: Tutor $userId has invalid profile data type: ${profilesData.runtimeType}');
           return false;
         }
 
@@ -326,7 +431,53 @@ class TutorService {
       );
 
       final tutors = filteredTutors.map((tutor) {
-        final profile = tutor['profiles'] as Map<String, dynamic>?;
+        // Safely handle profiles - might be Map, String (JSON), or List (from Supabase response)
+        Map<String, dynamic>? profile;
+        final profilesData = tutor['profiles'];
+        
+        if (profilesData is Map) {
+          profile = Map<String, dynamic>.from(profilesData);
+        } else if (profilesData is String) {
+          // Try to parse JSON string
+          try {
+            final decoded = json.decode(profilesData);
+            if (decoded is Map) {
+              profile = Map<String, dynamic>.from(decoded);
+            } else if (decoded is List && decoded.isNotEmpty) {
+              // Sometimes Supabase returns a list with one item
+              final firstItem = decoded[0];
+              if (firstItem is Map) {
+                profile = Map<String, dynamic>.from(firstItem);
+              }
+            }
+          } catch (e) {
+            print('⚠️ Tutor ${tutor['user_id']}: Could not parse profile JSON string: $e');
+            return null;
+          }
+        } else if (profilesData is List && profilesData.isNotEmpty) {
+          // Profile might be returned as a list
+          final firstItem = profilesData[0];
+          if (firstItem is Map) {
+            profile = Map<String, dynamic>.from(firstItem);
+          } else if (firstItem is String) {
+            // List of strings (JSON strings) - parse the first one
+            try {
+              final decoded = json.decode(firstItem);
+              if (decoded is Map) {
+                profile = Map<String, dynamic>.from(decoded);
+              }
+            } catch (e) {
+              print('⚠️ Tutor ${tutor['user_id']}: Could not parse profile from list: $e');
+              return null;
+            }
+          }
+        }
+        
+        // If we couldn't get a valid profile, skip this tutor
+        if (profile == null) {
+          print('⚠️ Tutor ${tutor['user_id']}: No valid profile data found (type: ${profilesData?.runtimeType ?? 'null'})');
+          return null;
+        }
 
         // Use specializations if subjects is null/empty
         var subjects = tutor['subjects'];
@@ -341,9 +492,9 @@ class TutorService {
         }
 
         // Calculate effective rating: Use admin_approved_rating if total_reviews < 3
-        final totalReviews = (tutor['total_reviews'] ?? 0) as int;
-        final adminApprovedRating = tutor['admin_approved_rating'] as double?;
-        final calculatedRating = (tutor['rating'] ?? 0.0) as double;
+        final totalReviews = _safeCast<int>(tutor['total_reviews']) ?? 0;
+        final adminApprovedRating = _safeCast<double>(tutor['admin_approved_rating']);
+        final calculatedRating = _safeCast<double>(tutor['rating']) ?? 0.0;
 
         // Use admin rating until we have at least 3 real reviews
         final effectiveRating =
@@ -360,10 +511,10 @@ class TutorService {
             : totalReviews;
 
         // Get pricing: Prioritize base_session_price > admin_price_override > hourly_rate
-        final baseSessionPrice = tutor['base_session_price'] as num?;
-        final adminPriceOverride = tutor['admin_price_override'] as num?;
-        final hourlyRate = tutor['hourly_rate'] as num?;
-        final perSessionRate = tutor['per_session_rate'] as num?;
+        final baseSessionPrice = _safeCast<num>(tutor['base_session_price']);
+        final adminPriceOverride = _safeCast<num>(tutor['admin_price_override']);
+        final hourlyRate = _safeCast<num>(tutor['hourly_rate']);
+        final perSessionRate = _safeCast<num>(tutor['per_session_rate']);
 
         // Determine the effective rate
         final effectiveRate = (baseSessionPrice != null && baseSessionPrice > 0)
@@ -376,19 +527,51 @@ class TutorService {
             ? hourlyRate.toDouble()
             : 0.0;
 
-        // Get bio: Use personal_statement if bio is empty, or vice versa
-        final bio = tutor['bio'] as String?;
-        final personalStatement = tutor['personal_statement'] as String?;
-        final effectiveBio = (bio != null && bio.trim().isNotEmpty)
+        // Bio mapping:
+        // - 'bio': Dynamic bio for cards (starts with subjects, no "Hello!")
+        // - 'personal_statement': Full bio with "Hello! I am..." for detail page "About" section
+        // - 'motivation': Raw motivation text (fallback)
+        final bio = _safeCast<String>(tutor['bio']); // Dynamic bio for cards
+        final personalStatement = _safeCast<String>(tutor['personal_statement']); // Full bio for detail page
+        final motivation = _safeCast<String>(tutor['motivation']); // Raw motivation (fallback)
+
+        // For cards: Use personal_statement (the "about" section) - no "Hello!" in cards
+        // Priority: personal_statement (about) > bio (dynamic) > motivation (raw fallback)
+        // Note: personal_statement may start with "Hello!" but we'll handle that in the card display
+        final effectiveBio =
+            (personalStatement != null && personalStatement.trim().isNotEmpty)
+            ? personalStatement
+            : (bio != null && bio.trim().isNotEmpty)
             ? bio
-            : (personalStatement != null && personalStatement.trim().isNotEmpty)
+            : (motivation != null && motivation.trim().isNotEmpty)
+            ? motivation
+            : '';
+
+        // Store personal_statement separately for detail page "About" section
+        final effectivePersonalStatement =
+            (personalStatement != null && personalStatement.trim().isNotEmpty)
             ? personalStatement
             : '';
 
         // Format education data: Show "program • university" (field_of_study • institution)
-        final educationJson = tutor['education'] as Map<String, dynamic>?;
-        final institution = tutor['institution'] as String?;
-        final fieldOfStudy = tutor['field_of_study'] as String?;
+        // Safely handle education - might be Map, String (JSON), or null
+        Map<String, dynamic>? educationJson;
+        final educationData = tutor['education'];
+        if (educationData is Map) {
+          educationJson = Map<String, dynamic>.from(educationData);
+        } else if (educationData is String) {
+          try {
+            final decoded = json.decode(educationData);
+            if (decoded is Map) {
+              educationJson = Map<String, dynamic>.from(decoded);
+            }
+          } catch (e) {
+            print('⚠️ Tutor ${tutor['user_id']}: Could not parse education JSON: $e');
+          }
+        }
+        final institution = tutor['institution'] is String ? tutor['institution'] as String : null;
+        final fieldOfStudy = tutor['field_of_study'] is String ? tutor['field_of_study'] as String : null;
+        final highestEducation = tutor['highest_education'] is String ? tutor['highest_education'] as String : null;
 
         String formattedEducation = '';
         // Priority: field_of_study (program) • institution (university)
@@ -407,7 +590,7 @@ class TutorService {
         formattedEducation = parts.join(' • ');
 
         // Format teaching experience: Extract lower end value (e.g., "3-5 years" -> "3 Years")
-        final teachingDuration = tutor['teaching_duration'] as String?;
+        final teachingDuration = _safeCast<String>(tutor['teaching_duration']);
         String formattedExperience = '';
         if (teachingDuration != null && teachingDuration.isNotEmpty) {
           // Extract first number from ranges like "3-5 years", "1-2 years", etc.
@@ -421,13 +604,66 @@ class TutorService {
         }
 
         // Get availability: Prioritize tutoring_availability
-        final tutoringAvailability =
-            tutor['tutoring_availability'] as Map<String, dynamic>?;
-        final testSessionAvailability =
-            tutor['test_session_availability'] as Map<String, dynamic>?;
-        final availability = tutor['availability'] as Map<String, dynamic>?;
-        final availabilitySchedule =
-            tutor['availability_schedule'] as Map<String, dynamic>?;
+        // Safely handle availability - might be Map, String (JSON), or null
+        Map<String, dynamic>? tutoringAvailability;
+        final tutoringAvailData = tutor['tutoring_availability'];
+        if (tutoringAvailData is Map) {
+          tutoringAvailability = Map<String, dynamic>.from(tutoringAvailData);
+        } else if (tutoringAvailData is String) {
+          try {
+            final decoded = json.decode(tutoringAvailData);
+            if (decoded is Map) {
+              tutoringAvailability = Map<String, dynamic>.from(decoded);
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
+
+        Map<String, dynamic>? testSessionAvailability;
+        final testSessionAvailData = tutor['test_session_availability'];
+        if (testSessionAvailData is Map) {
+          testSessionAvailability = Map<String, dynamic>.from(testSessionAvailData);
+        } else if (testSessionAvailData is String) {
+          try {
+            final decoded = json.decode(testSessionAvailData);
+            if (decoded is Map) {
+              testSessionAvailability = Map<String, dynamic>.from(decoded);
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
+
+        Map<String, dynamic>? availability;
+        final availabilityData = tutor['availability'];
+        if (availabilityData is Map) {
+          availability = Map<String, dynamic>.from(availabilityData);
+        } else if (availabilityData is String) {
+          try {
+            final decoded = json.decode(availabilityData);
+            if (decoded is Map) {
+              availability = Map<String, dynamic>.from(decoded);
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
+
+        Map<String, dynamic>? availabilitySchedule;
+        final availabilityScheduleData = tutor['availability_schedule'];
+        if (availabilityScheduleData is Map) {
+          availabilitySchedule = Map<String, dynamic>.from(availabilityScheduleData);
+        } else if (availabilityScheduleData is String) {
+          try {
+            final decoded = json.decode(availabilityScheduleData);
+            if (decoded is Map) {
+              availabilitySchedule = Map<String, dynamic>.from(decoded);
+            }
+          } catch (e) {
+            // Ignore parsing errors
+          }
+        }
 
         final effectiveAvailability =
             tutoringAvailability ??
@@ -449,14 +685,28 @@ class TutorService {
         // For now, use 0 as placeholder - will be updated in a follow-up query
         final completedSessions = 0;
 
+        // Get avatar from tutor_profiles.profile_photo_url first, then fallback to profiles.avatar_url
+        final profilePhotoUrl = tutor['profile_photo_url'] as String?;
+        final avatarUrl = profile?['avatar_url'] as String?;
+        final effectiveAvatarUrl =
+            (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+            ? profilePhotoUrl
+            : (avatarUrl != null && avatarUrl.isNotEmpty)
+            ? avatarUrl
+            : null;
+
         return {
           'id': tutor['user_id'],
           'full_name': profile?['full_name'] ?? 'Unknown',
-          'avatar_url': profile?['avatar_url'],
+          'avatar_url': effectiveAvatarUrl, // Use consolidated avatar URL
           'email': profile?['email'],
-          'bio': effectiveBio,
+          'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
+          'personal_statement':
+              effectivePersonalStatement, // Full bio for detail page (with "Hello!")
           'education':
               formattedEducation, // Formatted as "program • university"
+          'highest_education':
+              highestEducation, // Highest education level for certifications section
           'education_data':
               educationJson ??
               {
@@ -494,9 +744,19 @@ class TutorService {
           'quarter': tutor['quarter'],
           'video_intro': effectiveVideoUrl, // Use effective video URL
           'video_url': effectiveVideoUrl,
-          'teaching_style': personalStatement ?? bio ?? '',
+          // Teaching style: Build from teaching_approaches, preferred_mode, preferred_session_type
+          'teaching_style': _buildTeachingStyleText(
+            tutor['teaching_approaches'] as List?,
+            tutor['preferred_mode'] as String?,
+            tutor['preferred_session_type'] as String?,
+            tutor['handles_multiple_learners'] as bool?,
+          ),
+          'teaching_approaches': tutor['teaching_approaches'],
+          'preferred_mode': tutor['preferred_mode'],
+          'preferred_session_type': tutor['preferred_session_type'],
+          'handles_multiple_learners': tutor['handles_multiple_learners'],
         };
-      }).toList();
+      }).whereType<Map<String, dynamic>>().toList(); // Filter out nulls
 
       // Now fetch real completed sessions count for each tutor
       for (var tutorData in tutors) {
@@ -508,9 +768,7 @@ class TutorService {
               .eq('status', 'completed');
           tutorData['completed_sessions'] = (sessionsResponse as List).length;
         } catch (e) {
-          print(
-            '⚠️ Error fetching completed sessions for tutor ${tutorData['id']}: $e',
-          );
+          // Table might not exist yet - silently fallback to 0
           tutorData['completed_sessions'] = 0;
         }
       }
@@ -578,12 +836,31 @@ class TutorService {
           ? hourlyRate.toDouble()
           : 0.0;
 
-      // Get bio: Use personal_statement if bio is empty, or vice versa
-      final bio = response['bio'] as String?;
-      final personalStatement = response['personal_statement'] as String?;
-      final effectiveBio = (bio != null && bio.trim().isNotEmpty)
+      // Bio mapping:
+      // - 'bio': Dynamic bio for cards (starts with subjects, no "Hello!")
+      // - 'personal_statement': Full bio with "Hello! I am..." for detail page "About" section
+      // - 'motivation': Raw motivation text (fallback)
+      final bio = response['bio'] as String?; // Dynamic bio for cards
+      final personalStatement =
+          response['personal_statement'] as String?; // Full bio for detail page
+      final motivation =
+          response['motivation'] as String?; // Raw motivation (fallback)
+
+      // For cards: Use personal_statement (the "about" section) - no "Hello!" in cards
+      // Priority: personal_statement (about) > bio (dynamic) > motivation (raw fallback)
+      // Note: personal_statement may start with "Hello!" but we'll handle that in the card display
+      final effectiveBio =
+          (personalStatement != null && personalStatement.trim().isNotEmpty)
+          ? personalStatement
+          : (bio != null && bio.trim().isNotEmpty)
           ? bio
-          : (personalStatement != null && personalStatement.trim().isNotEmpty)
+          : (motivation != null && motivation.trim().isNotEmpty)
+          ? motivation
+          : '';
+
+      // Store personal_statement separately for detail page "About" section
+      final effectivePersonalStatement =
+          (personalStatement != null && personalStatement.trim().isNotEmpty)
           ? personalStatement
           : '';
 
@@ -591,6 +868,7 @@ class TutorService {
       final educationJson = response['education'] as Map<String, dynamic>?;
       final institution = response['institution'] as String?;
       final fieldOfStudy = response['field_of_study'] as String?;
+      final highestEducation = response['highest_education'] as String?;
 
       String formattedEducation = '';
       // Priority: field_of_study (program) • institution (university)
@@ -657,8 +935,8 @@ class TutorService {
             .eq('status', 'completed');
         completedSessions = (sessionsResponse as List).length;
       } catch (e) {
-        print('⚠️ Error fetching completed sessions: $e');
-        // Fallback to 0 if query fails
+        // Table might not exist yet - silently fallback to 0
+        completedSessions = 0;
       }
 
       // Get subjects/specializations
@@ -678,8 +956,12 @@ class TutorService {
         'full_name': profile['full_name'],
         'avatar_url': profile['avatar_url'],
         'email': profile['email'],
-        'bio': effectiveBio,
+        'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
+        'personal_statement':
+            effectivePersonalStatement, // Full bio for detail page (with "Hello!")
         'education': formattedEducation, // Formatted as "program • university"
+        'highest_education':
+            highestEducation, // Highest education level for certifications section
         'education_data':
             educationJson ??
             {
@@ -717,12 +999,59 @@ class TutorService {
         'quarter': response['quarter'],
         'video_intro': effectiveVideoUrl, // Use effective video URL
         'video_url': effectiveVideoUrl,
-        'teaching_style': personalStatement ?? bio ?? '',
+        // Teaching style: Build from teaching_approaches, preferred_mode, preferred_session_type
+        'teaching_style': _buildTeachingStyleText(
+          response['teaching_approaches'] as List?,
+          response['preferred_mode'] as String?,
+          response['preferred_session_type'] as String?,
+          response['handles_multiple_learners'] as bool?,
+        ),
+        'teaching_approaches': response['teaching_approaches'],
+        'preferred_mode': response['preferred_mode'],
+        'preferred_session_type': response['preferred_session_type'],
+        'handles_multiple_learners': response['handles_multiple_learners'],
       };
     } catch (e) {
       print('❌ Error fetching tutor by ID from Supabase: $e');
       return null;
     }
+  }
+
+  /// Build teaching style text from collected data
+  static String _buildTeachingStyleText(
+    List? teachingApproaches,
+    String? preferredMode,
+    String? preferredSessionType,
+    bool? handlesMultipleLearners,
+  ) {
+    final parts = <String>[];
+
+    // Preferred teaching mode
+    if (preferredMode != null && preferredMode.isNotEmpty) {
+      parts.add('Teaching Mode: $preferredMode');
+    }
+
+    // Teaching approaches
+    if (teachingApproaches != null && teachingApproaches.isNotEmpty) {
+      final approaches = teachingApproaches.map((a) => a.toString()).join(', ');
+      parts.add('Approach: $approaches');
+    }
+
+    // Preferred session type
+    if (preferredSessionType != null && preferredSessionType.isNotEmpty) {
+      parts.add('Session Type: $preferredSessionType');
+    }
+
+    // Multiple learners
+    if (handlesMultipleLearners == true) {
+      parts.add('Can handle multiple learners');
+    }
+
+    if (parts.isEmpty) {
+      return 'Teaching style information not available';
+    }
+
+    return parts.join('. ');
   }
 
   static Future<List<Map<String, dynamic>>> _searchSupabaseTutors(

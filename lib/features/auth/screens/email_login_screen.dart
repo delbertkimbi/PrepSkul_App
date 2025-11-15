@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'forgot_password_email_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
@@ -412,6 +414,43 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       final userRole = profile['user_type'] ?? 'learner';
 
       if (mounted) {
+        // Check if there's a pending deep link to navigate to (e.g., from rejection email)
+        final prefs = await SharedPreferences.getInstance();
+        final pendingDeepLink = prefs.getString('pending_deep_link');
+        
+        if (pendingDeepLink != null && pendingDeepLink.isNotEmpty) {
+          // Clear the pending deep link
+          await prefs.remove('pending_deep_link');
+          print('🔗 [EMAIL_LOGIN] Found pending deep link: $pendingDeepLink');
+          
+          // Navigate to the pending deep link
+          final navService = NavigationService();
+          if (navService.isReady) {
+            await navService.navigateToRoute(pendingDeepLink, replace: true);
+          } else {
+            // Queue the deep link for later processing
+            navService.queueDeepLink(Uri.parse(pendingDeepLink));
+            // Fallback to default navigation if deep link fails
+            if (surveyCompleted) {
+              if (userRole == 'tutor') {
+                Navigator.pushReplacementNamed(context, '/tutor-nav');
+              } else if (userRole == 'parent') {
+                Navigator.pushReplacementNamed(context, '/parent-nav');
+              } else {
+                Navigator.pushReplacementNamed(context, '/student-nav');
+              }
+            } else {
+              Navigator.pushReplacementNamed(
+                context,
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
+            }
+          }
+          return; // Exit early after handling deep link
+        }
+
+        // No pending deep link, use default navigation
         if (surveyCompleted) {
           // Navigate to role-based dashboard
           if (userRole == 'tutor') {

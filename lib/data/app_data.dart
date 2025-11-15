@@ -554,11 +554,12 @@ class AppData {
           ],
           'Sciences': [
             'Mathematics',
-            'Chemistry',
-            'Physics',
-            'Biology',
-            'ICT',
+            'Further Mathematics',
             'Computer Science',
+            'Chemistry',
+            'Biology',
+            'Physics',
+            'ICT',
           ],
           'Commercial': [
             'Accounting',
@@ -669,7 +670,14 @@ class AppData {
       return educationSystem['lower_secondary']['subjects'][system] ?? [];
     } else if (level == 'upper_secondary') {
       if (stream != null) {
-        return educationSystem['upper_secondary']['streams'][system][stream] ??
+        // Map user-friendly stream names to data structure keys
+        final streamMap = {
+          'Science': 'Sciences',  // User sees "Science", data has "Sciences"
+          'Arts': 'Arts',
+          'Commercial': 'Commercial',
+        };
+        final dataStreamKey = streamMap[stream] ?? stream;
+        return educationSystem['upper_secondary']['streams'][system][dataStreamKey] ??
             [];
       }
       // Return all subjects from all streams

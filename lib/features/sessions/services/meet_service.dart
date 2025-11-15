@@ -194,6 +194,92 @@ class MeetService {
     }
   }
 
+  /// Generate Meet link for individual session (regular session)
+  /// 
+  /// Creates calendar event and generates Meet link for a specific individual session
+  /// Called when session starts if link doesn't exist
+  /// 
+  /// Parameters:
+  /// - [sessionId]: Individual session ID
+  /// - [tutorId]: Tutor user ID
+  /// - [studentId]: Student user ID (learner_id or parent_id)
+  /// - [scheduledDate]: Session date
+  /// - [scheduledTime]: Session time
+  /// - [durationMinutes]: Session duration
+  /// - [subject]: Session subject
+  static Future<String> generateIndividualSessionMeetLink({
+    required String sessionId,
+    required String tutorId,
+    required String studentId,
+    required DateTime scheduledDate,
+    required String scheduledTime,
+    required int durationMinutes,
+    required String subject,
+  }) async {
+    try {
+      // Get tutor and student emails
+      final tutorProfile = await _supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', tutorId)
+          .maybeSingle();
+
+      final studentProfile = await _supabase
+          .from('profiles')
+          .select('email, full_name')
+          .eq('id', studentId)
+          .maybeSingle();
+
+      final tutorEmail = tutorProfile?['email'] as String?;
+      final studentEmail = studentProfile?['email'] as String?;
+
+      if (tutorEmail == null || studentEmail == null) {
+        throw Exception('Tutor or student email not found');
+      }
+
+      // Parse scheduled time
+      final timeParts = scheduledTime.split(':');
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1].split(' ')[0]);
+      final isPM = scheduledTime.toUpperCase().contains('PM');
+      final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
+
+      final startTime = DateTime(
+        scheduledDate.year,
+        scheduledDate.month,
+        scheduledDate.day,
+        hour24,
+        minute,
+      );
+
+      // Create calendar event with Meet link
+      final calendarEvent = await GoogleCalendarService.createSessionEvent(
+        title: 'PrepSkul Session: $subject',
+        startTime: startTime,
+        durationMinutes: durationMinutes,
+        attendeeEmails: [tutorEmail, studentEmail],
+        description: 'PrepSkul tutoring session - $subject',
+      );
+
+      // Update individual session with Meet link and calendar event ID
+      await _supabase
+          .from('individual_sessions')
+          .update({
+            'meeting_link': calendarEvent.meetLink,
+            'calendar_event_id': calendarEvent.id,
+            'meet_link_generated_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', sessionId);
+
+      print('✅ Meet link generated for individual session: $sessionId');
+      return calendarEvent.meetLink;
+    } catch (e) {
+      print('❌ Error generating individual session Meet link: $e');
+      rethrow;
+    }
+  }
+
   /// Verify Meet link access (payment check)
   /// 
   /// Checks if user can access Meet link (payment must be verified)

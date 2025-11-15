@@ -1,8 +1,10 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:async';
 import 'supabase_service.dart';
 import 'push_notification_service.dart';
+import 'email_rate_limit_service.dart';
 
 /// Comprehensive authentication service for PrepSkul
 class AuthService {
@@ -100,6 +102,19 @@ class AuthService {
         },
       );
       print('✅ Push notifications initialized after login');
+      
+      // Request permission after login if onboarding is completed
+      // Delay the request slightly to ensure user sees the app first
+      final hasCompletedOnboarding = prefs.getBool('onboarding_completed') ?? false;
+      if (hasCompletedOnboarding) {
+        Future.delayed(const Duration(seconds: 2), () async {
+          try {
+            await PushNotificationService().requestPermission();
+          } catch (e) {
+            print('⚠️ Error requesting notification permission after login: $e');
+          }
+        });
+      }
     } catch (e) {
       print('⚠️ Error initializing push notifications after login: $e');
       // Don't fail login if push notifications fail
@@ -213,10 +228,33 @@ class AuthService {
     }
   }
 
-  /// Send password reset email (for email auth)
+  /// Send password reset email (for email auth) with rate limiting and retry
   static Future<void> sendPasswordResetEmail(String email) async {
-    try {
-      print('🔍 [DEBUG] Sending password reset email to: $email');
+    // Normalize email for rate limiting
+    final normalizedEmail = email.toLowerCase().trim();
+    
+    // Check if user is in cooldown period
+    if (await EmailRateLimitService.isInCooldown(normalizedEmail)) {
+      final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
+      if (remaining != null) {
+        throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
+      }
+    }
+    
+    // Check if enough time has passed since last email
+    if (!await EmailRateLimitService.canSendEmail(normalizedEmail)) {
+      throw Exception(
+        'Please wait a moment before requesting another email. Rate limiting is in place to prevent spam.',
+      );
+    }
+    
+    // Retry logic with exponential backoff
+    int retryCount = await EmailRateLimitService.getRetryCount(normalizedEmail);
+    Exception? lastError;
+    
+    while (retryCount < 3) {
+      try {
+        print('🔍 [DEBUG] Sending password reset email to: $email (attempt ${retryCount + 1})');
 
       // Get platform-appropriate redirect URL
       final redirectUrl = getRedirectUrl();
@@ -228,32 +266,48 @@ class AuthService {
         redirectTo: redirectUrl,
       );
 
+        // Success - record email sent and clear retry count
+        await EmailRateLimitService.recordEmailSent(normalizedEmail);
+
       print('✅ Password reset email sent successfully to: $email');
       print('📧 [INFO] Email sent! Check inbox and spam folder.');
-      print('🔍 [DEBUG] Supabase resetPasswordForEmail completed successfully');
-
-      // Note: Supabase might not return an error even if email doesn't exist
-      // for security reasons, so the email might not actually be sent
-      print(
-        '⚠️ [INFO] If email not received: Check spam, wait 1-5 minutes, verify email exists',
-      );
-    } catch (e) {
-      print('❌ Error sending password reset email: $e');
-      print('🔍 [DEBUG] Error type: ${e.runtimeType}');
-      print('🔍 [DEBUG] Error details: ${e.toString()}');
-
-      // Check for rate limiting specifically
-      final errorStr = e.toString().toLowerCase();
-      if (errorStr.contains('rate limit') ||
-          errorStr.contains('too_many_requests') ||
-          errorStr.contains('over_email_send_rate_limit') ||
-          errorStr.contains('429')) {
+        return;
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        print('❌ Error sending password reset email (attempt ${retryCount + 1}): $e');
+        
+        // Check if it's a rate limit error
+        if (EmailRateLimitService.isRateLimitError(e)) {
+          // Set cooldown period
+          await EmailRateLimitService.setCooldown(normalizedEmail);
+          
+          // Increment retry count
+          retryCount = await EmailRateLimitService.incrementRetryCount(normalizedEmail);
+          
+          // Calculate retry delay
+          final retryDelay = EmailRateLimitService.calculateRetryDelay(retryCount);
+          
+          print('⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...');
+          
+          // Wait before retrying (if we haven't exceeded max retries)
+          if (retryCount < 3) {
+            await Future.delayed(retryDelay);
+            continue;
+          } else {
+            // Max retries exceeded
+            final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
+            if (remaining != null) {
+              throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
+            } else {
         throw Exception(
           'Too many email requests. Please wait a few minutes before requesting another reset email.',
         );
+            }
+          }
       }
 
-      // Check for user not found
+        // Not a rate limit error - check for other errors
+        final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('user not found') ||
           errorStr.contains('email not found') ||
           errorStr.contains('no account found')) {
@@ -262,9 +316,17 @@ class AuthService {
         );
       }
 
-      // Re-throw with parsed error message
+        // For other errors, don't retry - throw immediately
       throw Exception(parseAuthError(e));
     }
+    }
+    
+    // If we get here, all retries failed
+    if (lastError != null) {
+      throw lastError;
+    }
+    
+    throw Exception('Failed to send password reset email. Please try again later.');
   }
 
   /// Verify password reset OTP and update password
@@ -635,34 +697,95 @@ class AuthService {
     return 'Unable to complete this action. Please try again.';
   }
 
-  /// Resend email verification
+  /// Resend email verification with rate limiting and retry
   static Future<void> resendEmailVerification(String email) async {
-    try {
+    // Normalize email for rate limiting
+    final normalizedEmail = email.toLowerCase().trim();
+    
+    // Check if user is in cooldown period
+    if (await EmailRateLimitService.isInCooldown(normalizedEmail)) {
+      final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
+      if (remaining != null) {
+        throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
+      }
+    }
+    
+    // Check if enough time has passed since last email
+    if (!await EmailRateLimitService.canSendEmail(normalizedEmail)) {
+      throw Exception(
+        'Please wait a moment before requesting another email. Rate limiting is in place to prevent spam.',
+      );
+    }
+    
+    // Retry logic with exponential backoff
+    int retryCount = await EmailRateLimitService.getRetryCount(normalizedEmail);
+    Exception? lastError;
+    
+    while (retryCount < 3) {
+      try {
+        print('🔍 [DEBUG] Resending verification email to: $email (attempt ${retryCount + 1})');
+        
       await SupabaseService.client.auth.resend(
         type: OtpType.signup,
         email: email,
         emailRedirectTo: getRedirectUrl(),
       );
+        
+        // Success - record email sent and clear retry count
+        await EmailRateLimitService.recordEmailSent(normalizedEmail);
+        
       print('✅ Verification email resent to: $email');
+        return;
     } catch (e) {
-      print('❌ Error resending verification email: $e');
-
-      // Check for rate limiting or other specific errors
-      final errorStr = e.toString().toLowerCase();
-      if (errorStr.contains('rate limit') ||
-          errorStr.contains('too many requests') ||
-          errorStr.contains('too_many_requests')) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        print('❌ Error resending verification email (attempt ${retryCount + 1}): $e');
+        
+        // Check if it's a rate limit error
+        if (EmailRateLimitService.isRateLimitError(e)) {
+          // Set cooldown period
+          await EmailRateLimitService.setCooldown(normalizedEmail);
+          
+          // Increment retry count
+          retryCount = await EmailRateLimitService.incrementRetryCount(normalizedEmail);
+          
+          // Calculate retry delay
+          final retryDelay = EmailRateLimitService.calculateRetryDelay(retryCount);
+          
+          print('⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...');
+          
+          // Wait before retrying (if we haven't exceeded max retries)
+          if (retryCount < 3) {
+            await Future.delayed(retryDelay);
+            continue;
+          } else {
+            // Max retries exceeded
+            final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
+            if (remaining != null) {
+              throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
+            } else {
         throw Exception(
           'Too many email requests. Please wait a few minutes before requesting another email.',
         );
+            }
+          }
       }
 
+        // Not a rate limit error - check for other errors
+        final errorStr = e.toString().toLowerCase();
       if (errorStr.contains('email') && errorStr.contains('not found')) {
         throw Exception('Email not found. Please check your email address.');
       }
 
-      // Re-throw with parsed error message
+        // For other errors, don't retry - throw immediately
       throw Exception(parseAuthError(e));
+      }
     }
+    
+    // If we get here, all retries failed
+    if (lastError != null) {
+      throw lastError;
+    }
+    
+    throw Exception('Failed to resend verification email. Please try again later.');
   }
 }

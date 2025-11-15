@@ -1,6 +1,7 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
 
 class BookingService {
   /// Create a booking request in the database
@@ -43,6 +44,16 @@ class BookingService {
           .eq('id', tutorUserId)
           .maybeSingle();
 
+      // Map user_type to student_type for booking_requests constraint
+      // Constraint expects: ('learner', 'parent')
+      // user_type can be: ('learner', 'student', 'tutor', 'parent')
+      final userType = (userProfile['user_type'] as String? ?? 'learner').toLowerCase();
+      final studentType = userType == 'learner' || userType == 'student'
+          ? 'learner' // Map both 'learner' and 'student' to 'learner'
+          : userType == 'parent'
+              ? 'parent'
+              : 'learner'; // Default to 'learner' if unexpected value (e.g., 'tutor')
+
       // Create booking request data
       final requestData = {
         'student_id': userId,
@@ -59,7 +70,7 @@ class BookingService {
         'created_at': DateTime.now().toIso8601String(),
         // Denormalized data
         'student_name': userProfile['full_name'],
-        'student_type': userProfile['user_type'],
+        'student_type': studentType, // Use mapped value
         'tutor_name': tutorProfileData?['full_name'] ?? 'Tutor',
         'tutor_rating':
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
@@ -207,7 +218,19 @@ class BookingService {
 
       print('✅ Booking request approved: $requestId');
 
-      // Send notification to student
+      // PHASE 1.1: Create payment request when tutor approves
+      // This is the critical monetization feature
+      String? paymentRequestId;
+      try {
+        paymentRequestId = await PaymentRequestService.createPaymentRequestOnApproval(bookingRequest);
+        print('✅ Payment request created for approved booking: $paymentRequestId');
+      } catch (e) {
+        print('⚠️ Failed to create payment request: $e');
+        // Don't fail the approval if payment request creation fails
+        // But log it as it's critical for monetization
+      }
+
+      // Send notification to student (include payment request ID if created)
       try {
         final tutorName = request.tutorName;
         final subject = 'Tutoring Sessions'; // Could be extracted if available
@@ -217,6 +240,7 @@ class BookingService {
           requestId: requestId,
           tutorName: tutorName,
           subject: subject,
+          paymentRequestId: paymentRequestId, // Include payment request ID for auto-launch
         );
       } catch (e) {
         print('⚠️ Failed to send booking acceptance notification: $e');

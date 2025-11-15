@@ -165,26 +165,57 @@ END $$;
 -- Merge highest_education, institution, field_of_study into education JSONB
 
 DO $$ 
+DECLARE
+  education_column_type TEXT;
 BEGIN
-  -- Build education JSONB from individual fields if education is empty
-  UPDATE public.tutor_profiles
-  SET education = jsonb_build_object(
-    'highest_education', highest_education,
-    'institution', institution,
-    'field_of_study', field_of_study
-  )
-  WHERE (education IS NULL OR education = '{}'::jsonb)
-    AND (highest_education IS NOT NULL OR institution IS NOT NULL OR field_of_study IS NOT NULL);
-    
-  -- If education exists but individual fields are empty, extract them
-  UPDATE public.tutor_profiles
-  SET 
-    highest_education = COALESCE(highest_education, education->>'highest_education'),
-    institution = COALESCE(institution, education->>'institution'),
-    field_of_study = COALESCE(field_of_study, education->>'field_of_study')
-  WHERE education IS NOT NULL
-    AND education != '{}'::jsonb
-    AND (highest_education IS NULL OR institution IS NULL OR field_of_study IS NULL);
+  -- Check the actual data type of the education column
+  SELECT data_type INTO education_column_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'tutor_profiles'
+    AND column_name = 'education';
+  
+  -- Only proceed if education column exists
+  IF education_column_type IS NOT NULL THEN
+    -- If education is JSONB type
+    IF education_column_type = 'jsonb' THEN
+      -- Build education JSONB from individual fields if education is empty
+      UPDATE public.tutor_profiles
+      SET education = jsonb_build_object(
+        'highest_education', highest_education,
+        'institution', institution,
+        'field_of_study', field_of_study
+      )
+      WHERE (education IS NULL OR education = '{}'::jsonb)
+        AND (highest_education IS NOT NULL OR institution IS NOT NULL OR field_of_study IS NOT NULL);
+        
+      -- If education exists but individual fields are empty, extract them
+      UPDATE public.tutor_profiles
+      SET 
+        highest_education = COALESCE(highest_education, education->>'highest_education'),
+        institution = COALESCE(institution, education->>'institution'),
+        field_of_study = COALESCE(field_of_study, education->>'field_of_study')
+      WHERE education IS NOT NULL
+        AND education != '{}'::jsonb
+        AND (highest_education IS NULL OR institution IS NULL OR field_of_study IS NULL);
+    -- If education is TEXT type, convert it to JSONB first
+    ELSIF education_column_type = 'text' THEN
+      -- First, convert TEXT column to JSONB if it contains valid JSON
+      -- Then build from individual fields
+      UPDATE public.tutor_profiles
+      SET education = jsonb_build_object(
+        'highest_education', highest_education,
+        'institution', institution,
+        'field_of_study', field_of_study
+      )::jsonb
+      WHERE (education IS NULL OR education = '' OR education = '{}')
+        AND (highest_education IS NOT NULL OR institution IS NOT NULL OR field_of_study IS NOT NULL);
+    ELSE
+      RAISE NOTICE 'Education column type is % - skipping consolidation', education_column_type;
+    END IF;
+  ELSE
+    RAISE NOTICE 'Education column does not exist in tutor_profiles table';
+  END IF;
 END $$;
 
 -- ========================================

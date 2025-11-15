@@ -262,6 +262,55 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       _buildStatCard('Sessions', '0', Icons.event),
                     ],
                   ),
+                  const SizedBox(height: 24),
+
+                  // Quick Actions
+                  Text(
+                    'Quick Actions',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildActionCard(
+                    icon: Icons.inbox_outlined,
+                    title: 'My Requests',
+                    subtitle: 'View your booking requests',
+                    color: Colors.orange,
+                    onTap: () {
+                      Navigator.pushReplacementNamed(
+                        context,
+                        '/tutor-nav',
+                        arguments: {'initialTab': 1},
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildActionCard(
+                    icon: Icons.school_outlined,
+                    title: 'My Sessions',
+                    subtitle: 'View your tutoring sessions',
+                    color: AppTheme.primaryColor,
+                    onTap: () {
+                      Navigator.pushReplacementNamed(
+                        context,
+                        '/tutor-nav',
+                        arguments: {'initialTab': 2},
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _buildActionCard(
+                    icon: Icons.payment,
+                    title: 'Payment History',
+                    subtitle: 'View and manage your payments',
+                    color: Colors.green,
+                    onTap: () {
+                      Navigator.pushNamed(context, '/payment-history');
+                    },
+                  ),
                 ],
               ),
             ),
@@ -753,6 +802,71 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey[200]!),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: AppTheme.textMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+          ],
+        ),
       ),
     );
   }

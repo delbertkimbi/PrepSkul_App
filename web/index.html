@@ -53,6 +53,7 @@
   
   <style>
     /* Immediate Loading Screen - Shows before Flutter loads */
+    /* This prevents white screen flash and shows animated logo immediately */
     #flutter-loading {
       position: fixed;
       top: 0;
@@ -64,7 +65,9 @@
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      transition: opacity 0.3s ease-out;
+      transition: opacity 0.4s ease-out;
+      /* Ensure it's visible immediately - no delay */
+      opacity: 1;
     }
     
     #flutter-loading.hidden {
@@ -79,9 +82,9 @@
     .loader-logo {
       width: 120px;
       height: 120px;
-      margin: 0 auto 20px;
+      margin: 0 auto;
       animation: frontToBack 3s ease-in-out infinite;
-      filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.3));
+      filter: drop-shadow(0 4px 10px rgba(27, 44, 79, 0.2));
     }
     
     @keyframes frontToBack {
@@ -97,6 +100,9 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
+      /* Prevent image loading delay */
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
     }
     
     /* Rounded corners for images in the page */
@@ -185,27 +191,29 @@
   
   <script>
     // Hide loading screen when Flutter is ready
+    // The Flutter app will show its own animated loading screen, so we hide this one
     window.addEventListener('flutter-first-frame', function() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
+        // Fade out smoothly
         loader.classList.add('hidden');
-        // Remove after transition
+        // Remove after transition completes
         setTimeout(function() {
           loader.remove();
-        }, 300);
+        }, 400);
       }
     });
     
-    // Fallback: hide after 5 seconds if Flutter doesn't load
+    // Fallback: hide after 3 seconds if Flutter doesn't load (reduced from 5s)
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
-      if (loader) {
+      if (loader && !loader.classList.contains('hidden')) {
         loader.classList.add('hidden');
         setTimeout(function() {
           loader.remove();
-        }, 300);
+        }, 400);
       }
-    }, 5000);
+    }, 3000);
   </script>
 </head>
 <body>

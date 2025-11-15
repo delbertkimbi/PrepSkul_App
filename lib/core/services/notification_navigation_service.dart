@@ -321,16 +321,25 @@ class NotificationNavigationService {
   ) async {
     final navService = NavigationService();
     
-    // TODO: Navigate to payment/wallet screen when implemented
-    // For now, navigate to profile tab where wallet might be shown
-    final role = userType == 'tutor'
-        ? 'tutor'
-        : (userType == 'parent' ? 'parent' : 'student');
-    final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+    if (pathSegments.length < 2) {
+      // No payment ID, navigate to requests tab
+      final role = userType == 'tutor'
+          ? 'tutor'
+          : (userType == 'parent' ? 'parent' : 'student');
+      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+      await navService.navigateToRoute(
+        route,
+        arguments: {'initialTab': 2}, // Requests tab
+        replace: false,
+      );
+      return;
+    }
+
+    final paymentRequestId = pathSegments[1];
     
+    // Navigate to booking payment screen via route
     await navService.navigateToRoute(
-      route,
-      arguments: {'initialTab': 3}, // Profile tab
+      '/payments/$paymentRequestId',
       replace: false,
     );
   }

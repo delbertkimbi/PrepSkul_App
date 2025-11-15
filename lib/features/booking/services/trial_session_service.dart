@@ -33,10 +33,22 @@ class TrialSessionService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('User not authenticated');
 
-      // Default to ONLINE trials unless explicitly set otherwise
-      final normalizedLocation =
-          (location.trim().isEmpty) ? 'Online' : location.trim();
-      final isOnline = normalizedLocation.toLowerCase() == 'online';
+      // Normalize location to match database constraint: 'online' or 'onsite' (lowercase only)
+      // Trial sessions only support 'online' and 'onsite', not 'hybrid'
+      String normalizedLocation;
+      final locationLower = location.trim().toLowerCase();
+      if (locationLower.isEmpty || locationLower == 'online') {
+        normalizedLocation = 'online';
+      } else if (locationLower == 'onsite' || locationLower == 'on-site') {
+        normalizedLocation = 'onsite';
+      } else if (locationLower == 'hybrid') {
+        // Hybrid not supported for trials - default to online
+        normalizedLocation = 'online';
+      } else {
+        // Fallback to online for any other value
+        normalizedLocation = 'online';
+      }
+      final isOnline = normalizedLocation == 'online';
 
       // Calculate trial fee based on duration
       // Base: 30 min = 2000 XAF, 60 min = 3500 XAF
@@ -59,6 +71,66 @@ class TrialSessionService {
       if (!_isValidUUID(tutorId)) {
         print('⚠️ DEMO MODE: Using user ID as tutor ID for testing');
         validTutorId = userId; // Use self as tutor for demo
+      }
+
+      // Check if user already has an active trial session with this tutor
+      // Check for pending, approved, or scheduled trials
+      final pendingTrials = await _supabase
+          .from('trial_sessions')
+          .select('id, status, scheduled_date, scheduled_time')
+          .eq('tutor_id', validTutorId)
+          .eq('requester_id', userId)
+          .eq('status', 'pending')
+          .maybeSingle();
+      
+      final approvedTrials = await _supabase
+          .from('trial_sessions')
+          .select('id, status, scheduled_date, scheduled_time')
+          .eq('tutor_id', validTutorId)
+          .eq('requester_id', userId)
+          .eq('status', 'approved')
+          .maybeSingle();
+      
+      final scheduledTrials = await _supabase
+          .from('trial_sessions')
+          .select('id, status, scheduled_date, scheduled_time')
+          .eq('tutor_id', validTutorId)
+          .eq('requester_id', userId)
+          .eq('status', 'scheduled')
+          .maybeSingle();
+
+      Map<String, dynamic>? existingTrial;
+      if (pendingTrials != null) {
+        existingTrial = pendingTrials;
+      } else if (approvedTrials != null) {
+        existingTrial = approvedTrials;
+      } else if (scheduledTrials != null) {
+        existingTrial = scheduledTrials;
+      }
+
+      if (existingTrial != null) {
+        final status = existingTrial['status'] as String;
+        final scheduledDate = existingTrial['scheduled_date'] as String?;
+        final scheduledTime = existingTrial['scheduled_time'] as String?;
+        
+        String message = 'You already have an active trial session with this tutor';
+        if (status == 'pending') {
+          message = 'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
+        } else if (status == 'approved') {
+          message = 'You already have an approved trial session with this tutor';
+          if (scheduledDate != null && scheduledTime != null) {
+            message += ' scheduled for $scheduledDate at $scheduledTime';
+          }
+          message += '. Please complete this trial before booking another one.';
+        } else if (status == 'scheduled') {
+          message = 'You already have a scheduled trial session with this tutor';
+          if (scheduledDate != null && scheduledTime != null) {
+            message += ' on $scheduledDate at $scheduledTime';
+          }
+          message += '. Please complete this trial before booking another one.';
+        }
+        
+        throw Exception(message);
       }
 
       // Create trial session data
@@ -259,13 +331,6 @@ class TrialSessionService {
     required String reason,
   }) async {
     try {
-      // Get trial session first
-      final trialResponse = await _supabase
-          .from('trial_sessions')
-          .select()
-          .eq('id', sessionId)
-          .single();
-
       final updateData = {
         'status': 'rejected',
         'responded_at': DateTime.now().toIso8601String(),

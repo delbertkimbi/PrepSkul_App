@@ -404,16 +404,28 @@ class SurveyConfig {
     } else if (config.system == 'lower_secondary') {
       return AppData.getSubjectsForLevel('lower_secondary', 'anglophone');
     } else if (config.system == 'upper_secondary') {
-      if (stream != null) {
+      // For upper_secondary (High School), show subjects based on stream if selected
+      // Otherwise, show all subjects from all streams
+      if (stream != null && stream.isNotEmpty) {
+        // Stream selected - return stream-specific subjects
         return AppData.getSubjectsForLevel(
           'upper_secondary',
           'anglophone',
           stream: stream,
         );
+      } else {
+        // No stream selected - return all subjects from all streams (merged)
+        // This allows users to see subjects before selecting a stream
+        return AppData.getSubjectsForLevel('upper_secondary', 'anglophone');
       }
-      return AppData.getSubjectsForLevel('upper_secondary', 'anglophone');
     }
     return [];
+  }
+  
+  /// Check if stream is required for a given education level
+  static bool isStreamRequired(String level) {
+    final config = getEducationLevelConfig(level);
+    return config?.hasStreams == true;
   }
 
   static List<String> getSubjectsForExam(String exam) {

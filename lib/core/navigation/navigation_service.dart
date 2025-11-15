@@ -1,5 +1,5 @@
 /// Navigation Service
-/// 
+///
 /// Centralized navigation logic with route determination, guards, and deep link queue
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -82,8 +82,10 @@ class NavigationService {
             if (!hasCompletedOnboarding) {
               return NavigationResult('/onboarding');
             } else if (!hasCompletedSurvey) {
-              return NavigationResult('/profile-setup',
-                  arguments: {'userRole': userRole});
+              return NavigationResult(
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
             } else {
               final result = _getDashboardRoute(userRole);
               _analytics.trackRouteDetermined(
@@ -113,7 +115,8 @@ class NavigationService {
       final userRole = await AuthService.getUserRole();
 
       print(
-          '📊 [NAV_SERVICE] State: onboarding=$hasCompletedOnboarding, loggedIn=$isLoggedIn, supabase=$hasSupabaseSession, survey=$hasCompletedSurvey, role=$userRole');
+        '📊 [NAV_SERVICE] State: onboarding=$hasCompletedOnboarding, loggedIn=$isLoggedIn, supabase=$hasSupabaseSession, survey=$hasCompletedSurvey, role=$userRole',
+      );
 
       NavigationResult result;
       if (!hasCompletedOnboarding) {
@@ -121,14 +124,16 @@ class NavigationService {
       } else if (!isLoggedIn && !hasSupabaseSession) {
         result = NavigationResult('/auth-method-selection');
       } else if (!hasCompletedSurvey && userRole != null) {
-        result = NavigationResult('/profile-setup',
-            arguments: {'userRole': userRole});
+        result = NavigationResult(
+          '/profile-setup',
+          arguments: {'userRole': userRole},
+        );
       } else if (isLoggedIn && hasCompletedSurvey && userRole != null) {
         result = _getDashboardRoute(userRole);
       } else {
         result = NavigationResult('/auth-method-selection');
       }
-      
+
       _analytics.trackRouteDetermined(
         result.route,
         metadata: {
@@ -139,7 +144,7 @@ class NavigationService {
           'survey_completed': hasCompletedSurvey,
         },
       );
-      
+
       return result;
     } catch (e) {
       print('❌ [NAV_SERVICE] Error determining route: $e');
@@ -164,16 +169,23 @@ class NavigationService {
   }
 
   /// Navigate to route with guards and state management
-  Future<void> navigateToRoute(String route,
-      {Map<String, dynamic>? arguments,
-      bool replace = false,
-      bool clearStack = false}) async {
+  Future<void> navigateToRoute(
+    String route, {
+    Map<String, dynamic>? arguments,
+    bool replace = false,
+    bool clearStack = false,
+  }) async {
     if (!isReady) {
       print('⚠️ [NAV_SERVICE] Navigation not ready, queueing route: $route');
       // Queue for later if not ready
-      _pendingDeepLinks.add(Uri(path: route, queryParameters: {
-        ...?arguments?.map((k, v) => MapEntry(k, v.toString()))
-      }));
+      _pendingDeepLinks.add(
+        Uri(
+          path: route,
+          queryParameters: {
+            ...?arguments?.map((k, v) => MapEntry(k, v.toString())),
+          },
+        ),
+      );
       return;
     }
 
@@ -185,15 +197,20 @@ class NavigationService {
     // Check route guards
     final guardResult = await RouteGuard.canNavigateTo(route);
     if (!guardResult.allowed) {
-      print('🚫 [NAV_SERVICE] Route guard failed, redirecting to: ${guardResult.redirectRoute}');
+      print(
+        '🚫 [NAV_SERVICE] Route guard failed, redirecting to: ${guardResult.redirectRoute}',
+      );
       _analytics.trackRouteGuardBlocked(
         route,
         guardResult.redirectRoute!,
         metadata: arguments,
       );
       // Recursively navigate to redirect route
-      await navigateToRoute(guardResult.redirectRoute!,
-          arguments: guardResult.arguments, replace: true);
+      await navigateToRoute(
+        guardResult.redirectRoute!,
+        arguments: guardResult.arguments,
+        replace: true,
+      );
       return;
     }
 
@@ -201,7 +218,9 @@ class NavigationService {
     if (context == null) {
       // This is expected during app initialization - deep links are queued
       // Only log as debug, not error, to reduce noise
-      print('ℹ️ [NAV_SERVICE] Navigator not ready yet (deep link will be queued)');
+      print(
+        'ℹ️ [NAV_SERVICE] Navigator not ready yet (deep link will be queued)',
+      );
       return;
     }
 
@@ -219,20 +238,19 @@ class NavigationService {
           arguments: arguments,
         );
       } else if (replace) {
-        Navigator.of(context).pushReplacementNamed(
-          route,
-          arguments: arguments,
-        );
+        // Use pushReplacementNamed with a custom transition
+        // The MaterialApp routes will handle the widget building
+        // We'll use the default transition which should be smooth
+        Navigator.of(context).pushReplacementNamed(route, arguments: arguments);
+        // Wait for next frame to ensure route is built before continuing
+        await Future.delayed(const Duration(milliseconds: 16));
       } else {
-        Navigator.of(context).pushNamed(
-          route,
-          arguments: arguments,
-        );
+        Navigator.of(context).pushNamed(route, arguments: arguments);
       }
 
       final loadTime = DateTime.now().difference(startTime);
       _state.completeNavigation();
-      
+
       _analytics.trackRouteNavigated(
         route,
         metadata: {
@@ -279,7 +297,9 @@ class NavigationService {
       return;
     }
 
-    print('📤 [NAV_SERVICE] Processing ${_pendingDeepLinks.length} pending deep links');
+    print(
+      '📤 [NAV_SERVICE] Processing ${_pendingDeepLinks.length} pending deep links',
+    );
 
     // Process in order, but only the last one if multiple
     final lastLink = _pendingDeepLinks.last;
@@ -302,7 +322,10 @@ class NavigationService {
         'queue_size_before': _pendingDeepLinks.length,
       },
     );
-    await navigateToRoute(path, arguments: arguments.isEmpty ? null : arguments);
+    await navigateToRoute(
+      path,
+      arguments: arguments.isEmpty ? null : arguments,
+    );
   }
 
   /// Navigate to dashboard based on user role
@@ -346,4 +369,3 @@ class NavigationResult {
 
   NavigationResult(this.route, {this.arguments});
 }
-

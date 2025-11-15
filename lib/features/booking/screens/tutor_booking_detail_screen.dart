@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
@@ -68,22 +69,18 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
       if (!mounted) return;
 
       // Show success
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Request approved successfully'),
-          backgroundColor: Colors.green,
-        ),
+      BrandedSnackBar.showSuccess(
+        context,
+        'Request approved successfully',
       );
 
       // Navigate back
       Navigator.pop(context, true); // Return true to indicate refresh needed
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+      BrandedSnackBar.showError(
+        context,
+        'Error: ${e.toString()}',
       );
     } finally {
       if (mounted) {
@@ -97,11 +94,11 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Future<void> _rejectRequest() async {
     if (_isLoading || _rejectionReasonController.text.trim().isEmpty) {
       if (_rejectionReasonController.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Please provide a reason for rejection'),
-            backgroundColor: Colors.orange,
-          ),
+        BrandedSnackBar.show(
+          context,
+          message: 'Please provide a reason for rejection',
+          backgroundColor: Colors.orange,
+          icon: Icons.info_outline,
         );
       }
       return;
@@ -131,22 +128,20 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
       if (!mounted) return;
 
       // Show success
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Request rejected'),
-          backgroundColor: Colors.orange,
-        ),
+      BrandedSnackBar.show(
+        context,
+        message: 'Request rejected',
+        backgroundColor: Colors.orange,
+        icon: Icons.info_outline,
       );
 
       // Navigate back
       Navigator.pop(context, true); // Return true to indicate refresh needed
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
+      BrandedSnackBar.showError(
+        context,
+        'Error: ${e.toString()}',
       );
     } finally {
       if (mounted) {
@@ -168,12 +163,20 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           children: [
             CircleAvatar(
               radius: 30,
-              backgroundImage: request.studentAvatarUrl != null
+              backgroundColor: AppTheme.primaryColor,
+              backgroundImage: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
                   ? NetworkImage(request.studentAvatarUrl!)
                   : null,
-              child: request.studentAvatarUrl == null
+              onBackgroundImageError: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
+                  ? (exception, stackTrace) {
+                      // Image failed to load, will show fallback
+                    }
+                  : null,
+              child: request.studentAvatarUrl == null || request.studentAvatarUrl!.isEmpty
                   ? Text(
-                      request.studentName[0].toUpperCase(),
+                      request.studentName.isNotEmpty
+                          ? request.studentName[0].toUpperCase()
+                          : 'S',
                       style: GoogleFonts.poppins(
                         fontSize: 20,
                         fontWeight: FontWeight.w600,

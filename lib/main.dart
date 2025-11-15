@@ -18,6 +18,8 @@ import 'package:prepskul/features/auth/screens/auth_method_selection_screen.dart
 import 'package:prepskul/features/auth/screens/email_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
+import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:prepskul/core/navigation/main_navigation.dart';
@@ -26,6 +28,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/push_notification_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:prepskul/firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/widgets/initial_loading_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:app_links/app_links.dart';
@@ -211,7 +214,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
   }
 
   /// Handle deep link navigation from email notifications
-  void _handleDeepLink(Uri uri) {
+  void _handleDeepLink(Uri uri) async {
     print('🔗 Deep link received: $uri');
 
     // Extract path from URL
@@ -229,7 +232,56 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       return;
     }
 
-    // Queue deep link in NavigationService (will process when app is ready)
+    // List of protected routes that require authentication
+    // These routes should redirect to email login if user is not authenticated
+    final protectedRoutes = [
+      '/tutor/profile/edit',
+      '/tutor/profile',
+      '/tutor/dashboard',
+      '/tutor/onboarding',
+      '/tutor',
+      '/student',
+      '/parent',
+      '/bookings',
+      '/payments',
+      '/sessions',
+    ];
+
+    // Check if this is a protected route
+    final isProtectedRoute = protectedRoutes.any((route) => path.startsWith(route));
+
+    // Check if user is authenticated
+    final isAuthenticated = SupabaseService.isAuthenticated;
+    final user = SupabaseService.currentUser;
+
+    if (isProtectedRoute && (!isAuthenticated || user == null)) {
+      // User is not authenticated but trying to access a protected route
+      // Store the intended destination and redirect to email login
+      print('🔒 [DEEP_LINK] Protected route requires authentication, redirecting to email login');
+      print('🔒 [DEEP_LINK] Intended destination: $path');
+      
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('pending_deep_link', path);
+        print('✅ [DEEP_LINK] Stored pending deep link: $path');
+      } catch (e) {
+        print('⚠️ [DEEP_LINK] Error storing pending deep link: $e');
+      }
+
+      // Queue navigation to email login (will process when app is ready)
+      final navService = NavigationService();
+      if (navService.isReady) {
+        // App is ready, redirect to email login immediately
+        navService.navigateToRoute('/email-login', replace: true);
+      } else {
+        // Queue email login navigation
+        navService.queueDeepLink(Uri.parse('/email-login'));
+        print('📥 [DEEP_LINK] Email login queued, will process when app is ready');
+      }
+      return;
+    }
+
+    // User is authenticated or route is not protected, proceed normally
     final navService = NavigationService();
     if (navService.isReady) {
       // App is ready, process immediately
@@ -305,6 +357,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       theme: appTheme,
       home: const InitialLoadingWrapper(),
       debugShowCheckedModeBanner: false,
+      // Use fade transition for all routes to prevent white screen flash
+      themeMode: ThemeMode.light,
 
       // Localization setup - make resilient to module loading failures
       localizationsDelegates: const [
@@ -316,24 +370,50 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       supportedLocales: supportedLocales,
       locale: locale,
 
-      // Routes
-      routes: {
-        '/onboarding': (context) => const SimpleOnboardingScreen(),
-        '/auth-method-selection': (context) =>
-            const AuthMethodSelectionScreen(),
-        '/login': (context) => const BeautifulLoginScreen(),
-        '/beautiful-login': (context) => const BeautifulLoginScreen(),
-        '/beautiful-signup': (context) => const BeautifulSignupScreen(),
-        '/email-signup': (context) => const EmailSignupScreen(),
-        '/email-login': (context) => const EmailLoginScreen(),
-        '/forgot-password': (context) => const ForgotPasswordScreen(),
-      },
+      // Routes - use onGenerateRoute for fade transitions instead
+      // This prevents white screen flash during navigation
+      routes: <String, WidgetBuilder>{},
       onGenerateRoute: (settings) {
+        // Helper to create routes with fade transition (prevents white screen flash)
+        PageRoute<T> _createFadeRoute<T>(Widget Function() builder) {
+          return PageRouteBuilder<T>(
+            settings: settings,
+            pageBuilder: (context, animation, secondaryAnimation) => builder(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              // Fade transition keeps old screen visible until new one is ready
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+            transitionDuration: const Duration(milliseconds: 150),
+          );
+        }
+
+        // Handle all routes with fade transition to prevent white screen
+        switch (settings.name) {
+          case '/onboarding':
+            return _createFadeRoute(() => const SimpleOnboardingScreen());
+          case '/auth-method-selection':
+            return _createFadeRoute(() => const AuthMethodSelectionScreen());
+          case '/login':
+          case '/beautiful-login':
+            return _createFadeRoute(() => const BeautifulLoginScreen());
+          case '/beautiful-signup':
+            return _createFadeRoute(() => const BeautifulSignupScreen());
+          case '/email-signup':
+            return _createFadeRoute(() => const EmailSignupScreen());
+          case '/email-login':
+            return _createFadeRoute(() => const EmailLoginScreen());
+          case '/forgot-password':
+            return _createFadeRoute(() => const ForgotPasswordScreen());
+        }
+
         // Handle navigation routes with optional initialTab argument
         if (settings.name == '/tutor-nav') {
           final args = settings.arguments as Map<String, dynamic>?;
-          return MaterialPageRoute(
-            builder: (context) => MainNavigation(
+          return _createFadeRoute(
+            () => MainNavigation(
               userRole: 'tutor',
               initialTab: args?['initialTab'],
             ),
@@ -341,8 +421,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         }
         if (settings.name == '/student-nav') {
           final args = settings.arguments as Map<String, dynamic>?;
-          return MaterialPageRoute(
-            builder: (context) => MainNavigation(
+          return _createFadeRoute(
+            () => MainNavigation(
               userRole: 'student',
               initialTab: args?['initialTab'],
             ),
@@ -350,8 +430,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         }
         if (settings.name == '/parent-nav') {
           final args = settings.arguments as Map<String, dynamic>?;
-          return MaterialPageRoute(
-            builder: (context) => MainNavigation(
+          return _createFadeRoute(
+            () => MainNavigation(
               userRole: 'parent',
               initialTab: args?['initialTab'],
             ),
@@ -364,37 +444,33 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
 
           // Use tutor onboarding for tutors
           if (userRole == 'tutor') {
-            return MaterialPageRoute(
-              builder: (context) => const TutorOnboardingScreen(basicInfo: {}),
+            return _createFadeRoute(
+              () => const TutorOnboardingScreen(basicInfo: {}),
             );
           }
 
           // Use surveys for students and parents
           if (userRole == 'learner' || userRole == 'student') {
-            return MaterialPageRoute(
-              builder: (context) => const StudentSurvey(),
-            );
+            return _createFadeRoute(() => const StudentSurvey());
           } else if (userRole == 'parent') {
-            return MaterialPageRoute(
-              builder: (context) => const ParentSurvey(),
-            );
+            return _createFadeRoute(() => const ParentSurvey());
           }
 
           // Fallback to student survey
-          return MaterialPageRoute(builder: (context) => const StudentSurvey());
+          return _createFadeRoute(() => const StudentSurvey());
         }
         if (settings.name == '/tutor-onboarding') {
           final args = settings.arguments as Map<String, dynamic>?;
-          return MaterialPageRoute(
-            builder: (context) => TutorOnboardingScreen(basicInfo: args ?? {}),
+          return _createFadeRoute(
+            () => TutorOnboardingScreen(basicInfo: args ?? {}),
           );
         }
         if (settings.name == '/reset-password') {
           final args = settings.arguments as Map<String, dynamic>?;
           final phone = args?['phone'] ?? '';
           final isEmailRecovery = args?['isEmailRecovery'] ?? false;
-          return MaterialPageRoute(
-            builder: (context) => ResetPasswordScreen(
+          return _createFadeRoute(
+            () => ResetPasswordScreen(
               phone: phone,
               isEmailRecovery: isEmailRecovery,
             ),
@@ -402,11 +478,28 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         }
         if (settings.name == '/otp-verification') {
           final args = settings.arguments as Map<String, dynamic>?;
-          return MaterialPageRoute(
-            builder: (context) => OTPVerificationScreen(
+          return _createFadeRoute(
+            () => OTPVerificationScreen(
               phoneNumber: args?['phoneNumber'] ?? '',
               fullName: args?['fullName'] ?? '',
               userRole: args?['userRole'] ?? 'student',
+            ),
+          );
+        }
+        // Payment routes
+        if (settings.name == '/payments' ||
+            settings.name == '/payment-history') {
+          return MaterialPageRoute(
+            builder: (context) => const PaymentHistoryScreen(),
+          );
+        }
+        if (settings.name?.startsWith('/payments/') == true) {
+          final paymentRequestId = settings.name!.split('/').last;
+          final args = settings.arguments as Map<String, dynamic>?;
+          return MaterialPageRoute(
+            builder: (context) => BookingPaymentScreen(
+              paymentRequestId: paymentRequestId,
+              bookingRequestId: args?['bookingRequestId'] as String?,
             ),
           );
         }
@@ -441,96 +534,162 @@ class InitialLoadingWrapper extends StatefulWidget {
 }
 
 class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
-  bool _showSplash = false;
-  bool _initializationComplete = false;
-  bool _navigationDetermined = false;
-  DateTime? _startTime;
+  bool _isNavigating = false;
+  bool _navigationComplete = false;
 
   @override
   void initState() {
     super.initState();
-    _startTime = DateTime.now();
-
-    // Listen for initialization completion and determine navigation
-    _waitForInitializationAndNavigate();
+    // Start navigation after a brief delay to ensure UI is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeAndNavigate();
+    });
   }
 
-  Future<void> _waitForInitializationAndNavigate() async {
-    // Reduced minimum wait time to 600ms for faster perceived load
-    await Future.delayed(const Duration(milliseconds: 600));
+  Future<void> _initializeAndNavigate() async {
+    if (_isNavigating || _navigationComplete) return;
+    _isNavigating = true;
 
-    // Check if Supabase is ready (non-blocking, with timeout)
-    int attempts = 0;
-    final maxAttempts = 15; // 3 seconds max wait (15 * 200ms)
-    while (attempts < maxAttempts && !_initializationComplete) {
-      await Future.delayed(const Duration(milliseconds: 200));
-      try {
-        // Check if Supabase is initialized
-        SupabaseService.client; // This will throw if not ready
-        _initializationComplete = true;
-        break;
-      } catch (e) {
-        // Supabase not ready yet, continue waiting
+    // CRITICAL: Check authentication synchronously FIRST to avoid login screen flash
+    // This prevents showing login screen for authenticated users during hot restart
+    final isAuthenticated = SupabaseService.isAuthenticated;
+    final currentUser = SupabaseService.currentUser;
+
+    if (isAuthenticated && currentUser != null) {
+      print('✅ [INIT_LOAD] User authenticated - checking onboarding/survey status');
+      // CRITICAL: Always check onboarding completion before allowing access
+      // Wait for navigation service to be ready
+      int attempts = 0;
+      final maxAttempts = 10; // 2 seconds max wait
+      while (attempts < maxAttempts && mounted) {
+        final navService = NavigationService();
+        if (navService.isReady) {
+          try {
+            // Always use determineInitialRoute which checks onboarding/survey completion
+            final result = await navService.determineInitialRoute();
+            print('✅ [INIT_LOAD] Determined route: ${result.route}');
+            // Navigate to determined route (could be onboarding, survey, or dashboard)
+            await navService.navigateToRoute(
+              result.route,
+              arguments: result.arguments,
+              replace: true,
+            );
+            if (mounted) {
+              setState(() {
+                _navigationComplete = true;
+              });
+            }
+            return; // Exit early - navigation complete
+          } catch (e) {
+            print('⚠️ [INIT_LOAD] Error navigating authenticated user: $e');
+            // On error, check onboarding status explicitly before fallback
+            final prefs = await SharedPreferences.getInstance();
+            final hasCompletedOnboarding =
+                prefs.getBool('onboarding_completed') ?? false;
+            if (!hasCompletedOnboarding) {
+              // Redirect to onboarding if not completed
+              if (mounted) {
+                final navService = NavigationService();
+                if (navService.isReady) {
+                  await navService.navigateToRoute('/onboarding', replace: true);
+                  return;
+                }
+              }
+            }
+            // Only fallback to dashboard if onboarding is completed
+            // But still check survey completion via determineInitialRoute
+            final navService = NavigationService();
+            if (navService.isReady) {
+              try {
+                final result = await navService.determineInitialRoute();
+                await navService.navigateToRoute(
+                  result.route,
+                  arguments: result.arguments,
+                  replace: true,
+                );
+                return;
+              } catch (e2) {
+                print('⚠️ [INIT_LOAD] Error in fallback navigation: $e2');
+              }
+            }
+          }
+        }
+        await Future.delayed(const Duration(milliseconds: 200));
+        attempts++;
       }
-      attempts++;
     }
 
-    // Ensure minimum 600ms has passed for smooth transition
-    final elapsed = DateTime.now().difference(_startTime!);
-    if (elapsed.inMilliseconds < 600) {
-      await Future.delayed(
-        Duration(milliseconds: 600 - elapsed.inMilliseconds),
-      );
+    // If not authenticated, proceed with normal flow (but still check quickly)
+    // Wait for minimum 300ms to show animation (reduced from 500ms)
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Wait for Supabase to be ready (with timeout)
+    int attempts = 0;
+    final maxAttempts = 10; // 2 seconds max wait (reduced from 4 seconds)
+    while (attempts < maxAttempts) {
+      try {
+        SupabaseService.client; // This will throw if not ready
+        break; // Supabase is ready
+      } catch (e) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        attempts++;
+      }
     }
 
-    // Determine navigation route BEFORE showing splash screen
-    // This prevents the flash of wrong screen
+    // Determine and navigate to route
     if (mounted) {
       try {
         final navService = NavigationService();
         if (navService.isReady) {
           final result = await navService.determineInitialRoute();
-          _navigationDetermined = true;
 
-          // Navigate directly to the target route, skipping splash screen
-          // This prevents the 2-second flash of sign-in screen
+          // Navigate directly - animated logo will transition smoothly
           await navService.navigateToRoute(
             result.route,
             arguments: result.arguments,
             replace: true,
           );
-
-          // Don't show splash screen - we've already navigated
-          return;
+          if (mounted) {
+            setState(() {
+              _navigationComplete = true;
+            });
+          }
+        } else {
+          // Navigation service not ready - wait a bit and try again
+          await Future.delayed(const Duration(milliseconds: 200));
+          if (mounted && navService.isReady) {
+            final result = await navService.determineInitialRoute();
+            await navService.navigateToRoute(
+              result.route,
+              arguments: result.arguments,
+              replace: true,
+            );
+          }
         }
       } catch (e) {
-        print('⚠️ [INIT_LOAD] Error determining route: $e');
-        // Fall through to show splash screen as fallback
+        print('⚠️ [INIT_LOAD] Error during navigation: $e');
+        // Fallback: navigate to auth screen only if not authenticated
+        if (mounted && !SupabaseService.isAuthenticated) {
+          final navService = NavigationService();
+          if (navService.isReady) {
+            await navService.navigateToRoute(
+              '/auth-method-selection',
+              replace: true,
+            );
+          }
+        }
       }
-    }
-
-    // Fallback: Show splash screen if navigation determination failed
-    if (mounted && !_navigationDetermined) {
-      setState(() {
-        _showSplash = true;
-      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show initial loading screen first, then splash
-    // Use AnimatedSwitcher for smooth transition (no black screen)
-    if (!_showSplash) {
-      return const InitialLoadingScreen();
-    }
-    // Smooth fade transition to prevent black screen
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-      child: const SplashScreen(key: ValueKey('splash')),
+    // Always show animated loading screen until navigation completes
+    // The navigation will replace this screen, so no need to check _navigationComplete
+    // Use a Material widget to ensure proper background color during transition
+    return Material(
+      color: Colors.white,
+      child: const InitialLoadingScreen(),
     );
   }
 }
@@ -791,35 +950,177 @@ class _SplashScreenState extends State<SplashScreen> {
       return;
     }
 
+    // Get stored signup data from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final storedRole = prefs.getString('signup_user_role');
+    final storedName = prefs.getString('signup_full_name');
+    final storedEmail = prefs.getString('signup_email');
+
     // Check if profile already exists
-    final existingProfile = await SupabaseService.client
+    var existingProfile = await SupabaseService.client
         .from('profiles')
         .select()
         .eq('id', user.id)
         .maybeSingle();
 
-    // If profile doesn't exist yet, user is still in signup flow
-    // Don't navigate yet - let them complete signup
+    // If profile doesn't exist, create it using stored signup data
     if (existingProfile == null) {
-      print('📝 Profile not found - user still in signup flow');
-      // User will complete signup, profile will be created, then they'll see survey
-      return;
+      print('📝 Profile not found - creating from stored signup data');
+      try {
+        // Create profile using stored signup data
+        await SupabaseService.client.from('profiles').upsert({
+          'id': user.id,
+          'email': storedEmail ?? user.email ?? '',
+          'full_name': storedName ?? 'User',
+          'phone_number': null,
+          'user_type': storedRole ?? 'student',
+          'avatar_url': null,
+          'survey_completed': false,
+          'is_admin': false,
+        }, onConflict: 'id');
+
+        // Fetch the created profile
+        existingProfile = await SupabaseService.client
+            .from('profiles')
+            .select()
+            .eq('id', user.id)
+            .maybeSingle();
+
+        // Clear stored signup data
+        await prefs.remove('signup_user_role');
+        await prefs.remove('signup_full_name');
+        await prefs.remove('signup_email');
+      } catch (e) {
+        print('⚠️ Error creating profile: $e');
+        // Continue anyway - try to use stored data
+      }
+    } else {
+      // Profile exists - update email and name if needed
+      final updates = <String, dynamic>{};
+      bool needsUpdate = false;
+      
+      // Update email if it wasn't set
+      if ((existingProfile['email'] == null || existingProfile['email'] == '') && 
+          (storedEmail != null || user.email != null)) {
+        updates['email'] = storedEmail ?? user.email ?? '';
+        needsUpdate = true;
+      }
+      
+      // CRITICAL: Update name if it's missing or default (Student/User)
+      final currentName = existingProfile['full_name']?.toString() ?? '';
+      String? nameToUse;
+      
+      // Priority order: storedName > auth metadata > user.email (extract name) > currentName
+      if (storedName != null && storedName.isNotEmpty && 
+          storedName != 'User' && storedName != 'Student') {
+        nameToUse = storedName;
+      } else if (user.userMetadata?['full_name'] != null) {
+        final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
+        if (metadataName.isNotEmpty && 
+            metadataName != 'User' && metadataName != 'Student') {
+          nameToUse = metadataName;
+        }
+      } else if (user.email != null && currentName.isEmpty) {
+        // Extract name from email (before @) as last resort
+        final emailName = user.email!.split('@')[0];
+        if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
+          nameToUse = emailName.split('.').map((s) => 
+            s[0].toUpperCase() + s.substring(1)
+          ).join(' ');
+        }
+      }
+      
+      // Update if we found a valid name and current name is invalid
+      if (nameToUse != null && 
+          (currentName.isEmpty || currentName == 'Student' || currentName == 'User')) {
+        updates['full_name'] = nameToUse;
+        needsUpdate = true;
+        print('✅ Updating profile name from "$currentName" to "$nameToUse"');
+      }
+      
+      if (needsUpdate) {
+        try {
+          await SupabaseService.client
+              .from('profiles')
+              .update(updates)
+              .eq('id', user.id);
+          
+          // Refresh existingProfile after update
+          existingProfile = await SupabaseService.client
+              .from('profiles')
+              .select()
+              .eq('id', user.id)
+              .maybeSingle();
+          
+          print('✅ Profile updated successfully');
+        } catch (e) {
+          print('⚠️ Error updating profile: $e');
+        }
+      }
+      
+      // Only clear stored signup data AFTER we've successfully used it or confirmed it's not needed
+      // Don't clear if profile still has default name and we couldn't update it
+      final finalName = existingProfile?['full_name']?.toString() ?? '';
+      if (finalName != 'User' && finalName != 'Student' && finalName.isNotEmpty) {
+        // Profile has a valid name now, safe to clear stored data
+        await prefs.remove('signup_user_role');
+        await prefs.remove('signup_full_name');
+        await prefs.remove('signup_email');
+      } else {
+        // Profile still has invalid name, keep stored data for next attempt
+        print('⚠️ Profile still has invalid name "$finalName", keeping stored signup data');
+      }
     }
 
-    final userRole = existingProfile['user_type'] ?? 'student';
-    final hasCompletedSurvey = existingProfile['survey_completed'] ?? false;
+    // Get user role from profile or stored data
+    final userRole = existingProfile?['user_type'] ?? storedRole ?? 'student';
+    final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
+    
+    // Get name with proper priority - avoid 'User' or 'Student' defaults
+    var fullName = existingProfile?['full_name']?.toString() ?? '';
+    
+    // If name is invalid, try other sources
+    if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+      if (storedName != null && storedName.isNotEmpty && 
+          storedName != 'User' && storedName != 'Student') {
+        fullName = storedName;
+      } else if (user.userMetadata?['full_name'] != null) {
+        final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
+        if (metadataName.isNotEmpty && 
+            metadataName != 'User' && metadataName != 'Student') {
+          fullName = metadataName;
+        }
+      } else if (user.email != null) {
+        // Extract name from email as last resort
+        final emailName = user.email!.split('@')[0];
+        if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
+          fullName = emailName.split('.').map((s) => 
+            s.isNotEmpty && s.length > 1 ? s[0].toUpperCase() + s.substring(1) : s.toUpperCase()
+          ).where((s) => s.isNotEmpty).join(' ');
+        }
+      }
+    }
+    
+    // Final fallback: use role-based default only if we couldn't find anything
+    if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+      fullName = userRole == 'student' ? 'Student' : 
+                 userRole == 'parent' ? 'Parent' : 
+                 userRole == 'tutor' ? 'Tutor' : 'User';
+    }
+    
+    final phone = existingProfile?['phone_number'] ?? '';
 
     // Save session
     await AuthService.saveSession(
       userId: user.id,
       userRole: userRole,
-      phone: existingProfile['phone_number'] ?? '',
-      fullName: existingProfile['full_name'] ?? '',
+      phone: phone,
+      fullName: fullName,
       surveyCompleted: hasCompletedSurvey,
       rememberMe: true,
     );
 
-    // Navigate using NavigationService
+    // Navigate using NavigationService - redirect to role-specific route
     final navService = NavigationService();
     if (mounted && navService.isReady) {
       if (!hasCompletedSurvey) {
@@ -827,11 +1128,17 @@ class _SplashScreenState extends State<SplashScreen> {
         await navService.navigateToRoute(
           '/profile-setup',
           arguments: {'userRole': userRole},
-          clearStack: true,
+          replace: true,
         );
       } else {
         print('🏠 Navigating directly to dashboard based on role: $userRole');
-        await navService.navigateToDashboard(clearStack: true);
+        // Navigate to role-specific dashboard
+        final route = userRole == 'tutor'
+            ? '/tutor-nav'
+            : userRole == 'parent'
+            ? '/parent-nav'
+            : '/student-nav';
+        await navService.navigateToRoute(route, replace: true);
       }
     }
   }

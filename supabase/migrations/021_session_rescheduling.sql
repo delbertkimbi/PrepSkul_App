@@ -62,12 +62,24 @@ CREATE INDEX IF NOT EXISTS idx_reschedule_requests_created ON public.session_res
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'individual_sessions' AND table_schema = 'public') THEN
-    ALTER TABLE individual_sessions
-    ADD COLUMN IF NOT EXISTS reschedule_request_id UUID REFERENCES public.session_reschedule_requests(id) ON DELETE SET NULL,
+    -- Add columns only if table exists
+    ALTER TABLE public.individual_sessions
+    ADD COLUMN IF NOT EXISTS reschedule_request_id UUID,
     ADD COLUMN IF NOT EXISTS original_scheduled_date DATE,
     ADD COLUMN IF NOT EXISTS original_scheduled_time TIME;
+    
+    -- Add foreign key constraint only if it doesn't exist
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.table_constraints 
+      WHERE constraint_name = 'individual_sessions_reschedule_request_id_fkey'
+      AND table_schema = 'public'
+    ) THEN
+      ALTER TABLE public.individual_sessions
+      ADD CONSTRAINT individual_sessions_reschedule_request_id_fkey
+      FOREIGN KEY (reschedule_request_id) REFERENCES public.session_reschedule_requests(id) ON DELETE SET NULL;
+    END IF;
   ELSE
-    RAISE NOTICE 'individual_sessions table does not exist. Please run migration 002 first.';
+    RAISE NOTICE 'individual_sessions table does not exist. Skipping column additions. Please run migration 002 first.';
   END IF;
 END $$;
 
@@ -97,142 +109,257 @@ CREATE TRIGGER update_reschedule_requests_modtime
 ALTER TABLE public.session_reschedule_requests ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can view reschedule requests for their sessions
+-- This policy works for both trial sessions and recurring sessions (when individual_sessions exists)
 DROP POLICY IF EXISTS "Users can view their reschedule requests" ON public.session_reschedule_requests;
-CREATE POLICY "Users can view their reschedule requests" ON public.session_reschedule_requests
-  FOR SELECT
-  USING (
-    -- For recurring sessions (individual_sessions)
-    (
-      session_type = 'recurring' AND (
-        -- Tutor can see requests for their sessions
-        EXISTS (
-          SELECT 1 FROM individual_sessions
-          WHERE individual_sessions.id = session_reschedule_requests.session_id
-          AND individual_sessions.tutor_id = auth.uid()
+DO $$
+BEGIN
+  -- Check if individual_sessions table exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'individual_sessions'
+  ) THEN
+    -- Create policy with individual_sessions support
+    EXECUTE '
+    CREATE POLICY "Users can view their reschedule requests" ON public.session_reschedule_requests
+      FOR SELECT
+      USING (
+        -- For recurring sessions (individual_sessions)
+        (
+          session_type = ''recurring'' AND (
+            -- Tutor can see requests for their sessions
+            EXISTS (
+              SELECT 1 FROM individual_sessions
+              WHERE individual_sessions.id = session_reschedule_requests.session_id
+              AND individual_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can see requests for their sessions
+            EXISTS (
+              SELECT 1 FROM individual_sessions
+              WHERE individual_sessions.id = session_reschedule_requests.session_id
+              AND (individual_sessions.learner_id = auth.uid() OR individual_sessions.parent_id = auth.uid())
+            )
+          )
         )
         OR
-        -- Student/parent can see requests for their sessions
-        EXISTS (
-          SELECT 1 FROM individual_sessions
-          WHERE individual_sessions.id = session_reschedule_requests.session_id
-          AND (individual_sessions.learner_id = auth.uid() OR individual_sessions.parent_id = auth.uid())
-        )
-      )
-    )
-    OR
-    -- For trial sessions
-    (
-      session_type = 'trial' AND (
-        -- Tutor can see requests for their trial sessions
-        EXISTS (
-          SELECT 1 FROM public.trial_sessions
-          WHERE trial_sessions.id = session_reschedule_requests.session_id
-          AND trial_sessions.tutor_id = auth.uid()
+        -- For trial sessions
+        (
+          session_type = ''trial'' AND (
+            -- Tutor can see requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND trial_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can see requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+            )
+          )
         )
         OR
-        -- Student/parent can see requests for their trial sessions
-        EXISTS (
-          SELECT 1 FROM public.trial_sessions
-          WHERE trial_sessions.id = session_reschedule_requests.session_id
-          AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+        -- User can see requests they created
+        requested_by = auth.uid()
+      )';
+  ELSE
+    -- Create policy without individual_sessions (only trial sessions)
+    EXECUTE '
+    CREATE POLICY "Users can view their reschedule requests" ON public.session_reschedule_requests
+      FOR SELECT
+      USING (
+        -- For trial sessions
+        (
+          session_type = ''trial'' AND (
+            -- Tutor can see requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND trial_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can see requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+            )
+          )
         )
-      )
-    )
-    OR
-    -- User can see requests they created
-    requested_by = auth.uid()
-  );
+        OR
+        -- User can see requests they created
+        requested_by = auth.uid()
+      )';
+  END IF;
+END $$;
 
 -- Policy: Users can create reschedule requests for their sessions
 DROP POLICY IF EXISTS "Users can create reschedule requests" ON public.session_reschedule_requests;
-CREATE POLICY "Users can create reschedule requests" ON public.session_reschedule_requests
-  FOR INSERT
-  WITH CHECK (
-    -- For recurring sessions (individual_sessions)
-    (
-      session_type = 'recurring' AND (
-        -- Tutor can create requests for their sessions
-        EXISTS (
-          SELECT 1 FROM individual_sessions
-          WHERE individual_sessions.id = session_reschedule_requests.session_id
-          AND individual_sessions.tutor_id = auth.uid()
+DO $$
+BEGIN
+  -- Check if individual_sessions table exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'individual_sessions'
+  ) THEN
+    -- Create policy with individual_sessions support
+    EXECUTE '
+    CREATE POLICY "Users can create reschedule requests" ON public.session_reschedule_requests
+      FOR INSERT
+      WITH CHECK (
+        -- For recurring sessions (individual_sessions)
+        (
+          session_type = ''recurring'' AND (
+            -- Tutor can create requests for their sessions
+            EXISTS (
+              SELECT 1 FROM individual_sessions
+              WHERE individual_sessions.id = session_reschedule_requests.session_id
+              AND individual_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can create requests for their sessions
+            EXISTS (
+              SELECT 1 FROM individual_sessions
+              WHERE individual_sessions.id = session_reschedule_requests.session_id
+              AND (individual_sessions.learner_id = auth.uid() OR individual_sessions.parent_id = auth.uid())
+            )
+          )
         )
         OR
-        -- Student/parent can create requests for their sessions
-        EXISTS (
-          SELECT 1 FROM individual_sessions
-          WHERE individual_sessions.id = session_reschedule_requests.session_id
-          AND (individual_sessions.learner_id = auth.uid() OR individual_sessions.parent_id = auth.uid())
+        -- For trial sessions
+        (
+          session_type = ''trial'' AND (
+            -- Tutor can create requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND trial_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can create requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+            )
+          )
         )
-      )
-    )
-    OR
-    -- For trial sessions
-    (
-      session_type = 'trial' AND (
-        -- Tutor can create requests for their trial sessions
-        EXISTS (
-          SELECT 1 FROM public.trial_sessions
-          WHERE trial_sessions.id = session_reschedule_requests.session_id
-          AND trial_sessions.tutor_id = auth.uid()
+      )';
+  ELSE
+    -- Create policy without individual_sessions (only trial sessions)
+    EXECUTE '
+    CREATE POLICY "Users can create reschedule requests" ON public.session_reschedule_requests
+      FOR INSERT
+      WITH CHECK (
+        -- For trial sessions
+        (
+          session_type = ''trial'' AND (
+            -- Tutor can create requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND trial_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can create requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+            )
+          )
         )
-        OR
-        -- Student/parent can create requests for their trial sessions
-        EXISTS (
-          SELECT 1 FROM public.trial_sessions
-          WHERE trial_sessions.id = session_reschedule_requests.session_id
-          AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
-        )
-      )
-    )
-  );
+      )';
+  END IF;
+END $$;
 
 -- Policy: Users can update reschedule requests (approve/reject)
 DROP POLICY IF EXISTS "Users can update reschedule requests" ON public.session_reschedule_requests;
-CREATE POLICY "Users can update reschedule requests" ON public.session_reschedule_requests
-  FOR UPDATE
-  USING (
-    -- For recurring sessions (individual_sessions)
-    (
-      session_type = 'recurring' AND (
-        -- Tutor can approve/reject requests for their sessions
-        EXISTS (
-          SELECT 1 FROM individual_sessions
-          WHERE individual_sessions.id = session_reschedule_requests.session_id
-          AND individual_sessions.tutor_id = auth.uid()
+DO $$
+BEGIN
+  -- Check if individual_sessions table exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' AND table_name = 'individual_sessions'
+  ) THEN
+    -- Create policy with individual_sessions support
+    EXECUTE '
+    CREATE POLICY "Users can update reschedule requests" ON public.session_reschedule_requests
+      FOR UPDATE
+      USING (
+        -- For recurring sessions (individual_sessions)
+        (
+          session_type = ''recurring'' AND (
+            -- Tutor can approve/reject requests for their sessions
+            EXISTS (
+              SELECT 1 FROM individual_sessions
+              WHERE individual_sessions.id = session_reschedule_requests.session_id
+              AND individual_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can approve/reject requests for their sessions
+            EXISTS (
+              SELECT 1 FROM individual_sessions
+              WHERE individual_sessions.id = session_reschedule_requests.session_id
+              AND (individual_sessions.learner_id = auth.uid() OR individual_sessions.parent_id = auth.uid())
+            )
+          )
         )
         OR
-        -- Student/parent can approve/reject requests for their sessions
-        EXISTS (
-          SELECT 1 FROM individual_sessions
-          WHERE individual_sessions.id = session_reschedule_requests.session_id
-          AND (individual_sessions.learner_id = auth.uid() OR individual_sessions.parent_id = auth.uid())
-        )
-      )
-    )
-    OR
-    -- For trial sessions
-    (
-      session_type = 'trial' AND (
-        -- Tutor can approve/reject requests for their trial sessions
-        EXISTS (
-          SELECT 1 FROM public.trial_sessions
-          WHERE trial_sessions.id = session_reschedule_requests.session_id
-          AND trial_sessions.tutor_id = auth.uid()
+        -- For trial sessions
+        (
+          session_type = ''trial'' AND (
+            -- Tutor can approve/reject requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND trial_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can approve/reject requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+            )
+          )
         )
         OR
-        -- Student/parent can approve/reject requests for their trial sessions
-        EXISTS (
-          SELECT 1 FROM public.trial_sessions
-          WHERE trial_sessions.id = session_reschedule_requests.session_id
-          AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+        -- User can cancel their own requests
+        (requested_by = auth.uid() AND status = ''pending'')
+      )';
+  ELSE
+    -- Create policy without individual_sessions (only trial sessions)
+    EXECUTE '
+    CREATE POLICY "Users can update reschedule requests" ON public.session_reschedule_requests
+      FOR UPDATE
+      USING (
+        -- For trial sessions
+        (
+          session_type = ''trial'' AND (
+            -- Tutor can approve/reject requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND trial_sessions.tutor_id = auth.uid()
+            )
+            OR
+            -- Student/parent can approve/reject requests for their trial sessions
+            EXISTS (
+              SELECT 1 FROM public.trial_sessions
+              WHERE trial_sessions.id = session_reschedule_requests.session_id
+              AND (trial_sessions.learner_id = auth.uid() OR trial_sessions.parent_id = auth.uid())
+            )
+          )
         )
-      )
-    )
-    OR
-    -- User can cancel their own requests
-    (requested_by = auth.uid() AND status = 'pending')
-  );
+        OR
+        -- User can cancel their own requests
+        (requested_by = auth.uid() AND status = ''pending'')
+      )';
+  END IF;
+END $$;
 
 COMMENT ON TABLE public.session_reschedule_requests IS 'Rescheduling requests for trial and recurring sessions requiring mutual agreement';
 COMMENT ON COLUMN public.session_reschedule_requests.session_type IS 'Type of session: trial or recurring (individual_sessions)';
