@@ -140,18 +140,39 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       // Save auth method preference
       await prefs.setString('auth_method', 'email');
 
+      // For new users, ensure survey_intro_seen is cleared so they see the intro screen
+      await prefs.setBool('survey_intro_seen', false);
+      print('🆕 New email user signup - cleared survey_intro_seen flag');
+
       // Clear stored signup data (no longer needed)
       await prefs.remove('signup_user_role');
       await prefs.remove('signup_full_name');
       await prefs.remove('signup_email');
 
-      // Navigate to survey
+      // Check if user should see survey intro screen
+      final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+      
+      // For students and parents, show intro screen first (if not seen)
+      // For tutors, go directly to onboarding
       if (mounted) {
-        Navigator.pushReplacementNamed(
-          context,
-          '/profile-setup',
-          arguments: {'userRole': storedRole},
-        );
+        if ((storedRole == 'student' ||
+                storedRole == 'learner' ||
+                storedRole == 'parent') &&
+            !surveyIntroSeen) {
+          print('✅ Navigating to survey intro screen for $storedRole');
+          Navigator.pushReplacementNamed(
+            context,
+            '/survey-intro',
+            arguments: {'userType': storedRole},
+          );
+        } else {
+          print('⏭️ Skipping survey intro - navigating to profile setup');
+          Navigator.pushReplacementNamed(
+            context,
+            '/profile-setup',
+            arguments: {'userRole': storedRole},
+          );
+        }
       }
     } catch (e) {
       print('Error proceeding to survey: $e');

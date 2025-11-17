@@ -94,7 +94,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       final supabase = Supabase.instance.client;
       final tutorData = await supabase
           .from('tutor_profiles')
-          .select('*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)')
+          .select(
+            '*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
+          )
           .eq('user_id', trial.tutorId)
           .single();
 
@@ -128,7 +130,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     try {
       final supabase = Supabase.instance.client;
       final tutorIds = trials.map((t) => t.tutorId).toSet().toList();
-      
+
       if (tutorIds.isEmpty) return;
 
       // Fetch tutor profiles with profile data
@@ -136,13 +138,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       try {
         final tutorProfiles = await supabase
             .from('tutor_profiles')
-            .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)')
+            .select(
+              'user_id, rating, admin_approved_rating, total_reviews, profile_photo_url, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
+            )
             .inFilter('user_id', tutorIds);
+
+        print('🔍 Loaded ${tutorProfiles.length} tutor profiles for trials');
 
         // Cache tutor info
         for (var tutor in tutorProfiles) {
           final userId = tutor['user_id'] as String;
-          
+
           // Safely extract profile data - handle both Map and List responses
           Map<String, dynamic>? profile;
           final profilesData = tutor['profiles'];
@@ -151,26 +157,30 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           } else if (profilesData is List && profilesData.isNotEmpty) {
             profile = Map<String, dynamic>.from(profilesData[0]);
           }
-          
+
           // Get avatar URL - prioritize profile_photo_url from tutor_profiles, then avatar_url from profiles
           final profilePhotoUrl = tutor['profile_photo_url'] as String?;
           final avatarUrl = profile?['avatar_url'] as String?;
-          final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+          final effectiveAvatarUrl =
+              (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
               ? profilePhotoUrl
               : (avatarUrl != null && avatarUrl.isNotEmpty)
-                  ? avatarUrl
-                  : null;
-          
+              ? avatarUrl
+              : null;
+
           // Calculate effective rating (same logic as tutor_service.dart)
           final totalReviews = (tutor['total_reviews'] ?? 0) as int;
           final adminApprovedRating = tutor['admin_approved_rating'] as double?;
           final calculatedRating = (tutor['rating'] ?? 0.0) as double;
-          
+
           // Use admin rating until we have at least 3 real reviews
-          final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+          final effectiveRating =
+              (totalReviews < 3 && adminApprovedRating != null)
               ? adminApprovedRating
-              : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
-          
+              : (calculatedRating > 0
+                    ? calculatedRating
+                    : (adminApprovedRating ?? 0.0));
+
           _tutorInfoCache[userId] = {
             'full_name': profile?['full_name'] ?? 'Tutor',
             'avatar_url': effectiveAvatarUrl,
@@ -185,46 +195,65 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             // Fetch tutor profile
             final tutorProfile = await supabase
                 .from('tutor_profiles')
-                .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url')
+                .select(
+                  'user_id, rating, admin_approved_rating, total_reviews, profile_photo_url',
+                )
                 .eq('user_id', tutorId)
                 .maybeSingle();
-            
+
             if (tutorProfile == null) continue;
-            
+
             // Fetch profile separately
             final profile = await supabase
                 .from('profiles')
                 .select('full_name, avatar_url')
                 .eq('id', tutorId)
                 .maybeSingle();
-            
-            final profilePhotoUrl = tutorProfile['profile_photo_url'] as String?;
+
+            final profilePhotoUrl =
+                tutorProfile['profile_photo_url'] as String?;
             final avatarUrl = profile?['avatar_url'] as String?;
-            final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+            final effectiveAvatarUrl =
+                (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
                 ? profilePhotoUrl
                 : (avatarUrl != null && avatarUrl.isNotEmpty)
-                    ? avatarUrl
-                    : null;
-            
+                ? avatarUrl
+                : null;
+
             final totalReviews = (tutorProfile['total_reviews'] ?? 0) as int;
-            final adminApprovedRating = tutorProfile['admin_approved_rating'] as double?;
+            final adminApprovedRating =
+                tutorProfile['admin_approved_rating'] as double?;
             final calculatedRating = (tutorProfile['rating'] ?? 0.0) as double;
-            
-            final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+
+            final effectiveRating =
+                (totalReviews < 3 && adminApprovedRating != null)
                 ? adminApprovedRating
-                : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
-            
+                : (calculatedRating > 0
+                      ? calculatedRating
+                      : (adminApprovedRating ?? 0.0));
+
+            final tutorName = profile?['full_name'] as String?;
             _tutorInfoCache[tutorId] = {
-              'full_name': profile?['full_name'] ?? 'Tutor',
+              'full_name':
+                  (tutorName != null &&
+                      tutorName.isNotEmpty &&
+                      tutorName != 'User' &&
+                      tutorName != 'Tutor')
+                  ? tutorName
+                  : 'Tutor',
               'avatar_url': effectiveAvatarUrl,
               'rating': effectiveRating,
             };
+
+            print(
+              '✅ Cached tutor info (fallback) for $tutorId: ${_tutorInfoCache[tutorId]?['full_name']}',
+            );
           } catch (e2) {
             print('⚠️ Error loading tutor info for $tutorId: $e2');
           }
         }
       }
-      
+
       // Trigger rebuild to show loaded tutor info
       if (mounted) {
         setState(() {});
@@ -593,18 +622,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 children: [
                   CircleAvatar(
                     backgroundColor: AppTheme.primaryColor,
-                    backgroundImage: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
+                    backgroundImage:
+                        request.tutorAvatarUrl != null &&
+                            request.tutorAvatarUrl!.isNotEmpty
                         ? NetworkImage(request.tutorAvatarUrl!)
                         : null,
-                    onBackgroundImageError: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
+                    onBackgroundImageError:
+                        request.tutorAvatarUrl != null &&
+                            request.tutorAvatarUrl!.isNotEmpty
                         ? (exception, stackTrace) {
                             // Image failed to load, will show fallback
                           }
                         : null,
-                    child: request.tutorAvatarUrl == null || request.tutorAvatarUrl!.isEmpty
+                    child:
+                        request.tutorAvatarUrl == null ||
+                            request.tutorAvatarUrl!.isEmpty
                         ? Text(
-                            request.tutorName.isNotEmpty 
-                                ? request.tutorName[0].toUpperCase() 
+                            request.tutorName.isNotEmpty
+                                ? request.tutorName[0].toUpperCase()
                                 : 'T',
                             style: GoogleFonts.poppins(
                               fontSize: 18,
@@ -765,9 +800,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final tutorRating = (tutorInfo['rating'] ?? 0.0) as double;
 
     // Determine action buttons based on status and payment
-    final canDelete = session.status == 'pending'; // Only if tutor hasn't responded
-    final canReject = session.status == 'approved' && session.paymentStatus == 'unpaid';
-    final canReschedule = session.status == 'approved' && session.paymentStatus == 'paid';
+    final canDelete =
+        session.status == 'pending'; // Only if tutor hasn't responded
+    final canCancel =
+        (session.status == 'approved' ||
+        session.status == 'scheduled'); // Cancel approved sessions
+    final canReject =
+        session.status == 'approved' && session.paymentStatus == 'unpaid';
+    final canReschedule =
+        session.status == 'approved' && session.paymentStatus == 'paid';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -817,6 +858,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                     ),
+                  ] else if (canCancel) ...[
+                    // For approved sessions, show cancel button (requires reason)
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.cancel_outlined, size: 20),
+                      color: Colors.orange[300],
+                      onPressed: () =>
+                          _cancelApprovedTrialWithReason(session.id, session),
+                      tooltip: 'Cancel session',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
                   ] else if (canReject) ...[
                     const SizedBox(width: 8),
                     IconButton(
@@ -841,7 +894,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               // Tutor Info Row (matching booking request style)
               Row(
                 children: [
@@ -858,7 +911,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               color: AppTheme.primaryColor,
                               child: Center(
                                 child: Text(
-                                  tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                                  tutorName.isNotEmpty
+                                      ? tutorName[0].toUpperCase()
+                                      : 'T',
                                   style: GoogleFonts.poppins(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
@@ -868,14 +923,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               ),
                             ),
                             errorWidget: (context, url, error) {
-                              print('⚠️ Failed to load tutor avatar: $url, error: $error');
+                              print(
+                                '⚠️ Failed to load tutor avatar: $url, error: $error',
+                              );
                               return Container(
                                 width: 48,
                                 height: 48,
                                 color: AppTheme.primaryColor,
                                 child: Center(
                                   child: Text(
-                                    tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                                    tutorName.isNotEmpty
+                                        ? tutorName[0].toUpperCase()
+                                        : 'T',
                                     style: GoogleFonts.poppins(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w600,
@@ -894,7 +953,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             color: AppTheme.primaryColor,
                             child: Center(
                               child: Text(
-                                tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                                tutorName.isNotEmpty
+                                    ? tutorName[0].toUpperCase()
+                                    : 'T',
                                 style: GoogleFonts.poppins(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
@@ -920,10 +981,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            Icon(Icons.star, size: 16, color: Colors.amber[700]),
+                            Icon(
+                              Icons.star,
+                              size: 16,
+                              color: Colors.amber[700],
+                            ),
                             const SizedBox(width: 4),
                             Text(
-                              tutorRating > 0 ? tutorRating.toStringAsFixed(1) : 'N/A',
+                              tutorRating > 0
+                                  ? tutorRating.toStringAsFixed(1)
+                                  : 'N/A',
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
@@ -938,7 +1005,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 ],
               ),
               const SizedBox(height: 12),
-              
+
               // Session Details - Horizontal Layout
               Wrap(
                 spacing: 16,
@@ -953,9 +1020,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                 ],
               ),
-              
+
               // Goal (without heading, just text)
-              if (session.trialGoal != null && session.trialGoal!.isNotEmpty) ...[
+              if (session.trialGoal != null &&
+                  session.trialGoal!.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(
                   session.trialGoal!,
@@ -966,7 +1034,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                 ),
               ],
-              
+
               // Price and Payment Status
               const SizedBox(height: 12),
               Row(
@@ -994,7 +1062,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.check_circle, size: 14, color: Colors.green[700]),
+                          Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: Colors.green[700],
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             'Paid',
@@ -1022,7 +1094,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         final supabase = Supabase.instance.client;
                         final tutorData = await supabase
                             .from('tutor_profiles')
-                            .select('*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)')
+                            .select(
+                              '*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
+                            )
                             .eq('user_id', session.tutorId)
                             .single();
 
@@ -1082,28 +1156,64 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
-
   Future<void> _deleteTrialSession(String sessionId) async {
+    // First check the session status
+    final session = _trialSessions.firstWhere(
+      (s) => s.id == sessionId,
+      orElse: () => _trialSessions.first,
+    );
+
+    final isApproved =
+        session.status == 'approved' || session.status == 'scheduled';
+
+    if (isApproved) {
+      // For approved sessions, require cancellation reason
+      await _cancelApprovedTrialWithReason(sessionId, session);
+      return;
+    }
+
+    // For pending sessions, allow direct deletion
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          'Delete Trial Session',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.red[300], size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Delete Trial Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
         ),
         content: Text(
-          'Are you sure you want to delete this trial session request?',
-          style: GoogleFonts.poppins(),
+          'Are you sure you want to delete this trial session request? This action cannot be undone.',
+          style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: GoogleFonts.poppins()),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('Delete', style: GoogleFonts.poppins()),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -1111,17 +1221,304 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     if (confirmed == true) {
       try {
-        await TrialSessionService.cancelTrialSession(sessionId);
+        // Show loading indicator
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Deleting...', style: GoogleFonts.poppins()),
+                ],
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        // Actually delete the session (not just cancel)
+        await TrialSessionService.deleteTrialSession(sessionId);
+
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Trial session deleted')));
+
+        // Remove from local list immediately for instant UI update
+        // Find the session first to get tutorId for cache cleanup
+        final sessionToDelete = _trialSessions.firstWhere(
+          (s) => s.id == sessionId,
+        );
+        final tutorId = sessionToDelete.tutorId;
+
+        setState(() {
+          _trialSessions.removeWhere((session) => session.id == sessionId);
+          // Clean up cache if no other sessions for this tutor
+          final hasOtherSessions = _trialSessions.any(
+            (s) => s.tutorId == tutorId,
+          );
+          if (!hasOtherSessions) {
+            _tutorInfoCache.remove(tutorId);
+          }
+        });
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Trial session deleted successfully',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Reload to ensure consistency
         _loadRequests();
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    e.toString().contains('Only pending sessions') ||
+                            e.toString().contains('cancel instead')
+                        ? 'This session has been approved. Please use the cancel button to cancel it with a reason.'
+                        : 'Error: ${e.toString()}',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
         );
+      }
+    }
+  }
+
+  /// Cancel an approved trial session with reason (for parent/student)
+  /// This prioritizes parent/student choice and notifies tutor
+  Future<void> _cancelApprovedTrialWithReason(
+    String sessionId,
+    TrialSession session,
+  ) async {
+    final reasonController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.cancel_outlined, color: Colors.orange[300], size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Cancel Trial Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'The tutor has already approved this session. Please provide a reason for cancellation. The tutor will be notified.',
+              style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'e.g., Schedule conflict, found another tutor, etc.',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                labelText: 'Cancellation Reason',
+                labelStyle: GoogleFonts.poppins(fontSize: 12),
+              ),
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.blue[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'The tutor will be notified immediately with your reason.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: Colors.blue[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Keep Session',
+              style: GoogleFonts.poppins(
+                color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isNotEmpty) {
+                Navigator.pop(context, true);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[300],
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: Text(
+              'Cancel Session',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && reasonController.text.trim().isNotEmpty) {
+      try {
+        // Show loading indicator
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Cancelling...', style: GoogleFonts.poppins()),
+                ],
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        // Cancel the approved session with reason
+        await TrialSessionService.cancelApprovedTrialSession(
+          sessionId: sessionId,
+          cancellationReason: reasonController.text.trim(),
+        );
+
+        if (!mounted) return;
+
+        // Update local state to show cancelled status
+        setState(() {
+          final index = _trialSessions.indexWhere((s) => s.id == sessionId);
+          if (index != -1) {
+            _trialSessions[index] = session.copyWith(status: 'cancelled');
+          }
+        });
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Trial session cancelled. Tutor has been notified.',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        // Reload to ensure consistency
+        _loadRequests();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Error: ${e.toString()}',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } finally {
+        reasonController.dispose();
       }
     }
   }
@@ -1129,7 +1526,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   /// Reject an approved trial session (before payment)
   Future<void> _rejectApprovedTrial(TrialSession session) async {
     final reasonController = TextEditingController();
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1200,10 +1597,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -1307,10 +1701,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         const SizedBox(width: 4),
         Text(
           text,
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: AppTheme.textMedium,
-          ),
+          style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
       ],
     );

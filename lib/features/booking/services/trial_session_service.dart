@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
@@ -50,9 +51,10 @@ class TrialSessionService {
       }
       final isOnline = normalizedLocation == 'online';
 
-      // Calculate trial fee based on duration
-      // Base: 30 min = 2000 XAF, 60 min = 3500 XAF
-      final trialFee = durationMinutes == 30 ? 2000.0 : 3500.0;
+      // Get trial fee from database (admin-controlled pricing)
+      final trialFee = await PricingService.getTrialSessionPrice(
+        durationMinutes,
+      );
 
       // Get user profile to determine if parent or student
       final userProfile = await _supabase
@@ -82,7 +84,7 @@ class TrialSessionService {
           .eq('requester_id', userId)
           .eq('status', 'pending')
           .maybeSingle();
-      
+
       final approvedTrials = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
@@ -90,7 +92,7 @@ class TrialSessionService {
           .eq('requester_id', userId)
           .eq('status', 'approved')
           .maybeSingle();
-      
+
       final scheduledTrials = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
@@ -112,24 +114,28 @@ class TrialSessionService {
         final status = existingTrial['status'] as String;
         final scheduledDate = existingTrial['scheduled_date'] as String?;
         final scheduledTime = existingTrial['scheduled_time'] as String?;
-        
-        String message = 'You already have an active trial session with this tutor';
+
+        String message =
+            'You already have an active trial session with this tutor';
         if (status == 'pending') {
-          message = 'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
+          message =
+              'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
         } else if (status == 'approved') {
-          message = 'You already have an approved trial session with this tutor';
+          message =
+              'You already have an approved trial session with this tutor';
           if (scheduledDate != null && scheduledTime != null) {
             message += ' scheduled for $scheduledDate at $scheduledTime';
           }
           message += '. Please complete this trial before booking another one.';
         } else if (status == 'scheduled') {
-          message = 'You already have a scheduled trial session with this tutor';
+          message =
+              'You already have a scheduled trial session with this tutor';
           if (scheduledDate != null && scheduledTime != null) {
             message += ' on $scheduledDate at $scheduledTime';
           }
           message += '. Please complete this trial before booking another one.';
         }
-        
+
         throw Exception(message);
       }
 
@@ -375,7 +381,8 @@ class TrialSessionService {
     }
   }
 
-  /// Cancel a trial session (student/parent)
+  /// Cancel a trial session (updates status to cancelled)
+  /// Use this for sessions that have been approved or responded to
   static Future<void> cancelTrialSession(String sessionId) async {
     try {
       await _supabase
@@ -384,6 +391,167 @@ class TrialSessionService {
           .eq('id', sessionId);
     } catch (e) {
       throw Exception('Failed to cancel trial session: $e');
+    }
+  }
+
+  /// Cancel an approved trial session (by parent/student)
+  /// Updates status to 'cancelled' and notifies tutor with reason
+  /// For pending sessions, use deleteTrialSession instead
+  static Future<void> cancelApprovedTrialSession({
+    required String sessionId,
+    required String cancellationReason,
+  }) async {
+    try {
+      // Get trial session details
+      final session = await _supabase
+          .from('trial_sessions')
+          .select(
+            'status, tutor_id, learner_id, parent_id, requester_id, subject, scheduled_date, scheduled_time, payment_status',
+          )
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Trial session not found');
+      }
+
+      final status = session['status'] as String?;
+      if (status == 'pending') {
+        throw Exception(
+          'Cannot cancel pending session. Use deleteTrialSession instead.',
+        );
+      }
+
+      if (status == 'cancelled' || status == 'completed') {
+        throw Exception('Trial session is already ${status}.');
+      }
+
+      final tutorId = session['tutor_id'] as String;
+      final learnerId = session['learner_id'] as String;
+      final subject = session['subject'] as String;
+      final scheduledDate = session['scheduled_date'] as String;
+      final scheduledTime = session['scheduled_time'] as String;
+
+      // Update status to cancelled with reason
+      final now = DateTime.now().toIso8601String();
+      await _supabase
+          .from('trial_sessions')
+          .update({
+            'status': 'cancelled',
+            'rejection_reason':
+                cancellationReason, // Reuse this field for cancellation reason
+            'updated_at': now,
+          })
+          .eq('id', sessionId);
+
+      // Get requester name for notification
+      final requesterProfile = await _supabase
+          .from('profiles')
+          .select('full_name, user_type')
+          .eq('id', session['requester_id'] as String)
+          .maybeSingle();
+
+      final requesterName =
+          requesterProfile?['full_name'] as String? ?? 'Student/Parent';
+      final requesterType =
+          requesterProfile?['user_type'] as String? ?? 'student';
+
+      // Notify tutor about cancellation
+      try {
+        await NotificationHelperService.notifyTrialSessionCancelled(
+          tutorId: tutorId,
+          studentId: learnerId,
+          trialId: sessionId,
+          studentName: requesterName,
+          subject: subject,
+          scheduledDate: DateTime.parse(scheduledDate),
+          scheduledTime: scheduledTime,
+          cancellationReason: cancellationReason,
+          cancelledBy: requesterType,
+        );
+      } catch (e) {
+        print('⚠️ Failed to send cancellation notification to tutor: $e');
+        // Don't fail cancellation if notification fails
+      }
+
+      print('✅ Trial session cancelled: $sessionId');
+    } catch (e) {
+      print('❌ Error cancelling trial session: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a trial session (permanently removes from database)
+  /// Only allowed for pending sessions (tutor hasn't approved yet)
+  /// Also deletes associated payment records
+  /// For approved sessions, use cancelApprovedTrialSession instead
+  static Future<void> deleteTrialSession(String sessionId) async {
+    try {
+      // First check if the session is pending
+      final session = await _supabase
+          .from('trial_sessions')
+          .select('status, payment_status, fapshi_trans_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Trial session not found');
+      }
+
+      final status = session['status'] as String?;
+      if (status != 'pending') {
+        throw Exception(
+          'Cannot delete trial session. Only pending sessions can be deleted. For approved sessions, please cancel instead.',
+        );
+      }
+
+      final fapshiTransId = session['fapshi_trans_id'] as String?;
+
+      // Delete any associated payment records if they exist
+      // Check if there's a payment record in payment_requests table (if exists)
+      if (fapshiTransId != null && fapshiTransId.isNotEmpty) {
+        try {
+          // Try to find and delete any payment_requests with matching external_id
+          // Payment requests might have external_id in metadata or as fapshi_trans_id
+          await _supabase
+              .from('payment_requests')
+              .delete()
+              .eq('fapshi_trans_id', fapshiTransId);
+
+          print('✅ Deleted associated payment request: $fapshiTransId');
+        } catch (e) {
+          // If payment_requests table doesn't exist or record not found, that's okay
+          // Trial payments are primarily stored in trial_sessions table
+          print('ℹ️ No payment_requests record to delete: $e');
+        }
+      }
+
+      // Delete any notifications related to this trial session
+      try {
+        await _supabase.from('notifications').delete().contains('metadata', {
+          'trial_session_id': sessionId,
+        });
+
+        print('✅ Deleted associated notifications');
+      } catch (e) {
+        // If notifications table doesn't have this field or query fails, that's okay
+        print('ℹ️ Could not delete notifications (might not exist): $e');
+      }
+
+      // Delete the trial session itself (this also removes all payment info stored in it)
+      await _supabase.from('trial_sessions').delete().eq('id', sessionId);
+
+      print('✅ Trial session deleted: $sessionId');
+    } catch (e) {
+      print('❌ Error deleting trial session: $e');
+      // If it's a foreign key constraint or similar, provide a better message
+      if (e.toString().contains('foreign key') ||
+          e.toString().contains('constraint')) {
+        throw Exception(
+          'Cannot delete trial session. It may have related records that prevent deletion.',
+        );
+      }
+      throw Exception('Failed to delete trial session: $e');
     }
   }
 
@@ -440,7 +608,7 @@ class TrialSessionService {
 
       // Initiate payment
       final paymentResponse = await FapshiService.initiateDirectPayment(
-        amount: trial.trialFee.toInt(),
+        amount: trial.trialFee.round(),
         phone: phoneNumber,
         externalId: 'trial_$sessionId',
         userId: trial.learnerId,
@@ -568,4 +736,3 @@ class TrialSessionService {
     }
   }
 }
-

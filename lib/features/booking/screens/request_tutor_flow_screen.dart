@@ -217,23 +217,67 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
     if (eduLevel == null) return null;
 
+    // Normalize the education level (trim and lowercase for comparison)
+    final normalized = eduLevel.trim().toLowerCase();
+
     // Map survey education level to request tutor format
+    // Handle various formats that might come from survey
     final levelMap = {
-      'Primary School': 'Primary School',
+      // Primary School
+      'primary school': 'Primary School',
       'primary': 'Primary School',
-      'Form 1-3': 'Form 1-3',
+      'primary_school': 'Primary School',
+      'primary-school': 'Primary School',
+
+      // Form 1-3
+      'form 1-3': 'Form 1-3',
+      'form 1 - 3': 'Form 1-3',
+      'form1-3': 'Form 1-3',
       'lower_secondary': 'Form 1-3',
-      'Form 4-5 (O-Level)': 'Form 4-5 (O-Level)',
-      'O-Level': 'Form 4-5 (O-Level)',
-      'Lower Sixth': 'Lower Sixth',
-      'Upper Sixth (A-Level)': 'Upper Sixth (A-Level)',
-      'A-Level': 'Upper Sixth (A-Level)',
+      'lower secondary': 'Form 1-3',
+      'form 1 to 3': 'Form 1-3',
+
+      // O-Level
+      'form 4-5 (o-level)': 'Form 4-5 (O-Level)',
+      'form 4-5': 'Form 4-5 (O-Level)',
+      'form 4 - 5': 'Form 4-5 (O-Level)',
+      'form4-5': 'Form 4-5 (O-Level)',
+      'o-level': 'Form 4-5 (O-Level)',
+      'o level': 'Form 4-5 (O-Level)',
+      'olevel': 'Form 4-5 (O-Level)',
+      'ordinary level': 'Form 4-5 (O-Level)',
+
+      // Lower Sixth
+      'lower sixth': 'Lower Sixth',
+      'lower_sixth': 'Lower Sixth',
+      'lower-sixth': 'Lower Sixth',
+      'lower 6': 'Lower Sixth',
+      'lower6': 'Lower Sixth',
+
+      // Upper Sixth (A-Level)
+      'upper sixth (a-level)': 'Upper Sixth (A-Level)',
+      'upper sixth': 'Upper Sixth (A-Level)',
+      'upper_sixth': 'Upper Sixth (A-Level)',
+      'upper-sixth': 'Upper Sixth (A-Level)',
+      'upper 6': 'Upper Sixth (A-Level)',
+      'upper6': 'Upper Sixth (A-Level)',
+      'a-level': 'Upper Sixth (A-Level)',
+      'a level': 'Upper Sixth (A-Level)',
+      'alevel': 'Upper Sixth (A-Level)',
+      'advanced level': 'Upper Sixth (A-Level)',
       'upper_secondary': 'Upper Sixth (A-Level)',
-      'University': 'University',
+      'upper secondary': 'Upper Sixth (A-Level)',
+
+      // University
+      'university': 'University',
       'higher_education': 'University',
+      'higher education': 'University',
+      'college': 'University',
+      'tertiary': 'University',
     };
 
-    return levelMap[eduLevel] ?? eduLevel;
+    // Try exact match first, then normalized match
+    return levelMap[eduLevel] ?? levelMap[normalized] ?? eduLevel;
   }
 
   /// Map education level display to data key
@@ -1343,6 +1387,120 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   }
 
   Future<void> _submitRequest() async {
+    // Validate required fields before submission
+    if (_selectedSubjects.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please select at least one subject',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (_educationLevel == null || _educationLevel!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please select an education level',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Navigate back to step 1
+      setState(() => _currentStep = 0);
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      return;
+    }
+
+    if (_teachingMode == null || _teachingMode!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please select a teaching mode',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Navigate back to step 2
+      setState(() => _currentStep = 1);
+      _pageController.animateToPage(
+        1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      return;
+    }
+
+    if (_preferredDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please select at least one preferred day',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Navigate back to step 3
+      setState(() => _currentStep = 2);
+      _pageController.animateToPage(
+        2,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      return;
+    }
+
+    if (_preferredTime == null || _preferredTime!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please select a preferred time',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Navigate back to step 3
+      setState(() => _currentStep = 2);
+      _pageController.animateToPage(
+        2,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      return;
+    }
+
+    if (_locationController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Please enter a location',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Navigate back to step 3
+      setState(() => _currentStep = 2);
+      _pageController.animateToPage(
+        2,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      return;
+    }
+
     // Show loading
     showDialog(
       context: context,
@@ -1393,7 +1551,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         tutorQualification: _tutorQualification,
         preferredDays: _preferredDays,
         preferredTime: _preferredTime!,
-        location: _locationController.text,
+        location: _locationController.text.trim(),
         locationDescription:
             _locationDescriptionController.text.trim().isNotEmpty
             ? _locationDescriptionController.text.trim()
@@ -1418,23 +1576,46 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
       // Show success
       _showSuccessDialog();
     } catch (e) {
-      print('Error submitting request: $e');
+      print('❌ Error submitting request: $e');
+      print('❌ Error details: ${e.toString()}');
+      print('❌ Stack trace: ${StackTrace.current}');
 
       // Close loading
       if (mounted) Navigator.pop(context);
 
-      // Show error
+      // Show error with more details
       if (mounted) {
+        final errorMessage = e.toString().contains('not authenticated')
+            ? 'You are not logged in. Please log in and try again.'
+            : e.toString().contains('network') ||
+                  e.toString().contains('connection')
+            ? 'Network error. Please check your connection and try again.'
+            : 'Failed to submit request: ${e.toString().length > 100 ? e.toString().substring(0, 100) + "..." : e.toString()}';
+
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: Text(
-              'Error',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.red[300], size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Error',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ],
             ),
             content: Text(
-              'Failed to submit request. Please try again.',
-              style: GoogleFonts.poppins(),
+              errorMessage,
+              style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
             ),
             actions: [
               TextButton(

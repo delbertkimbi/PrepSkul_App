@@ -11,6 +11,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/widgets/confetti_celebration.dart';
 import 'instruction_screen.dart';
 
 class TutorOnboardingScreen extends StatefulWidget {
@@ -4910,14 +4911,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       // Close loading dialog
       Navigator.of(context).pop();
 
-      // Show success message
+      // Show success dialog with confetti
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Application submitted successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        await _showCompletionDialog();
 
         // Navigate to tutor dashboard
         Navigator.of(
@@ -5112,5 +5108,106 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     }
     _specializationTabControllers.clear();
     super.dispose();
+  }
+
+  /// Show beautiful completion dialog with confetti
+  Future<void> _showCompletionDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ConfettiCelebration(
+        autoStart: true,
+        duration: const Duration(seconds: 4),
+        particleCount: 60,
+        child: Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.primaryColor,
+                  AppTheme.primaryColor.withOpacity(0.8),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Success icon with animation
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    size: 50,
+                    color: Colors.green,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Application Submitted! 🎉',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Your tutor profile has been submitted successfully!\nOur team will review it and get back to you soon.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.95),
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 4,
+                    ),
+                    child: Text(
+                      'Go to Dashboard',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

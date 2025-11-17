@@ -11,6 +11,7 @@ import 'package:prepskul/data/survey_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../tutor/screens/instruction_screen.dart';
+import '../../../core/widgets/confetti_celebration.dart';
 
 class StudentSurvey extends StatefulWidget {
   const StudentSurvey({Key? key}) : super(key: key);
@@ -92,6 +93,107 @@ class _StudentSurveyState extends State<StudentSurvey> {
     _universityCoursesController.dispose();
     _yearController.dispose();
     super.dispose();
+  }
+
+  /// Show beautiful survey completion dialog
+  Future<void> _showSurveyCompletionDialog() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => ConfettiCelebration(
+        autoStart: true,
+        duration: const Duration(seconds: 4),
+        particleCount: 60,
+        child: Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.primaryColor,
+                  AppTheme.primaryColor.withOpacity(0.8),
+                ],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Success icon with animation
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.check_circle,
+                    size: 50,
+                    color: Colors.green,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Survey Completed! 🎉',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Thank you for completing your profile!\nWe\'ll use this information to find the perfect tutor for you.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.white.withOpacity(0.95),
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 4,
+                    ),
+                    child: Text(
+                      'Get Started',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   // Auto-save functionality
@@ -3480,6 +3582,13 @@ No direct payments should be made to tutors outside the platform.''';
       // Close loading dialog
       if (!mounted) return;
       Navigator.of(context).pop();
+
+      // Show beautiful success dialog with confetti
+      if (!mounted) return;
+      await _showSurveyCompletionDialog();
+
+      // Wait a bit for confetti animation before navigating
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Navigate to student dashboard
       if (!mounted) return;

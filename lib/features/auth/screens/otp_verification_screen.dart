@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -114,13 +115,15 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               // survey_completed, is_admin, last_seen have defaults in DB
             },
           );
-          
+
           // Notify admins about new user signup (async, don't block)
           NotificationHelperService.notifyAdminsAboutNewUserSignup(
             userId: response.user!.id,
             userType: widget.userRole,
             userName: widget.fullName,
-            userEmail: response.user!.email ?? widget.phoneNumber, // Use phone if email is null
+            userEmail:
+                response.user!.email ??
+                widget.phoneNumber, // Use phone if email is null
           ).catchError((e) {
             print('⚠️ Error notifying admins about new user signup: $e');
             // Don't block signup if notification fails
@@ -139,12 +142,21 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
         // Check if survey is completed
         bool surveyCompleted = await AuthService.isSurveyCompleted();
-        String userRole = await AuthService.getUserRole() ?? 'student';
+        String userRole = await AuthService.getUserRole() ?? widget.userRole;
+
+        // For new users, ensure survey_intro_seen is cleared so they see the intro screen
+        final prefs = await SharedPreferences.getInstance();
+        if (isNewUser) {
+          // Clear survey_intro_seen for new users to ensure they see the intro screen
+          await prefs.setBool('survey_intro_seen', false);
+          print('🆕 New user signup - cleared survey_intro_seen flag');
+        }
 
         // Navigate based on survey status
         if (mounted) {
           if (surveyCompleted) {
             // Existing user with completed survey → go to role-based navigation
+            print('✅ Survey completed - navigating to dashboard for $userRole');
             if (userRole == 'tutor') {
               Navigator.pushReplacementNamed(context, '/tutor-nav');
             } else if (userRole == 'parent') {
@@ -153,12 +165,36 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               Navigator.pushReplacementNamed(context, '/student-nav');
             }
           } else {
-            // New user or incomplete survey → go to profile setup
-            Navigator.pushReplacementNamed(
-              context,
-              '/profile-setup',
-              arguments: {'userRole': widget.userRole},
-            );
+            // New user or incomplete survey → check for survey intro screen first
+            // This ensures survey intro screen is shown if not seen before
+            final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+
+            print('📋 Survey not completed');
+            print('👤 User role: $userRole');
+            print('👀 Survey intro seen: $surveyIntroSeen');
+            print('🆕 Is new user: $isNewUser');
+
+            // For students and parents, show intro screen first (if not seen)
+            // For tutors, go directly to onboarding
+            if ((userRole == 'student' ||
+                    userRole == 'learner' ||
+                    userRole == 'parent') &&
+                !surveyIntroSeen) {
+              print('✅ Navigating to survey intro screen for $userRole');
+              Navigator.pushReplacementNamed(
+                context,
+                '/survey-intro',
+                arguments: {'userType': userRole},
+              );
+            } else {
+              // Survey intro already seen or user is tutor → go to profile setup
+              print('⏭️ Skipping survey intro - navigating to profile setup');
+              Navigator.pushReplacementNamed(
+                context,
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
+            }
           }
         }
       }
@@ -438,6 +474,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           decoration: const InputDecoration(
             counterText: '',
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
             contentPadding: EdgeInsets.zero,
           ),
           onChanged: (value) {

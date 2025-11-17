@@ -124,10 +124,22 @@ class NavigationService {
       } else if (!isLoggedIn && !hasSupabaseSession) {
         result = NavigationResult('/auth-method-selection');
       } else if (!hasCompletedSurvey && userRole != null) {
-        result = NavigationResult(
-          '/profile-setup',
-          arguments: {'userRole': userRole},
-        );
+        // Check if user has seen the survey intro screen
+        final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+        
+        // For students and parents, show intro screen first (if not seen)
+        // For tutors, go directly to onboarding
+        if ((userRole == 'student' || userRole == 'learner' || userRole == 'parent') && !surveyIntroSeen) {
+          result = NavigationResult(
+            '/survey-intro',
+            arguments: {'userType': userRole},
+          );
+        } else {
+          result = NavigationResult(
+            '/profile-setup',
+            arguments: {'userRole': userRole},
+          );
+        }
       } else if (isLoggedIn && hasCompletedSurvey && userRole != null) {
         result = _getDashboardRoute(userRole);
       } else {

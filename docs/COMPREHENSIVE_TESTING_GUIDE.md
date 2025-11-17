@@ -1,393 +1,408 @@
-# 🧪 Comprehensive Testing Guide for PrepSkul
+# 🧪 Comprehensive Testing Guide - PrepSkul MVP
 
-**Date:** January 25, 2025
-
----
-
-## 🎯 Overview
-
-This guide provides step-by-step instructions for testing all Phase 1.2 features and ensuring the UI is modern, responsive, and user-friendly.
+**Purpose:** Manual testing checklist for critical MVP features  
+**Who:** You (the developer) will test on real devices/browsers  
+**When:** Before MVP launch
 
 ---
 
-## 📱 **SETUP: Running the App**
+## 📋 **TESTING APPROACH**
 
-### **Option 1: Flutter Web (Easiest for Quick Testing)**
-```bash
-cd /Users/user/Desktop/PrepSkul/prepskul_app
-flutter run -d chrome
-```
+### **What I Can Do:**
+- ✅ Fix bugs you find
+- ✅ Write integration tests (if needed)
+- ✅ Verify code implementation
+- ✅ Create testing checklists
 
-### **Option 2: Flutter Desktop (macOS)**
-```bash
-flutter run -d macos
-```
-
-### **Option 3: Mobile Device/Emulator**
-```bash
-# List available devices
-flutter devices
-
-# Run on specific device
-flutter run -d <device-id>
-```
-
-### **Option 4: Hot Reload (During Development)**
-- Press `r` in terminal for hot reload
-- Press `R` for hot restart
-- Press `q` to quit
+### **What You Need to Do:**
+- ✅ Test on real devices (iOS, Android)
+- ✅ Test on web browsers
+- ✅ Test payment flows with real/sandbox accounts
+- ✅ Test Google Calendar OAuth
+- ✅ Test push notifications on real devices
+- ✅ Verify Meet links work
+- ✅ Test Fathom integration
 
 ---
 
-## 🎨 **UI QUALITY CHECKLIST**
+## 🔴 **CRITICAL FEATURES TO TEST**
 
-### **Modern Design Principles:**
-- ✅ **Rounded Corners** - All cards use `BorderRadius.circular(12-20)`
-- ✅ **Soft Shadows** - Subtle `BoxShadow` for depth
-- ✅ **Consistent Spacing** - Using `SizedBox` with standard sizes (8, 12, 16, 24, 32)
-- ✅ **Color Palette** - Using `AppTheme` for consistency
-- ✅ **Typography** - Google Fonts (Poppins) with proper weights
-- ✅ **Smooth Animations** - Page transitions and button presses
-- ✅ **Responsive Layout** - Works on different screen sizes
+### **1. Push Notifications** 🔴 HIGH PRIORITY
 
-### **Check These UI Elements:**
-1. **Cards** - Should have rounded corners, subtle shadows
-2. **Buttons** - Should have proper padding, rounded corners, clear labels
-3. **Dialogs** - Should be centered, have proper spacing, clear actions
-4. **Forms** - Should have clear labels, proper input fields
-5. **Navigation** - Should be smooth, intuitive
-6. **Colors** - Should be consistent across screens
-7. **Text** - Should be readable, proper sizes, good contrast
+#### **Setup Required:**
+- [ ] Firebase project configured
+- [ ] iOS: APNS certificate/key uploaded to Firebase
+- [ ] Android: FCM server key configured
+- [ ] `.env` file has Firebase config
 
----
+#### **Test Checklist:**
+- [ ] **iOS Device:**
+  - [ ] Install app on real iOS device (not simulator)
+  - [ ] Grant notification permission when prompted
+  - [ ] Verify FCM token is stored in database
+  - [ ] Send test notification from admin dashboard
+  - [ ] Verify notification appears on device
+  - [ ] Tap notification → verify app opens to correct screen
+  - [ ] Test background notifications (app closed)
+  - [ ] Test foreground notifications (app open)
 
-## 🧪 **FEATURE TESTING GUIDE**
+- [ ] **Android Device:**
+  - [ ] Install app on real Android device
+  - [ ] Grant notification permission
+  - [ ] Verify FCM token is stored
+  - [ ] Send test notification
+  - [ ] Verify notification appears
+  - [ ] Test background/foreground notifications
 
-### **TEST 1: Post-Trial Dialog & Conversion Flow**
+- [ ] **Web:**
+  - [ ] Open app in browser
+  - [ ] Grant notification permission
+  - [ ] Verify notifications work (may require service worker)
 
-#### **Prerequisites:**
-- Have a completed trial session in the database
-- Or manually set a trial session status to "completed"
+#### **Known Issues to Watch For:**
+- ⚠️ iOS simulator: APNS token may not be available (expected)
+- ⚠️ Web: May require service worker configuration
+- ⚠️ Token refresh: Verify token updates when refreshed
 
-#### **Steps:**
-1. **Open the App**
-   ```bash
-   flutter run -d chrome
-   ```
-
-2. **Login as Student/Parent**
-   - Use existing account or create new one
-   - Complete onboarding if needed
-
-3. **Navigate to "My Requests"**
-   - Should be in bottom navigation bar
-   - Tap "My Requests" tab
-
-4. **Check for Dialog**
-   - If you have a completed trial, dialog should appear automatically
-   - Dialog should show:
-     - ✅ "Trial Session Completed!" header
-     - ✅ Tutor name and subject
-     - ✅ "Would you like to continue with this tutor?" question
-     - ✅ "Not Now" button (left)
-     - ✅ "Continue with Tutor" button (right, larger)
-
-5. **Test Dialog Actions:**
-   - **Tap "Not Now"** → Dialog should close, nothing happens
-   - **Tap "Continue with Tutor"** → Should navigate to conversion screen
-
-6. **Check Trial Session Card:**
-   - Go to "Trial Sessions" tab
-   - Find completed trial
-   - Should see "Continue with Tutor" button at bottom
-   - Button should be full-width, primary color
-
-7. **Test Conversion Screen:**
-   - Should have 4-step wizard
-   - Step 1: Frequency selection (1x, 2x, 3x, 4x per week)
-   - Step 2: Days selection (Monday-Sunday)
-   - Step 3: Location selection (Online/Onsite/Hybrid)
-   - Step 4: Review & Payment plan
-   - All steps should have smooth transitions
-   - Progress indicator at top should show current step
-
-#### **Expected Results:**
-- ✅ Dialog appears automatically for completed trials
-- ✅ Dialog is modern, centered, with proper spacing
-- ✅ Buttons are clear and easy to tap
-- ✅ Conversion screen is intuitive and easy to navigate
-- ✅ All form fields work correctly
-- ✅ Can go back/forward between steps
-- ✅ Final submission creates booking request
+#### **Files to Check:**
+- `lib/core/services/push_notification_service.dart`
+- Firebase Console → Cloud Messaging
+- Supabase `fcm_tokens` table
 
 ---
 
-### **TEST 2: Trial Session Booking**
+### **2. Payments (Fapshi)** 🔴 HIGH PRIORITY
 
-#### **Steps:**
-1. **Navigate to "Find Tutors"**
-   - Should be in bottom navigation
-   - Browse or search for a tutor
+#### **Setup Required:**
+- [ ] Fapshi account created
+- [ ] Sandbox API credentials in `.env`
+- [ ] Production API credentials (when ready)
+- [ ] Webhook URL configured in Fapshi dashboard
 
-2. **Select a Tutor**
-   - Tap on tutor card
-   - Should see tutor detail screen
+#### **Test Checklist:**
+- [ ] **Trial Session Payment:**
+  - [ ] Book a trial session
+  - [ ] Enter phone number
+  - [ ] Verify payment request sent to Fapshi
+  - [ ] Complete payment on mobile device
+  - [ ] Verify payment status updates in app
+  - [ ] Verify trial session status → `scheduled`
+  - [ ] Verify Meet link generated after payment
+  - [ ] Check webhook received in Next.js logs
 
-3. **Tap "Book Trial Session"**
-   - Should open trial booking screen
-   - Should be a 3-step wizard
+- [ ] **Regular Session Payment:**
+  - [ ] Book regular session
+  - [ ] Complete payment
+  - [ ] Verify payment status updates
+  - [ ] Verify session created
 
-4. **Step 1: Subject & Duration**
-   - Select subject from dropdown
-   - Choose duration (30 or 60 minutes)
-   - Should see fee update automatically
+- [ ] **Payment History:**
+  - [ ] View payment history as student
+  - [ ] View payment history as parent
+  - [ ] Verify all payments show correctly
+  - [ ] Verify no false error messages
 
-5. **Step 2: Date & Time**
-   - Calendar should show available dates
-   - Select a date
-   - Select a time slot
-   - Should see selected date/time highlighted
+- [ ] **Payment Failures:**
+  - [ ] Test payment cancellation
+  - [ ] Test payment timeout
+  - [ ] Verify error handling
+  - [ ] Verify retry mechanism
 
-6. **Step 3: Goals & Review**
-   - Enter learning goals (optional)
-   - Enter challenges (optional)
-   - Review all details
-   - Location should be pre-filled from survey
+#### **Webhook Testing:**
+- [ ] Use Fapshi sandbox to send test webhook
+- [ ] Verify webhook received at `/api/webhooks/fapshi`
+- [ ] Verify database updated correctly
+- [ ] Check Next.js logs for errors
 
-7. **Submit Trial Request**
-   - Tap "Submit" button
-   - Should see success message
-   - Should navigate back or to requests screen
-
-#### **Expected Results:**
-- ✅ All steps are clear and easy to follow
-- ✅ Calendar is easy to use
-- ✅ Time slots are clearly visible
-- ✅ Form validation works (required fields)
-- ✅ Success message appears after submission
-- ✅ Trial appears in "My Requests" → "Trial Sessions"
-
----
-
-### **TEST 3: Payment Flow (When Implemented)**
-
-#### **Steps:**
-1. **Complete Trial Booking** (from Test 2)
-2. **Tutor Approves Trial** (need tutor account or admin)
-3. **Navigate to Trial Payment**
-   - Should see payment screen
-   - Or notification to pay
-
-4. **Enter Phone Number**
-   - Should be pre-filled if available
-   - Input field should be clear
-
-5. **Initiate Payment**
-   - Tap "Pay Now" button
-   - Should show loading state
-   - Should initiate Fapshi payment
-
-6. **Payment Status**
-   - Should show "Pending" status
-   - Should poll for status updates
-   - Should show "Success" when paid
-   - Should show "Failed" if payment fails
-
-#### **Expected Results:**
-- ✅ Payment screen is clear and easy to use
-- ✅ Phone number input works correctly
-- ✅ Payment status updates in real-time
-- ✅ Success/failure messages are clear
-- ✅ Meet link appears after successful payment
+#### **Files to Check:**
+- `lib/features/payment/services/fapshi_service.dart`
+- `PrepSkul_Web/app/api/webhooks/fapshi/route.ts`
+- Fapshi Dashboard → Transactions
 
 ---
 
-### **TEST 4: My Requests Screen**
+### **3. Sessions & Booking Tracking** 🔴 HIGH PRIORITY
 
-#### **Steps:**
-1. **Navigate to "My Requests"**
-   - Should be in bottom navigation
+#### **Test Checklist:**
+- [ ] **Trial Session Booking:**
+  - [ ] Select tutor
+  - [ ] Select subject & duration
+  - [ ] Select date & time
+  - [ ] Verify blocked time slots shown
+  - [ ] Complete booking
+  - [ ] Verify trial session created in database
+  - [ ] Verify tutor receives notification
+  - [ ] Verify payment flow works
 
-2. **Check All Tabs:**
-   - **"All"** - Shows all requests
-   - **"Pending Approval"** - Shows pending requests only
-   - **"Custom Requests"** - Shows custom tutor requests
-   - **"Trial Sessions"** - Shows trial sessions
-   - **"Bookings"** - Shows regular booking requests
+- [ ] **Regular Session Booking:**
+  - [ ] Book recurring session
+  - [ ] Select frequency (1x, 2x, 3x, 4x per week)
+  - [ ] Select days & times
+  - [ ] Select location
+  - [ ] Complete booking
+  - [ ] Verify recurring session created
+  - [ ] Verify individual sessions generated (8 weeks ahead)
+  - [ ] Verify tutor receives notification
 
-3. **Test Empty States:**
-   - Each tab should show appropriate empty state
-   - Empty state should have icon, title, subtitle
-   - Should be centered and clear
+- [ ] **Session Lifecycle:**
+  - [ ] **Start Session:**
+    - [ ] Tutor clicks "Start Session"
+    - [ ] Verify status → `in_progress`
+    - [ ] Verify `session_started_at` timestamp
+    - [ ] Verify student receives notification
+    - [ ] Verify Meet link accessible (if online)
+  
+  - [ ] **End Session:**
+    - [ ] Tutor clicks "End Session"
+    - [ ] Verify status → `completed`
+    - [ ] Verify `session_ended_at` timestamp
+    - [ ] Verify duration calculated correctly
+    - [ ] Verify earnings calculated (85% of fee)
+    - [ ] Verify student receives notification
 
-4. **Test Request Cards:**
-   - Each request type should have distinct card design
-   - Cards should show all relevant information
-   - Status chips should be color-coded
-   - Should be able to tap cards to see details
+- [ ] **Session Cancellation:**
+  - [ ] Cancel pending session
+  - [ ] Cancel approved session (with reason)
+  - [ ] Verify notifications sent
+  - [ ] Verify refund handling (if applicable)
 
-5. **Test "Request a Tutor" Button:**
-   - Should appear in empty states
-   - Should navigate to request flow
+- [ ] **Session Tracking:**
+  - [ ] View "My Sessions" as student
+  - [ ] View "My Sessions" as tutor
+  - [ ] Verify upcoming sessions show correctly
+  - [ ] Verify past sessions show correctly
+  - [ ] Verify session status updates correctly
 
-#### **Expected Results:**
-- ✅ All tabs work correctly
-- ✅ Empty states are clear and helpful
-- ✅ Request cards are well-designed
-- ✅ Status indicators are clear
-- ✅ Navigation works smoothly
+#### **Files to Check:**
+- `lib/features/booking/services/trial_session_service.dart`
+- `lib/features/booking/services/session_lifecycle_service.dart`
+- `lib/features/booking/services/individual_session_service.dart`
+- Supabase `trial_sessions`, `recurring_sessions`, `individual_sessions` tables
 
 ---
 
-### **TEST 5: UI Responsiveness**
+### **4. Google Meet Links & Calendar** 🔴 HIGH PRIORITY
 
-#### **Test on Different Screen Sizes:**
-1. **Chrome Browser** - Resize window to test different widths
-2. **Mobile Emulator** - Test on phone-sized screen
-3. **Tablet Emulator** - Test on tablet-sized screen
+#### **Setup Required:**
+- [ ] Google Cloud Project created
+- [ ] Google Calendar API enabled
+- [ ] OAuth 2.0 credentials configured
+- [ ] PrepSkul VA email created (`prepskul-va@prepskul.com` or similar)
+- [ ] PrepSkul VA email added to Fathom account
+- [ ] `.env` has `PREPSKUL_VA_EMAIL`
 
-#### **Check:**
-- ✅ Text is readable at all sizes
-- ✅ Buttons are easy to tap
-- ✅ Cards don't overflow
-- ✅ Forms are usable
-- ✅ Navigation is accessible
-- ✅ Dialogs are properly sized
+#### **Test Checklist:**
+- [ ] **Google Calendar OAuth:**
+  - [ ] First-time user: Prompt for Google Calendar access
+  - [ ] Grant permission
+  - [ ] Verify OAuth token stored
+  - [ ] Test re-authentication if token expires
+
+- [ ] **Meet Link Generation:**
+  - [ ] Book trial session
+  - [ ] Complete payment
+  - [ ] Verify Meet link generated
+  - [ ] Verify Meet link stored in database
+  - [ ] Verify calendar event created
+  - [ ] Check PrepSkul VA email calendar → verify event exists
+  - [ ] Verify Meet link works (can join meeting)
+
+- [ ] **Calendar Event Details:**
+  - [ ] Verify event title: "Trial Session: [Subject]"
+  - [ ] Verify start/end times correct
+  - [ ] Verify attendees: Tutor, Student, PrepSkul VA
+  - [ ] Verify timezone: Africa/Douala
+
+- [ ] **Recurring Sessions:**
+  - [ ] Book recurring session
+  - [ ] Verify Meet link generated
+  - [ ] Verify calendar event created
+  - [ ] Verify same Meet link used for all sessions
+
+- [ ] **Meet Link Access:**
+  - [ ] Verify Meet link only accessible after payment
+  - [ ] Test access control (payment gate)
+  - [ ] Verify link works for both tutor and student
+
+#### **Known Issues to Watch For:**
+- ⚠️ OAuth token expiration (needs refresh)
+- ⚠️ Calendar API quota limits
+- ⚠️ Meet link generation may fail if API not initialized
+
+#### **Files to Check:**
+- `lib/core/services/google_calendar_service.dart`
+- `lib/core/services/google_calendar_auth_service.dart`
+- `lib/features/sessions/services/meet_service.dart`
+- Google Cloud Console → APIs & Services → Credentials
+
+---
+
+### **5. Fathom AI Integration (PrepSkul VA)** 🟡 MEDIUM PRIORITY
+
+#### **Setup Required:**
+- [ ] Fathom account created
+- [ ] Fathom API key obtained
+- [ ] PrepSkul VA email connected to Fathom
+- [ ] Fathom webhook configured
+- [ ] `.env` has `FATHOM_API_KEY`
+- [ ] Webhook URL: `https://app.prepskul.com/api/webhooks/fathom`
+
+#### **Test Checklist:**
+- [ ] **Calendar Auto-Join:**
+  - [ ] Create calendar event with PrepSkul VA as attendee
+  - [ ] Verify Fathom detects event in calendar
+  - [ ] Start meeting at scheduled time
+  - [ ] Verify Fathom auto-joins meeting
+  - [ ] Verify Fathom starts recording
+
+- [ ] **Recording & Transcription:**
+  - [ ] Conduct test session (5-10 minutes)
+  - [ ] Verify Fathom records session
+  - [ ] Verify transcription generated
+  - [ ] Verify summary generated
+
+- [ ] **Webhook Processing:**
+  - [ ] Wait for Fathom webhook (`new_meeting_content_ready`)
+  - [ ] Verify webhook received at `/api/webhooks/fathom`
+  - [ ] Verify transcript stored in database
+  - [ ] Verify summary stored
+  - [ ] Verify notifications sent to tutor/student
+
+- [ ] **Summary Distribution:**
+  - [ ] Verify tutor receives summary email
+  - [ ] Verify student receives summary email
+  - [ ] Verify summary accessible in app
+  - [ ] Verify action items extracted
+
+#### **Known Issues to Watch For:**
+- ⚠️ Fathom app may be unverified (users see warning)
+- ⚠️ Auto-join may take 1-2 minutes after meeting starts
+- ⚠️ Transcription may take 5-10 minutes after meeting ends
+
+#### **Files to Check:**
+- `lib/features/sessions/services/fathom_service.dart`
+- `lib/features/sessions/services/fathom_summary_service.dart`
+- `PrepSkul_Web/app/api/webhooks/fathom/route.ts`
+- Fathom Dashboard → Meetings
+
+---
+
+## 🟡 **SECONDARY FEATURES TO TEST**
+
+### **6. Custom Tutor Requests**
+- [ ] Submit custom request
+- [ ] Verify education level auto-selected from survey
+- [ ] Verify subjects highlighted
+- [ ] Verify validation works
+- [ ] Verify WhatsApp notification sent
+- [ ] Verify request appears in admin dashboard
+
+### **7. Tutor Booking Requests**
+- [ ] Submit booking request as student
+- [ ] Submit booking request as parent
+- [ ] Verify tutor sees request
+- [ ] Verify tutor can approve/reject
+- [ ] Verify notifications work
+
+### **8. Survey Submissions**
+- [ ] Complete student survey
+- [ ] Complete parent survey
+- [ ] Complete tutor onboarding
+- [ ] Verify confetti shows on completion
+- [ ] Verify no duplicate key errors
+- [ ] Verify data saved correctly
+
+### **9. Trial Session Cancellation**
+- [ ] Cancel pending trial (should delete)
+- [ ] Cancel approved trial (should require reason)
+- [ ] Verify tutor receives notification
+- [ ] Verify cancellation reason stored
 
 ---
 
 ## 🐛 **COMMON ISSUES & FIXES**
 
-### **Issue: App Won't Start**
-```bash
-# Clean and rebuild
-flutter clean
-flutter pub get
-flutter run -d chrome
+### **Push Notifications Not Working:**
+1. Check Firebase configuration
+2. Verify FCM token stored in database
+3. Check device notification permissions
+4. Test on real device (not simulator)
+5. Check Firebase Console → Cloud Messaging
+
+### **Payments Not Processing:**
+1. Verify Fapshi credentials correct
+2. Check webhook URL configured
+3. Verify phone number format
+4. Check Fapshi dashboard for transaction status
+5. Review Next.js webhook logs
+
+### **Meet Links Not Generating:**
+1. Verify Google Calendar OAuth completed
+2. Check Google Calendar API enabled
+3. Verify PrepSkul VA email in attendees
+4. Check API quota limits
+5. Review error logs
+
+### **Fathom Not Joining:**
+1. Verify PrepSkul VA email in calendar event
+2. Check Fathom account connected to calendar
+3. Verify meeting started at scheduled time
+4. Check Fathom dashboard for auto-join status
+
+---
+
+## 📝 **TESTING LOG TEMPLATE**
+
+For each test, document:
+
+```
+Test: [Feature Name]
+Date: [Date]
+Device: [iOS/Android/Web]
+Result: [Pass/Fail]
+Issues Found: [Description]
+Screenshots: [If applicable]
 ```
 
-### **Issue: Hot Reload Not Working**
-- Press `R` for hot restart instead of `r`
-- Or stop and restart the app
+---
 
-### **Issue: Can't See Changes**
-- Clear browser cache (Chrome: Cmd+Shift+Delete)
-- Or use incognito mode
-- Or restart the app
+## ✅ **SIGN-OFF CHECKLIST**
 
-### **Issue: Database Errors**
-- Check Supabase connection
-- Verify environment variables in `.env`
-- Check migration status in Supabase dashboard
+Before MVP launch, verify:
 
-### **Issue: UI Looks Old/Broken**
-- Check if `AppTheme` is being used consistently
-- Verify all imports are correct
-- Check for missing dependencies
+- [ ] All push notifications work on iOS
+- [ ] All push notifications work on Android
+- [ ] All payment flows work (trial & regular)
+- [ ] All webhooks process correctly
+- [ ] All Meet links generate correctly
+- [ ] All calendar events create correctly
+- [ ] Fathom auto-joins meetings
+- [ ] Fathom records and transcribes
+- [ ] Session lifecycle works (start/end/cancel)
+- [ ] Session tracking accurate
+- [ ] No critical bugs found
+- [ ] Performance acceptable
+- [ ] Error handling robust
 
 ---
 
-## 📊 **TESTING CHECKLIST**
+## 🚀 **NEXT STEPS AFTER TESTING**
 
-### **UI/UX Testing:**
-- [ ] All screens load without errors
-- [ ] All buttons are clickable and responsive
-- [ ] All forms validate correctly
-- [ ] All dialogs appear and dismiss correctly
-- [ ] All navigation works smoothly
-- [ ] All empty states are clear
-- [ ] All error messages are helpful
-- [ ] All success messages are clear
-- [ ] Colors are consistent across screens
-- [ ] Typography is readable and consistent
-- [ ] Spacing is consistent
-- [ ] Shadows and borders are subtle
-- [ ] Animations are smooth
-
-### **Functionality Testing:**
-- [ ] Trial booking flow works end-to-end
-- [ ] Post-trial dialog appears for completed trials
-- [ ] Conversion screen works correctly
-- [ ] Payment flow works (when implemented)
-- [ ] Request cards display correctly
-- [ ] Status updates work
-- [ ] Navigation between screens works
-- [ ] Data persists correctly
-
-### **Responsiveness Testing:**
-- [ ] Works on mobile (phone)
-- [ ] Works on tablet
-- [ ] Works on desktop/web
-- [ ] Works in different orientations
-- [ ] Text is readable at all sizes
-- [ ] Buttons are easy to tap
-- [ ] Forms are usable
+1. **Document all bugs found**
+2. **Prioritize fixes** (Critical → High → Medium → Low)
+3. **Fix bugs** (I can help with this)
+4. **Re-test fixed features**
+5. **Sign off for MVP launch**
 
 ---
 
-## 🚀 **QUICK START TESTING**
+## 📞 **SUPPORT**
 
-### **Fastest Way to Test UI:**
-1. **Start the app:**
-   ```bash
-   cd /Users/user/Desktop/PrepSkul/prepskul_app
-   flutter run -d chrome
-   ```
+If you find bugs or issues:
+1. Document the issue clearly
+2. Include steps to reproduce
+3. Include error messages/logs
+4. Include device/browser info
+5. Share with me for fixing
 
-2. **Login as Student:**
-   - Use existing account or create new one
-
-3. **Navigate to "My Requests":**
-   - Check if UI loads correctly
-   - Check if tabs work
-   - Check if empty states look good
-
-4. **Try Booking a Trial:**
-   - Go to "Find Tutors"
-   - Select a tutor
-   - Tap "Book Trial Session"
-   - Go through the flow
-   - Check if UI is modern and responsive
-
-5. **Check Completed Trial:**
-   - If you have a completed trial, check if dialog appears
-   - Check if "Continue with Tutor" button appears
-   - Test the conversion flow
-
----
-
-## 📝 **REPORTING ISSUES**
-
-When you find issues, note:
-1. **What you were testing** (e.g., "Post-trial dialog")
-2. **What you expected** (e.g., "Dialog should appear")
-3. **What actually happened** (e.g., "Dialog didn't appear")
-4. **Steps to reproduce** (e.g., "1. Login, 2. Go to My Requests")
-5. **Screenshots** (if possible)
-6. **Device/Browser** (e.g., "Chrome on macOS")
-
----
-
-## ✅ **SUMMARY**
-
-**To test the UI:**
-1. Run `flutter run -d chrome`
-2. Login and navigate around
-3. Check if everything looks modern and works smoothly
-4. Test each feature flow
-5. Report any issues
-
-**UI should be:**
-- ✅ Modern (rounded corners, soft shadows)
-- ✅ Responsive (works on all screen sizes)
-- ✅ Consistent (same colors, fonts, spacing)
-- ✅ User-friendly (clear labels, easy navigation)
-- ✅ Smooth (animations, transitions)
-
-**Ready to test!** 🚀
-
-
-
-
-
-
+**I'll fix the bugs, you test the fixes!** 🎯

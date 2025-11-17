@@ -3,8 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:intl/intl.dart';
 
 /// Book Trial Session Screen - Multi-step Flow
 ///
@@ -40,8 +43,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   final TextEditingController _goalController = TextEditingController();
   final TextEditingController _challengesController = TextEditingController();
 
-  // Available time slots
-  final List<String> _availableTimeSlots = [
+  // Available time slots (will be loaded from tutor's schedule)
+  List<String> _availableTimeSlots = [
     '09:00',
     '10:00',
     '11:00',
@@ -54,7 +57,13 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     '20:00',
   ];
 
-  double get _trialFee => _selectedDuration == 30 ? 2000.0 : 3500.0;
+  // Blocked time slots for the selected date (from tutor's existing sessions)
+  List<String> _blockedTimeSlots = [];
+  String? _conflictMessage; // Message about tutor's other commitments
+  bool _isLoadingSchedule = false;
+
+  double _trialFee = 3500.0; // Default, will be loaded from database
+  bool _isLoadingPrice = false;
 
   // Location data (prefilled from survey)
   String _selectedLocation = 'online'; // Default to online
@@ -65,6 +74,103 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   void initState() {
     super.initState();
     _prefillFromSurvey();
+    _loadTrialPricing();
+    _loadTutorSchedule();
+  }
+
+  /// Load trial session pricing from database
+  Future<void> _loadTrialPricing() async {
+    try {
+      setState(() => _isLoadingPrice = true);
+      final price = await PricingService.getTrialSessionPrice(
+        _selectedDuration,
+      );
+      if (mounted) {
+        setState(() {
+          _trialFee = price.toDouble();
+          _isLoadingPrice = false;
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error loading trial pricing: $e');
+      if (mounted) {
+        setState(() => _isLoadingPrice = false);
+      }
+      // Keep default value on error
+    }
+  }
+
+  /// Load tutor's schedule and blocked time slots
+  Future<void> _loadTutorSchedule() async {
+    try {
+      setState(() => _isLoadingSchedule = true);
+      final tutorId =
+          widget.tutor['user_id'] as String? ?? widget.tutor['id'] as String?;
+      if (tutorId == null) {
+        print('⚠️ No tutor ID found');
+        return;
+      }
+
+      // Get the day name for the selected date
+      final dayName = DateFormat('EEEE').format(_selectedDate);
+
+      // Get blocked time slots for this tutor
+      final blockedSlots = await AvailabilityService.getBlockedTimeSlots(
+        tutorId,
+      );
+      final dayBlockedSlots = blockedSlots[dayName] ?? [];
+
+      // Get available times for this day (filters out blocked slots)
+      final availableTimes = await AvailabilityService.getAvailableTimesForDay(
+        tutorId: tutorId,
+        day: dayName,
+      );
+
+      // Convert available times to 24-hour format for display
+      final availableSlots24h = availableTimes.map((time) {
+        // Convert "4:00 PM" to "16:00"
+        try {
+          final timeParts = time.split(' ');
+          final hourMin = timeParts[0].split(':');
+          var hour = int.parse(hourMin[0]);
+          final minute = hourMin.length > 1 ? int.parse(hourMin[1]) : 0;
+          final isPM =
+              timeParts.length > 1 && timeParts[1].toUpperCase() == 'PM';
+
+          if (isPM && hour != 12) hour += 12;
+          if (!isPM && hour == 12) hour = 0;
+
+          return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+        } catch (e) {
+          return time; // Return original if parsing fails
+        }
+      }).toList();
+
+      // Build conflict message if there are blocked slots
+      String? conflictMsg;
+      if (dayBlockedSlots.isNotEmpty) {
+        conflictMsg =
+            'Tutor has another student at ${dayBlockedSlots.join(', ')}';
+      }
+
+      if (mounted) {
+        setState(() {
+          _blockedTimeSlots = dayBlockedSlots;
+          _conflictMessage = conflictMsg;
+          // Update available slots if we got real data
+          if (availableSlots24h.isNotEmpty) {
+            _availableTimeSlots = availableSlots24h;
+          }
+          _isLoadingSchedule = false;
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error loading tutor schedule: $e');
+      if (mounted) {
+        setState(() => _isLoadingSchedule = false);
+      }
+      // Keep default slots on error
+    }
   }
 
   /// Pre-fill data from survey if available
@@ -98,7 +204,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           if (city != null && quarter != null) {
             final street = surveyData?['street'];
             final streetStr = street != null ? ', ${street.toString()}' : '';
-            _onsiteAddress = '${city.toString()}, ${quarter.toString()}$streetStr';
+            _onsiteAddress =
+                '${city.toString()}, ${quarter.toString()}$streetStr';
             print('✅ Pre-filled trial session address: $_onsiteAddress');
           }
 
@@ -583,6 +690,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   // STEP 2: Date & Time
   Widget _buildDateAndTime() {
     return SingleChildScrollView(
+      physics:
+          const AlwaysScrollableScrollPhysics(), // Ensure scrolling is always enabled
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -601,46 +710,137 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
+          // Calendar container with visual indicator below
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                constraints: const BoxConstraints(
+                  maxHeight: 380, // Constrain calendar height
+                ),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: TableCalendar(
+                  firstDay: DateTime.now(),
+                  lastDay: DateTime.now().add(const Duration(days: 60)),
+                  focusedDay: _focusedDate,
+                  selectedDayPredicate: (day) => isSameDay(_selectedDate, day),
+                  onDaySelected: (selectedDay, focusedDay) {
+                    setState(() {
+                      _selectedDate = selectedDay;
+                      _focusedDate = focusedDay;
+                      _selectedTime = null; // Reset time when date changes
+                    });
+                    _loadTutorSchedule(); // Reload schedule for new date
+                  },
+                  calendarFormat: CalendarFormat.month,
+                  // Disable calendar's internal scrolling to allow parent scroll
+                  pageJumpingEnabled: true,
+                  availableCalendarFormats: const {
+                    CalendarFormat.month: 'Month',
+                  },
+                  headerStyle: HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                    titleTextStyle: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  calendarStyle: CalendarStyle(
+                    selectedDecoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                    todayDecoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+              // Visual indicator at bottom of calendar to show more content below
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 30,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.white.withOpacity(0),
+                        Colors.white.withOpacity(0.8),
+                        Colors.white,
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
+                    ),
+                  ),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 20,
+                          color: AppTheme.primaryColor.withOpacity(0.6),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Scroll for time slots',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppTheme.primaryColor.withOpacity(0.7),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+
+          // Clear section divider with hint
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey[200]!),
+              color: AppTheme.primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppTheme.primaryColor.withOpacity(0.3),
+                width: 1,
+              ),
             ),
-            child: TableCalendar(
-              firstDay: DateTime.now(),
-              lastDay: DateTime.now().add(const Duration(days: 60)),
-              focusedDay: _focusedDate,
-              selectedDayPredicate: (day) => isSameDay(_selectedDate, day),
-              onDaySelected: (selectedDay, focusedDay) {
-                setState(() {
-                  _selectedDate = selectedDay;
-                  _focusedDate = focusedDay;
-                });
-              },
-              calendarFormat: CalendarFormat.month,
-              headerStyle: HeaderStyle(
-                formatButtonVisible: false,
-                titleCentered: true,
-                titleTextStyle: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+            child: Row(
+              children: [
+                Icon(Icons.access_time, size: 20, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Select a time slot below',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
                 ),
-              ),
-              calendarStyle: CalendarStyle(
-                selectedDecoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  shape: BoxShape.circle,
-                ),
-                todayDecoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
-                  shape: BoxShape.circle,
-                ),
-              ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           Text(
             'Select Time',
@@ -656,40 +856,130 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _availableTimeSlots.map((time) {
-              final isSelected = _selectedTime == time;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedTime = time),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+          _isLoadingSchedule
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20.0),
+                    child: CircularProgressIndicator(),
                   ),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppTheme.primaryColor : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppTheme.primaryColor
-                          : Colors.grey[300]!,
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Text(
-                    _formatTime(time),
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : Colors.black,
-                    ),
-                  ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _availableTimeSlots.map((time) {
+                    final isSelected = _selectedTime == time;
+                    final formattedTime = _formatTime(time);
+                    // Check if this time slot is blocked
+                    final isBlocked = _blockedTimeSlots.any((blocked) {
+                      // Convert blocked time to match format
+                      try {
+                        final blockedParts = blocked.split(' ');
+                        final blockedHourMin = blockedParts[0].split(':');
+                        var blockedHour = int.parse(blockedHourMin[0]);
+                        final blockedMin = blockedHourMin.length > 1
+                            ? int.parse(blockedHourMin[1])
+                            : 0;
+                        final isPM =
+                            blockedParts.length > 1 &&
+                            blockedParts[1].toUpperCase() == 'PM';
+                        if (isPM && blockedHour != 12) blockedHour += 12;
+                        if (!isPM && blockedHour == 12) blockedHour = 0;
+                        final blocked24h =
+                            '${blockedHour.toString().padLeft(2, '0')}:${blockedMin.toString().padLeft(2, '0')}';
+                        return blocked24h == time;
+                      } catch (e) {
+                        return false;
+                      }
+                    });
+
+                    return GestureDetector(
+                      onTap: isBlocked
+                          ? null
+                          : () => setState(() => _selectedTime = time),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isBlocked
+                              ? Colors.grey[200]
+                              : (isSelected
+                                    ? AppTheme.primaryColor
+                                    : Colors.white),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isBlocked
+                                ? Colors.grey[300]!
+                                : (isSelected
+                                      ? AppTheme.primaryColor
+                                      : Colors.grey[300]!),
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isBlocked)
+                              Icon(
+                                Icons.block,
+                                size: 16,
+                                color: Colors.grey[400],
+                              )
+                            else
+                              const SizedBox.shrink(),
+                            if (isBlocked) const SizedBox(width: 4),
+                            Text(
+                              formattedTime,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: isBlocked
+                                    ? Colors.grey[400]
+                                    : (isSelected
+                                          ? Colors.white
+                                          : Colors.black),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              );
-            }).toList(),
-          ),
+
+          // Show conflict message if tutor has other commitments
+          if (_conflictMessage != null && _conflictMessage!.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.warning_amber,
+                    size: 18,
+                    color: Colors.orange[700],
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Note: $_conflictMessage',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -848,14 +1138,20 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     color: Colors.black,
                   ),
                 ),
-                Text(
-                  '${_trialFee.toStringAsFixed(0)} XAF',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
+                _isLoadingPrice
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        '${_trialFee.toStringAsFixed(0)} XAF',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
               ],
             ),
           ),
@@ -866,21 +1162,22 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   /// Get tutor avatar image - handles both network URLs and asset paths
   ImageProvider? _getTutorAvatarImage() {
-    final avatarUrl = widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'];
-    
+    final avatarUrl =
+        widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'];
+
     if (avatarUrl == null || avatarUrl.toString().isEmpty) {
       return null;
     }
-    
+
     final urlString = avatarUrl.toString();
-    
+
     // Check if it's a network URL
-    if (urlString.startsWith('http://') || 
+    if (urlString.startsWith('http://') ||
         urlString.startsWith('https://') ||
         urlString.startsWith('//')) {
       return NetworkImage(urlString);
     }
-    
+
     // Otherwise, treat as asset path
     return AssetImage(urlString);
   }
@@ -888,7 +1185,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Widget _buildTutorCard() {
     final avatarImage = _getTutorAvatarImage();
     final tutorName = widget.tutor['full_name'] ?? 'Tutor';
-    
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -967,7 +1264,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Widget _buildDurationOption(int minutes, String label, String price) {
     final isSelected = _selectedDuration == minutes;
     return GestureDetector(
-      onTap: () => setState(() => _selectedDuration = minutes),
+      onTap: () {
+        setState(() => _selectedDuration = minutes);
+        _loadTrialPricing(); // Reload pricing when duration changes
+      },
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(

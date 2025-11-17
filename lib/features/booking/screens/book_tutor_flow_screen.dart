@@ -246,10 +246,22 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       // Show success
       _showSuccessDialog();
     } catch (e) {
+      print('❌ Error creating booking request: $e');
+      print('❌ Error details: ${e.toString()}');
+      print('❌ Stack trace: ${StackTrace.current}');
+
       if (!mounted) return;
       Navigator.pop(context);
 
-      // Show error dialog
+      // Show error dialog with more details
+      final errorMessage = e.toString().contains('not authenticated')
+          ? 'You are not logged in. Please log in and try again.'
+          : e.toString().contains('network') || e.toString().contains('connection')
+              ? 'Network error. Please check your connection and try again.'
+              : e.toString().contains('student_type') || e.toString().contains('constraint')
+                  ? 'There was an issue with your request. Please try again or contact support.'
+                  : 'Unable to send your booking request. Please check your connection and try again.';
+
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -258,19 +270,21 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           ),
           title: Row(
             children: [
-              Icon(Icons.error_outline, color: AppTheme.primaryColor, size: 28),
+              Icon(Icons.error_outline, color: Colors.red[300], size: 28),
               const SizedBox(width: 12),
-              Text(
-                'Request Failed',
-                style: GoogleFonts.poppins(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  'Request Failed',
+                  style: GoogleFonts.poppins(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
           ),
           content: Text(
-            'Unable to send your booking request. Please check your connection and try again.',
+            errorMessage,
             style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
           ),
           actions: [

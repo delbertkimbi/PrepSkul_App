@@ -47,12 +47,34 @@ class BookingService {
       // Map user_type to student_type for booking_requests constraint
       // Constraint expects: ('learner', 'parent')
       // user_type can be: ('learner', 'student', 'tutor', 'parent')
-      final userType = (userProfile['user_type'] as String? ?? 'learner').toLowerCase();
-      final studentType = userType == 'learner' || userType == 'student'
-          ? 'learner' // Map both 'learner' and 'student' to 'learner'
-          : userType == 'parent'
-              ? 'parent'
-              : 'learner'; // Default to 'learner' if unexpected value (e.g., 'tutor')
+      final rawUserType = userProfile['user_type'] as String?;
+      final userType = (rawUserType ?? 'learner').toLowerCase().trim();
+
+      // Determine student_type with explicit validation
+      String studentType;
+      if (userType == 'learner' || userType == 'student') {
+        studentType = 'learner';
+      } else if (userType == 'parent') {
+        studentType = 'parent';
+      } else {
+        // Log unexpected value and default to 'learner'
+        print(
+          '⚠️ Unexpected user_type: "$rawUserType" (normalized: "$userType"), defaulting to "learner"',
+        );
+        studentType = 'learner';
+      }
+
+      // Final validation - ensure it's one of the allowed values
+      if (studentType != 'learner' && studentType != 'parent') {
+        print(
+          '❌ Invalid student_type after mapping: "$studentType", forcing to "learner"',
+        );
+        studentType = 'learner';
+      }
+
+      print(
+        '🔍 Booking request - user_type: "$rawUserType" → student_type: "$studentType"',
+      );
 
       // Create booking request data
       final requestData = {
@@ -70,38 +92,53 @@ class BookingService {
         'created_at': DateTime.now().toIso8601String(),
         // Denormalized data
         'student_name': userProfile['full_name'],
-        'student_type': studentType, // Use mapped value
+        'student_type': studentType, // Validated: 'learner' or 'parent'
         'tutor_name': tutorProfileData?['full_name'] ?? 'Tutor',
         'tutor_rating':
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
       };
 
+      // Log request data for debugging (excluding sensitive info)
+      print('📝 Creating booking request with student_type: "$studentType"');
+      print('📝 Request data keys: ${requestData.keys.join(", ")}');
+      print(
+        '📝 student_type value: "${requestData['student_type']}" (type: ${requestData['student_type'].runtimeType})',
+      );
+
       // Insert into booking_requests table
-      final response = await SupabaseService.client
-          .from('booking_requests')
-          .insert(requestData)
-          .select()
-          .single();
-
-      final requestId = response['id'] as String;
-      final studentName = userProfile['full_name'] as String? ?? 'Student';
-      final subject =
-          'Tutoring Sessions'; // Could be extracted from request if available
-
-      print('✅ Booking request created successfully: $requestId');
-
-      // Send notification to tutor
       try {
-        await NotificationHelperService.notifyBookingRequestCreated(
-          tutorId: tutorUserId,
-          studentId: userId,
-          requestId: requestId,
-          studentName: studentName,
-          subject: subject,
-        );
+        final response = await SupabaseService.client
+            .from('booking_requests')
+            .insert(requestData)
+            .select()
+            .single();
+
+        final requestId = response['id'] as String;
+        final studentName = userProfile['full_name'] as String? ?? 'Student';
+        final subject =
+            'Tutoring Sessions'; // Could be extracted from request if available
+
+        print('✅ Booking request created successfully: $requestId');
+
+        // Send notification to tutor
+        try {
+          await NotificationHelperService.notifyBookingRequestCreated(
+            tutorId: tutorUserId,
+            studentId: userId,
+            requestId: requestId,
+            studentName: studentName,
+            subject: subject,
+          );
+        } catch (e) {
+          print('⚠️ Failed to send booking request notification: $e');
+          // Don't fail the request creation if notification fails
+        }
       } catch (e) {
-        print('⚠️ Failed to send booking request notification: $e');
-        // Don't fail the request creation if notification fails
+        print('❌ Error inserting booking request: $e');
+        print(
+          '❌ Request data that failed: student_type="${requestData['student_type']}"',
+        );
+        rethrow;
       }
     } catch (e) {
       print('❌ Error creating booking request: $e');
@@ -119,23 +156,120 @@ class BookingService {
         throw Exception('User not authenticated');
       }
 
+      print('🔍 Fetching booking requests for tutor: $userId');
+      print('🔍 Filter status: ${status ?? "all"}');
+
+      // Try both table names (booking_requests and session_requests)
+      // Some databases might have one or the other
       var query = SupabaseService.client
           .from('booking_requests')
-          .select()
+          .select('*')
           .eq('tutor_id', userId);
 
       if (status != null && status != 'all') {
         query = query.eq('status', status);
       }
 
-      final response = await query.order('created_at', ascending: false);
+      List responseList;
+      try {
+        final response = await query.order('created_at', ascending: false);
+        responseList = response as List;
+        print('✅ Query successful on booking_requests table');
+      } catch (tableError) {
+        // If booking_requests doesn't exist, try session_requests
+        print('⚠️ booking_requests table error: $tableError');
+        print('🔄 Trying session_requests table instead...');
+        try {
+          var fallbackQuery = SupabaseService.client
+              .from('session_requests')
+              .select('*')
+              .eq('tutor_id', userId);
+          if (status != null && status != 'all') {
+            fallbackQuery = fallbackQuery.eq('status', status);
+          }
+          final fallbackResponse = await fallbackQuery.order(
+            'created_at',
+            ascending: false,
+          );
+          responseList = fallbackResponse as List;
+          print('✅ Found requests in session_requests table');
+        } catch (fallbackError) {
+          print(
+            '❌ Both booking_requests and session_requests failed: $fallbackError',
+          );
+          rethrow;
+        }
+      }
 
-      return (response as List)
-          .map((json) => BookingRequest.fromJson(json))
-          .toList();
+      print('📊 Raw response type: ${responseList.runtimeType}');
+      print('📊 Response length: ${responseList.length}');
+
+      if (responseList.isEmpty) {
+        print('⚠️ No booking requests found for tutor: $userId');
+        // Let's also check if there are any requests at all in the table
+        try {
+          final allRequestsCheck = await SupabaseService.client
+              .from('booking_requests')
+              .select('id, tutor_id, status')
+              .limit(5);
+          print(
+            '🔍 Sample booking requests in DB: ${allRequestsCheck.length} total (showing first 5)',
+          );
+          if (allRequestsCheck.isNotEmpty) {
+            print(
+              '🔍 Sample tutor_ids in DB: ${allRequestsCheck.map((r) => r['tutor_id']).toList()}',
+            );
+            print('🔍 Current tutor user_id: $userId');
+          }
+        } catch (checkError) {
+          // Try session_requests
+          try {
+            final allRequestsCheck = await SupabaseService.client
+                .from('session_requests')
+                .select('id, tutor_id, status')
+                .limit(5);
+            print(
+              '🔍 Sample session_requests in DB: ${allRequestsCheck.length} total (showing first 5)',
+            );
+            if (allRequestsCheck.isNotEmpty) {
+              print(
+                '🔍 Sample tutor_ids in DB: ${allRequestsCheck.map((r) => r['tutor_id']).toList()}',
+              );
+              print('🔍 Current tutor user_id: $userId');
+            }
+          } catch (fallbackCheckError) {
+            print('⚠️ Could not check sample requests: $fallbackCheckError');
+          }
+        }
+        return [];
+      }
+
+      print('✅ Found ${responseList.length} booking requests');
+
+      final requests = <BookingRequest>[];
+      for (var i = 0; i < responseList.length; i++) {
+        try {
+          final jsonData = responseList[i] as Map<String, dynamic>;
+          final request = BookingRequest.fromJson(jsonData);
+          requests.add(request);
+          print(
+            '✅ Parsed request ${i + 1}/${responseList.length}: ${request.id} - ${request.status}',
+          );
+        } catch (parseError) {
+          print('❌ Error parsing request ${i + 1}: $parseError');
+          print('❌ Request data: ${responseList[i]}');
+          // Continue parsing other requests even if one fails
+        }
+      }
+
+      print(
+        '✅ Successfully parsed ${requests.length}/${responseList.length} requests',
+      );
+      return requests;
     } catch (e) {
       print('❌ Error fetching tutor booking requests: $e');
-      throw Exception('Failed to fetch booking requests: $e');
+      print('❌ Stack trace: ${StackTrace.current}');
+      rethrow;
     }
   }
 
@@ -222,8 +356,13 @@ class BookingService {
       // This is the critical monetization feature
       String? paymentRequestId;
       try {
-        paymentRequestId = await PaymentRequestService.createPaymentRequestOnApproval(bookingRequest);
-        print('✅ Payment request created for approved booking: $paymentRequestId');
+        paymentRequestId =
+            await PaymentRequestService.createPaymentRequestOnApproval(
+              bookingRequest,
+            );
+        print(
+          '✅ Payment request created for approved booking: $paymentRequestId',
+        );
       } catch (e) {
         print('⚠️ Failed to create payment request: $e');
         // Don't fail the approval if payment request creation fails
@@ -240,7 +379,8 @@ class BookingService {
           requestId: requestId,
           tutorName: tutorName,
           subject: subject,
-          paymentRequestId: paymentRequestId, // Include payment request ID for auto-launch
+          paymentRequestId:
+              paymentRequestId, // Include payment request ID for auto-launch
         );
       } catch (e) {
         print('⚠️ Failed to send booking acceptance notification: $e');

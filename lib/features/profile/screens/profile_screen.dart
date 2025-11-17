@@ -56,31 +56,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           // Determine the best name to use (avoid 'User' or 'Student' defaults)
           String? nameToUse;
-          if (storedName != null && storedName.isNotEmpty && 
-              storedName != 'User' && storedName != 'Student') {
+          if (storedName != null &&
+              storedName.isNotEmpty &&
+              storedName != 'User' &&
+              storedName != 'Student') {
             nameToUse = storedName;
           } else if (user['fullName'] != null) {
             final sessionName = user['fullName']?.toString() ?? '';
-            if (sessionName.isNotEmpty && 
-                sessionName != 'User' && sessionName != 'Student') {
+            if (sessionName.isNotEmpty &&
+                sessionName != 'User' &&
+                sessionName != 'Student') {
               nameToUse = sessionName;
             }
           } else if (authUser?.userMetadata?['full_name'] != null) {
-            final metadataName = authUser!.userMetadata!['full_name']?.toString() ?? '';
-            if (metadataName.isNotEmpty && 
-                metadataName != 'User' && metadataName != 'Student') {
+            final metadataName =
+                authUser!.userMetadata!['full_name']?.toString() ?? '';
+            if (metadataName.isNotEmpty &&
+                metadataName != 'User' &&
+                metadataName != 'Student') {
               nameToUse = metadataName;
             }
           } else if (authEmail != null) {
             // Extract name from email as last resort
             final emailName = authEmail.split('@')[0];
-            if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
-              nameToUse = emailName.split('.').map((s) => 
-                s.isNotEmpty && s.length > 1 ? s[0].toUpperCase() + s.substring(1) : s.toUpperCase()
-              ).where((s) => s.isNotEmpty).join(' ');
+            if (emailName.isNotEmpty &&
+                emailName != 'user' &&
+                emailName != 'student') {
+              nameToUse = emailName
+                  .split('.')
+                  .map(
+                    (s) => s.isNotEmpty && s.length > 1
+                        ? s[0].toUpperCase() + s.substring(1)
+                        : s.toUpperCase(),
+                  )
+                  .where((s) => s.isNotEmpty)
+                  .join(' ');
             }
           }
-          
+
           // Create profile using stored data or auth user data
           await SupabaseService.client.from('profiles').upsert({
             'id': userId,
@@ -145,50 +158,78 @@ class _ProfileScreenState extends State<ProfileScreen> {
       var fullName = profileResponse?['full_name'] != null
           ? profileResponse!['full_name'].toString()
           : null;
-      
+
       // If name is invalid (empty, 'User', or 'Student'), try other sources
-      if (fullName == null || fullName.isEmpty || 
-          fullName == 'User' || fullName == 'Student') {
-        if (storedName != null && storedName.isNotEmpty && 
-            storedName != 'User' && storedName != 'Student') {
+      if (fullName == null ||
+          fullName.isEmpty ||
+          fullName == 'User' ||
+          fullName == 'Student') {
+        if (storedName != null &&
+            storedName.isNotEmpty &&
+            storedName != 'User' &&
+            storedName != 'Student') {
           fullName = storedName;
         }
       }
-      if (fullName == null || fullName.isEmpty || 
-          fullName == 'User' || fullName == 'Student') {
+      if (fullName == null ||
+          fullName.isEmpty ||
+          fullName == 'User' ||
+          fullName == 'Student') {
         final sessionName = user['fullName']?.toString();
-        if (sessionName != null && sessionName.isNotEmpty && 
-            sessionName != 'User' && sessionName != 'Student') {
+        if (sessionName != null &&
+            sessionName.isNotEmpty &&
+            sessionName != 'User' &&
+            sessionName != 'Student') {
           fullName = sessionName;
         }
       }
-      if (fullName == null || fullName.isEmpty || 
-          fullName == 'User' || fullName == 'Student') {
+      if (fullName == null ||
+          fullName.isEmpty ||
+          fullName == 'User' ||
+          fullName == 'Student') {
         final metadataName = authUser?.userMetadata?['full_name']?.toString();
-        if (metadataName != null && metadataName.isNotEmpty && 
-            metadataName != 'User' && metadataName != 'Student') {
+        if (metadataName != null &&
+            metadataName.isNotEmpty &&
+            metadataName != 'User' &&
+            metadataName != 'Student') {
           fullName = metadataName;
         }
       }
-      if (fullName == null || fullName.isEmpty || 
-          fullName == 'User' || fullName == 'Student') {
+      if (fullName == null ||
+          fullName.isEmpty ||
+          fullName == 'User' ||
+          fullName == 'Student') {
         // Extract name from email as last resort
         if (authEmail != null) {
           final emailName = authEmail.split('@')[0];
-          if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
-            fullName = emailName.split('.').map((s) => 
-              s.isNotEmpty && s.length > 1 ? s[0].toUpperCase() + s.substring(1) : s.toUpperCase()
-            ).where((s) => s.isNotEmpty).join(' ');
+          if (emailName.isNotEmpty &&
+              emailName != 'user' &&
+              emailName != 'student') {
+            fullName = emailName
+                .split('.')
+                .map(
+                  (s) => s.isNotEmpty && s.length > 1
+                      ? s[0].toUpperCase() + s.substring(1)
+                      : s.toUpperCase(),
+                )
+                .where((s) => s.isNotEmpty)
+                .join(' ');
           }
         }
       }
-      
+
       // Final fallback: use empty string instead of 'User' or 'Student'
-      if (fullName == null || fullName.isEmpty || 
-          fullName == 'User' || fullName == 'Student') {
-        fullName = widget.userType == 'student' ? 'Student' : 
-                   widget.userType == 'parent' ? 'Parent' : 
-                   widget.userType == 'tutor' ? 'Tutor' : 'User';
+      if (fullName == null ||
+          fullName.isEmpty ||
+          fullName == 'User' ||
+          fullName == 'Student') {
+        fullName = widget.userType == 'student'
+            ? 'Student'
+            : widget.userType == 'parent'
+            ? 'Parent'
+            : widget.userType == 'tutor'
+            ? 'Tutor'
+            : 'User';
       }
 
       // Load survey data for students and parents
@@ -225,9 +266,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isLoading = false;
         // Set safe defaults to prevent crashes
         _userInfo = {
-          'fullName': widget.userType == 'student' ? 'Student' : 
-                     widget.userType == 'parent' ? 'Parent' : 
-                     widget.userType == 'tutor' ? 'Tutor' : 'User',
+          'fullName': widget.userType == 'student'
+              ? 'Student'
+              : widget.userType == 'parent'
+              ? 'Parent'
+              : widget.userType == 'tutor'
+              ? 'Tutor'
+              : 'User',
           'email': 'Not set',
           'phone': 'Not set',
           'avatarUrl': null,
@@ -265,7 +310,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirm == true && mounted) {
       await AuthService.logout();
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil('/email-login', (route) => false);
     }
   }
 
@@ -813,276 +860,273 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Wrap in try-catch to prevent crashes from type casting errors
     try {
       final learningPath = _surveyData?['learning_path'] as String?;
-      
+
       // Safely handle subjects - might be String or List
-    List? subjects;
-    if (_surveyData?['subjects'] != null) {
-      final subjectsData = _surveyData!['subjects'];
-      if (subjectsData is List) {
-        subjects = subjectsData;
-      } else if (subjectsData is String && subjectsData.isNotEmpty) {
-        // Handle old data format (comma-separated string)
-        subjects = subjectsData.split(',').map((s) => s.trim()).toList();
+      List? subjects;
+      if (_surveyData?['subjects'] != null) {
+        final subjectsData = _surveyData!['subjects'];
+        if (subjectsData is List) {
+          subjects = subjectsData;
+        } else if (subjectsData is String && subjectsData.isNotEmpty) {
+          // Handle old data format (comma-separated string)
+          subjects = subjectsData.split(',').map((s) => s.trim()).toList();
+        }
       }
-    }
-    
-    // Safely handle skills - might be String or List
-    List? skills;
-    if (_surveyData?['skills'] != null) {
-      final skillsData = _surveyData!['skills'];
-      if (skillsData is List) {
-        skills = skillsData;
-      } else if (skillsData is String && skillsData.isNotEmpty) {
-        // Handle old data format (comma-separated string)
-        skills = skillsData.split(',').map((s) => s.trim()).toList();
+
+      // Safely handle skills - might be String or List
+      List? skills;
+      if (_surveyData?['skills'] != null) {
+        final skillsData = _surveyData!['skills'];
+        if (skillsData is List) {
+          skills = skillsData;
+        } else if (skillsData is String && skillsData.isNotEmpty) {
+          // Handle old data format (comma-separated string)
+          skills = skillsData.split(',').map((s) => s.trim()).toList();
+        }
       }
-    }
-    
-    // Safely handle learning_goals - might be String or List
-    List? learningGoals;
-    if (_surveyData?['learning_goals'] != null) {
-      final goalsData = _surveyData!['learning_goals'];
-      if (goalsData is List) {
-        learningGoals = goalsData;
-      } else if (goalsData is String && goalsData.isNotEmpty) {
-        // Handle old data format (comma-separated string)
-        learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+
+      // Safely handle learning_goals - might be String or List
+      List? learningGoals;
+      if (_surveyData?['learning_goals'] != null) {
+        final goalsData = _surveyData!['learning_goals'];
+        if (goalsData is List) {
+          learningGoals = goalsData;
+        } else if (goalsData is String && goalsData.isNotEmpty) {
+          // Handle old data format (comma-separated string)
+          learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+        }
       }
-    }
-    
-    // Safely handle learning_styles - might be String or List
-    List? learningStyles;
-    if (_surveyData?['learning_styles'] != null) {
-      final stylesData = _surveyData!['learning_styles'];
-      if (stylesData is List) {
-        learningStyles = stylesData;
-      } else if (stylesData is String && stylesData.isNotEmpty) {
-        // Handle old data format (comma-separated string)
-        learningStyles = stylesData.split(',').map((s) => s.trim()).toList();
+
+      // Safely handle learning_styles - might be String or List
+      List? learningStyles;
+      if (_surveyData?['learning_styles'] != null) {
+        final stylesData = _surveyData!['learning_styles'];
+        if (stylesData is List) {
+          learningStyles = stylesData;
+        } else if (stylesData is String && stylesData.isNotEmpty) {
+          // Handle old data format (comma-separated string)
+          learningStyles = stylesData.split(',').map((s) => s.trim()).toList();
+        }
       }
-    }
-    
-    // Also check for old learning_style (singular) field and migrate
-    if (learningStyles == null && _surveyData?['learning_style'] != null) {
-      final styleData = _surveyData!['learning_style'];
-      if (styleData is String && styleData.isNotEmpty) {
-        learningStyles = [styleData];
+
+      // Also check for old learning_style (singular) field and migrate
+      if (learningStyles == null && _surveyData?['learning_style'] != null) {
+        final styleData = _surveyData!['learning_style'];
+        if (styleData is String && styleData.isNotEmpty) {
+          learningStyles = [styleData];
+        }
       }
-    }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Learning Path
-        if (learningPath != null && learningPath.isNotEmpty) ...[
-          _buildInfoRow(
-            label: 'Learning Path',
-            value: learningPath,
-          ),
-          const SizedBox(height: 16),
-        ],
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Learning Path
+          if (learningPath != null && learningPath.isNotEmpty) ...[
+            _buildInfoRow(label: 'Learning Path', value: learningPath),
+            const SizedBox(height: 16),
+          ],
 
-        // Subjects
-        if (subjects != null && subjects.isNotEmpty) ...[
-          Text(
-            'Subjects',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textMedium,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: subjects.map((subject) {
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: AppTheme.primaryColor.withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  subject.toString(),
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppTheme.primaryColor,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-        ],
-
-        // Skills
-        if (skills != null && skills.isNotEmpty) ...[
-          Text(
-            'Skills',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textMedium,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: skills.map((skill) {
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                ),
-                child: Text(
-                  skill.toString(),
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.orange[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-        ],
-
-        // Learning Goals
-        if (learningGoals != null && learningGoals.isNotEmpty) ...[
-          Text(
-            'Learning Goals',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textMedium,
-            ),
-          ),
-          const SizedBox(height: 8),
-          ...learningGoals.map((goal) {
-            // Safely extract goal text - handle both String and List cases
-            String goalText;
-            if (goal is String) {
-              goalText = goal;
-            } else if (goal is List) {
-              // If goal is a list, join it without brackets
-              goalText = goal.map((item) => item.toString()).join(', ');
-            } else {
-              // Convert to string and clean up any bracket formatting
-              goalText = goal.toString().replaceAll(RegExp(r'[\[\]]'), '');
-            }
-            
-            // Clean up any remaining bracket artifacts
-            goalText = goalText.trim();
-            if (goalText.startsWith('[') && goalText.endsWith(']')) {
-              goalText = goalText.substring(1, goalText.length - 1);
-            }
-            
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 6),
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      goalText,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppTheme.textDark,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-          const SizedBox(height: 16),
-        ],
-
-        // Learning Styles
-        if (learningStyles != null && learningStyles.isNotEmpty) ...[
-          Text(
-            'Learning Styles',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textMedium,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: learningStyles.map((style) {
-              return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.purple.withOpacity(0.3)),
-                ),
-                child: Text(
-                  style.toString(),
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.purple[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-        ],
-
-        // Empty state
-        if ((learningPath == null || learningPath.isEmpty) &&
-            (subjects == null || subjects.isEmpty) &&
-            (skills == null || skills.isEmpty) &&
-            (learningGoals == null || learningGoals.isEmpty) &&
-            (learningStyles == null || learningStyles.isEmpty))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Text(
-              'Complete your onboarding survey to see your learning information here.',
+          // Subjects
+          if (subjects != null && subjects.isNotEmpty) ...[
+            Text(
+              'Subjects',
               style: GoogleFonts.poppins(
                 fontSize: 12,
+                fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
-                fontStyle: FontStyle.italic,
               ),
-              textAlign: TextAlign.center,
             ),
-          ),
-      ],
-    );
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: subjects.map((subject) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Text(
+                    subject.toString(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Skills
+          if (skills != null && skills.isNotEmpty) ...[
+            Text(
+              'Skills',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMedium,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: skills.map((skill) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    skill.toString(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.orange[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Learning Goals
+          if (learningGoals != null && learningGoals.isNotEmpty) ...[
+            Text(
+              'Learning Goals',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMedium,
+              ),
+            ),
+            const SizedBox(height: 8),
+            ...learningGoals.map((goal) {
+              // Safely extract goal text - handle both String and List cases
+              String goalText;
+              if (goal is String) {
+                goalText = goal;
+              } else if (goal is List) {
+                // If goal is a list, join it without brackets
+                goalText = goal.map((item) => item.toString()).join(', ');
+              } else {
+                // Convert to string and clean up any bracket formatting
+                goalText = goal.toString().replaceAll(RegExp(r'[\[\]]'), '');
+              }
+
+              // Clean up any remaining bracket artifacts
+              goalText = goalText.trim();
+              if (goalText.startsWith('[') && goalText.endsWith(']')) {
+                goalText = goalText.substring(1, goalText.length - 1);
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 6),
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        goalText,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: AppTheme.textDark,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            const SizedBox(height: 16),
+          ],
+
+          // Learning Styles
+          if (learningStyles != null && learningStyles.isNotEmpty) ...[
+            Text(
+              'Learning Styles',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMedium,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: learningStyles.map((style) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    style.toString(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.purple[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Empty state
+          if ((learningPath == null || learningPath.isEmpty) &&
+              (subjects == null || subjects.isEmpty) &&
+              (skills == null || skills.isEmpty) &&
+              (learningGoals == null || learningGoals.isEmpty) &&
+              (learningStyles == null || learningStyles.isEmpty))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                'Complete your onboarding survey to see your learning information here.',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.textMedium,
+                  fontStyle: FontStyle.italic,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      );
     } catch (e, stackTrace) {
       // Handle any type casting errors gracefully
       print('❌ Error building learning info section: $e');

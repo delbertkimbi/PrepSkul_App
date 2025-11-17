@@ -102,6 +102,9 @@ dependencies:
   # Google APIs (for Calendar)
   googleapis: ^11.0.0
   googleapis_auth: ^1.4.1
+  
+  # Confetti Celebration
+  confetti: ^0.7.0
 
 dev_dependencies:
   flutter_test:

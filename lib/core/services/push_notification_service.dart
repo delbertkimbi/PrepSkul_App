@@ -248,6 +248,18 @@ class PushNotificationService {
       // Set up message handlers
       await _setupMessageHandlers();
 
+      // On iOS, we'll retry getting the token after a short delay
+      // This handles cases where APNS token becomes available after permission is granted
+      if (!kIsWeb && Platform.isIOS) {
+        // Retry getting token after a delay (APNS might become available)
+        Future.delayed(const Duration(seconds: 2), () {
+          _getToken().catchError((error) {
+            print('⚠️ Retry getting FCM token failed: $error');
+            return null; // Return null on error
+          });
+        });
+      }
+
       // Get FCM token (now that permission is granted)
       await _getToken();
 
@@ -367,6 +379,30 @@ class PushNotificationService {
   /// Get FCM token
   Future<String?> _getToken() async {
     try {
+      // On iOS, we need to get the APNS token first before getting FCM token
+      if (!kIsWeb && Platform.isIOS) {
+        try {
+          // Request APNS token first (this is required for iOS)
+          final apnsToken = await _firebaseMessaging.getAPNSToken();
+          if (apnsToken == null) {
+            print('⚠️ APNS token not available yet - this is normal on simulator or before permission is granted');
+            print('ℹ️ FCM token will be available once APNS token is set (usually after permission is granted)');
+            // Don't throw error - this is expected behavior on iOS simulator or before permission
+            return null;
+          }
+          print('✅ APNS token obtained: $apnsToken');
+        } catch (apnsError) {
+          // If APNS token fails, it might be because:
+          // 1. Running on simulator (APNS not available)
+          // 2. Permission not granted yet
+          // 3. App not properly configured for push notifications
+          print('⚠️ Could not get APNS token: $apnsError');
+          print('ℹ️ This is normal on iOS simulator or before permission is granted');
+          // Continue anyway - might still work on real device
+        }
+      }
+
+      // Now get FCM token
       _currentToken = await _firebaseMessaging.getToken();
       if (_currentToken != null) {
         print('✅ FCM token obtained: $_currentToken');
@@ -376,6 +412,14 @@ class PushNotificationService {
       }
       return _currentToken;
     } catch (e) {
+      // Check if it's the APNS token error
+      final errorString = e.toString();
+      if (errorString.contains('apns-token-not-set')) {
+        print('⚠️ APNS token not set yet - this is normal on iOS simulator or before permission is granted');
+        print('ℹ️ Push notifications will work once APNS token is available (usually on real device after permission)');
+        // Don't treat this as a critical error - it's expected behavior
+        return null;
+      }
       print('❌ Error getting FCM token: $e');
       return null;
     }

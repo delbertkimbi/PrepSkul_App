@@ -233,7 +233,7 @@ class TutorService {
       print('🔍 Executing query...');
       List rawTutors;
       try {
-        final response = await query.order('rating', ascending: false);
+      final response = await query.order('rating', ascending: false);
         rawTutors = response as List;
         print(
           '✅ Query successful! Raw query returned ${rawTutors.length} approved tutors from Supabase',

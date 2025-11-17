@@ -376,32 +376,44 @@ class SurveyRepository {
           // Get stored signup data if available
           final prefs = await SharedPreferences.getInstance();
           final storedName = prefs.getString('signup_full_name');
-          
+
           // Determine the best name to use (priority: storedName > metadata > email extraction > empty string)
           String? nameToUse;
-          if (storedName != null && storedName.isNotEmpty && 
-              storedName != 'User' && storedName != 'Student') {
+          if (storedName != null &&
+              storedName.isNotEmpty &&
+              storedName != 'User' &&
+              storedName != 'Student') {
             nameToUse = storedName;
           } else if (user.userMetadata?['full_name'] != null) {
-            final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
-            if (metadataName.isNotEmpty && 
-                metadataName != 'User' && metadataName != 'Student') {
+            final metadataName =
+                user.userMetadata!['full_name']?.toString() ?? '';
+            if (metadataName.isNotEmpty &&
+                metadataName != 'User' &&
+                metadataName != 'Student') {
               nameToUse = metadataName;
             }
           } else if (user.email != null) {
             // Extract name from email as last resort
             final emailName = user.email!.split('@')[0];
-            if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
-              nameToUse = emailName.split('.').map((s) => 
-                s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : ''
-              ).where((s) => s.isNotEmpty).join(' ');
+            if (emailName.isNotEmpty &&
+                emailName != 'user' &&
+                emailName != 'student') {
+              nameToUse = emailName
+                  .split('.')
+                  .map(
+                    (s) =>
+                        s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : '',
+                  )
+                  .where((s) => s.isNotEmpty)
+                  .join(' ');
             }
           }
-          
+
           await SupabaseService.client.from('profiles').upsert({
             'id': userId,
             'email': user.email ?? '',
-            'full_name': nameToUse ?? '', // Use empty string instead of 'Student'
+            'full_name':
+                nameToUse ?? '', // Use empty string instead of 'Student'
             'phone_number': user.phone,
             'user_type': 'student',
             'survey_completed': false,
@@ -416,13 +428,132 @@ class SurveyRepository {
         }
       }
 
-      // Save to learner_profiles table
-      // Use 'id' as it's the primary key that references profiles.id
-      await SupabaseService.client.from('learner_profiles').upsert({
-        'id': userId, // Use id as it's the FK to profiles
-        'user_id': userId, // Also set user_id if column exists
-        ...data,
-      }, onConflict: 'id'); // Conflict on id (primary key)
+      // Check if learner profile already exists
+      final existingLearnerProfile = await SupabaseService.client
+          .from('learner_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      // Filter out null values and handle missing columns
+      final filteredData = <String, dynamic>{
+        'user_id': userId, // Always set user_id
+      };
+
+      data.forEach((key, value) {
+        // Skip null values
+        if (value == null) return;
+        // Skip empty lists (but keep non-empty lists)
+        if (value is List &&
+            value.isEmpty &&
+            key != 'subjects' &&
+            key != 'learning_goals' &&
+            key != 'learning_styles') {
+          return;
+        }
+        // Include all other values
+        filteredData[key] = value;
+      });
+
+      // Save to learner_profiles table with retry logic for missing columns
+      int maxRetries = 50;
+      int retryCount = 0;
+      Set<String> removedColumns = {};
+      bool success = false;
+
+      while (retryCount < maxRetries && !success) {
+        try {
+          if (existingLearnerProfile != null) {
+            // Update existing record
+            await SupabaseService.client
+                .from('learner_profiles')
+                .update(filteredData)
+                .eq('user_id', userId);
+          } else {
+            // Insert new record (also set id to userId if it's the primary key)
+            await SupabaseService.client.from('learner_profiles').insert({
+              'id': userId, // Set id to userId if it's the FK
+              ...filteredData,
+            });
+          }
+          success = true;
+          if (removedColumns.isNotEmpty) {
+            print(
+              '⚠️ Successfully saved after removing ${removedColumns.length} missing columns: ${removedColumns.join(", ")}',
+            );
+          } else {
+            print('✅ Successfully saved learner profile');
+          }
+          break;
+        } catch (e) {
+          final errorStr = e.toString();
+
+          // Check for duplicate key error - means record exists, try update instead
+          if (errorStr.contains('23505') ||
+              errorStr.contains('duplicate key')) {
+            print(
+              '⚠️ Duplicate key detected, switching to update instead of insert',
+            );
+            try {
+              await SupabaseService.client
+                  .from('learner_profiles')
+                  .update(filteredData)
+                  .eq('user_id', userId);
+              success = true;
+              print('✅ Successfully updated learner profile');
+              break;
+            } catch (updateError) {
+              // If update also fails, continue with retry logic
+              print(
+                '⚠️ Update also failed, continuing with retry: $updateError',
+              );
+            }
+          }
+
+          // Check if error is about missing column
+          if (errorStr.contains('PGRST204') ||
+              (errorStr.contains('column') &&
+                  errorStr.contains('does not exist'))) {
+            String? missingColumn;
+
+            final findMatch = RegExp(
+              r"find the '([^']+)'",
+            ).firstMatch(errorStr);
+            if (findMatch != null) {
+              missingColumn = findMatch.group(1);
+            } else {
+              final columnMatch = RegExp(
+                r"'([^']+)' column",
+              ).firstMatch(errorStr);
+              if (columnMatch != null) {
+                missingColumn = columnMatch.group(1);
+              }
+            }
+
+            if (missingColumn != null &&
+                filteredData.containsKey(missingColumn)) {
+              removedColumns.add(missingColumn);
+              filteredData.remove(missingColumn);
+              print(
+                '⚠️ Removed missing column "$missingColumn" from update (column may not exist yet). Retry ${retryCount + 1}/$maxRetries',
+              );
+              retryCount++;
+              continue;
+            } else {
+              print('❌ Column error but could not identify column: $errorStr');
+              rethrow;
+            }
+          } else {
+            rethrow;
+          }
+        }
+      }
+
+      if (!success) {
+        throw Exception(
+          'Failed to save after $retryCount retries. Removed ${removedColumns.length} columns: ${removedColumns.join(", ")}. Please ensure all required migrations are applied.',
+        );
+      }
 
       // Mark survey as completed
       await SupabaseService.client
@@ -528,13 +659,131 @@ class SurveyRepository {
         }
       }
 
-      // Save to parent_profiles table
-      // Use 'id' as it's the primary key that references profiles.id
-      await SupabaseService.client.from('parent_profiles').upsert({
-        'id': userId, // Use id as it's the FK to profiles
-        'user_id': userId, // Also set user_id if column exists
-        ...data,
-      }, onConflict: 'id'); // Conflict on id (primary key)
+      // Check if parent profile already exists
+      final existingParentProfile = await SupabaseService.client
+          .from('parent_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      // Filter out null values and handle missing columns
+      final filteredData = <String, dynamic>{
+        'user_id': userId, // Always set user_id
+      };
+
+      data.forEach((key, value) {
+        // Skip null values
+        if (value == null) return;
+        // Skip empty lists (but keep non-empty lists)
+        if (value is List &&
+            value.isEmpty &&
+            key != 'subjects' &&
+            key != 'learning_goals') {
+          return;
+        }
+        // Include all other values
+        filteredData[key] = value;
+      });
+
+      // Save to parent_profiles table with retry logic for missing columns
+      int maxRetries = 50;
+      int retryCount = 0;
+      Set<String> removedColumns = {};
+      bool success = false;
+
+      while (retryCount < maxRetries && !success) {
+        try {
+          if (existingParentProfile != null) {
+            // Update existing record
+            await SupabaseService.client
+                .from('parent_profiles')
+                .update(filteredData)
+                .eq('user_id', userId);
+          } else {
+            // Insert new record (also set id to userId if it's the primary key)
+            await SupabaseService.client.from('parent_profiles').insert({
+              'id': userId, // Set id to userId if it's the FK
+              ...filteredData,
+            });
+          }
+          success = true;
+          if (removedColumns.isNotEmpty) {
+            print(
+              '⚠️ Successfully saved after removing ${removedColumns.length} missing columns: ${removedColumns.join(", ")}',
+            );
+          } else {
+            print('✅ Successfully saved parent profile');
+          }
+          break;
+        } catch (e) {
+          final errorStr = e.toString();
+
+          // Check for duplicate key error - means record exists, try update instead
+          if (errorStr.contains('23505') ||
+              errorStr.contains('duplicate key')) {
+            print(
+              '⚠️ Duplicate key detected, switching to update instead of insert',
+            );
+            try {
+              await SupabaseService.client
+                  .from('parent_profiles')
+                  .update(filteredData)
+                  .eq('user_id', userId);
+              success = true;
+              print('✅ Successfully updated parent profile');
+              break;
+            } catch (updateError) {
+              // If update also fails, continue with retry logic
+              print(
+                '⚠️ Update also failed, continuing with retry: $updateError',
+              );
+            }
+          }
+
+          // Check if error is about missing column
+          if (errorStr.contains('PGRST204') ||
+              (errorStr.contains('column') &&
+                  errorStr.contains('does not exist'))) {
+            String? missingColumn;
+
+            final findMatch = RegExp(
+              r"find the '([^']+)'",
+            ).firstMatch(errorStr);
+            if (findMatch != null) {
+              missingColumn = findMatch.group(1);
+            } else {
+              final columnMatch = RegExp(
+                r"'([^']+)' column",
+              ).firstMatch(errorStr);
+              if (columnMatch != null) {
+                missingColumn = columnMatch.group(1);
+              }
+            }
+
+            if (missingColumn != null &&
+                filteredData.containsKey(missingColumn)) {
+              removedColumns.add(missingColumn);
+              filteredData.remove(missingColumn);
+              print(
+                '⚠️ Removed missing column "$missingColumn" from update (column may not exist yet). Retry ${retryCount + 1}/$maxRetries',
+              );
+              retryCount++;
+              continue;
+            } else {
+              print('❌ Column error but could not identify column: $errorStr');
+              rethrow;
+            }
+          } else {
+            rethrow;
+          }
+        }
+      }
+
+      if (!success) {
+        throw Exception(
+          'Failed to save after $retryCount retries. Removed ${removedColumns.length} columns: ${removedColumns.join(", ")}. Please ensure all required migrations are applied.',
+        );
+      }
 
       // Mark survey as completed
       await SupabaseService.client

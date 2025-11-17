@@ -100,13 +100,33 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
       // Don't show error if all lists are empty - empty states will handle it gracefully
       // This is expected for new users who haven't made any payments yet
+      // Also don't show error for database schema issues (tables/columns not found)
+      // These are handled gracefully by returning empty lists
     } catch (e) {
       print('❌ Critical error loading payments: $e');
       setState(() => _isLoading = false);
-      if (mounted) {
+
+      // Only show error if it's NOT a database schema issue (table/column not found)
+      // Schema issues are expected during development and should be handled silently
+      final errorString = e.toString().toLowerCase();
+      final isSchemaError =
+          errorString.contains('does not exist') ||
+          errorString.contains('relation') ||
+          errorString.contains('pgrst') ||
+          errorString.contains('schema cache') ||
+          errorString.contains('column') && errorString.contains('not found');
+
+      // Don't show error for schema issues or when all lists are empty
+      // Empty states will handle the display gracefully
+      if (mounted &&
+          !isSchemaError &&
+          (_paymentRequests.isNotEmpty ||
+              _trialPayments.isNotEmpty ||
+              _sessionPayments.isNotEmpty)) {
+        // Only show error if there's actual data that failed to load
         BrandedSnackBar.showError(
           context,
-          'Failed to load payment history: $e',
+          'Unable to load payment history. Please try again later.',
         );
       }
     }
@@ -130,7 +150,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
             status,
             created_at
           ''')
-          .or('learner_id.eq.$userId,parent_id.eq.$userId,requester_id.eq.$userId')
+          .or(
+            'learner_id.eq.$userId,parent_id.eq.$userId,requester_id.eq.$userId',
+          )
           .order('created_at', ascending: false);
 
       // Safely handle response
@@ -142,13 +164,17 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
         return response.whereType<Map<String, dynamic>>().toList();
       }
     } catch (e) {
-      print('❌ Error loading trial payments: $e');
-      print('❌ Stack trace: ${StackTrace.current}');
-      // Check if it's a table not found error
-      if (e.toString().contains('does not exist') ||
-          e.toString().contains('relation') ||
-          e.toString().contains('PGRST')) {
-        print('⚠️ Trial sessions table might not exist yet');
+      // Silently handle schema errors - don't log warnings
+      final errorString = e.toString().toLowerCase();
+      final isSchemaError =
+          errorString.contains('does not exist') ||
+          errorString.contains('relation') ||
+          errorString.contains('pgrst') ||
+          errorString.contains('schema cache') ||
+          (errorString.contains('column') && errorString.contains('not found'));
+
+      if (!isSchemaError) {
+        print('❌ Error loading trial payments: $e');
       }
       return [];
     }
@@ -179,7 +205,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
         // Filter by user ID manually since we can't filter on joined table directly
         final allPayments = List<Map<String, dynamic>>.from(response);
         final userPayments = allPayments.where((payment) {
-          final session = payment['individual_sessions'] as Map<String, dynamic>?;
+          final session =
+              payment['individual_sessions'] as Map<String, dynamic>?;
           if (session == null) return false;
           final learnerId = session['learner_id'] as String?;
           final parentId = session['parent_id'] as String?;
@@ -188,8 +215,20 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
         return userPayments;
       } catch (joinError) {
-        print('⚠️ Join query failed, trying direct query: $joinError');
-        
+        // Silently handle schema errors
+        final errorString = joinError.toString().toLowerCase();
+        final isSchemaError =
+            errorString.contains('does not exist') ||
+            errorString.contains('relation') ||
+            errorString.contains('pgrst') ||
+            errorString.contains('schema cache') ||
+            (errorString.contains('table') &&
+                errorString.contains('not found'));
+
+        if (!isSchemaError) {
+          print('⚠️ Join query failed, trying direct query: $joinError');
+        }
+
         // If join fails, try loading from individual_sessions and get payment info
         try {
           final sessionsResponse = await SupabaseService.client
@@ -208,7 +247,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
               .limit(50); // Limit to prevent too much data
 
           final sessions = List<Map<String, dynamic>>.from(sessionsResponse);
-          
+
           // For each session, try to get payment info
           final paymentsWithSessions = <Map<String, dynamic>>[];
           for (final session in sessions) {
@@ -219,7 +258,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                   .select('*')
                   .eq('session_id', sessionId)
                   .maybeSingle();
-              
+
               if (paymentResponse != null) {
                 paymentsWithSessions.add({
                   ...Map<String, dynamic>.from(paymentResponse),
@@ -231,7 +270,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
               continue;
             }
           }
-          
+
           return paymentsWithSessions;
         } catch (directError) {
           print('⚠️ Direct query also failed: $directError');

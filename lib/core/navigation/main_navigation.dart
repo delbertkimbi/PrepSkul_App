@@ -106,18 +106,25 @@ class _MainNavigationState extends State<MainNavigation> {
     final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
     final items = isTutor ? _tutorItems : _studentItems;
 
-    // Wrap with PopScope to prevent back navigation to auth screens
+    // Wrap with PopScope to handle back navigation properly
+    // Allow back navigation if there are screens to pop, prevent only at root
+    final canPopFromStack = Navigator.of(context).canPop();
     return PopScope(
-      canPop: false, // Prevent back navigation by default
+      canPop: canPopFromStack, // Allow pop if there are screens in stack
       onPopInvoked: (didPop) async {
+        // If pop was already handled (there was a screen to pop), we're done
         if (didPop) return;
         
+        // If we reach here, we're at the root and trying to exit the app
         // Check if user is authenticated
         final isAuthenticated = await AuthService.isLoggedIn();
         final hasSupabaseSession = SupabaseService.isAuthenticated;
         
         if (!isAuthenticated && !hasSupabaseSession) {
           // Not authenticated - allow back navigation (shouldn't happen, but safety check)
+          if (mounted && Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
           return;
         }
         
@@ -182,10 +189,9 @@ class _MainNavigationState extends State<MainNavigation> {
             return;
           }
         } else {
-          // On mobile, prevent back navigation to auth screens
-          // Just prevent back navigation - user stays in app
-          // Could show a snackbar message if needed
-          if (mounted) {
+          // On mobile, prevent back navigation that would exit the app
+          // Only show message if we're at the root (can't pop)
+          if (mounted && !Navigator.of(context).canPop()) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(

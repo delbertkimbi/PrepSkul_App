@@ -35,18 +35,81 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Future<void> _checkDismissedApprovalCard() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _hasDismissedApprovalCard = prefs.getBool('tutor_approval_card_dismissed') ?? false;
-    });
+    try {
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String;
+      
+      // Check database first (cross-device persistence)
+      final tutorProfile = await SupabaseService.client
+          .from('tutor_profiles')
+          .select('approval_banner_dismissed')
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      final dismissedInDb = tutorProfile?['approval_banner_dismissed'] as bool? ?? false;
+      
+      // Also check SharedPreferences for immediate UI updates
+      final prefs = await SharedPreferences.getInstance();
+      final dismissedInPrefs = prefs.getBool('tutor_approval_card_dismissed') ?? false;
+      
+      // Use database value (more reliable, cross-device)
+      // But if SharedPreferences says dismissed and DB doesn't, sync to DB
+      final isDismissed = dismissedInDb || dismissedInPrefs;
+      
+      if (dismissedInPrefs && !dismissedInDb) {
+        // Sync SharedPreferences to database
+        await _syncDismissalToDatabase(userId, true);
+      }
+      
+      setState(() {
+        _hasDismissedApprovalCard = isDismissed;
+      });
+    } catch (e) {
+      print('⚠️ Error checking dismissed approval card: $e');
+      // Fallback to SharedPreferences only
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _hasDismissedApprovalCard = prefs.getBool('tutor_approval_card_dismissed') ?? false;
+      });
+    }
+  }
+
+  Future<void> _syncDismissalToDatabase(String userId, bool dismissed) async {
+    try {
+      await SupabaseService.client
+          .from('tutor_profiles')
+          .update({'approval_banner_dismissed': dismissed})
+          .eq('user_id', userId);
+    } catch (e) {
+      print('⚠️ Error syncing dismissal to database: $e');
+      // Don't fail if database update fails
+    }
   }
 
   Future<void> _dismissApprovalCard() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('tutor_approval_card_dismissed', true);
-    setState(() {
-      _hasDismissedApprovalCard = true;
-    });
+    try {
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String;
+      
+      // Save to both SharedPreferences (immediate UI) and database (cross-device)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('tutor_approval_card_dismissed', true);
+      
+      // Sync to database for cross-device persistence
+      await _syncDismissalToDatabase(userId, true);
+      
+      setState(() {
+        _hasDismissedApprovalCard = true;
+      });
+    } catch (e) {
+      print('⚠️ Error dismissing approval card: $e');
+      // Still update UI even if database fails
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('tutor_approval_card_dismissed', true);
+      setState(() {
+        _hasDismissedApprovalCard = true;
+      });
+    }
   }
 
   Future<void> _loadUserInfo() async {
@@ -76,8 +139,19 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
       // Check if approval status changed (reset dismissal ONLY if status actually changed from non-approved to approved)
       final newApprovalStatus = tutorData?['status'] as String?;
+      
+      // Check dismissal status from database (cross-device)
+      final tutorProfileCheck = await SupabaseService.client
+          .from('tutor_profiles')
+          .select('approval_banner_dismissed')
+          .eq('user_id', userId)
+          .maybeSingle();
+      final wasDismissedInDb = tutorProfileCheck?['approval_banner_dismissed'] as bool? ?? false;
+      
+      // Also check SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-      final wasDismissed = prefs.getBool('tutor_approval_card_dismissed') ?? false;
+      final wasDismissedInPrefs = prefs.getBool('tutor_approval_card_dismissed') ?? false;
+      final wasDismissed = wasDismissedInDb || wasDismissedInPrefs;
       
       // Only reset dismissal if:
       // 1. Status is now 'approved' AND
@@ -87,8 +161,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           _approvalStatus != null && 
           _approvalStatus != 'approved' && 
           wasDismissed) {
-        // Status changed from non-approved to approved - reset dismissal
+        // Status changed from non-approved to approved - reset dismissal in both places
         await prefs.setBool('tutor_approval_card_dismissed', false);
+        await _syncDismissalToDatabase(userId, false);
         _hasDismissedApprovalCard = false;
       } else if (newApprovalStatus == 'approved' && wasDismissed) {
         // Status is approved and was dismissed - keep it dismissed

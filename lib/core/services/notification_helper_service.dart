@@ -353,6 +353,46 @@ class NotificationHelperService {
     );
   }
 
+  /// Notify tutor when student/parent cancels an approved trial session
+  static Future<void> notifyTrialSessionCancelled({
+    required String tutorId,
+    required String studentId,
+    required String trialId,
+    required String studentName,
+    required String subject,
+    required DateTime scheduledDate,
+    required String scheduledTime,
+    required String cancellationReason,
+    required String cancelledBy, // 'student' or 'parent'
+  }) async {
+    final cancelledByText = cancelledBy == 'parent' ? 'parent' : 'student';
+    final message = cancellationReason.isNotEmpty
+        ? '$studentName has cancelled the trial session for $subject scheduled for ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime. Reason: $cancellationReason'
+        : '$studentName has cancelled the trial session for $subject scheduled for ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime.';
+
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'trial_cancelled',
+      title: '⚠️ Trial Session Cancelled',
+      message: message,
+      priority: 'normal',
+      actionUrl: '/trials/$trialId',
+      actionText: 'View Details',
+      icon: '⚠️',
+      metadata: {
+        'trial_id': trialId,
+        'student_id': studentId,
+        'student_name': studentName,
+        'subject': subject,
+        'scheduled_date': scheduledDate.toIso8601String(),
+        'scheduled_time': scheduledTime,
+        'cancellation_reason': cancellationReason,
+        'cancelled_by': cancelledByText,
+      },
+      sendEmail: true,
+    );
+  }
+
   // ============================================
   // PAYMENT NOTIFICATIONS
   // ============================================

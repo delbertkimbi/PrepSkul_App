@@ -6,6 +6,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
+import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class StudentHomeScreen extends StatefulWidget {
@@ -21,6 +22,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   bool _isFirstVisit = false;
   Map<String, dynamic>? _surveyData;
   String _userType = 'student';
+  bool _surveyCompleted = false;
+  bool _showReminderCard = false;
 
   @override
   void initState() {
@@ -73,6 +76,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       _userName = userName;
       _userType = userProfile?['user_type'] ?? 'student';
       _isFirstVisit = !hasVisitedHome;
+      _surveyCompleted = userProfile?['survey_completed'] ?? false;
 
       // Load survey data for personalization
       if (_userType == 'student') {
@@ -83,6 +87,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         _surveyData = await SurveyRepository.getParentSurvey(
           userProfile?['id'],
         );
+      }
+
+      // Check if reminder card should be shown
+      if (!_surveyCompleted) {
+        _showReminderCard = await SurveyReminderCard.shouldShow();
       }
 
       setState(() {
@@ -114,7 +123,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   Widget _buildSkeletonLoader() {
-      return Scaffold(
+    return Scaffold(
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
         child: Column(
@@ -144,9 +153,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
-          child: Column(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+                            children: [
                               // Greeting skeleton
                               Container(
                                 width: 120,
@@ -363,11 +372,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                   color: Colors.white,
                                   shape: BoxShape.circle,
                                 ),
-              ),
-            ],
-          ),
-        ),
-      );
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
                     }),
 
                     const SizedBox(height: 32),
@@ -465,8 +474,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Removed "Your Learning Journey" section - personal info belongs in profile
-                  // This data is used behind the scenes for tutor matching, not for display
+                  // Survey Reminder Card (if survey not completed)
+                  if (_showReminderCard && !_surveyCompleted)
+                    SurveyReminderCard(
+                      userType: _userType,
+                      onTap: () {
+                        // Navigate to profile-setup with userRole argument
+                        Navigator.pushNamed(
+                          context,
+                          '/profile-setup',
+                          arguments: {'userRole': _userType},
+                        );
+                      },
+                    ),
 
                   // Quick Stats
                   _buildSectionTitle('Your Progress'),
@@ -526,7 +546,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       );
                     },
                   ),
-                    const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                  _buildActionCard(
+                    icon: Icons.calendar_today,
+                    title: 'My Sessions',
+                    subtitle: 'View upcoming and completed sessions',
+                    color: Colors.blue,
+                    onTap: () {
+                      Navigator.pushNamed(context, '/my-sessions');
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.payment,
                     title: 'Payment History',

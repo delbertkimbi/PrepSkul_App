@@ -9,6 +9,7 @@ import 'package:prepskul/core/localization/language_notifier.dart';
 import 'package:prepskul/features/onboarding/screens/simple_onboarding_screen.dart';
 import 'package:prepskul/features/profile/screens/student_survey.dart';
 import 'package:prepskul/features/profile/screens/parent_survey.dart';
+import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/forgot_password_screen.dart';
@@ -20,6 +21,7 @@ import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
+import 'package:prepskul/features/booking/screens/my_sessions_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:prepskul/core/navigation/main_navigation.dart';
@@ -248,7 +250,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     ];
 
     // Check if this is a protected route
-    final isProtectedRoute = protectedRoutes.any((route) => path.startsWith(route));
+    final isProtectedRoute = protectedRoutes.any(
+      (route) => path.startsWith(route),
+    );
 
     // Check if user is authenticated
     final isAuthenticated = SupabaseService.isAuthenticated;
@@ -257,9 +261,11 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     if (isProtectedRoute && (!isAuthenticated || user == null)) {
       // User is not authenticated but trying to access a protected route
       // Store the intended destination and redirect to email login
-      print('🔒 [DEEP_LINK] Protected route requires authentication, redirecting to email login');
+      print(
+        '🔒 [DEEP_LINK] Protected route requires authentication, redirecting to email login',
+      );
       print('🔒 [DEEP_LINK] Intended destination: $path');
-      
+
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('pending_deep_link', path);
@@ -276,7 +282,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       } else {
         // Queue email login navigation
         navService.queueDeepLink(Uri.parse('/email-login'));
-        print('📥 [DEEP_LINK] Email login queued, will process when app is ready');
+        print(
+          '📥 [DEEP_LINK] Email login queued, will process when app is ready',
+        );
       }
       return;
     }
@@ -381,10 +389,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             pageBuilder: (context, animation, secondaryAnimation) => builder(),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               // Fade transition keeps old screen visible until new one is ready
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
+              return FadeTransition(opacity: animation, child: child);
             },
             transitionDuration: const Duration(milliseconds: 150),
           );
@@ -450,6 +455,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           }
 
           // Use surveys for students and parents
+          // Note: NavigationService handles showing intro screen first if needed
           if (userRole == 'learner' || userRole == 'student') {
             return _createFadeRoute(() => const StudentSurvey());
           } else if (userRole == 'parent') {
@@ -458,6 +464,11 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
 
           // Fallback to student survey
           return _createFadeRoute(() => const StudentSurvey());
+        }
+        if (settings.name == '/survey-intro') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          final userType = args?['userType'] ?? 'student';
+          return _createFadeRoute(() => SurveyIntroScreen(userType: userType));
         }
         if (settings.name == '/tutor-onboarding') {
           final args = settings.arguments as Map<String, dynamic>?;
@@ -501,6 +512,12 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
               paymentRequestId: paymentRequestId,
               bookingRequestId: args?['bookingRequestId'] as String?,
             ),
+          );
+        }
+        // My Sessions route
+        if (settings.name == '/my-sessions') {
+          return MaterialPageRoute(
+            builder: (context) => const MySessionsScreen(),
           );
         }
         return null;
@@ -556,7 +573,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     final currentUser = SupabaseService.currentUser;
 
     if (isAuthenticated && currentUser != null) {
-      print('✅ [INIT_LOAD] User authenticated - checking onboarding/survey status');
+      print(
+        '✅ [INIT_LOAD] User authenticated - checking onboarding/survey status',
+      );
       // CRITICAL: Always check onboarding completion before allowing access
       // Wait for navigation service to be ready
       int attempts = 0;
@@ -591,7 +610,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               if (mounted) {
                 final navService = NavigationService();
                 if (navService.isReady) {
-                  await navService.navigateToRoute('/onboarding', replace: true);
+                  await navService.navigateToRoute(
+                    '/onboarding',
+                    replace: true,
+                  );
                   return;
                 }
               }
@@ -687,10 +709,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     // Always show animated loading screen until navigation completes
     // The navigation will replace this screen, so no need to check _navigationComplete
     // Use a Material widget to ensure proper background color during transition
-    return Material(
-      color: Colors.white,
-      child: const InitialLoadingScreen(),
-    );
+    return Material(color: Colors.white, child: const InitialLoadingScreen());
   }
 }
 
@@ -718,7 +737,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // Start background tasks (non-blocking)
     _preloadOnboardingImages();
     _setupAuthListeners();
-    
+
     // Check for password reset or email confirmation FIRST (web only)
     // If either is detected, they will handle navigation and we should skip normal navigation
     bool handledByCallback = false;
@@ -731,7 +750,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // If password reset or email confirmation handled navigation, don't navigate normally
     if (handledByCallback) {
-      print('✅ [SPLASH] Navigation handled by password reset or email confirmation');
+      print(
+        '✅ [SPLASH] Navigation handled by password reset or email confirmation',
+      );
       return;
     }
 
@@ -1015,116 +1036,144 @@ class _SplashScreenState extends State<SplashScreen> {
       // Profile exists - update email and name if needed
       final updates = <String, dynamic>{};
       bool needsUpdate = false;
-      
+
       // Update email if it wasn't set
-      if ((existingProfile['email'] == null || existingProfile['email'] == '') && 
+      if ((existingProfile['email'] == null ||
+              existingProfile['email'] == '') &&
           (storedEmail != null || user.email != null)) {
         updates['email'] = storedEmail ?? user.email ?? '';
         needsUpdate = true;
       }
-      
+
       // CRITICAL: Update name if it's missing or default (Student/User)
       final currentName = existingProfile['full_name']?.toString() ?? '';
       String? nameToUse;
-      
+
       // Priority order: storedName > auth metadata > user.email (extract name) > currentName
-      if (storedName != null && storedName.isNotEmpty && 
-          storedName != 'User' && storedName != 'Student') {
+      if (storedName != null &&
+          storedName.isNotEmpty &&
+          storedName != 'User' &&
+          storedName != 'Student') {
         nameToUse = storedName;
       } else if (user.userMetadata?['full_name'] != null) {
         final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
-        if (metadataName.isNotEmpty && 
-            metadataName != 'User' && metadataName != 'Student') {
+        if (metadataName.isNotEmpty &&
+            metadataName != 'User' &&
+            metadataName != 'Student') {
           nameToUse = metadataName;
         }
       } else if (user.email != null && currentName.isEmpty) {
         // Extract name from email (before @) as last resort
         final emailName = user.email!.split('@')[0];
-        if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
-          nameToUse = emailName.split('.').map((s) => 
-            s[0].toUpperCase() + s.substring(1)
-          ).join(' ');
+        if (emailName.isNotEmpty &&
+            emailName != 'user' &&
+            emailName != 'student') {
+          nameToUse = emailName
+              .split('.')
+              .map((s) => s[0].toUpperCase() + s.substring(1))
+              .join(' ');
         }
       }
-      
+
       // Update if we found a valid name and current name is invalid
-      if (nameToUse != null && 
-          (currentName.isEmpty || currentName == 'Student' || currentName == 'User')) {
+      if (nameToUse != null &&
+          (currentName.isEmpty ||
+              currentName == 'Student' ||
+              currentName == 'User')) {
         updates['full_name'] = nameToUse;
         needsUpdate = true;
         print('✅ Updating profile name from "$currentName" to "$nameToUse"');
       }
-      
+
       if (needsUpdate) {
         try {
           await SupabaseService.client
               .from('profiles')
               .update(updates)
               .eq('id', user.id);
-          
+
           // Refresh existingProfile after update
           existingProfile = await SupabaseService.client
               .from('profiles')
               .select()
               .eq('id', user.id)
               .maybeSingle();
-          
+
           print('✅ Profile updated successfully');
         } catch (e) {
           print('⚠️ Error updating profile: $e');
         }
       }
-      
+
       // Only clear stored signup data AFTER we've successfully used it or confirmed it's not needed
       // Don't clear if profile still has default name and we couldn't update it
       final finalName = existingProfile?['full_name']?.toString() ?? '';
-      if (finalName != 'User' && finalName != 'Student' && finalName.isNotEmpty) {
+      if (finalName != 'User' &&
+          finalName != 'Student' &&
+          finalName.isNotEmpty) {
         // Profile has a valid name now, safe to clear stored data
         await prefs.remove('signup_user_role');
         await prefs.remove('signup_full_name');
         await prefs.remove('signup_email');
       } else {
         // Profile still has invalid name, keep stored data for next attempt
-        print('⚠️ Profile still has invalid name "$finalName", keeping stored signup data');
+        print(
+          '⚠️ Profile still has invalid name "$finalName", keeping stored signup data',
+        );
       }
     }
 
     // Get user role from profile or stored data
     final userRole = existingProfile?['user_type'] ?? storedRole ?? 'student';
     final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
-    
+
     // Get name with proper priority - avoid 'User' or 'Student' defaults
     var fullName = existingProfile?['full_name']?.toString() ?? '';
-    
+
     // If name is invalid, try other sources
     if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
-      if (storedName != null && storedName.isNotEmpty && 
-          storedName != 'User' && storedName != 'Student') {
+      if (storedName != null &&
+          storedName.isNotEmpty &&
+          storedName != 'User' &&
+          storedName != 'Student') {
         fullName = storedName;
       } else if (user.userMetadata?['full_name'] != null) {
         final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
-        if (metadataName.isNotEmpty && 
-            metadataName != 'User' && metadataName != 'Student') {
+        if (metadataName.isNotEmpty &&
+            metadataName != 'User' &&
+            metadataName != 'Student') {
           fullName = metadataName;
         }
       } else if (user.email != null) {
         // Extract name from email as last resort
         final emailName = user.email!.split('@')[0];
-        if (emailName.isNotEmpty && emailName != 'user' && emailName != 'student') {
-          fullName = emailName.split('.').map((s) => 
-            s.isNotEmpty && s.length > 1 ? s[0].toUpperCase() + s.substring(1) : s.toUpperCase()
-          ).where((s) => s.isNotEmpty).join(' ');
+        if (emailName.isNotEmpty &&
+            emailName != 'user' &&
+            emailName != 'student') {
+          fullName = emailName
+              .split('.')
+              .map(
+                (s) => s.isNotEmpty && s.length > 1
+                    ? s[0].toUpperCase() + s.substring(1)
+                    : s.toUpperCase(),
+              )
+              .where((s) => s.isNotEmpty)
+              .join(' ');
         }
       }
     }
-    
+
     // Final fallback: use role-based default only if we couldn't find anything
     if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
-      fullName = userRole == 'student' ? 'Student' : 
-                 userRole == 'parent' ? 'Parent' : 
-                 userRole == 'tutor' ? 'Tutor' : 'User';
+      fullName = userRole == 'student'
+          ? 'Student'
+          : userRole == 'parent'
+          ? 'Parent'
+          : userRole == 'tutor'
+          ? 'Tutor'
+          : 'User';
     }
-    
+
     final phone = existingProfile?['phone_number'] ?? '';
 
     // Save session

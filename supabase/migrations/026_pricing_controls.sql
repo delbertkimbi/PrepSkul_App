@@ -172,6 +172,10 @@ ALTER TABLE trial_session_pricing ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tutor_discount_rules ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for trial_session_pricing (read-only for authenticated, admin-only for write)
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Anyone can view trial session pricing" ON trial_session_pricing;
+DROP POLICY IF EXISTS "Only admins can modify trial session pricing" ON trial_session_pricing;
+
 CREATE POLICY "Anyone can view trial session pricing"
   ON trial_session_pricing FOR SELECT
   USING (true);
@@ -187,6 +191,10 @@ CREATE POLICY "Only admins can modify trial session pricing"
   );
 
 -- RLS Policies for tutor_discount_rules (read-only for authenticated, admin-only for write)
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Anyone can view discount rules" ON tutor_discount_rules;
+DROP POLICY IF EXISTS "Only admins can modify discount rules" ON tutor_discount_rules;
+
 CREATE POLICY "Anyone can view discount rules"
   ON tutor_discount_rules FOR SELECT
   USING (true);
