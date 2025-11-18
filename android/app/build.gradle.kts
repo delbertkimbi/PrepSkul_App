@@ -1,3 +1,23 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+// --- START: Property loading logic (Kotlin DSL) ---
+// Load local.properties (usually for flutter.sdk path)
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    FileInputStream(localPropertiesFile).use { localProperties.load(it) }
+}
+
+// Load key.properties (for signing config)
+val storeProperties = Properties()
+val storeFile = rootProject.file("key.properties")
+if (storeFile.exists()) {
+    FileInputStream(storeFile).use { storeProperties.load(it) }
+}
+// --- END: Property loading logic ---
+
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -10,12 +30,16 @@ plugins {
 
 android {
     namespace = "com.prepskul.prepskul"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk =  36
     ndkVersion = flutter.ndkVersion
 
+    dependencies {
+        coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true 
     }
 
     kotlinOptions {
@@ -33,13 +57,30 @@ android {
         versionName = flutter.versionName
     }
 
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+    // --- START: Signing Configs (Kotlin DSL syntax) ---
+    signingConfigs {
+        create("release") {
+            storeFile = file(storeProperties["storeFile"] as String)
+            storePassword = storeProperties["storePassword"] as String
+            keyAlias = storeProperties["keyAlias"] as String
+            keyPassword = storeProperties["keyPassword"] as String
         }
     }
+    // --- END: Signing Configs ---
+
+
+       buildTypes {
+        release {
+            // Assign the new 'release' signing config created above
+            signingConfig = signingConfigs.getByName("release")
+            // Optional but recommended for production builds:
+            // Enables code shrinking, obfuscation, and optimization
+            isMinifyEnabled = true
+            // Includes only the necessary resources for each target device (Corrected syntax)
+            isShrinkResources = true 
+        }
+    }
+
 }
 
 flutter {

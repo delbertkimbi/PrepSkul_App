@@ -76,13 +76,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         });
       } else {
         // For mobile, use YoutubePlayerController
-        _youtubeController = YoutubePlayerController(
+          _youtubeController = YoutubePlayerController(
           initialVideoId: _videoId!,
-          flags: const YoutubePlayerFlags(
-            autoPlay: false,
-            mute: false,
-            enableCaption: true,
-            controlsVisibleAtStart: true,
+            flags: const YoutubePlayerFlags(
+              autoPlay: false,
+              mute: false,
+              enableCaption: true,
+              controlsVisibleAtStart: true,
             hideControls: false,
           ),
         );
@@ -480,24 +480,24 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 const SizedBox(height: 20),
 
                 // Certifications
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Certifications',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Certifications',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
+                        const SizedBox(height: 12),
                       _buildCertificationsSection(),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
                 const SizedBox(height: 20),
 
@@ -588,12 +588,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           ),
                           const SizedBox(height: 4),
                         ],
-                        Text(
-                          PricingService.formatPrice(perMonth),
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryColor,
+                    Text(
+                      PricingService.formatPrice(perMonth),
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
                           ),
                         ),
                         if (hasDiscount && discountPercent > 0) ...[
@@ -658,13 +658,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           ),
                           const SizedBox(height: 4),
                         ],
-                        Text(
-                          PricingService.formatPrice(perSession),
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                    Text(
+                      PricingService.formatPrice(perSession),
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                             color: AppTheme.primaryColor,
-                          ),
+                      ),
                         ),
                       ],
                     ),
@@ -887,7 +887,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          children: [
               // Icon based on type and level
               _getEducationIcon(
                 item['type'] as String,
@@ -1022,8 +1022,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         // Use NetworkImage for URLs from Supabase storage
         return Image.network(
           avatarUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
           loadingBuilder: (context, child, loadingProgress) {
@@ -1057,34 +1057,34 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
   Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
     if (isLarge) {
-      return Container(
-        height: 300,
-        color: AppTheme.primaryColor.withOpacity(0.1),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
+                      return Container(
+                        height: 300,
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
                 name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                style: GoogleFonts.poppins(
-                  fontSize: 80,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                name,
-                style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+                                style: GoogleFonts.poppins(
+                                  fontSize: 80,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                name,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
     }
 
     return Container(

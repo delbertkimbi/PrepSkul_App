@@ -84,7 +84,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     // This ensures name is available before UI renders
     _loadStudentNameFromProfile().then((_) {
       // After name is loaded, load any saved survey data
-      _loadSavedData();
+    _loadSavedData();
     });
   }
 
@@ -452,11 +452,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
         final profileName = userProfile['full_name'].toString().trim();
         // Only set if still empty (check again after async operations)
         if (_studentName == null || _studentName!.isEmpty) {
-          setState(() {
+        setState(() {
             _studentName = profileName;
             // Name loaded from profile
-          });
-          print('✅ Pre-populated student name from profile: $_studentName');
+        });
+        print('✅ Pre-populated student name from profile: $_studentName');
           return;
         } else {
           print(
@@ -1282,10 +1282,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 ),
                 isExpanded: true,
               ),
-            ),
-            const SizedBox(width: 12),
+                ),
+                const SizedBox(width: 12),
             // Year text input
-            Expanded(
+                Expanded(
               child: TextFormField(
                 controller: _yearController,
                 keyboardType: TextInputType.number,
@@ -1318,10 +1318,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   ),
                   suffix: Padding(
                     padding: const EdgeInsets.only(right: 8.0),
-                    child: Text(
+                  child: Text(
                       '${_yearController.text.length}/4',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
                         color: AppTheme.textLight,
                       ),
                     ),
@@ -1379,10 +1379,10 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   }
                   return null;
                 },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
         // Show age if date is valid
         if (ageText != null) ...[
           const SizedBox(height: 8),
@@ -2115,7 +2115,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     if (isStreamRequired &&
         hasStreams &&
         (_selectedStream == null || _selectedStream!.isEmpty)) {
-      return Column(
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children:
             [
@@ -2416,20 +2416,20 @@ class _StudentSurveyState extends State<StudentSurvey> {
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 18.0),
           ),
           child: RangeSlider(
-            values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
-            min: 20000,
-            max: 55000,
-            divisions: 35,
-            activeColor: AppTheme.primaryColor,
-            inactiveColor: AppTheme.softBorder,
-            onChanged: (RangeValues values) {
-              setState(() {
-                _minBudget = values.start.round();
-                _maxBudget = values.end.round();
-              });
-            },
-            overlayColor: WidgetStateProperty.all(
-              AppTheme.primaryColor.withOpacity(0.1),
+          values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
+          min: 20000,
+          max: 55000,
+          divisions: 35,
+          activeColor: AppTheme.primaryColor,
+          inactiveColor: AppTheme.softBorder,
+          onChanged: (RangeValues values) {
+            setState(() {
+              _minBudget = values.start.round();
+              _maxBudget = values.end.round();
+            });
+          },
+          overlayColor: WidgetStateProperty.all(
+            AppTheme.primaryColor.withOpacity(0.1),
             ),
           ),
         ),
@@ -2537,8 +2537,8 @@ class _StudentSurveyState extends State<StudentSurvey> {
               width: _paymentPolicyAgreed ? 2 : 1,
             ),
           ),
-          child: Row(
-            children: [
+                child: Row(
+                  children: [
               Checkbox(
                 value: _paymentPolicyAgreed,
                 onChanged: (value) {
@@ -2563,17 +2563,17 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       const TextSpan(text: 'I agree to the '),
                       TextSpan(
                         text: 'Payment Policy',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryColor,
-                          decoration: TextDecoration.underline,
-                        ),
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryColor,
+                        decoration: TextDecoration.underline,
+                      ),
                         recognizer: TapGestureRecognizer()
                           ..onTap = _showPaymentPolicy,
-                      ),
+                    ),
                       const TextSpan(text: ' *'),
-                    ],
+                  ],
                   ),
                 ),
               ),
@@ -3074,7 +3074,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       child: isSelected
                           ? const Icon(
                               Icons.check,
-                              color: Colors.white,
+                        color: Colors.white,
                               size: 14,
                             )
                           : null,
@@ -3084,9 +3084,9 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
+                    Text(
                             style['label'] as String,
-                            style: GoogleFonts.poppins(
+                      style: GoogleFonts.poppins(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
@@ -3098,13 +3098,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                             style: GoogleFonts.poppins(
                               fontSize: 13,
                               color: AppTheme.textMedium,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ],
                 ),
+              ),
+                  ],
+        ),
               ),
             ),
           );
