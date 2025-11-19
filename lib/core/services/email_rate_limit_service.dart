@@ -157,9 +157,9 @@ class EmailRateLimitService {
   /// Format cooldown message for user
   static String formatCooldownMessage(Duration remaining) {
     if (remaining.inMinutes > 0) {
-      return 'Please wait ${remaining.inMinutes} minute${remaining.inMinutes > 1 ? 's' : ''} before requesting another email.';
+      return 'You’ve requested several emails recently. Please try again in a moment.';
     } else {
-      return 'Please wait ${remaining.inSeconds} second${remaining.inSeconds > 1 ? 's' : ''} before requesting another email.';
+      return 'You’ve requested several emails recently. Please try again in a moment.';
     }
   }
   

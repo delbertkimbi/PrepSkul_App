@@ -216,7 +216,7 @@ class AuthService {
       );
 
       if (userProfile.isEmpty) {
-        throw Exception('No account found with this phone number');
+        throw Exception('We couldn\'t find an account with this phone number.');
       }
 
       // Send OTP
@@ -244,7 +244,7 @@ class AuthService {
     // Check if enough time has passed since last email
     if (!await EmailRateLimitService.canSendEmail(normalizedEmail)) {
       throw Exception(
-        'Please wait a moment before requesting another email. Rate limiting is in place to prevent spam.',
+        'Too many attempts. Please wait a moment before trying again.',
       );
     }
     
@@ -300,7 +300,7 @@ class AuthService {
               throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
             } else {
         throw Exception(
-          'Too many email requests. Please wait a few minutes before requesting another reset email.',
+          'We’ve sent too many emails in a short time. Please try again in a few minutes.',
         );
             }
           }
@@ -326,7 +326,7 @@ class AuthService {
       throw lastError;
     }
     
-    throw Exception('Failed to send password reset email. Please try again later.');
+    throw Exception('We couldn’t send the reset email. Please try again shortly.');
   }
 
   /// Verify password reset OTP and update password
@@ -355,7 +355,7 @@ class AuthService {
       );
 
       if (response.user == null) {
-        throw Exception('Invalid OTP code');
+        throw Exception('The code you entered is incorrect. Please try again.');
       }
 
       // Update password in Supabase Auth
@@ -458,6 +458,21 @@ class AuthService {
       return false;
     }
   }
+
+static Future<void> safeRefreshSession() async {
+  try {
+    await SupabaseService.client.auth.refreshSession();
+  } catch (e) {
+    // Catch Supabase rate limit during polling
+    if (e.toString().toLowerCase().contains("rate") ||
+        e.toString().toLowerCase().contains("too many")) {
+      print("⏳ Hit Supabase refresh rate limit. Backing off for 8s...");
+      await Future.delayed(const Duration(seconds: 8));
+      return;
+    }
+    rethrow;
+  }
+}
 
   /// Parse and return user-friendly error message
   static String parseAuthError(dynamic error) {
@@ -647,7 +662,7 @@ class AuthService {
 
     if (isRateLimit) {
       print('🔍 [DEBUG] ✅ Returning rate limit message');
-      return 'Too many email requests. Please wait a few minutes before trying again.';
+      return 'We’ve sent too many emails in a short time. Please wait a few minutes before trying again.';
     }
 
     // Too many requests (generic)
@@ -713,7 +728,7 @@ class AuthService {
     // Check if enough time has passed since last email
     if (!await EmailRateLimitService.canSendEmail(normalizedEmail)) {
       throw Exception(
-        'Please wait a moment before requesting another email. Rate limiting is in place to prevent spam.',
+        'Too many attempts. Please wait a moment before trying again.',
       );
     }
     
@@ -764,7 +779,7 @@ class AuthService {
               throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
             } else {
         throw Exception(
-          'Too many email requests. Please wait a few minutes before requesting another email.',
+          'We’ve sent too many emails in a short time. Please wait a few minutes before trying again.',
         );
             }
           }

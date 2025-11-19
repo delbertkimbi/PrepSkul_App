@@ -64,7 +64,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       }
 
       // Only refresh session if one exists
-      await SupabaseService.client.auth.refreshSession();
+      // await SupabaseService.client.auth.refreshSession();
+      await AuthService.safeRefreshSession();
+
       final user = SupabaseService.currentUser;
 
       if (user != null && user.emailConfirmedAt != null) {
