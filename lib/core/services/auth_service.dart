@@ -694,22 +694,13 @@ static Future<void> safeRefreshSession() async {
       return 'Verification link has expired. Please request a new one.';
     }
 
-    // Default fallback - show more specific error if available
+    // Default fallback - always return a friendly, generic message
     print(
-      '🔍 [DEBUG] ⚠️ No matching error pattern found, using default message',
+      '🔍 [DEBUG] ⚠️ No matching error pattern found, using friendly fallback message',
     );
     print('🔍 [DEBUG] Original error was: ${error.toString()}');
     
-    // If error is an Exception with a message, try to extract it
-    if (errorStr.startsWith('Exception: ')) {
-      final message = errorStr.substring(11).trim();
-      // If it's a short, readable message, use it
-      if (message.length < 100 && !message.contains('Exception') && !message.contains('Error:')) {
-        return message;
-      }
-    }
-    
-    return 'Unable to complete this action. Please try again.';
+    return 'Something went wrong. Please try again in a moment.';
   }
 
   /// Resend email verification with rate limiting and retry
