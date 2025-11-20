@@ -102,16 +102,19 @@ class AuthService {
         },
       );
       print('✅ Push notifications initialized after login');
-      
+
       // Request permission after login if onboarding is completed
       // Delay the request slightly to ensure user sees the app first
-      final hasCompletedOnboarding = prefs.getBool('onboarding_completed') ?? false;
+      final hasCompletedOnboarding =
+          prefs.getBool('onboarding_completed') ?? false;
       if (hasCompletedOnboarding) {
         Future.delayed(const Duration(seconds: 2), () async {
           try {
             await PushNotificationService().requestPermission();
           } catch (e) {
-            print('⚠️ Error requesting notification permission after login: $e');
+            print(
+              '⚠️ Error requesting notification permission after login: $e',
+            );
           }
         });
       }
@@ -232,101 +235,112 @@ class AuthService {
   static Future<void> sendPasswordResetEmail(String email) async {
     // Normalize email for rate limiting
     final normalizedEmail = email.toLowerCase().trim();
-    
-    // Check if user is in cooldown period
-    if (await EmailRateLimitService.isInCooldown(normalizedEmail)) {
-      final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
-      if (remaining != null) {
-        throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
-      }
-    }
-    
-    // Check if enough time has passed since last email
-    if (!await EmailRateLimitService.canSendEmail(normalizedEmail)) {
-      throw Exception(
-        'Too many attempts. Please wait a moment before trying again.',
+
+    // If we're still in cooldown, treat as success (email already sent)
+    if (await EmailRateLimitService.isInCooldown(normalizedEmail) ||
+        !await EmailRateLimitService.canSendEmail(normalizedEmail)) {
+      final remaining = await EmailRateLimitService.getRemainingCooldown(
+        normalizedEmail,
       );
+      print(
+        'ℹ️ Password reset email already sent recently. Remaining cooldown: ${remaining ?? Duration.zero}',
+      );
+      return;
     }
-    
+
     // Retry logic with exponential backoff
     int retryCount = await EmailRateLimitService.getRetryCount(normalizedEmail);
     Exception? lastError;
-    
+
     while (retryCount < 3) {
       try {
-        print('🔍 [DEBUG] Sending password reset email to: $email (attempt ${retryCount + 1})');
+        print(
+          '🔍 [DEBUG] Sending password reset email to: $email (attempt ${retryCount + 1})',
+        );
 
-      // Get platform-appropriate redirect URL
-      final redirectUrl = getRedirectUrl();
-      print('🔍 [DEBUG] Using redirect URL: $redirectUrl');
+        // Get platform-appropriate redirect URL
+        final redirectUrl = getRedirectUrl();
+        print('🔍 [DEBUG] Using redirect URL: $redirectUrl');
 
-      // Send password reset email (returns void, just checks for exceptions)
-      await SupabaseService.client.auth.resetPasswordForEmail(
-        email,
-        redirectTo: redirectUrl,
-      );
+        // Send password reset email (returns void, just checks for exceptions)
+        await SupabaseService.client.auth.resetPasswordForEmail(
+          email,
+          redirectTo: redirectUrl,
+        );
 
         // Success - record email sent and clear retry count
         await EmailRateLimitService.recordEmailSent(normalizedEmail);
 
-      print('✅ Password reset email sent successfully to: $email');
-      print('📧 [INFO] Email sent! Check inbox and spam folder.');
+        print('✅ Password reset email sent successfully to: $email');
+        print('📧 [INFO] Email sent! Check inbox and spam folder.');
         return;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        print('❌ Error sending password reset email (attempt ${retryCount + 1}): $e');
-        
+        print(
+          '❌ Error sending password reset email (attempt ${retryCount + 1}): $e',
+        );
+
         // Check if it's a rate limit error
         if (EmailRateLimitService.isRateLimitError(e)) {
           // Set cooldown period
           await EmailRateLimitService.setCooldown(normalizedEmail);
-          
+
           // Increment retry count
-          retryCount = await EmailRateLimitService.incrementRetryCount(normalizedEmail);
-          
+          retryCount = await EmailRateLimitService.incrementRetryCount(
+            normalizedEmail,
+          );
+
           // Calculate retry delay
-          final retryDelay = EmailRateLimitService.calculateRetryDelay(retryCount);
-          
-          print('⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...');
-          
+          final retryDelay = EmailRateLimitService.calculateRetryDelay(
+            retryCount,
+          );
+
+          print(
+            '⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...',
+          );
+
           // Wait before retrying (if we haven't exceeded max retries)
           if (retryCount < 3) {
             await Future.delayed(retryDelay);
             continue;
           } else {
             // Max retries exceeded
-            final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
+            final remaining = await EmailRateLimitService.getRemainingCooldown(
+              normalizedEmail,
+            );
             if (remaining != null) {
-              throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
-            } else {
-        throw Exception(
-          'We’ve sent too many emails in a short time. Please try again in a few minutes.',
-        );
+              print(
+                'ℹ️ Password reset email already sent. Cooldown remaining: $remaining',
+              );
             }
+            // Treat as success even if we hit the limit
+            return;
           }
-      }
+        }
 
         // Not a rate limit error - check for other errors
         final errorStr = e.toString().toLowerCase();
-      if (errorStr.contains('user not found') ||
-          errorStr.contains('email not found') ||
-          errorStr.contains('no account found')) {
-        throw Exception(
-          'No account found with this email address. Please check and try again.',
-        );
-      }
+        if (errorStr.contains('user not found') ||
+            errorStr.contains('email not found') ||
+            errorStr.contains('no account found')) {
+          throw Exception(
+            'No account found with this email address. Please check and try again.',
+          );
+        }
 
         // For other errors, don't retry - throw immediately
-      throw Exception(parseAuthError(e));
+        throw Exception(parseAuthError(e));
+      }
     }
-    }
-    
+
     // If we get here, all retries failed
     if (lastError != null) {
       throw lastError;
     }
-    
-    throw Exception('We couldn’t send the reset email. Please try again shortly.');
+
+    throw Exception(
+      'We couldn’t send the reset email. Please try again shortly.',
+    );
   }
 
   /// Verify password reset OTP and update password
@@ -459,20 +473,20 @@ class AuthService {
     }
   }
 
-static Future<void> safeRefreshSession() async {
-  try {
-    await SupabaseService.client.auth.refreshSession();
-  } catch (e) {
-    // Catch Supabase rate limit during polling
-    if (e.toString().toLowerCase().contains("rate") ||
-        e.toString().toLowerCase().contains("too many")) {
-      print("⏳ Hit Supabase refresh rate limit. Backing off for 8s...");
-      await Future.delayed(const Duration(seconds: 8));
-      return;
+  static Future<void> safeRefreshSession() async {
+    try {
+      await SupabaseService.client.auth.refreshSession();
+    } catch (e) {
+      // Catch Supabase rate limit during polling
+      if (e.toString().toLowerCase().contains("rate") ||
+          e.toString().toLowerCase().contains("too many")) {
+        print("⏳ Hit Supabase refresh rate limit. Backing off for 8s...");
+        await Future.delayed(const Duration(seconds: 8));
+        return;
+      }
+      rethrow;
     }
-    rethrow;
   }
-}
 
   /// Parse and return user-friendly error message
   static String parseAuthError(dynamic error) {
@@ -662,7 +676,7 @@ static Future<void> safeRefreshSession() async {
 
     if (isRateLimit) {
       print('🔍 [DEBUG] ✅ Returning rate limit message');
-      return 'We’ve sent too many emails in a short time. Please wait a few minutes before trying again.';
+      return 'Almost done! Please check your inbox and try resending in a minute if needed.';
     }
 
     // Too many requests (generic)
@@ -699,7 +713,7 @@ static Future<void> safeRefreshSession() async {
       '🔍 [DEBUG] ⚠️ No matching error pattern found, using friendly fallback message',
     );
     print('🔍 [DEBUG] Original error was: ${error.toString()}');
-    
+
     return 'Something went wrong. Please try again in a moment.';
   }
 
@@ -707,91 +721,100 @@ static Future<void> safeRefreshSession() async {
   static Future<void> resendEmailVerification(String email) async {
     // Normalize email for rate limiting
     final normalizedEmail = email.toLowerCase().trim();
-    
-    // Check if user is in cooldown period
-    if (await EmailRateLimitService.isInCooldown(normalizedEmail)) {
-      final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
-      if (remaining != null) {
-        throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
-      }
-    }
-    
-    // Check if enough time has passed since last email
-    if (!await EmailRateLimitService.canSendEmail(normalizedEmail)) {
-      throw Exception(
-        'Too many attempts. Please wait a moment before trying again.',
+
+    if (await EmailRateLimitService.isInCooldown(normalizedEmail) ||
+        !await EmailRateLimitService.canSendEmail(normalizedEmail)) {
+      final remaining = await EmailRateLimitService.getRemainingCooldown(
+        normalizedEmail,
       );
+      print(
+        'ℹ️ Verification email already sent recently. Remaining cooldown: ${remaining ?? Duration.zero}',
+      );
+      return;
     }
-    
+
     // Retry logic with exponential backoff
     int retryCount = await EmailRateLimitService.getRetryCount(normalizedEmail);
     Exception? lastError;
-    
+
     while (retryCount < 3) {
       try {
-        print('🔍 [DEBUG] Resending verification email to: $email (attempt ${retryCount + 1})');
-        
-      await SupabaseService.client.auth.resend(
-        type: OtpType.signup,
-        email: email,
-        emailRedirectTo: getRedirectUrl(),
-      );
-        
+        print(
+          '🔍 [DEBUG] Resending verification email to: $email (attempt ${retryCount + 1})',
+        );
+
+        await SupabaseService.client.auth.resend(
+          type: OtpType.signup,
+          email: email,
+          emailRedirectTo: getRedirectUrl(),
+        );
+
         // Success - record email sent and clear retry count
         await EmailRateLimitService.recordEmailSent(normalizedEmail);
-        
-      print('✅ Verification email resent to: $email');
+
+        print('✅ Verification email resent to: $email');
         return;
-    } catch (e) {
+      } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        print('❌ Error resending verification email (attempt ${retryCount + 1}): $e');
-        
+        print(
+          '❌ Error resending verification email (attempt ${retryCount + 1}): $e',
+        );
+
         // Check if it's a rate limit error
         if (EmailRateLimitService.isRateLimitError(e)) {
           // Set cooldown period
           await EmailRateLimitService.setCooldown(normalizedEmail);
-          
+
           // Increment retry count
-          retryCount = await EmailRateLimitService.incrementRetryCount(normalizedEmail);
-          
+          retryCount = await EmailRateLimitService.incrementRetryCount(
+            normalizedEmail,
+          );
+
           // Calculate retry delay
-          final retryDelay = EmailRateLimitService.calculateRetryDelay(retryCount);
-          
-          print('⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...');
-          
+          final retryDelay = EmailRateLimitService.calculateRetryDelay(
+            retryCount,
+          );
+
+          print(
+            '⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...',
+          );
+
           // Wait before retrying (if we haven't exceeded max retries)
           if (retryCount < 3) {
             await Future.delayed(retryDelay);
             continue;
           } else {
             // Max retries exceeded
-            final remaining = await EmailRateLimitService.getRemainingCooldown(normalizedEmail);
+            final remaining = await EmailRateLimitService.getRemainingCooldown(
+              normalizedEmail,
+            );
             if (remaining != null) {
-              throw Exception(EmailRateLimitService.formatCooldownMessage(remaining));
-            } else {
-        throw Exception(
-          'We’ve sent too many emails in a short time. Please wait a few minutes before trying again.',
-        );
+              print(
+                'ℹ️ Verification email already sent. Cooldown remaining: $remaining',
+              );
             }
+            return;
           }
-      }
+        }
 
         // Not a rate limit error - check for other errors
         final errorStr = e.toString().toLowerCase();
-      if (errorStr.contains('email') && errorStr.contains('not found')) {
-        throw Exception('Email not found. Please check your email address.');
-      }
+        if (errorStr.contains('email') && errorStr.contains('not found')) {
+          throw Exception('Email not found. Please check your email address.');
+        }
 
         // For other errors, don't retry - throw immediately
-      throw Exception(parseAuthError(e));
+        throw Exception(parseAuthError(e));
       }
     }
-    
+
     // If we get here, all retries failed
     if (lastError != null) {
       throw lastError;
     }
-    
-    throw Exception('Failed to resend verification email. Please try again later.');
+
+    throw Exception(
+      'Failed to resend verification email. Please try again later.',
+    );
   }
 }
