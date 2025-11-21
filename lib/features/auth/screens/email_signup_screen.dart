@@ -3,9 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
-import 'package:prepskul/core/services/notification_helper_service.dart';
-import 'package:prepskul/core/services/email_rate_limit_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
@@ -555,351 +552,80 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final password = _passwordController.text;
       final fullName = _nameController.text.trim();
 
-      // Validate email format
-      if (!_emailRegex.hasMatch(email)) {
-        throw Exception('Please enter a valid email address');
-      }
-
-      // Check if email already exists in profiles table
-      try {
-        final existingProfile = await SupabaseService.client
-            .from('profiles')
-            .select('email')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (existingProfile != null) {
-          throw Exception(
-            'This email is already registered. Please sign in instead.',
-          );
-        }
-      } catch (checkError) {
-        // If the check itself fails, continue (don't block signup)
-        // But if we got a profile, re-throw
-        final errorStr = checkError.toString().toLowerCase();
-        if (errorStr.contains('already registered') ||
-            errorStr.contains('email')) {
-          rethrow;
-        }
-      }
-
       // Get redirect URL for email verification
       final redirectUrl = AuthService.getRedirectUrl();
-      final normalizedEmail = email.toLowerCase().trim();
+      final response = await SupabaseService.client.auth.signUp(
+        email: email,
+        password: password,
+        emailRedirectTo: redirectUrl,
+      );
 
-      // Sign up with email/password
-      AuthResponse? response;
-      bool emailSent = false;
-      bool rateLimitHit = false;
-
-      try {
-        response = await SupabaseService.client.auth.signUp(
-          email: email,
-          password: password,
-          emailRedirectTo: redirectUrl,
-        );
-
-        if (response.user == null) {
-          throw Exception('Failed to create account');
-        }
-
-        // Email was sent successfully
-        emailSent = true;
-        await EmailRateLimitService.recordEmailSent(normalizedEmail);
-      } catch (signupError) {
-        // Check if it's a rate limit error
-        if (EmailRateLimitService.isRateLimitError(signupError)) {
-          print('⚠️ Rate limit hit during signup - handling gracefully');
-          rateLimitHit = true;
-
-          // Set cooldown
-          await EmailRateLimitService.setCooldown(normalizedEmail);
-
-          // Supabase often creates the user account even if email sending fails
-          // Try to get the current user (might have been created)
-          final currentUser = SupabaseService.currentUser;
-          if (currentUser != null &&
-              currentUser.email?.toLowerCase() == normalizedEmail) {
-            // User was created! Create response object
-            response = AuthResponse(
-              user: currentUser,
-              session: SupabaseService.client.auth.currentSession,
-            );
-            print('✅ User account created despite rate limit');
-          } else {
-            // User wasn't created - wait a moment and retry once
-            print('⏳ User not created yet, waiting before retry...');
-            await Future.delayed(const Duration(seconds: 3));
-
-            try {
-              response = await SupabaseService.client.auth.signUp(
-                email: email,
-                password: password,
-                emailRedirectTo: redirectUrl,
-              );
-
-              if (response.user != null) {
-                emailSent = true;
-                await EmailRateLimitService.recordEmailSent(normalizedEmail);
-                print('✅ User created on retry');
-              }
-            } catch (retryError) {
-              // Still rate limited - check if user exists now
-              final retryUser = SupabaseService.currentUser;
-              if (retryUser != null &&
-                  retryUser.email?.toLowerCase() == normalizedEmail) {
-                response = AuthResponse(
-                  user: retryUser,
-                  session: SupabaseService.client.auth.currentSession,
-                );
-                print('✅ User found after retry');
-              } else {
-                // User still not created - this is rare but possible
-                // Show friendly message and ask to try again
-                throw Exception(
-                  'We\'re experiencing high demand. Please wait a moment and try again.',
-                );
-              }
-            }
-          }
-        } else {
-          // Not a rate limit error - rethrow
-          rethrow;
-        }
+      if (response.user == null) {
+        throw Exception('Failed to create account');
       }
 
-      // Ensure we have a user and response
-      if (response == null) {
-        throw Exception('Failed to create account. Please try again.');
-      }
-
-      // Verify user exists (AuthResponse.user can be null)
-      final user = response.user;
-      if (user == null) {
-        throw Exception('Failed to create account. Please try again.');
-      }
-
-      // At this point, we know user is not null, so we can use it safely
-
-      // CRITICAL: Save profile data immediately (before email confirmation)
-      // This ensures profile exists when user clicks email verification link
-      try {
-        await SupabaseService.client.from('profiles').upsert({
-          'id': user.id,
-          'email': email,
-          'full_name': fullName,
-          'phone_number': null,
-          'user_type': _selectedRole,
-          'avatar_url': null,
-          'survey_completed': false,
-          'is_admin': false,
-        }, onConflict: 'id');
-        print('✅ Profile created/updated for user: ${user.id}');
-
-        // Notify admins about new user signup (async, don't block)
-        NotificationHelperService.notifyAdminsAboutNewUserSignup(
-          userId: user.id,
-          userType: _selectedRole!,
-          userName: fullName,
-          userEmail: email,
-        ).catchError((e) {
-          print('⚠️ Error notifying admins about new user signup: $e');
-          // Don't block signup if notification fails
-        });
-      } catch (e) {
-        print('⚠️ Error creating profile: $e');
-        // Continue anyway - profile might already exist or will be created later
-      }
-
-      // Store user role in SharedPreferences for email verification redirect
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('signup_user_role', _selectedRole!);
       await prefs.setString('signup_full_name', fullName);
       await prefs.setString('signup_email', email);
       await prefs.setString('auth_method', 'email');
 
-      // Check if email confirmation is required
-      final emailConfirmed = user.emailConfirmedAt != null;
+      final user = response.user!;
 
-      // If email is confirmed, navigate directly to survey
-      if (emailConfirmed) {
-        // Save session
-        await AuthService.saveSession(
-          userId: user.id,
-          userRole: _selectedRole!,
-          phone: '',
-          fullName: fullName,
-          surveyCompleted: false,
-          rememberMe: true,
-        );
-
-        // Navigate to profile setup/survey
+      if (user.emailConfirmedAt != null) {
+        await AuthService.completeEmailVerification(user);
         if (mounted) {
-          Navigator.pushReplacementNamed(
+          Navigator.pushNamedAndRemoveUntil(
             context,
             '/profile-setup',
+            (route) => false,
             arguments: {'userRole': _selectedRole},
           );
         }
-      } else {
-        // Email confirmation required - show confirmation screen
-        if (mounted) {
-          // Show success message (even if email wasn't sent due to rate limit)
-          if (rateLimitHit && !emailSent) {
-            // Subtle message that email will be sent soon
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(
-                      Icons.info_outline,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Account created! Verification email will be sent shortly. You can also resend it from the next screen.',
-                        style: GoogleFonts.poppins(fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: AppTheme.primaryColor,
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.all(16),
-                duration: const Duration(seconds: 5),
-              ),
-            );
-          } else {
-            // Normal success message
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle_outline,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Account created! Please check your email to verify your account.',
-                        style: GoogleFonts.poppins(fontSize: 14),
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: Colors.green,
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.all(16),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
+        return;
+      }
 
-          // Navigate to confirmation screen
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => EmailConfirmationScreen(
-                email: email,
-                fullName: fullName,
-                userRole: _selectedRole!,
-              ),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_outline,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Account created! Please check your email to verify your account.',
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                ),
+              ],
             ),
-          );
-        }
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EmailConfirmationScreen(
+              email: email,
+              fullName: fullName,
+              userRole: _selectedRole!,
+            ),
+          ),
+        );
       }
     } catch (e) {
       print('❌ Email signup error: $e');
       if (mounted) {
-        // Check if it's a rate limit error - handle gracefully
-        if (EmailRateLimitService.isRateLimitError(e)) {
-          // Don't show rate limit error to user - navigate to confirmation screen anyway
-          // The user account might have been created, and they can resend email
-          final normalizedEmail = _emailController.text.trim().toLowerCase();
-
-          // Check if user was created despite the error
-          final existingUser = SupabaseService.currentUser;
-          if (existingUser != null) {
-            final existingEmail = existingUser.email?.toLowerCase();
-            if (existingEmail == normalizedEmail) {
-              // User was created - navigate to confirmation screen
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Account created! You can resend the verification email from the next screen.',
-                          style: GoogleFonts.poppins(fontSize: 14),
-                        ),
-                      ),
-                    ],
-                  ),
-                  backgroundColor: AppTheme.primaryColor,
-                  behavior: SnackBarBehavior.floating,
-                  margin: const EdgeInsets.all(16),
-                  duration: const Duration(seconds: 4),
-                ),
-              );
-
-              // Store signup data
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setString('signup_user_role', _selectedRole!);
-              await prefs.setString(
-                'signup_full_name',
-                _nameController.text.trim(),
-              );
-              await prefs.setString(
-                'signup_email',
-                _emailController.text.trim(),
-              );
-              await prefs.setString('auth_method', 'email');
-
-              // Navigate to confirmation screen
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EmailConfirmationScreen(
-                    email: _emailController.text.trim(),
-                    fullName: _nameController.text.trim(),
-                    userRole: _selectedRole!,
-                  ),
-                ),
-              );
-              return;
-            }
-          }
-        }
-
-        // For other errors, show the error message
         final errorMessage = AuthService.parseAuthError(e);
-
-        // Make error messages more user-friendly
-        String friendlyMessage = errorMessage;
-        if (errorMessage.toLowerCase().contains('email') &&
-            errorMessage.toLowerCase().contains('already')) {
-          friendlyMessage =
-              'This email is already registered. Please sign in instead.';
-        } else if (errorMessage.toLowerCase().contains('password') &&
-            errorMessage.toLowerCase().contains('weak')) {
-          friendlyMessage =
-              'Password is too weak. Please use a stronger password with at least 6 characters.';
-        } else if (errorMessage.toLowerCase().contains('network') ||
-            errorMessage.toLowerCase().contains('connection')) {
-          friendlyMessage =
-              'Connection error. Please check your internet connection and try again.';
-        }
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -908,7 +634,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    friendlyMessage,
+                    errorMessage,
                     style: GoogleFonts.poppins(fontSize: 14),
                   ),
                 ),

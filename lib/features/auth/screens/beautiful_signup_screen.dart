@@ -477,7 +477,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                     shadowColor: AppTheme.primaryColor
                                         .withOpacity(0.3),
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(28),
+                                      borderRadius: BorderRadius.circular(22),
                                     ),
                                   ),
                                   child: _isLoading

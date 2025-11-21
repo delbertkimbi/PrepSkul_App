@@ -5,6 +5,7 @@ import 'dart:async';
 import 'supabase_service.dart';
 import 'push_notification_service.dart';
 import 'email_rate_limit_service.dart';
+import 'notification_helper_service.dart';
 
 /// Comprehensive authentication service for PrepSkul
 class AuthService {
@@ -16,6 +17,8 @@ class AuthService {
   static const String _keyUserName = 'user_name';
   static const String _keySurveyCompleted = 'survey_completed';
   static const String _keyRememberMe = 'remember_me';
+
+  static StreamSubscription<AuthState>? _authStateSubscription;
 
   /// Check if user is currently logged in
   static Future<bool> isLoggedIn() async {
@@ -390,20 +393,96 @@ class AuthService {
 
   /// Initialize auth listener (call in main.dart)
   static void initAuthListener() {
-    authStateChanges.listen((AuthState state) async {
+    _authStateSubscription?.cancel();
+    _authStateSubscription = authStateChanges.listen((AuthState state) async {
       final event = state.event;
 
       if (event == AuthChangeEvent.signedOut) {
-        // Clear local session when Supabase session expires
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_keyIsLoggedIn, false);
         print('🔒 Session expired - user signed out');
       } else if (event == AuthChangeEvent.signedIn) {
+        final user = state.session?.user;
         print('✅ User signed in');
+        if (user != null) {
+          await _handleSupabaseSignedIn(user);
+        }
       } else if (event == AuthChangeEvent.tokenRefreshed) {
         print('🔄 Auth token refreshed');
       }
     });
+  }
+
+  static Future<void> _handleSupabaseSignedIn(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingEmail = prefs.getString('signup_email');
+      final pendingRole = prefs.getString('signup_user_role');
+      final pendingName = prefs.getString('signup_full_name');
+
+      if (pendingEmail == null && pendingRole == null && pendingName == null) {
+        return;
+      }
+
+      await completeEmailVerification(user);
+    } catch (e) {
+      print('⚠️ Error handling Supabase signed-in event: $e');
+    }
+  }
+
+  static Future<void> completeEmailVerification(User user) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingRole = prefs.getString('signup_user_role');
+      final pendingName = prefs.getString('signup_full_name');
+      final pendingEmail = prefs.getString('signup_email');
+
+      if (pendingRole == null && pendingName == null && pendingEmail == null) {
+        print('ℹ️ No pending signup data found, skipping verification handler');
+        return;
+      }
+
+      final role = pendingRole ?? 'student';
+      final email = pendingEmail ?? user.email ?? '';
+      final fullName =
+          pendingName ??
+          user.userMetadata?['full_name']?.toString() ??
+          (email.isNotEmpty ? email : 'PrepSkul User');
+
+      await SupabaseService.client.from('profiles').upsert({
+        'id': user.id,
+        'email': email,
+        'full_name': fullName,
+        'phone_number': null,
+        'user_type': role,
+        'survey_completed': false,
+        'is_admin': false,
+      }, onConflict: 'id');
+
+      await saveSession(
+        userId: user.id,
+        userRole: role,
+        phone: '',
+        fullName: fullName,
+        surveyCompleted: false,
+        rememberMe: true,
+      );
+
+      await prefs.setBool('survey_intro_seen', false);
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('signup_email');
+
+      await NotificationHelperService.notifyAdminsAboutNewUserSignup(
+        userEmail: email,
+        userId: user.id,
+        userName: fullName,
+        userType: role,
+      );
+    } catch (e) {
+      print('⚠️ Error completing email verification: $e');
+      rethrow;
+    }
   }
 
   /// Get platform-appropriate redirect URL for email verification
@@ -470,21 +549,6 @@ class AuthService {
     } catch (e) {
       // On any error, default to false - let signUp handle the validation
       return false;
-    }
-  }
-
-  static Future<void> safeRefreshSession() async {
-    try {
-      await SupabaseService.client.auth.refreshSession();
-    } catch (e) {
-      // Catch Supabase rate limit during polling
-      if (e.toString().toLowerCase().contains("rate") ||
-          e.toString().toLowerCase().contains("too many")) {
-        print("⏳ Hit Supabase refresh rate limit. Backing off for 8s...");
-        await Future.delayed(const Duration(seconds: 8));
-        return;
-      }
-      rethrow;
     }
   }
 
