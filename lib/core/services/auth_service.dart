@@ -463,7 +463,7 @@ class AuthService {
   /// Get platform-appropriate redirect URL for email verification
   static String getRedirectUrl() {
     if (kIsWeb) {
-      // For web, use current origin or fallback to production URL
+      // For web, use current origin + email login route (must match Supabase redirect list)
       try {
         // This will work when app is running
         final origin = Uri.base.origin;
@@ -475,18 +475,18 @@ class AuthService {
           // Local development - return exact origin (e.g., http://localhost:53790)
           // NOTE: Supabase needs http://localhost:* (with wildcard) in redirect URLs
           print('🔍 [DEBUG] Local development - redirect URL: $origin');
-          return origin; // Return without trailing slash
+          return '$origin/email-login';
         }
         // Production - must match exactly what's in Supabase
-        print('🔍 [DEBUG] Production - redirect URL: https://app.prepskul.com');
-        return 'https://app.prepskul.com';
+        print('🔍 [DEBUG] Production - redirect URL: https://app.prepskul.com/email-login');
+        return 'https://app.prepskul.com/email-login';
       } catch (e) {
         // Fallback for production
-        return 'https://app.prepskul.com';
+        return 'https://app.prepskul.com/email-login';
       }
     } else {
-      // For mobile, use deep link scheme
-      return 'io.supabase.prepskul://login-callback';
+      // For mobile, use deep link scheme to email login route
+      return 'prepskul://email-login';
     }
   }
 
