@@ -245,10 +245,12 @@ class AuthService {
       final remaining = await EmailRateLimitService.getRemainingCooldown(
         normalizedEmail,
       );
+      final friendlyMessage =
+          EmailRateLimitService.friendlyRateLimitMessage(remaining);
       print(
         'ℹ️ Password reset email already sent recently. Remaining cooldown: ${remaining ?? Duration.zero}',
       );
-      return;
+      throw Exception(friendlyMessage);
     }
 
     // Retry logic with exponential backoff
@@ -285,40 +287,13 @@ class AuthService {
 
         // Check if it's a rate limit error
         if (EmailRateLimitService.isRateLimitError(e)) {
-          // Set cooldown period
           await EmailRateLimitService.setCooldown(normalizedEmail);
-
-          // Increment retry count
-          retryCount = await EmailRateLimitService.incrementRetryCount(
+          final remaining = await EmailRateLimitService.getRemainingCooldown(
             normalizedEmail,
           );
-
-          // Calculate retry delay
-          final retryDelay = EmailRateLimitService.calculateRetryDelay(
-            retryCount,
+          throw Exception(
+            EmailRateLimitService.friendlyRateLimitMessage(remaining),
           );
-
-          print(
-            '⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...',
-          );
-
-          // Wait before retrying (if we haven't exceeded max retries)
-          if (retryCount < 3) {
-            await Future.delayed(retryDelay);
-            continue;
-          } else {
-            // Max retries exceeded
-            final remaining = await EmailRateLimitService.getRemainingCooldown(
-              normalizedEmail,
-            );
-            if (remaining != null) {
-              print(
-                'ℹ️ Password reset email already sent. Cooldown remaining: $remaining',
-              );
-            }
-            // Treat as success even if we hit the limit
-            return;
-          }
         }
 
         // Not a rate limit error - check for other errors
@@ -740,7 +715,7 @@ class AuthService {
 
     if (isRateLimit) {
       print('🔍 [DEBUG] ✅ Returning rate limit message');
-      return 'Almost done! Please check your inbox and try resending in a minute if needed.';
+      return EmailRateLimitService.friendlyRateLimitMessage(null);
     }
 
     // Too many requests (generic)
@@ -791,10 +766,12 @@ class AuthService {
       final remaining = await EmailRateLimitService.getRemainingCooldown(
         normalizedEmail,
       );
+      final friendlyMessage =
+          EmailRateLimitService.friendlyRateLimitMessage(remaining);
       print(
         'ℹ️ Verification email already sent recently. Remaining cooldown: ${remaining ?? Duration.zero}',
       );
-      return;
+      throw Exception(friendlyMessage);
     }
 
     // Retry logic with exponential backoff
@@ -826,39 +803,13 @@ class AuthService {
 
         // Check if it's a rate limit error
         if (EmailRateLimitService.isRateLimitError(e)) {
-          // Set cooldown period
           await EmailRateLimitService.setCooldown(normalizedEmail);
-
-          // Increment retry count
-          retryCount = await EmailRateLimitService.incrementRetryCount(
+          final remaining = await EmailRateLimitService.getRemainingCooldown(
             normalizedEmail,
           );
-
-          // Calculate retry delay
-          final retryDelay = EmailRateLimitService.calculateRetryDelay(
-            retryCount,
+          throw Exception(
+            EmailRateLimitService.friendlyRateLimitMessage(remaining),
           );
-
-          print(
-            '⏳ Rate limit detected. Retrying in ${retryDelay.inSeconds} seconds...',
-          );
-
-          // Wait before retrying (if we haven't exceeded max retries)
-          if (retryCount < 3) {
-            await Future.delayed(retryDelay);
-            continue;
-          } else {
-            // Max retries exceeded
-            final remaining = await EmailRateLimitService.getRemainingCooldown(
-              normalizedEmail,
-            );
-            if (remaining != null) {
-              print(
-                'ℹ️ Verification email already sent. Cooldown remaining: $remaining',
-              );
-            }
-            return;
-          }
         }
 
         // Not a rate limit error - check for other errors

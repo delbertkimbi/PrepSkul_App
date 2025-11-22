@@ -1,14 +1,14 @@
 /**
  * Email Rate Limit Service
- * 
+ *
  * Manages email sending rate limits, retries, and cooldown periods
  * to prevent abuse and ensure good user experience.
- * 
- * Note: We use Resend as SMTP provider (via Supabase), which has much higher limits:
- * - Free tier: 3,000 emails/month
- * - Pro tier: 50,000 emails/month
- * 
- * Client-side rate limiting prevents spam/abuse while allowing reasonable retries.
+ *
+ * Supabase-managed email (free plan) currently allows **2 auth emails per hour**
+ * across signup, verification, and password recovery endpoints.
+ * We mirror that limit locally so that users see an accurate message before the
+ * backend rejects additional requests. See:
+ * https://supabase.com/docs/guides/auth/rate-limits
  */
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,15 +21,15 @@ class EmailRateLimitService {
   static const String _keyLastEmailSent = 'email_last_sent_';
   static const String _keyRetryCount = 'email_retry_count_';
 
-  // Rate limit constants
-  // Reduced cooldown since we're using Resend (much higher limits than Supabase)
-  // Resend free tier: 3,000 emails/month, Pro: 50,000/month
-  // Keep 1 minute cooldown to prevent abuse, but allow reasonable retries
-  static const Duration _cooldownPeriod = Duration(minutes: 1);
-  static const Duration _minTimeBetweenEmails = Duration(seconds: 30);
+  // Rate limit constants (aligned with Supabase default: 2 emails/hour)
+  static const Duration _cooldownPeriod = Duration(hours: 1);
+  static const Duration _minTimeBetweenEmails = Duration(minutes: 35);
   static const int _maxRetries = 3;
   static const Duration _initialRetryDelay = Duration(seconds: 2);
   static const double _retryBackoffMultiplier = 2.0;
+
+  static Duration get cooldownPeriod => _cooldownPeriod;
+  static Duration get minTimeBetweenEmails => _minTimeBetweenEmails;
 
   /// Check if user is in cooldown period
   static Future<bool> isInCooldown(String email) async {
@@ -163,8 +163,27 @@ class EmailRateLimitService {
     if (seconds < 60) {
       return 'Email already sent—please try again in less than a minute.';
     }
+
     final minutes = remaining.inMinutes;
-    return 'Email already sent—check your inbox and try again in about $minutes minute${minutes == 1 ? '' : 's'}.';
+    if (minutes < 60) {
+      return 'Email already sent—check your inbox and try again in about $minutes minute${minutes == 1 ? '' : 's'}.';
+    }
+
+    final hours = remaining.inHours;
+    final remainderMinutes = minutes % 60;
+    final hoursLabel = '$hours hour${hours == 1 ? '' : 's'}';
+    final minutesLabel = remainderMinutes > 0
+        ? ' ${remainderMinutes} minute${remainderMinutes == 1 ? '' : 's'}'
+        : '';
+    return 'Email already sent—please wait about $hoursLabel$minutesLabel before trying again.';
+  }
+
+  /// Helper to build a complete friendly message referencing Supabase limits
+  static String friendlyRateLimitMessage(Duration? remaining) {
+    final baseMessage = formatCooldownMessage(
+      remaining ?? _cooldownPeriod,
+    );
+    return '$baseMessage Supabase only allows two authentication emails per hour on the current plan, so please try again later.';
   }
 
   /// Check if error is rate limit error
