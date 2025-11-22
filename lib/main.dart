@@ -19,6 +19,7 @@ import 'package:prepskul/features/auth/screens/auth_method_selection_screen.dart
 import 'package:prepskul/features/auth/screens/email_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
+import 'package:prepskul/features/tutor/screens/tutor_onboarding_choice_screen.dart';
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
 import 'package:prepskul/features/booking/screens/my_sessions_screen.dart';
@@ -443,6 +444,11 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           );
         }
 
+        if (settings.name == '/tutor-onboarding-choice') {
+          return _createFadeRoute(
+            () => const TutorOnboardingChoiceScreen(),
+          );
+        }
         if (settings.name == '/profile-setup') {
           final args = settings.arguments as Map<String, dynamic>?;
           final userRole = args?['userRole'] ?? 'student';

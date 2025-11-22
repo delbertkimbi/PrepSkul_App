@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'dart:convert';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/app_data.dart';
@@ -11,6 +12,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/widgets/confetti_celebration.dart';
 import 'instruction_screen.dart';
 
@@ -30,6 +32,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   int _currentStep = 0;
   int _totalSteps = 14; // Split Payment & Expectations into two steps
 
+  // Debounce timer for saving progress
+  Timer? _saveDebounceTimer;
+  String? _userId;
+
   @override
   void initState() {
     super.initState();
@@ -39,7 +45,32 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       });
     });
     _loadAuthMethod();
-    _loadSavedData();
+    _initializeAndLoadData();
+  }
+
+  @override
+  void dispose() {
+    _saveDebounceTimer?.cancel();
+    _pageController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _customQuarterController.dispose();
+    _institutionController.dispose();
+    _fieldOfStudyController.dispose();
+    _customSpecializationController.dispose();
+    _previousOrganizationController.dispose();
+    _motivationController.dispose();
+    _paymentNumberController.dispose();
+    _paymentNameController.dispose();
+    _bankDetailsController.dispose();
+    _videoLinkController.dispose();
+    _statementController.dispose();
+    // Dispose all tab controllers
+    for (var controller in _specializationTabControllers.values) {
+      controller.dispose();
+    }
+    _specializationTabControllers.clear();
+    super.dispose();
   }
 
   Future<void> _loadAuthMethod() async {
@@ -50,36 +81,353 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     });
   }
 
-  // Auto-save functionality
-  Future<void> _saveData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = {
-      'currentStep': _currentStep,
+  // Initialize and load data from database
+  Future<void> _initializeAndLoadData() async {
+    try {
+      final user = await AuthService.getCurrentUser();
+      _userId = user['userId'] as String?;
+      
+      // Check if we should jump to a specific step
+      final jumpToStep = widget.basicInfo['jumpToStep'] as int?;
+      if (jumpToStep != null && jumpToStep >= 0 && jumpToStep < _totalSteps) {
+        _currentStep = jumpToStep;
+      }
+      
+      await _loadSavedData();
+      
+      // Jump to specific step if requested
+      if (jumpToStep != null && jumpToStep >= 0 && jumpToStep < _totalSteps) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _pageController.jumpToPage(jumpToStep);
+        });
+      }
+    } catch (e) {
+      print('❌ Error initializing: $e');
+      // Fallback to old SharedPreferences method
+      await _loadSavedData();
+    }
+  }
+
+  // Auto-save functionality - saves to database with debouncing
+  Future<void> _saveData({bool immediate = false}) async {
+    if (_userId == null) {
+      // Try to get userId if not set
+      try {
+        final user = await AuthService.getCurrentUser();
+        _userId = user['userId'] as String?;
+      } catch (e) {
+        print('⚠️ Cannot save: userId not available');
+        return;
+      }
+    }
+
+    // Cancel existing timer
+    _saveDebounceTimer?.cancel();
+
+    if (immediate) {
+      await _saveToDatabase();
+    } else {
+      // Debounce: wait 1 second before saving
+      _saveDebounceTimer = Timer(const Duration(seconds: 1), () {
+        _saveToDatabase();
+      });
+    }
+  }
+
+  // Save current step data to database
+  Future<void> _saveToDatabase() async {
+    if (_userId == null) return;
+
+    try {
+      // Prepare step data for current step
+      final stepData = _getCurrentStepData();
+
+      // Save to database
+      await TutorOnboardingProgressService.saveStepProgress(
+        _userId!,
+        _currentStep,
+        stepData,
+      );
+
+      // Also save all progress data
+      final allStepData = _getAllStepData();
+      final completedSteps = _getCompletedSteps();
+      
+      await TutorOnboardingProgressService.saveAllProgress(
+        _userId!,
+        allStepData,
+        _currentStep,
+        completedSteps,
+      );
+
+      print('✅ Auto-saved step $_currentStep to database');
+    } catch (e) {
+      print('❌ Error saving to database: $e');
+    }
+  }
+
+  // Save progress and navigate to dashboard
+  Future<void> _saveProgressAndExit() async {
+    if (_userId == null) return;
+
+    try {
+      // Cancel any pending debounced saves
+      _saveDebounceTimer?.cancel();
+
+      // Save current step data immediately
+      final stepData = _getCurrentStepData();
+      await TutorOnboardingProgressService.saveStepProgress(
+        _userId!,
+        _currentStep,
+        stepData,
+      );
+
+      // Save all progress data
+      final allStepData = _getAllStepData();
+      final completedSteps = _getCompletedSteps();
+      
+      await TutorOnboardingProgressService.saveAllProgress(
+        _userId!,
+        allStepData,
+        _currentStep,
+        completedSteps,
+      );
+
+      print('✅ Progress saved before exiting to dashboard');
+
+      // Navigate to tutor dashboard
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/tutor-nav');
+      }
+    } catch (e) {
+      print('❌ Error saving progress before exit: $e');
+      // Still navigate even if save fails
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Progress saved. You can continue later.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        Navigator.pushReplacementNamed(context, '/tutor-nav');
+      }
+    }
+  }
+
+  // Get data for current step
+  Map<String, dynamic> _getCurrentStepData() {
+    switch (_currentStep) {
+      case 0: // Contact Information
+        return {
       'email': _emailController.text,
+          'phone': _phoneController.text,
+        };
+      case 1: // Academic Background
+        return {
       'selectedEducation': _selectedEducation,
       'institution': _institutionController.text,
       'fieldOfStudy': _fieldOfStudyController.text,
       'hasTraining': _hasTraining,
+        };
+      case 2: // Location
+        return {
       'selectedCity': _selectedCity,
       'selectedQuarter': _selectedQuarter,
       'customQuarter': _customQuarter,
+        };
+      case 3: // Teaching Focus
+        return {
       'selectedTutoringAreas': _selectedTutoringAreas,
       'selectedLearnerLevels': _selectedLearnerLevels,
+        };
+      case 4: // Specializations
+        return {
       'selectedSpecializations': _selectedSpecializations,
+          'customSpecialization': _customSpecializationController.text,
+        };
+      case 5: // Experience
+        return {
       'hasExperience': _hasExperience,
       'experienceDuration': _experienceDuration,
+          'previousOrganization': _previousOrganizationController.text,
+          'taughtLevels': _taughtLevels,
       'motivation': _motivationController.text,
+        };
+      case 6: // Teaching Style
+        return {
       'preferredMode': _preferredMode,
       'teachingApproaches': _teachingApproaches,
       'preferredSessionType': _preferredSessionType,
+          'handlesMultipleLearners': _handlesMultipleLearners,
       'hoursPerWeek': _hoursPerWeek,
-      'paymentMethod': _paymentMethod,
+        };
+      case 7: // Digital Readiness
+        return {
+          'devices': _devices,
+          'hasInternet': _hasInternet,
+          'teachingTools': _teachingTools,
+          'hasMaterials': _hasMaterials,
+          'wantsTraining': _wantsTraining,
+        };
+      case 8: // Availability
+        return {
+          'tutoringAvailability': _tutoringAvailability,
+          'testSessionAvailability': _testSessionAvailability,
+        };
+      case 9: // Expectations
+        return {
       'expectedRate': _expectedRate,
+          'pricingFactors': _pricingFactors,
+        };
+      case 10: // Payment
+        return {
+          'paymentMethod': _paymentMethod,
+          'paymentNumber': _paymentNumberController.text,
+          'paymentName': _paymentNameController.text,
+          'bankDetails': _bankDetailsController.text,
       'agreesToPaymentPolicy': _agreesToPaymentPolicy,
+        };
+      case 11: // Verification
+        return {
+          'profilePhotoUrl': _profilePhotoUrl,
+          'idCardFrontUrl': _idCardFrontUrl,
+          'idCardBackUrl': _idCardBackUrl,
+          'certificateUrls': _certificateUrls,
       'agreesToVerification': _agreesToVerification,
     };
-    await prefs.setString('tutor_onboarding_data', jsonEncode(data));
-    print('✅ Auto-saved tutor onboarding data');
+      case 12: // Media Links
+        return {
+          'socialMediaLinks': _socialMediaLinks,
+          'videoLink': _videoLinkController.text,
+        };
+      case 13: // Personal Statement
+        return {
+          'personalStatement': _statementController.text,
+          'finalAgreements': _finalAgreements,
+        };
+      default:
+        return {};
+    }
+  }
+
+  // Get all step data
+  Map<String, dynamic> _getAllStepData() {
+    final allData = <String, dynamic>{};
+    for (int i = 0; i < _totalSteps; i++) {
+      final originalStep = _currentStep;
+      _currentStep = i;
+      allData[i.toString()] = _getCurrentStepData();
+      _currentStep = originalStep;
+    }
+    return allData;
+  }
+
+  // Get completed steps
+  List<int> _getCompletedSteps() {
+    final completed = <int>[];
+    for (int i = 0; i < _totalSteps; i++) {
+      if (_isStepComplete(i)) {
+        completed.add(i);
+      }
+    }
+    return completed;
+  }
+
+  // Check if a step is complete
+  bool _isStepComplete(int step) {
+    switch (step) {
+      case 0:
+        if (_authMethod == 'email') {
+          return _phoneController.text.trim().replaceAll(RegExp(r'[\s\-]'), '').length >= 9;
+        } else {
+          return _emailController.text.trim().isNotEmpty && _isValidEmail(_emailController.text.trim());
+        }
+      case 1:
+        return _selectedEducation != null &&
+            _institutionController.text.isNotEmpty &&
+            _fieldOfStudyController.text.isNotEmpty;
+      case 2:
+        return _selectedCity != null &&
+            (_selectedQuarter != null || (_isCustomQuarter && _customQuarter != null && _customQuarter!.isNotEmpty));
+      case 3:
+        return _selectedTutoringAreas.isNotEmpty && _selectedLearnerLevels.isNotEmpty;
+      case 4:
+        return _selectedSpecializations.isNotEmpty;
+      case 5:
+        final motivationText = _motivationController.text.trim();
+        final hasValidMotivation = motivationText.isNotEmpty && motivationText.length >= 20;
+        if (_hasExperience) {
+          return _experienceDuration != null &&
+              _previousOrganizationController.text.trim().isNotEmpty &&
+              _taughtLevels.isNotEmpty &&
+              hasValidMotivation;
+        } else {
+          return hasValidMotivation;
+        }
+      case 6:
+        return _preferredMode != null &&
+            _teachingApproaches.isNotEmpty &&
+            _preferredSessionType != null &&
+            _hoursPerWeek != null;
+      case 7:
+        return true; // No required fields
+      case 8:
+        bool hasTutoringSlots = false;
+        bool hasTestSlots = false;
+        for (var daySlots in _tutoringAvailability.values) {
+          if (daySlots.isNotEmpty) {
+            hasTutoringSlots = true;
+            break;
+          }
+        }
+        for (var daySlots in _testSessionAvailability.values) {
+          if (daySlots.isNotEmpty) {
+            hasTestSlots = true;
+            break;
+          }
+        }
+        return hasTutoringSlots && hasTestSlots;
+      case 9:
+        return _expectedRate != null && _expectedRate!.isNotEmpty;
+      case 10:
+        if (_paymentMethod == null || _paymentMethod!.isEmpty || !_agreesToPaymentPolicy) {
+          return false;
+        }
+        if (_paymentMethod == 'MTN Mobile Money' || _paymentMethod == 'Orange Money') {
+          return _paymentNumberController.text.isNotEmpty && _paymentNameController.text.isNotEmpty;
+        } else if (_paymentMethod == 'Bank Transfer') {
+          return _bankDetailsController.text.isNotEmpty;
+        }
+        return true;
+      case 11:
+        if (!_agreesToVerification) return false;
+        List<String> requiredDocs = ['profile_picture', 'id_front', 'id_back', 'last_certificate'];
+        if (_selectedEducation != null && ['Bachelors', 'Master\'s', 'Doctorate', 'PHD'].contains(_selectedEducation)) {
+          requiredDocs.add('degree_certificate');
+        }
+        if (_hasTraining) {
+          requiredDocs.add('training_certificate');
+        }
+        for (String docType in requiredDocs) {
+          if (!_uploadedDocuments.containsKey(docType)) {
+            return false;
+          }
+        }
+        return true;
+      case 12:
+        bool hasSocialLink = _socialMediaLinks.values.any((link) => link.isNotEmpty);
+        bool hasVideoLink = _videoLinkController.text.trim().isNotEmpty && _isValidYouTubeUrl(_videoLinkController.text.trim());
+        return hasSocialLink && hasVideoLink;
+      case 13:
+        return _finalAgreements.values.every((agreed) => agreed == true);
+      default:
+        return false;
+    }
   }
 
   Future<void> _loadSavedData() async {
@@ -95,39 +443,215 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       return;
     }
 
-    // Otherwise, try loading from SharedPreferences
+    // Try loading from database first
+    if (_userId != null) {
+      try {
+        final progress = await TutorOnboardingProgressService.loadProgress(_userId!);
+        if (progress != null) {
+          await _loadFromProgressData(progress);
+          return;
+        }
+      } catch (e) {
+        print('⚠️ Error loading from database: $e');
+      }
+    }
+
+    // Fallback to SharedPreferences for backward compatibility
     final prefs = await SharedPreferences.getInstance();
     final savedDataString = prefs.getString('tutor_onboarding_data');
 
     if (savedDataString != null) {
       try {
         final data = jsonDecode(savedDataString) as Map<String, dynamic>;
+        await _loadFromSharedPreferencesData(data);
+      } catch (e) {
+        print('⚠️ Error loading saved data: $e');
+      }
+    } else if (existingData != null) {
+      // If no saved data but existingData exists, load from it
+      await _loadFromDatabaseData(existingData);
+    }
+  }
+
+  // Load data from progress service
+  Future<void> _loadFromProgressData(Map<String, dynamic> progress) async {
+    try {
+      final stepData = progress['step_data'] as Map<String, dynamic>? ?? {};
+      final currentStepFromDb = progress['current_step'] as int? ?? 0;
+      final completedSteps = progress['completed_steps'] as List<dynamic>? ?? [];
+
+      // Load data from each step
+      for (int step = 0; step < _totalSteps; step++) {
+        final stepKey = step.toString();
+        final data = stepData[stepKey] as Map<String, dynamic>?;
+        if (data == null) continue;
+
+        await _loadStepData(step, data);
+      }
+
+      // Find first incomplete step
+      int firstIncompleteStep = 0;
+      for (int i = 0; i < _totalSteps; i++) {
+        if (!completedSteps.contains(i) && !_isStepComplete(i)) {
+          firstIncompleteStep = i;
+          break;
+        }
+      }
+
         setState(() {
-          _currentStep = data['currentStep'] ?? 0;
+        _currentStep = firstIncompleteStep;
+      });
+
+      // Update quarters if city is selected
+      if (_selectedCity != null) {
+        _availableQuarters = AppData.cities[_selectedCity!] ?? [];
+      }
+
+      print('✅ Loaded progress from database - resuming at step $_currentStep');
+
+      // Jump to saved step
+      if (_currentStep > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _pageController.jumpToPage(_currentStep);
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error loading from progress data: $e');
+    }
+  }
+
+  // Load data for a specific step
+  Future<void> _loadStepData(int step, Map<String, dynamic> data) async {
+    switch (step) {
+      case 0:
           _emailController.text = data['email'] ?? '';
+        _phoneController.text = data['phone'] ?? '';
+        break;
+      case 1:
           _selectedEducation = data['selectedEducation'];
           _institutionController.text = data['institution'] ?? '';
           _fieldOfStudyController.text = data['fieldOfStudy'] ?? '';
           _hasTraining = data['hasTraining'] ?? false;
+        break;
+      case 2:
           _selectedCity = data['selectedCity'];
           _selectedQuarter = data['selectedQuarter'];
           _customQuarter = data['customQuarter'];
-          _selectedTutoringAreas = List<String>.from(
-            data['selectedTutoringAreas'] ?? [],
+        if (data['selectedQuarter'] == null && data['customQuarter'] != null) {
+          _isCustomQuarter = true;
+        }
+        break;
+      case 3:
+        _selectedTutoringAreas = List<String>.from(data['selectedTutoringAreas'] ?? []);
+        _selectedLearnerLevels = List<String>.from(data['selectedLearnerLevels'] ?? []);
+        break;
+      case 4:
+        _selectedSpecializations = List<String>.from(data['selectedSpecializations'] ?? []);
+        _customSpecializationController.text = data['customSpecialization'] ?? '';
+        break;
+      case 5:
+        _hasExperience = data['hasExperience'] ?? false;
+        _experienceDuration = data['experienceDuration'];
+        _previousOrganizationController.text = data['previousOrganization'] ?? '';
+        _taughtLevels = List<String>.from(data['taughtLevels'] ?? []);
+        _motivationController.text = data['motivation'] ?? '';
+        break;
+      case 6:
+        _preferredMode = data['preferredMode'];
+        _teachingApproaches = List<String>.from(data['teachingApproaches'] ?? []);
+        _preferredSessionType = data['preferredSessionType'];
+        _handlesMultipleLearners = data['handlesMultipleLearners'] ?? false;
+        _hoursPerWeek = data['hoursPerWeek'];
+        break;
+      case 7:
+        _devices = List<String>.from(data['devices'] ?? []);
+        _hasInternet = data['hasInternet'] ?? false;
+        _teachingTools = List<String>.from(data['teachingTools'] ?? []);
+        _hasMaterials = data['hasMaterials'] ?? false;
+        _wantsTraining = data['wantsTraining'] ?? false;
+        break;
+      case 8:
+        if (data['tutoringAvailability'] != null) {
+          _tutoringAvailability = Map<String, List<String>>.from(
+            (data['tutoringAvailability'] as Map).map(
+              (k, v) => MapEntry(k.toString(), List<String>.from(v)),
+            ),
           );
-          _selectedLearnerLevels = List<String>.from(
-            data['selectedLearnerLevels'] ?? [],
+        }
+        if (data['testSessionAvailability'] != null) {
+          _testSessionAvailability = Map<String, List<String>>.from(
+            (data['testSessionAvailability'] as Map).map(
+              (k, v) => MapEntry(k.toString(), List<String>.from(v)),
+            ),
           );
-          _selectedSpecializations = List<String>.from(
-            data['selectedSpecializations'] ?? [],
+        }
+        break;
+      case 9:
+        _expectedRate = data['expectedRate'];
+        _pricingFactors = List<String>.from(data['pricingFactors'] ?? []);
+        break;
+      case 10:
+        _paymentMethod = data['paymentMethod'];
+        _paymentNumberController.text = data['paymentNumber'] ?? '';
+        _paymentNameController.text = data['paymentName'] ?? '';
+        _bankDetailsController.text = data['bankDetails'] ?? '';
+        _agreesToPaymentPolicy = data['agreesToPaymentPolicy'] ?? false;
+        break;
+      case 11:
+        _profilePhotoUrl = data['profilePhotoUrl'];
+        _idCardFrontUrl = data['idCardFrontUrl'];
+        _idCardBackUrl = data['idCardBackUrl'];
+        if (data['certificateUrls'] != null) {
+          _certificateUrls = Map<String, String>.from(data['certificateUrls']);
+        }
+        _agreesToVerification = data['agreesToVerification'] ?? false;
+        // Also update _uploadedDocuments
+        if (_profilePhotoUrl != null) _uploadedDocuments['profile_picture'] = _profilePhotoUrl!;
+        if (_idCardFrontUrl != null) _uploadedDocuments['id_front'] = _idCardFrontUrl!;
+        if (_idCardBackUrl != null) _uploadedDocuments['id_back'] = _idCardBackUrl!;
+        if (_certificateUrls['last_certificate'] != null) {
+          _uploadedDocuments['last_certificate'] = _certificateUrls['last_certificate']!;
+        }
+        break;
+      case 12:
+        if (data['socialMediaLinks'] != null) {
+          _socialMediaLinks = Map<String, String>.from(data['socialMediaLinks']);
+        }
+        _videoLinkController.text = data['videoLink'] ?? '';
+        break;
+      case 13:
+        _statementController.text = data['personalStatement'] ?? '';
+        if (data['finalAgreements'] != null) {
+          _finalAgreements = Map<String, bool>.from(
+            (data['finalAgreements'] as Map).map(
+              (k, v) => MapEntry(k.toString(), v == true || v == 'true'),
+            ),
           );
+        }
+        break;
+    }
+  }
+
+  // Load from SharedPreferences (backward compatibility)
+  Future<void> _loadFromSharedPreferencesData(Map<String, dynamic> data) async {
+    setState(() {
+      _currentStep = data['currentStep'] ?? 0;
+      _emailController.text = data['email'] ?? '';
+      _selectedEducation = data['selectedEducation'];
+      _institutionController.text = data['institution'] ?? '';
+      _fieldOfStudyController.text = data['fieldOfStudy'] ?? '';
+      _hasTraining = data['hasTraining'] ?? false;
+      _selectedCity = data['selectedCity'];
+      _selectedQuarter = data['selectedQuarter'];
+      _customQuarter = data['customQuarter'];
+      _selectedTutoringAreas = List<String>.from(data['selectedTutoringAreas'] ?? []);
+      _selectedLearnerLevels = List<String>.from(data['selectedLearnerLevels'] ?? []);
+      _selectedSpecializations = List<String>.from(data['selectedSpecializations'] ?? []);
           _hasExperience = data['hasExperience'] ?? false;
           _experienceDuration = data['experienceDuration'];
           _motivationController.text = data['motivation'] ?? '';
           _preferredMode = data['preferredMode'];
-          _teachingApproaches = List<String>.from(
-            data['teachingApproaches'] ?? [],
-          );
+      _teachingApproaches = List<String>.from(data['teachingApproaches'] ?? []);
           _preferredSessionType = data['preferredSessionType'];
           _hoursPerWeek = data['hoursPerWeek'];
           _paymentMethod = data['paymentMethod'];
@@ -136,27 +660,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _agreesToVerification = data['agreesToVerification'] ?? false;
         });
 
-        // Update quarters if city is selected
         if (_selectedCity != null) {
           _availableQuarters = AppData.cities[_selectedCity!] ?? [];
         }
 
-        print(
-          '✅ Loaded saved tutor onboarding data - resuming at step $_currentStep',
-        );
-
-        // Jump to saved step
         if (_currentStep > 0) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _pageController.jumpToPage(_currentStep);
           });
-        }
-      } catch (e) {
-        print('⚠️ Error loading saved data: $e');
-      }
-    } else if (existingData != null) {
-      // If no saved data but existingData exists, load from it
-      await _loadFromDatabaseData(existingData);
     }
   }
 
@@ -747,22 +1258,29 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         color: AppTheme.primaryColor,
                       ),
                     ),
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.cloud_done,
-                          size: 16,
-                          color: AppTheme.textMedium,
+                    TextButton.icon(
+                      onPressed: _saveProgressAndExit,
+                      icon: const Icon(
+                        Icons.save_outlined,
+                        size: 16,
+                        color: AppTheme.primaryColor,
+                      ),
+                      label: Text(
+                        'Save Progress',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Auto-saved',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppTheme.textMedium,
-                          ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
                         ),
-                      ],
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                     ),
                   ],
                 ),
@@ -1035,8 +1553,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               'PHD',
             ],
             selectedValue: _selectedEducation,
-            onSelectionChanged: (value) =>
-                setState(() => _selectedEducation = value),
+            onSelectionChanged: (value) {
+              setState(() => _selectedEducation = value);
+              _saveData();
+            },
             isSingleSelection: true,
           ),
 
@@ -1066,7 +1586,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildToggleOption(
             title: 'Have you received tutor training or certification before?',
             value: _hasTraining,
-            onChanged: (value) => setState(() => _hasTraining = value),
+            onChanged: (value) {
+              setState(() => _hasTraining = value);
+              _saveData();
+            },
             icon: Icons.verified,
           ),
         ],
@@ -1160,8 +1683,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               'Exam Preparation',
             ],
             selectedValue: _selectedTutoringAreas,
-            onSelectionChanged: (values) =>
-                setState(() => _selectedTutoringAreas = values),
+            onSelectionChanged: (values) {
+              setState(() => _selectedTutoringAreas = values);
+              _saveData();
+            },
             isSingleSelection: false,
           ),
 
@@ -1179,8 +1704,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               'Concours Preparation',
             ],
             selectedValue: _selectedLearnerLevels,
-            onSelectionChanged: (values) =>
-                setState(() => _selectedLearnerLevels = values),
+            onSelectionChanged: (values) {
+              setState(() => _selectedLearnerLevels = values);
+              _saveData();
+            },
             isSingleSelection: false,
           ),
         ],
@@ -1355,8 +1882,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 child: _buildSelectionChips(
                   options: entry.value,
                   selectedValue: _selectedSpecializations,
-                  onSelectionChanged: (values) =>
-                      setState(() => _selectedSpecializations = values),
+                  onSelectionChanged: (values) {
+                    setState(() => _selectedSpecializations = values);
+                    _saveData();
+                  },
                 ),
               );
             }).toList(),
@@ -1489,7 +2018,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildToggleOption(
             title: 'Do you have previous tutoring or teaching experience?',
             value: _hasExperience,
-            onChanged: (value) => setState(() => _hasExperience = value),
+            onChanged: (value) {
+              setState(() => _hasExperience = value);
+              _saveData();
+            },
             icon: Icons.work_history,
           ),
 
@@ -1784,7 +2316,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               'Desktop Computer',
             ],
             selectedValue: _devices,
-            onSelectionChanged: (values) => setState(() => _devices = values),
+            onSelectionChanged: (values) {
+              setState(() => _devices = values);
+              _saveData();
+            },
             isSingleSelection: false,
           ),
 
@@ -1794,7 +2329,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildToggleOption(
             title: 'Reliable internet connection for online sessions?',
             value: _hasInternet,
-            onChanged: (value) => setState(() => _hasInternet = value),
+            onChanged: (value) {
+              setState(() => _hasInternet = value);
+              _saveData();
+            },
             icon: Icons.wifi,
           ),
 
@@ -1823,7 +2361,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildToggleOption(
             title: 'Access to teaching materials (notes, slides, PDFs)?',
             value: _hasMaterials,
-            onChanged: (value) => setState(() => _hasMaterials = value),
+            onChanged: (value) {
+              setState(() => _hasMaterials = value);
+              _saveData();
+            },
             icon: Icons.folder,
           ),
 
@@ -1833,7 +2374,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildToggleOption(
             title: 'Interested in free digital teaching training?',
             value: _wantsTraining,
-            onChanged: (value) => setState(() => _wantsTraining = value),
+            onChanged: (value) {
+              setState(() => _wantsTraining = value);
+              _saveData();
+            },
             icon: Icons.school,
           ),
         ],
@@ -2755,7 +3299,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title:
                 'I agree for PrepSkul to verify my credentials and background',
             value: _agreesToVerification,
-            onChanged: (value) => setState(() => _agreesToVerification = value),
+            onChanged: (value) {
+              setState(() => _agreesToVerification = value);
+              _saveData();
+            },
             icon: Icons.verified_user,
           ),
         ],
@@ -4163,6 +4710,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           onChanged: (value) {
             // Trigger rebuild to update button state
             setState(() {});
+            // Save to database
+            _saveData();
           },
           decoration: InputDecoration(
             hintText: hint,
@@ -4299,6 +4848,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 setState(() {
                   _finalAgreements[key] = value ?? false;
                 });
+                _saveData();
               },
               activeColor: AppTheme.primaryColor,
               checkColor: Colors.white,
@@ -4327,12 +4877,17 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     if (_currentStep < _totalSteps - 1) {
       // Validate current step before proceeding
       if (_canProceedFromCurrentStep()) {
+        // Mark current step as complete
+        if (_userId != null) {
+          TutorOnboardingProgressService.markStepComplete(_userId!, _currentStep);
+        }
+        
         _pageController.nextPage(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
         );
-        // Auto-save after moving to next step
-        _saveData();
+        // Auto-save after moving to next step (immediate save)
+        _saveData(immediate: true);
       }
     }
   }
@@ -4590,8 +5145,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         ),
       );
 
-      // Auto-save after document upload
-      _saveData();
+      // Auto-save after document upload (immediate save)
+      _saveData(immediate: true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
@@ -4908,6 +5463,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         contactInfo, // Email if phone auth, phone if email auth
       );
 
+      // Mark onboarding as complete
+      await TutorOnboardingProgressService.markOnboardingComplete(userId);
+
       // Close loading dialog
       Navigator.of(context).pop();
 
@@ -5086,29 +5644,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     return tutorData;
   }
 
-  @override
-  void dispose() {
-    _pageController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _customQuarterController.dispose();
-    _institutionController.dispose();
-    _fieldOfStudyController.dispose();
-    _customSpecializationController.dispose();
-    _previousOrganizationController.dispose();
-    _motivationController.dispose();
-    _paymentNumberController.dispose();
-    _paymentNameController.dispose();
-    _bankDetailsController.dispose();
-    _videoLinkController.dispose();
-    _statementController.dispose();
-    // Dispose all tab controllers
-    for (var controller in _specializationTabControllers.values) {
-      controller.dispose();
-    }
-    _specializationTabControllers.clear();
-    super.dispose();
-  }
 
   /// Show beautiful completion dialog with confetti
   Future<void> _showCompletionDialog() async {

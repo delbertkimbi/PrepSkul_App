@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class EmailConfirmationScreen extends StatefulWidget {
@@ -152,10 +153,23 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       // Check if user should see survey intro screen
       final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
       
-      // For students and parents, show intro screen first (if not seen)
-      // For tutors, go directly to onboarding
+      // Navigate based on role
       if (mounted) {
-        if ((storedRole == 'student' ||
+        if (storedRole == 'tutor') {
+          // For tutors, check if onboarding choice screen should be shown
+          final progress = await TutorOnboardingProgressService.loadProgress(user.id);
+          final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
+          
+          // For new tutors (signup), always show choice screen if no progress exists
+          if (progress == null && !onboardingSkipped) {
+            print('✅ New tutor signup - navigating to onboarding choice screen');
+            Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+          } else {
+            // Has some progress or was skipped - go to dashboard (they can continue from there)
+            print('✅ Tutor with existing progress - navigating to dashboard');
+            Navigator.pushReplacementNamed(context, '/tutor-nav');
+          }
+        } else if ((storedRole == 'student' ||
                 storedRole == 'learner' ||
                 storedRole == 'parent') &&
             !surveyIntroSeen) {

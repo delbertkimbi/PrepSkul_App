@@ -7,10 +7,14 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
+import '../../../core/services/tutor_onboarding_progress_service.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../core/models/profile_completion.dart';
 import '../../../core/widgets/profile_completion_widget.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
+import '../widgets/onboarding_progress_tracker.dart';
 import 'tutor_admin_feedback_screen.dart';
+import 'tutor_onboarding_screen.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -26,12 +30,32 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   bool _isLoading = true;
   String? _approvalStatus; // 'pending', 'approved', 'rejected'
   bool _hasDismissedApprovalCard = false; // Track if user dismissed approval card
+  bool _onboardingSkipped = false;
+  bool _onboardingComplete = false;
 
   @override
   void initState() {
     super.initState();
     _loadUserInfo();
     _checkDismissedApprovalCard();
+    _checkOnboardingStatus();
+  }
+
+  Future<void> _checkOnboardingStatus() async {
+    try {
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String;
+      
+      final skipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+      final complete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
+      
+      setState(() {
+        _onboardingSkipped = skipped;
+        _onboardingComplete = complete;
+      });
+    } catch (e) {
+      print('⚠️ Error checking onboarding status: $e');
+    }
   }
 
   Future<void> _checkDismissedApprovalCard() async {
@@ -128,8 +152,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       final fullName = profileResponse?['full_name']?.toString() ?? 
           user['fullName']?.toString() ?? 'Tutor';
 
-      // Load tutor profile data
+      // Load tutor profile data (this includes saved onboarding progress)
       final tutorData = await SurveyRepository.getTutorSurvey(userId);
+      
+      // Also load onboarding progress to check status
+      final onboardingProgress = await TutorOnboardingProgressService.loadProgress(userId);
+      final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+      final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
 
       // Calculate completion status
       ProfileCompletionStatus? status;
@@ -178,13 +207,66 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _tutorProfile = tutorData;
         _completionStatus = status;
         _approvalStatus = newApprovalStatus;
+        _onboardingSkipped = onboardingSkipped;
+        _onboardingComplete = onboardingComplete;
         _isLoading = false;
       });
+      
+      // Send notification if onboarding is incomplete (only once per day)
+      if (onboardingSkipped || !onboardingComplete) {
+        _checkAndSendOnboardingNotification();
+      }
     } catch (e) {
       print('Error loading user info: $e');
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  /// Check and send onboarding notification if needed
+  Future<void> _checkAndSendOnboardingNotification() async {
+    try {
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String;
+      
+      // Check if onboarding is incomplete or skipped
+      final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+      final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
+      
+      if (onboardingSkipped || !onboardingComplete) {
+        // Check if we've already sent this notification today (avoid spam)
+        final prefs = await SharedPreferences.getInstance();
+        final lastNotificationDate = prefs.getString('onboarding_notification_date');
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        
+        if (lastNotificationDate != today) {
+          // Send professional notification
+          await NotificationService.createNotification(
+            userId: userId,
+            type: 'onboarding_reminder',
+            title: 'Complete Your Profile to Get Verified',
+            message: onboardingSkipped
+                ? 'Your profile isn\'t visible to students yet. Complete your onboarding to get verified and start connecting with students who match your expertise.'
+                : 'Finish your profile setup to get verified and start connecting with students who need your expertise. Complete your onboarding to become visible and start teaching.',
+            priority: 'high',
+            actionUrl: '/tutor-onboarding',
+            actionText: 'Complete Profile',
+            icon: '🎓',
+            metadata: {
+              'onboarding_skipped': onboardingSkipped,
+              'onboarding_complete': onboardingComplete,
+            },
+          );
+          
+          // Save today's date to avoid sending multiple notifications per day
+          await prefs.setString('onboarding_notification_date', today);
+          print('✅ Onboarding notification sent to tutor: $userId');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error sending onboarding notification: $e');
+      // Don't block the UI if notification fails
     }
   }
 
@@ -229,6 +311,15 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+
+                  // Onboarding Progress Tracker (if incomplete or skipped)
+                  if (_onboardingSkipped || !_onboardingComplete)
+                    OnboardingProgressTracker(
+                      userId: _userInfo?['userId'] as String? ?? '',
+                    ),
+
+                  if (_onboardingSkipped || !_onboardingComplete)
+                    const SizedBox(height: 16),
 
                   // Profile Completion Banner (if not complete)
                   // Hide when: 100% complete AND approved
@@ -391,6 +482,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ),
     );
   }
+
 
   Widget _buildApprovalStatusCard() {
     // Handle blocked/suspended status

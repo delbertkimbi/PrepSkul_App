@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
+import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'forgot_password_email_screen.dart';
 
@@ -451,17 +453,20 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         }
 
         // No pending deep link, use default navigation
-        if (surveyCompleted) {
-          // Navigate to role-based dashboard
-          if (userRole == 'tutor') {
-            Navigator.pushReplacementNamed(context, '/tutor-nav');
-          } else if (userRole == 'parent') {
+        // For tutors, always go to dashboard (they can complete onboarding from there)
+        if (userRole == 'tutor') {
+          // Send onboarding notification if needed (only once per day)
+          _sendOnboardingNotificationIfNeeded(response.user!.id);
+          Navigator.pushReplacementNamed(context, '/tutor-nav');
+        } else if (surveyCompleted) {
+          // Navigate to role-based dashboard for other roles
+          if (userRole == 'parent') {
             Navigator.pushReplacementNamed(context, '/parent-nav');
           } else {
             Navigator.pushReplacementNamed(context, '/student-nav');
           }
         } else {
-          // Navigate to profile setup/survey
+          // Navigate to profile setup/survey for non-tutors
           Navigator.pushReplacementNamed(
             context,
             '/profile-setup',
@@ -487,6 +492,49 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  /// Send onboarding notification if needed (only once per day)
+  Future<void> _sendOnboardingNotificationIfNeeded(String userId) async {
+    try {
+      // Check if onboarding is incomplete or skipped
+      final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+      final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
+      
+      if (onboardingSkipped || !onboardingComplete) {
+        // Check if we've already sent this notification today (avoid spam)
+        final prefs = await SharedPreferences.getInstance();
+        final lastNotificationDate = prefs.getString('onboarding_notification_date');
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        
+        if (lastNotificationDate != today) {
+          // Send professional notification
+          await NotificationService.createNotification(
+            userId: userId,
+            type: 'onboarding_reminder',
+            title: 'Complete Your Profile to Get Verified',
+            message: onboardingSkipped
+                ? 'Your profile isn\'t visible to students yet. Complete your onboarding to get verified and start connecting with students who match your expertise.'
+                : 'Finish your profile setup to get verified and start connecting with students who need your expertise. Complete your onboarding to become visible and start teaching.',
+            priority: 'high',
+            actionUrl: '/tutor-onboarding',
+            actionText: 'Complete Profile',
+            icon: '🎓',
+            metadata: {
+              'onboarding_skipped': onboardingSkipped,
+              'onboarding_complete': onboardingComplete,
+            },
+          );
+          
+          // Save today's date to avoid sending multiple notifications per day
+          await prefs.setString('onboarding_notification_date', today);
+          print('✅ Onboarding notification sent to tutor: $userId');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error sending onboarding notification: $e');
+      // Don't block login if notification fails
     }
   }
 

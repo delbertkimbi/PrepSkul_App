@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/navigation/route_guards.dart';
 import 'package:prepskul/core/navigation/navigation_state.dart';
 import 'package:prepskul/core/navigation/navigation_analytics.dart';
@@ -128,8 +129,49 @@ class NavigationService {
         final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
         
         // For students and parents, show intro screen first (if not seen)
-        // For tutors, go directly to onboarding
-        if ((userRole == 'student' || userRole == 'learner' || userRole == 'parent') && !surveyIntroSeen) {
+        // For tutors, check onboarding status
+        if (userRole == 'tutor') {
+          // Check if onboarding was skipped or is incomplete
+          try {
+            final userId = await AuthService.getCurrentUser();
+            final userIdStr = userId['userId'] as String?;
+            if (userIdStr != null) {
+              final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userIdStr);
+              final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userIdStr);
+              
+              if (onboardingSkipped || !onboardingComplete) {
+                // Check if it's a new tutor (no progress at all)
+                final progress = await TutorOnboardingProgressService.loadProgress(userIdStr);
+                if (progress == null && !onboardingSkipped) {
+                  // New tutor - show choice screen
+                  result = NavigationResult('/tutor-onboarding-choice');
+                } else {
+                  // Resume onboarding
+                  result = NavigationResult(
+                    '/profile-setup',
+                    arguments: {'userRole': userRole},
+                  );
+                }
+              } else {
+                // Onboarding complete, go to dashboard
+                result = _getDashboardRoute(userRole);
+              }
+            } else {
+              // Fallback to profile setup
+              result = NavigationResult(
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
+            }
+          } catch (e) {
+            print('⚠️ Error checking onboarding status: $e');
+            // Fallback to profile setup
+            result = NavigationResult(
+              '/profile-setup',
+              arguments: {'userRole': userRole},
+            );
+          }
+        } else if ((userRole == 'student' || userRole == 'learner' || userRole == 'parent') && !surveyIntroSeen) {
           result = NavigationResult(
             '/survey-intro',
             arguments: {'userType': userRole},
