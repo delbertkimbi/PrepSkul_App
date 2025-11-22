@@ -1,6 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html; // For web window location
 import 'dart:async';
 import 'supabase_service.dart';
 import 'push_notification_service.dart';
@@ -466,7 +468,8 @@ class AuthService {
       // For web, use current origin + email login route (must match Supabase redirect list)
       try {
         // This will work when app is running
-        final origin = Uri.base.origin;
+        // ignore: undefined_prefixed_name
+        final origin = html.window.location.origin;
 
         // IMPORTANT: Return FULL URL (with protocol) to avoid Supabase treating it as relative path
         // For password reset, Supabase redirects to this URL with a code parameter
@@ -487,6 +490,32 @@ class AuthService {
     } else {
       // For mobile, use deep link scheme to email login route
       return 'prepskul://email-login';
+    }
+  }
+
+  /// Sign in with Google (Web & Mobile)
+  static Future<bool> signInWithGoogle() async {
+    try {
+      // Get redirect URL for Google Auth
+      // For web, we want to come back to the current page (or specific callback)
+      // For mobile, we want the deep link
+      final redirectUrl = getRedirectUrl();
+      print('🔍 [DEBUG] Starting Google Sign In with redirect: $redirectUrl');
+
+      final response = await SupabaseService.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: redirectUrl,
+        scopes: 'https://www.googleapis.com/auth/calendar', // Request Calendar access
+        authScreenLaunchMode: kIsWeb 
+            ? LaunchMode.platformDefault 
+            : LaunchMode.externalApplication,
+      );
+      
+      print('✅ Google Sign In initiated: $response');
+      return true;
+    } catch (e) {
+      print('❌ Error signing in with Google: $e');
+      throw Exception(parseAuthError(e));
     }
   }
 
@@ -715,7 +744,7 @@ class AuthService {
 
     if (isRateLimit) {
       print('🔍 [DEBUG] ✅ Returning rate limit message');
-      return EmailRateLimitService.friendlyRateLimitMessage(null);
+      return 'Too many attempts. Please try again later.';
     }
 
     // Too many requests (generic)

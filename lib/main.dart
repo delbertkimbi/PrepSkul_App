@@ -573,6 +573,15 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     final currentUser = SupabaseService.currentUser;
 
     if (isAuthenticated && currentUser != null) {
+      // If URL contains 'code', it might be an email verification in progress
+      // We should wait a bit longer for Supabase to process the code and potentially
+      // confirm the email, which might trigger navigation handlers in SplashScreen
+      if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
+        print('🔗 [INIT_LOAD] Auth code detected in URL - waiting for processing');
+        // Give Supabase auth listener time to fire
+        await Future.delayed(const Duration(seconds: 2)); 
+      }
+
       print(
         '✅ [INIT_LOAD] User authenticated - checking onboarding/survey status',
       );
@@ -642,8 +651,14 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     }
 
     // If not authenticated, proceed with normal flow (but still check quickly)
-    // Wait for minimum 300ms to show animation (reduced from 500ms)
-    await Future.delayed(const Duration(milliseconds: 300));
+    // Check if we have a code first (wait longer if so)
+    if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
+       print('🔗 [INIT_LOAD] Auth code detected (unauthenticated) - waiting for processing');
+       await Future.delayed(const Duration(seconds: 2));
+    } else {
+       // Wait for minimum 300ms to show animation (reduced from 500ms)
+       await Future.delayed(const Duration(milliseconds: 300));
+    }
 
     // Wait for Supabase to be ready (with timeout)
     int attempts = 0;
