@@ -56,3 +56,9 @@ app.*.map.json
 .env.development
 .env.production
 
+# Documentation files that may contain secrets (GitGuardian flagged)
+TICHA_TESTING_GUIDE.md
+ENV_SETUP_INSTRUCTIONS.md
+*_TESTING_GUIDE.md
+*_SETUP_INSTRUCTIONS.md
+
