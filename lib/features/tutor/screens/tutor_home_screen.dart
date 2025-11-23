@@ -111,28 +111,24 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Future<void> _dismissApprovalCard() async {
+    // Optimistically update UI first for immediate feedback
+    setState(() {
+      _hasDismissedApprovalCard = true;
+    });
+
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
       
-      // Save to both SharedPreferences (immediate UI) and database (cross-device)
+      // Save to SharedPreferences (immediate UI)
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('tutor_approval_card_dismissed', true);
       
-      // Sync to database for cross-device persistence
-      await _syncDismissalToDatabase(userId, true);
-      
-      setState(() {
-        _hasDismissedApprovalCard = true;
-      });
+      // Sync to database for cross-device persistence (fire and forget)
+      _syncDismissalToDatabase(userId, true);
     } catch (e) {
       print('⚠️ Error dismissing approval card: $e');
-      // Still update UI even if database fails
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('tutor_approval_card_dismissed', true);
-      setState(() {
-        _hasDismissedApprovalCard = true;
-      });
+      // UI is already updated, so user experience is preserved
     }
   }
 
@@ -180,7 +176,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Also check SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final wasDismissedInPrefs = prefs.getBool('tutor_approval_card_dismissed') ?? false;
-      final wasDismissed = wasDismissedInDb || wasDismissedInPrefs;
+      // Respect local state if it's already true (e.g. user just dismissed it in this session)
+      final wasDismissed = wasDismissedInDb || wasDismissedInPrefs || _hasDismissedApprovalCard;
       
       // Only reset dismissal if:
       // 1. Status is now 'approved' AND
