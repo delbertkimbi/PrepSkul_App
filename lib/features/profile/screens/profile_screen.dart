@@ -7,6 +7,8 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import 'edit_profile_screen.dart';
+import '../../tutor/screens/tutor_onboarding_screen.dart';
+import '../../discovery/screens/tutor_detail_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -19,6 +21,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _userInfo;
+  Map<String, dynamic>? _tutorProfile;
   String? _profilePhotoUrl;
   bool _isLoading = true;
   Map<String, dynamic>? _surveyData;
@@ -120,17 +123,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
 
-      // Load user-specific profile photo
+      // Load user-specific profile photo and full tutor profile
       // For tutors, check tutor_profiles first, then fall back to profiles.avatar_url
       // For students/parents, use profiles.avatar_url
       String? photoUrl;
+      Map<String, dynamic>? tutorProfileData;
       if (widget.userType == 'tutor') {
-        final tutorResponse = await SupabaseService.client
+        tutorProfileData = await SupabaseService.client
             .from('tutor_profiles')
-            .select('profile_photo_url')
+            .select()
             .eq('user_id', userId)
             .maybeSingle();
-        photoUrl = tutorResponse?['profile_photo_url']?.toString();
+        photoUrl = tutorProfileData?['profile_photo_url']?.toString();
       }
       // For all users, also check avatar_url in profiles table
       if (photoUrl == null || photoUrl.isEmpty) {
@@ -254,6 +258,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'email': email, // Use email from auth or database
           'fullName': fullName, // Use name from database (most up-to-date)
         };
+        _tutorProfile = tutorProfileData;
         _profilePhotoUrl =
             photoUrl ?? profileResponse?['avatar_url']?.toString();
         _surveyData = surveyData;
@@ -548,6 +553,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             },
                           ),
                           const SizedBox(height: 12),
+                          
+                          if (widget.userType == 'tutor') ...[
+                            _buildNeumorphicSettingsItem(
+                              icon: Icons.school_outlined,
+                              title: 'Edit Tutor Info',
+                              subtitle: 'Update your teaching profile',
+                              onTap: () async {
+                                final result = await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const TutorOnboardingScreen(
+                                      basicInfo: {},
+                                    ),
+                                  ),
+                                );
+                                if (result == true) {
+                                  _loadUserInfo();
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildNeumorphicSettingsItem(
+                              icon: Icons.visibility_outlined,
+                              title: 'Preview Profile',
+                              subtitle: 'See how others view your profile',
+                              onTap: () {
+                                if (_tutorProfile != null) {
+                                  // Merge basic info with tutor profile to ensure completeness
+                                  final mergedProfile = Map<String, dynamic>.from(_tutorProfile!);
+                                  if (mergedProfile['full_name'] == null) {
+                                    mergedProfile['full_name'] = _userInfo?['fullName'];
+                                  }
+                                  // Ensure verified status is visual
+                                  if (mergedProfile['status'] == 'verified' || mergedProfile['status'] == 'approved') {
+                                     mergedProfile['is_verified'] = true;
+                                  }
+                                  
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => TutorDetailScreen(
+                                        tutor: mergedProfile,
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Tutor profile not loaded yet')),
+                                  );
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           _buildNeumorphicSettingsItem(
                             icon: Icons.notifications_outlined,
                             title: 'Notifications',
