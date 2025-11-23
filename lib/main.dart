@@ -1272,23 +1272,15 @@ class _SplashScreenState extends State<SplashScreen> {
     // Navigate using NavigationService - redirect to role-specific route
     final navService = NavigationService();
     if (mounted && navService.isReady) {
-      if (!hasCompletedSurvey) {
-        print('📝 Navigating directly to survey based on role: $userRole');
-        await navService.navigateToRoute(
-          '/profile-setup',
-          arguments: {'userRole': userRole},
-          replace: true,
-        );
-      } else {
-        print('🏠 Navigating directly to dashboard based on role: $userRole');
-        // Navigate to role-specific dashboard
-        final route = userRole == 'tutor'
-            ? '/tutor-nav'
-            : userRole == 'parent'
-            ? '/parent-nav'
-            : '/student-nav';
-        await navService.navigateToRoute(route, replace: true);
-      }
+      // Use determineInitialRoute to handle all logic (intro screen, onboarding, etc.)
+      final routeResult = await navService.determineInitialRoute();
+      print('✅ [EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}');
+      
+      await navService.navigateToRoute(
+        routeResult.route,
+        arguments: routeResult.arguments,
+        replace: true,
+      );
     }
   }
 

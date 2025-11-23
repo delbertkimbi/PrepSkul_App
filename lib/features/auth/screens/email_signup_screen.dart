@@ -4,7 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
-import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
@@ -484,13 +484,14 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                     const SizedBox(height: 16),
                                     TextButton(
                                       onPressed: () {
-                                        Navigator.pushReplacementNamed(
+                                        Navigator.pushNamedAndRemoveUntil(
                                           context,
-                                          '/beautiful-signup',
+                                          '/auth-method-selection',
+                                          (route) => false,
                                         );
                                       },
                                       child: Text(
-                                        'Use phone number instead',
+                                        'Try another auth method',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
                                           color: AppTheme.primaryColor,
@@ -594,6 +595,10 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         email: email,
         password: password,
         emailRedirectTo: redirectUrl,
+        data: {
+          'full_name': fullName,
+          'user_type': _selectedRole,
+        },
       );
 
       if (response.user == null) {
@@ -609,10 +614,10 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final user = response.user!;
 
       // If email is confirmed, navigate directly to survey
-      if (emailConfirmed) {
+      if (user.emailConfirmedAt != null) {
         // Save session
         await AuthService.saveSession(
-          userId: response.user!.id,
+          userId: user.id,
           userRole: _selectedRole!,
           phone: '',
           fullName: fullName,
@@ -620,40 +625,52 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
           rememberMe: true,
         );
 
+        // Update profile with name and role (if not already set)
+        await AuthService.completeEmailVerification(user);
+
         // Navigate based on role
         if (mounted) {
-          if (_selectedRole == 'tutor') {
-            // For tutors, check if onboarding choice screen should be shown
-            final userId = response.user!.id;
-            final progress = await TutorOnboardingProgressService.loadProgress(userId);
-            final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
-            
-            // For new tutors (signup), always show choice screen if no progress exists
-            if (progress == null && !onboardingSkipped) {
-              print('✅ New tutor signup - navigating to onboarding choice screen');
-              Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
-            } else {
-              // Has some progress or was skipped - go to dashboard (they can continue from there)
-              print('✅ Tutor with existing progress - navigating to dashboard');
-              Navigator.pushReplacementNamed(context, '/tutor-nav');
-            }
-          } else {
-            // For students/parents, go to profile setup
-            Navigator.pushReplacementNamed(
-              context,
-              '/profile-setup',
-              arguments: {'userRole': _selectedRole},
+          final navService = NavigationService();
+          if (navService.isReady) {
+            final routeResult = await navService.determineInitialRoute();
+            navService.navigateToRoute(
+              routeResult.route,
+              arguments: routeResult.arguments,
+              replace: true,
             );
+          } else {
+             // Fallback if nav service not ready (unlikely)
+             if (_selectedRole == 'tutor') {
+               // ... (existing tutor logic kept as fallback or simplified)
+                final userId = user.id;
+                final progress = await TutorOnboardingProgressService.loadProgress(userId);
+                final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+                
+                if (progress == null && !onboardingSkipped) {
+                  Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+                } else {
+                  Navigator.pushReplacementNamed(context, '/tutor-nav');
+                }
+             } else {
+               // Check if intro seen
+               final prefs = await SharedPreferences.getInstance();
+               final introSeen = prefs.getBool('survey_intro_seen') ?? false;
+               
+               if (!introSeen) {
+                 Navigator.pushReplacementNamed(
+                   context, 
+                   '/survey-intro',
+                   arguments: {'userType': _selectedRole},
+                 );
+               } else {
+                 Navigator.pushReplacementNamed(
+                   context,
+                   '/profile-setup',
+                   arguments: {'userRole': _selectedRole},
+                 );
+               }
+             }
           }
-      if (user.emailConfirmedAt != null) {
-        await AuthService.completeEmailVerification(user);
-        if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/profile-setup',
-            (route) => false,
-            arguments: {'userRole': _selectedRole},
-          );
         }
         return;
       }

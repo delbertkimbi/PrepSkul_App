@@ -360,17 +360,18 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
 
                               const SizedBox(height: 16),
 
-                              // Use Email Auth Link
+                              // Try another auth method Link
                               Center(
                                 child: TextButton(
                                   onPressed: () {
-                                    Navigator.pushReplacementNamed(
+                                    Navigator.pushNamedAndRemoveUntil(
                                       context,
-                                      '/email-login',
+                                      '/auth-method-selection',
+                                      (route) => false,
                                     );
                                   },
                                   child: Text(
-                                    'Use email instead',
+                                    'Try another auth method',
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,

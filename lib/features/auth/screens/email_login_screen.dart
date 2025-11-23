@@ -332,13 +332,14 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                     const SizedBox(height: 16),
                                     TextButton(
                                       onPressed: () {
-                                        Navigator.pushReplacementNamed(
+                                        Navigator.pushNamedAndRemoveUntil(
                                           context,
-                                          '/beautiful-login',
+                                          '/auth-method-selection',
+                                          (route) => false,
                                         );
                                       },
                                       child: Text(
-                                        'Use phone number instead',
+                                        'Try another auth method',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
                                           color: AppTheme.primaryColor,
@@ -487,25 +488,50 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         }
 
         // No pending deep link, use default navigation
-        // For tutors, always go to dashboard (they can complete onboarding from there)
-        if (userRole == 'tutor') {
-          // Send onboarding notification if needed (only once per day)
-          _sendOnboardingNotificationIfNeeded(response.user!.id);
-          Navigator.pushReplacementNamed(context, '/tutor-nav');
-        } else if (surveyCompleted) {
-          // Navigate to role-based dashboard for other roles
-          if (userRole == 'parent') {
-            Navigator.pushReplacementNamed(context, '/parent-nav');
-          } else {
-            Navigator.pushReplacementNamed(context, '/student-nav');
+        // Use NavigationService to determine correct route (handles intro screen, onboarding, etc.)
+        final navService = NavigationService();
+        if (navService.isReady) {
+          // Send onboarding notification if needed (only once per day) for tutors
+          if (userRole == 'tutor') {
+            _sendOnboardingNotificationIfNeeded(response.user!.id);
           }
-        } else {
-          // Navigate to profile setup/survey for non-tutors
-          Navigator.pushReplacementNamed(
-            context,
-            '/profile-setup',
-            arguments: {'userRole': userRole},
+          
+          final routeResult = await navService.determineInitialRoute();
+          navService.navigateToRoute(
+            routeResult.route, 
+            arguments: routeResult.arguments,
+            replace: true
           );
+        } else {
+          // Fallback manual navigation
+          if (userRole == 'tutor') {
+            _sendOnboardingNotificationIfNeeded(response.user!.id);
+            Navigator.pushReplacementNamed(context, '/tutor-nav');
+          } else if (surveyCompleted) {
+            if (userRole == 'parent') {
+              Navigator.pushReplacementNamed(context, '/parent-nav');
+            } else {
+              Navigator.pushReplacementNamed(context, '/student-nav');
+            }
+          } else {
+            // Check intro seen
+            final prefs = await SharedPreferences.getInstance();
+            final introSeen = prefs.getBool('survey_intro_seen') ?? false;
+            
+            if (!introSeen) {
+              Navigator.pushReplacementNamed(
+                context, 
+                '/survey-intro',
+                arguments: {'userType': userRole},
+              );
+            } else {
+              Navigator.pushReplacementNamed(
+                context,
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
+            }
+          }
         }
       }
     } catch (e) {

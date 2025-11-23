@@ -83,6 +83,10 @@ class NavigationService {
             if (!hasCompletedOnboarding) {
               return NavigationResult('/onboarding');
             } else if (!hasCompletedSurvey) {
+              // If profile exists but survey not completed, verify if we have user_type
+              // If user_type is missing (rare edge case), force profile setup
+              // Note: Our previous check profile['user_type'] ?? 'student' defaults to student
+              // which is fine as profile-setup will allow them to proceed
               return NavigationResult(
                 '/profile-setup',
                 arguments: {'userRole': userRole},

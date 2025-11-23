@@ -419,7 +419,9 @@ class AuthService {
         return;
       }
 
-      final role = pendingRole ?? 'student';
+      final role = pendingRole ?? 
+                  user.userMetadata?['user_type']?.toString() ?? 
+                  'student';
       final email = pendingEmail ?? user.email ?? '';
       final fullName =
           pendingName ??
@@ -467,23 +469,40 @@ class AuthService {
     if (kIsWeb) {
       // For web, use current origin + email login route (must match Supabase redirect list)
       try {
-        // This will work when app is running
         // ignore: undefined_prefixed_name
         final origin = html.window.location.origin;
+        final href = html.window.location.href;
+        print('🔍 [DEBUG] getRedirectUrl - Origin: $origin');
+        print('🔍 [DEBUG] getRedirectUrl - Href: $href');
 
         // IMPORTANT: Return FULL URL (with protocol) to avoid Supabase treating it as relative path
         // For password reset, Supabase redirects to this URL with a code parameter
         // The URL must EXACTLY match what's in Supabase's allowed redirect URLs
-        if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
+        if (origin.contains('localhost') || 
+            origin.contains('127.0.0.1') ||
+            origin.contains('0.0.0.0') ||
+            // Also check if we are running in debug mode on web, which implies local dev
+            // Note: checking href for localhost just in case origin is weird
+            href.contains('localhost') ||
+            href.contains('127.0.0.1')) {
+          
+          // If origin is empty or null (rare), fallback to localhost:PORT from href
+          String effectiveOrigin = origin;
+          if (effectiveOrigin.isEmpty || effectiveOrigin == 'null') {
+             final uri = Uri.parse(href);
+             effectiveOrigin = '${uri.scheme}://${uri.host}:${uri.port}';
+          }
+          
           // Local development - return exact origin (e.g., http://localhost:53790)
           // NOTE: Supabase needs http://localhost:* (with wildcard) in redirect URLs
-          print('🔍 [DEBUG] Local development - redirect URL: $origin');
-          return '$origin/email-login';
+          print('🔍 [DEBUG] Local development detected - returning: $effectiveOrigin/email-login');
+          return '$effectiveOrigin/email-login';
         }
         // Production - must match exactly what's in Supabase
-        print('🔍 [DEBUG] Production - redirect URL: https://app.prepskul.com/email-login');
+        print('🔍 [DEBUG] Production detected - returning: https://app.prepskul.com/email-login');
         return 'https://app.prepskul.com/email-login';
       } catch (e) {
+        print('⚠️ [DEBUG] Error getting web origin: $e');
         // Fallback for production
         return 'https://app.prepskul.com/email-login';
       }

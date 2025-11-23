@@ -81,75 +81,69 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
     final prefs = await SharedPreferences.getInstance();
     final userRole = await AuthService.getUserRole() ?? widget.userRole;
     final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+    final user = SupabaseService.currentUser;
 
     if (!mounted) return;
+    if (user == null) return;
 
-    if ((userRole == 'student' ||
-            userRole == 'learner' ||
-            userRole == 'parent') &&
-        !surveyIntroSeen) {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/survey-intro',
-        (route) => false,
-        arguments: {'userType': userRole},
-      );
-    } else {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/profile-setup',
-        (route) => false,
-        arguments: {'userRole': userRole},
-      );
+    try {
+      if ((userRole == 'student' ||
+              userRole == 'learner' ||
+              userRole == 'parent') &&
+          !surveyIntroSeen) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/survey-intro',
+          (route) => false,
+          arguments: {'userType': userRole},
+        );
+      } else {
+        // Save auth method preference
+        await prefs.setString('auth_method', 'email');
 
-      // Save auth method preference
-      await prefs.setString('auth_method', 'email');
+        // For new users, ensure survey_intro_seen is cleared so they see the intro screen
+        await prefs.setBool('survey_intro_seen', false);
+        print('🆕 New email user signup - cleared survey_intro_seen flag');
 
-      // For new users, ensure survey_intro_seen is cleared so they see the intro screen
-      await prefs.setBool('survey_intro_seen', false);
-      print('🆕 New email user signup - cleared survey_intro_seen flag');
+        // Clear stored signup data (no longer needed)
+        await prefs.remove('signup_user_role');
+        await prefs.remove('signup_full_name');
+        await prefs.remove('signup_email');
 
-      // Clear stored signup data (no longer needed)
-      await prefs.remove('signup_user_role');
-      await prefs.remove('signup_full_name');
-      await prefs.remove('signup_email');
-
-      // Check if user should see survey intro screen
-      final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
-      
-      // Navigate based on role
-      if (mounted) {
-        if (storedRole == 'tutor') {
-          // For tutors, check if onboarding choice screen should be shown
-          final progress = await TutorOnboardingProgressService.loadProgress(user.id);
-          final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
-          
-          // For new tutors (signup), always show choice screen if no progress exists
-          if (progress == null && !onboardingSkipped) {
-            print('✅ New tutor signup - navigating to onboarding choice screen');
-            Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+        // Navigate based on role
+        if (mounted) {
+          if (userRole == 'tutor') {
+            // For tutors, check if onboarding choice screen should be shown
+            final progress = await TutorOnboardingProgressService.loadProgress(user.id);
+            final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
+            
+            // For new tutors (signup), always show choice screen if no progress exists
+            if (progress == null && !onboardingSkipped) {
+              print('✅ New tutor signup - navigating to onboarding choice screen');
+              Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+            } else {
+              // Has some progress or was skipped - go to dashboard (they can continue from there)
+              print('✅ Tutor with existing progress - navigating to dashboard');
+              Navigator.pushReplacementNamed(context, '/tutor-nav');
+            }
+          } else if ((userRole == 'student' ||
+                  userRole == 'learner' ||
+                  userRole == 'parent') &&
+              !surveyIntroSeen) {
+            print('✅ Navigating to survey intro screen for $userRole');
+            Navigator.pushReplacementNamed(
+              context,
+              '/survey-intro',
+              arguments: {'userType': userRole},
+            );
           } else {
-            // Has some progress or was skipped - go to dashboard (they can continue from there)
-            print('✅ Tutor with existing progress - navigating to dashboard');
-            Navigator.pushReplacementNamed(context, '/tutor-nav');
+            print('⏭️ Skipping survey intro - navigating to profile setup');
+            Navigator.pushReplacementNamed(
+              context,
+              '/profile-setup',
+              arguments: {'userRole': userRole},
+            );
           }
-        } else if ((storedRole == 'student' ||
-                storedRole == 'learner' ||
-                storedRole == 'parent') &&
-            !surveyIntroSeen) {
-          print('✅ Navigating to survey intro screen for $storedRole');
-          Navigator.pushReplacementNamed(
-            context,
-            '/survey-intro',
-            arguments: {'userType': storedRole},
-          );
-        } else {
-          print('⏭️ Skipping survey intro - navigating to profile setup');
-          Navigator.pushReplacementNamed(
-            context,
-            '/profile-setup',
-            arguments: {'userRole': storedRole},
-          );
         }
       }
     } catch (e) {
@@ -326,7 +320,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                             Icons.mark_email_read_outlined,
                             size: 50,
                             color: AppTheme.primaryColor,
-                          ),
+                            ),
                         ),
 
                         const SizedBox(height: 24),
@@ -466,7 +460,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                               side: BorderSide(
                                 color: AppTheme.primaryColor,
                                 width: 1.5,
-                              ),
+                                ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
