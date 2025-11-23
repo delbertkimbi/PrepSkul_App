@@ -369,12 +369,15 @@ class _AuthMethodButton extends StatelessWidget {
             else
             Icon(icon, size: 24, color: AppTheme.textDark),
             const SizedBox(width: 12),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
+            Flexible(
+              child: Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
