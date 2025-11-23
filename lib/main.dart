@@ -35,6 +35,7 @@ import 'package:prepskul/core/widgets/initial_loading_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/services/web_splash_service.dart';
 import 'dart:async';
 
 void main() async {
@@ -573,6 +574,15 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     final currentUser = SupabaseService.currentUser;
 
     if (isAuthenticated && currentUser != null) {
+      // If URL contains 'code', it might be an email verification in progress
+      // We should wait a bit longer for Supabase to process the code and potentially
+      // confirm the email, which might trigger navigation handlers in SplashScreen
+      if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
+        print('🔗 [INIT_LOAD] Auth code detected in URL - waiting for processing');
+        // Give Supabase auth listener time to fire
+        await Future.delayed(const Duration(seconds: 2)); 
+      }
+
       print(
         '✅ [INIT_LOAD] User authenticated - checking onboarding/survey status',
       );
@@ -588,11 +598,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             final result = await navService.determineInitialRoute();
             print('✅ [INIT_LOAD] Determined route: ${result.route}');
             // Navigate to determined route (could be onboarding, survey, or dashboard)
-            await navService.navigateToRoute(
-              result.route,
-              arguments: result.arguments,
-              replace: true,
-            );
+            if (mounted) {
+              WebSplashService.removeSplash();
+              _navigateInstant(result.route, result.arguments);
+            }
             if (mounted) {
               setState(() {
                 _navigationComplete = true;
@@ -610,10 +619,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               if (mounted) {
                 final navService = NavigationService();
                 if (navService.isReady) {
-                  await navService.navigateToRoute(
-                    '/onboarding',
-                    replace: true,
-                  );
+                  WebSplashService.removeSplash();
+                  _navigateInstant('/onboarding', null);
                   return;
                 }
               }
@@ -624,11 +631,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             if (navService.isReady) {
               try {
                 final result = await navService.determineInitialRoute();
-                await navService.navigateToRoute(
-                  result.route,
-                  arguments: result.arguments,
-                  replace: true,
-                );
+                if (mounted) {
+                  WebSplashService.removeSplash();
+                  _navigateInstant(result.route, result.arguments);
+                }
                 return;
               } catch (e2) {
                 print('⚠️ [INIT_LOAD] Error in fallback navigation: $e2');
@@ -642,8 +648,14 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     }
 
     // If not authenticated, proceed with normal flow (but still check quickly)
-    // Wait for minimum 300ms to show animation (reduced from 500ms)
-    await Future.delayed(const Duration(milliseconds: 300));
+    // Check if we have a code first (wait longer if so)
+    if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
+       print('🔗 [INIT_LOAD] Auth code detected (unauthenticated) - waiting for processing');
+       await Future.delayed(const Duration(seconds: 2));
+    } else {
+       // Wait for minimum 300ms to show animation (reduced from 500ms)
+       await Future.delayed(const Duration(milliseconds: 300));
+    }
 
     // Wait for Supabase to be ready (with timeout)
     int attempts = 0;
@@ -665,12 +677,13 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         if (navService.isReady) {
           final result = await navService.determineInitialRoute();
 
-          // Navigate directly - animated logo will transition smoothly
-          await navService.navigateToRoute(
-            result.route,
-            arguments: result.arguments,
-            replace: true,
-          );
+          // Navigate instantly without animation to prevent white flash
+          // This ensures the loading screen persists until the new screen is fully rendered
+          if (mounted) {
+            WebSplashService.removeSplash();
+            _navigateInstant(result.route, result.arguments);
+          }
+          
           if (mounted) {
             setState(() {
               _navigationComplete = true;
@@ -681,11 +694,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           await Future.delayed(const Duration(milliseconds: 200));
           if (mounted && navService.isReady) {
             final result = await navService.determineInitialRoute();
-            await navService.navigateToRoute(
-              result.route,
-              arguments: result.arguments,
-              replace: true,
-            );
+            if (mounted) {
+              WebSplashService.removeSplash();
+              _navigateInstant(result.route, result.arguments);
+            }
           }
         }
       } catch (e) {
@@ -694,13 +706,78 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         if (mounted && !SupabaseService.isAuthenticated) {
           final navService = NavigationService();
           if (navService.isReady) {
-            await navService.navigateToRoute(
-              '/auth-method-selection',
-              replace: true,
-            );
+            WebSplashService.removeSplash();
+            _navigateInstant('/auth-method-selection', null);
           }
         }
       }
+    }
+  }
+
+  /// Navigate instantly to route without animation
+  /// This prevents the "white flash" issue during the initial transition
+  void _navigateInstant(String routeName, Object? arguments) {
+    Widget? page;
+    
+    // Map route names to widgets directly
+    switch (routeName) {
+      case '/onboarding':
+        page = const SimpleOnboardingScreen();
+        break;
+      case '/auth-method-selection':
+        page = const AuthMethodSelectionScreen();
+        break;
+      case '/tutor-nav':
+        final args = arguments as Map<String, dynamic>?;
+        page = MainNavigation(
+          userRole: 'tutor',
+          initialTab: args?['initialTab'],
+        );
+        break;
+      case '/student-nav':
+        final args = arguments as Map<String, dynamic>?;
+        page = MainNavigation(
+          userRole: 'student',
+          initialTab: args?['initialTab'],
+        );
+        break;
+      case '/parent-nav':
+        final args = arguments as Map<String, dynamic>?;
+        page = MainNavigation(
+          userRole: 'parent',
+          initialTab: args?['initialTab'],
+        );
+        break;
+      case '/profile-setup':
+        final args = arguments as Map<String, dynamic>?;
+        final userRole = args?['userRole'] ?? 'student';
+        if (userRole == 'tutor') {
+          page = const TutorOnboardingScreen(basicInfo: {});
+        } else if (userRole == 'parent') {
+          page = const ParentSurvey();
+        } else {
+          page = const StudentSurvey();
+        }
+        break;
+      case '/tutor-onboarding':
+        final args = arguments as Map<String, dynamic>?;
+        page = TutorOnboardingScreen(basicInfo: args ?? {});
+        break;
+      default:
+        // Fallback to standard navigation if route not explicitly handled
+        final navService = NavigationService();
+        navService.navigateToRoute(routeName, arguments: arguments as Map<String, dynamic>?, replace: true);
+        return;
+    }
+
+    if (page != null) {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => page!,
+          transitionDuration: Duration.zero, // Instant transition
+          reverseTransitionDuration: Duration.zero,
+        ),
+      );
     }
   }
 

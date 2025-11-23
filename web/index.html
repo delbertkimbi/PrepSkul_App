@@ -194,30 +194,31 @@
   </script>
   
   <script>
-    // Hide loading screen when Flutter is ready
-    // The Flutter app will show its own animated loading screen, so we hide this one
-    window.addEventListener('flutter-first-frame', function() {
+    // Expose function to remove splash screen from Flutter
+    window.removeSplash = function() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
-        // Fade out smoothly
         loader.classList.add('hidden');
-        // Remove after transition completes
         setTimeout(function() {
           loader.remove();
         }, 400);
       }
-    });
+    };
+
+    // Note: We do NOT hide on 'flutter-first-frame' anymore.
+    // Flutter will call window.removeSplash() when it is fully ready.
     
-    // Fallback: hide after 3 seconds if Flutter doesn't load (reduced from 5s)
+    // Fallback: hide after 10 seconds if Flutter doesn't load/call removeSplash
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
+        console.warn('Flutter did not call removeSplash within 10s, forcing removal');
         loader.classList.add('hidden');
         setTimeout(function() {
           loader.remove();
         }, 400);
       }
-    }, 3000);
+    }, 10000);
   </script>
 </head>
 <body>

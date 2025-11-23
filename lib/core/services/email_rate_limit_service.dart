@@ -86,14 +86,18 @@ class EmailRateLimitService {
 
   /// Check if enough time has passed since last email
   static Future<bool> canSendEmail(String email) async {
+    return true;
+    /*
+    final normalizedEmail = email.toLowerCase().trim();
+    
     // Check cooldown first
-    if (await isInCooldown(email)) {
+    if (await isInCooldown(normalizedEmail)) {
       return false;
     }
 
     // Check minimum time between emails
     final prefs = await SharedPreferences.getInstance();
-    final lastSent = prefs.getInt('$_keyLastEmailSent$email');
+    final lastSent = prefs.getInt('$_keyLastEmailSent$normalizedEmail');
 
     if (lastSent == null) {
       return true;
@@ -104,6 +108,7 @@ class EmailRateLimitService {
     final timeSinceLastEmail = now.difference(lastSentTime);
 
     return timeSinceLastEmail >= _minTimeBetweenEmails;
+    */
   }
 
   /// Record email sent
