@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Repository for saving and retrieving survey data
@@ -248,6 +249,15 @@ class SurveyRepository {
       } catch (profileUpdateError) {
         print('⚠️ Error updating profile (non-critical): $profileUpdateError');
         // Don't throw - profile update is not critical for tutor profile save
+      }
+
+      // Mark onboarding as complete in progress tracking
+      try {
+        await TutorOnboardingProgressService.markOnboardingComplete(userId);
+        print('✅ Onboarding marked as complete');
+      } catch (progressError) {
+        print('⚠️ Error marking onboarding complete (non-critical): $progressError');
+        // Don't throw - this is not critical for survey save
       }
 
       print('✅ Tutor survey saved successfully');

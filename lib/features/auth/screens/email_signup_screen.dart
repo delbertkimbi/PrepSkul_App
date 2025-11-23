@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
@@ -606,6 +608,43 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
 
       final user = response.user!;
 
+      // If email is confirmed, navigate directly to survey
+      if (emailConfirmed) {
+        // Save session
+        await AuthService.saveSession(
+          userId: response.user!.id,
+          userRole: _selectedRole!,
+          phone: '',
+          fullName: fullName,
+          surveyCompleted: false,
+          rememberMe: true,
+        );
+
+        // Navigate based on role
+        if (mounted) {
+          if (_selectedRole == 'tutor') {
+            // For tutors, check if onboarding choice screen should be shown
+            final userId = response.user!.id;
+            final progress = await TutorOnboardingProgressService.loadProgress(userId);
+            final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+            
+            // For new tutors (signup), always show choice screen if no progress exists
+            if (progress == null && !onboardingSkipped) {
+              print('✅ New tutor signup - navigating to onboarding choice screen');
+              Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+            } else {
+              // Has some progress or was skipped - go to dashboard (they can continue from there)
+              print('✅ Tutor with existing progress - navigating to dashboard');
+              Navigator.pushReplacementNamed(context, '/tutor-nav');
+            }
+          } else {
+            // For students/parents, go to profile setup
+            Navigator.pushReplacementNamed(
+              context,
+              '/profile-setup',
+              arguments: {'userRole': _selectedRole},
+            );
+          }
       if (user.emailConfirmedAt != null) {
         await AuthService.completeEmailVerification(user);
         if (mounted) {

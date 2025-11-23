@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
+import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
@@ -152,21 +154,43 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           print('🆕 New user signup - cleared survey_intro_seen flag');
         }
 
-        // Navigate based on survey status
+        // Navigate based on user status
         if (mounted) {
-          if (surveyCompleted) {
-            // Existing user with completed survey → go to role-based navigation
-            print('✅ Survey completed - navigating to dashboard for $userRole');
-            if (userRole == 'tutor') {
+          // For tutors: Always go to dashboard (they can complete onboarding from there)
+          // This applies to both new and existing tutors
+          if (userRole == 'tutor') {
+            // For existing users (login), always go to dashboard
+            if (!isNewUser) {
+              print('✅ Existing tutor login - navigating to dashboard');
+              // Send onboarding notification if needed (only once per day)
+              _sendOnboardingNotificationIfNeeded(response.user!.id);
               Navigator.pushReplacementNamed(context, '/tutor-nav');
-            } else if (userRole == 'parent') {
+            } else {
+              // For new tutors (signup), check onboarding status
+              final userId = response.user!.id;
+              final progress = await TutorOnboardingProgressService.loadProgress(userId);
+              final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+              
+              // If no progress record exists and not skipped, it's a new tutor - show choice screen
+              if (progress == null && !onboardingSkipped) {
+                print('✅ New tutor signup (no progress record) - navigating to onboarding choice screen');
+                Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+              } else {
+                // Has some progress or was skipped - go to dashboard (they can continue from there)
+                print('✅ New tutor with existing progress - navigating to dashboard');
+                Navigator.pushReplacementNamed(context, '/tutor-nav');
+              }
+            }
+          } else if (surveyCompleted) {
+            // Other roles with completed survey → go to role-based navigation
+            print('✅ Survey completed - navigating to dashboard for $userRole');
+            if (userRole == 'parent') {
               Navigator.pushReplacementNamed(context, '/parent-nav');
             } else {
               Navigator.pushReplacementNamed(context, '/student-nav');
             }
           } else {
-            // New user or incomplete survey → check for survey intro screen first
-            // This ensures survey intro screen is shown if not seen before
+            // Other roles: New user or incomplete survey → check for survey intro screen first
             final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
 
             print('📋 Survey not completed');
@@ -174,8 +198,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             print('👀 Survey intro seen: $surveyIntroSeen');
             print('🆕 Is new user: $isNewUser');
 
-            // For students and parents, show intro screen first (if not seen)
-            // For tutors, go directly to onboarding
             if ((userRole == 'student' ||
                     userRole == 'learner' ||
                     userRole == 'parent') &&
@@ -187,7 +209,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 arguments: {'userType': userRole},
               );
             } else {
-              // Survey intro already seen or user is tutor → go to profile setup
+              // Survey intro already seen → go to profile setup
               print('⏭️ Skipping survey intro - navigating to profile setup');
               Navigator.pushReplacementNamed(
                 context,
@@ -497,6 +519,49 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         ),
       ),
     );
+  }
+
+  /// Send onboarding notification if needed (only once per day)
+  Future<void> _sendOnboardingNotificationIfNeeded(String userId) async {
+    try {
+      // Check if onboarding is incomplete or skipped
+      final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
+      final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
+      
+      if (onboardingSkipped || !onboardingComplete) {
+        // Check if we've already sent this notification today (avoid spam)
+        final prefs = await SharedPreferences.getInstance();
+        final lastNotificationDate = prefs.getString('onboarding_notification_date');
+        final today = DateTime.now().toIso8601String().split('T')[0];
+        
+        if (lastNotificationDate != today) {
+          // Send professional notification
+          await NotificationService.createNotification(
+            userId: userId,
+            type: 'onboarding_reminder',
+            title: 'Complete Your Profile to Get Verified',
+            message: onboardingSkipped
+                ? 'Your profile isn\'t visible to students yet. Complete your onboarding to get verified and start connecting with students who match your expertise.'
+                : 'Finish your profile setup to get verified and start connecting with students who need your expertise. Complete your onboarding to become visible and start teaching.',
+            priority: 'high',
+            actionUrl: '/tutor-onboarding',
+            actionText: 'Complete Profile',
+            icon: '🎓',
+            metadata: {
+              'onboarding_skipped': onboardingSkipped,
+              'onboarding_complete': onboardingComplete,
+            },
+          );
+          
+          // Save today's date to avoid sending multiple notifications per day
+          await prefs.setString('onboarding_notification_date', today);
+          print('✅ Onboarding notification sent to tutor: $userId');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Error sending onboarding notification: $e');
+      // Don't block login if notification fails
+    }
   }
 }
 

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -100,6 +101,71 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         (route) => false,
         arguments: {'userRole': userRole},
       );
+
+      // Save auth method preference
+      await prefs.setString('auth_method', 'email');
+
+      // For new users, ensure survey_intro_seen is cleared so they see the intro screen
+      await prefs.setBool('survey_intro_seen', false);
+      print('🆕 New email user signup - cleared survey_intro_seen flag');
+
+      // Clear stored signup data (no longer needed)
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('signup_email');
+
+      // Check if user should see survey intro screen
+      final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+      
+      // Navigate based on role
+      if (mounted) {
+        if (storedRole == 'tutor') {
+          // For tutors, check if onboarding choice screen should be shown
+          final progress = await TutorOnboardingProgressService.loadProgress(user.id);
+          final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
+          
+          // For new tutors (signup), always show choice screen if no progress exists
+          if (progress == null && !onboardingSkipped) {
+            print('✅ New tutor signup - navigating to onboarding choice screen');
+            Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+          } else {
+            // Has some progress or was skipped - go to dashboard (they can continue from there)
+            print('✅ Tutor with existing progress - navigating to dashboard');
+            Navigator.pushReplacementNamed(context, '/tutor-nav');
+          }
+        } else if ((storedRole == 'student' ||
+                storedRole == 'learner' ||
+                storedRole == 'parent') &&
+            !surveyIntroSeen) {
+          print('✅ Navigating to survey intro screen for $storedRole');
+          Navigator.pushReplacementNamed(
+            context,
+            '/survey-intro',
+            arguments: {'userType': storedRole},
+          );
+        } else {
+          print('⏭️ Skipping survey intro - navigating to profile setup');
+          Navigator.pushReplacementNamed(
+            context,
+            '/profile-setup',
+            arguments: {'userRole': storedRole},
+          );
+        }
+      }
+    } catch (e) {
+      print('Error proceeding to survey: $e');
+      if (mounted) {
+        final errorMessage = AuthService.parseAuthError(e);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
