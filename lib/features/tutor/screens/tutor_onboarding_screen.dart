@@ -2951,7 +2951,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
           // Expected Rate Selection Cards
           _buildSelectionCards(
-            title: 'Expected Rate Per Hour',
+            title: 'Expected Rate Per Session',
             options: [
               '2,000 – 3,000 XAF',
               '3,000 – 4,000 XAF',

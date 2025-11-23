@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -5,6 +6,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EmailConfirmationScreen extends StatefulWidget {
   final String email;
@@ -25,117 +27,79 @@ class EmailConfirmationScreen extends StatefulWidget {
 
 class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   bool _isResending = false;
-  int _resendCountdown = 60; // Countdown in seconds
-  bool _isChecking = false;
-  int _checkAttempts = 0; // Track polling attempts to prevent infinite loops
-  static const int _maxCheckAttempts = 20; // Max 20 attempts = 100 seconds
+  bool _isProcessingVerification = false;
+  int _resendCountdown = 60;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _startCountdown();
-    // Check immediately first, then poll
-    _checkEmailConfirmation();
+    _listenToAuthStateChanges();
   }
 
-  Future<void> _checkEmailConfirmation() async {
-    if (!mounted || _checkAttempts >= _maxCheckAttempts) {
-      print(
-        '🛑 Stopped email confirmation polling after $_maxCheckAttempts attempts',
-      );
-      return;
-    }
-
-    _checkAttempts++;
-    setState(() => _isChecking = true);
-
-    try {
-      // Check if we have a session before trying to refresh
-      final hasSession = SupabaseService.client.auth.currentSession != null;
-
-      if (!hasSession) {
-        print(
-          '⚠️ No session found, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)',
-        );
-        // Schedule next check without calling refreshSession
-        Future.delayed(const Duration(seconds: 5), () {
-          if (mounted) _checkEmailConfirmation();
-        });
-        return;
-      }
-
-      // Only refresh session if one exists
-      await SupabaseService.client.auth.refreshSession();
-      final user = SupabaseService.currentUser;
-
-      if (user != null && user.emailConfirmedAt != null) {
-        // Email confirmed - proceed with profile creation
-        print('✅ Email confirmed! Proceeding to survey...');
-        await _proceedToSurvey();
-        return; // Don't check again if proceeding
-      }
-
-      // If not confirmed, keep checking every 5 seconds
-      print(
-        '⏳ Email not confirmed yet, checking again in 5 seconds... (attempt $_checkAttempts/$_maxCheckAttempts)',
-      );
-      Future.delayed(const Duration(seconds: 5), () {
-        if (mounted) _checkEmailConfirmation();
-      });
-    } catch (e) {
-      print('⚠️ Error checking email confirmation: $e');
-      // Only retry if we haven't hit max attempts
-      if (_checkAttempts < _maxCheckAttempts) {
-        Future.delayed(const Duration(seconds: 5), () {
-          if (mounted) _checkEmailConfirmation();
-        });
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isChecking = false);
-      }
-    }
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
   }
 
-  Future<void> _proceedToSurvey() async {
-    try {
-      final user = SupabaseService.currentUser;
-      if (user == null) {
-        throw Exception('User not found');
+  void _listenToAuthStateChanges() {
+    _authSubscription = SupabaseService.authStateChanges.listen((
+      AuthState state,
+    ) async {
+      if (!mounted) return;
+      if (state.event == AuthChangeEvent.signedIn &&
+          state.session?.user != null) {
+        setState(() => _isProcessingVerification = true);
+        try {
+          await AuthService.completeEmailVerification(state.session!.user);
+          if (!mounted) return;
+          await _navigateAfterVerification();
+        } catch (e) {
+          final message = AuthService.parseAuthError(e);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(message, style: GoogleFonts.poppins()),
+                backgroundColor: AppTheme.primaryColor,
+                behavior: SnackBarBehavior.floating,
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _isProcessingVerification = false);
+          }
+        }
       }
+    });
+  }
 
-      // Get stored signup data (in case profile wasn't created yet)
-      final prefs = await SharedPreferences.getInstance();
-      final storedRole = prefs.getString('signup_user_role') ?? widget.userRole;
-      final storedName = prefs.getString('signup_full_name') ?? widget.fullName;
-      final storedEmail = prefs.getString('signup_email') ?? widget.email;
+  Future<void> _navigateAfterVerification() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userRole = await AuthService.getUserRole() ?? widget.userRole;
+    final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
 
-      // Create/update profile entry (use upsert to avoid duplicates)
-      try {
-        await SupabaseService.client.from('profiles').upsert({
-          'id': user.id,
-          'email': storedEmail,
-          'full_name': storedName,
-          'phone_number': null,
-          'user_type': storedRole,
-          'avatar_url': null,
-          'survey_completed': false,
-          'is_admin': false,
-        }, onConflict: 'id');
-        print('✅ Profile created/updated for user: ${user.id}');
-      } catch (e) {
-        print('⚠️ Error creating profile: $e');
-        // Continue anyway - profile might already exist
-      }
+    if (!mounted) return;
 
-      // Save session
-      await AuthService.saveSession(
-        userId: user.id,
-        userRole: storedRole,
-        phone: '',
-        fullName: storedName,
-        surveyCompleted: false,
-        rememberMe: true,
+    if ((userRole == 'student' ||
+            userRole == 'learner' ||
+            userRole == 'parent') &&
+        !surveyIntroSeen) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/survey-intro',
+        (route) => false,
+        arguments: {'userType': userRole},
+      );
+    } else {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/profile-setup',
+        (route) => false,
+        arguments: {'userRole': userRole},
       );
 
       // Save auth method preference
@@ -380,10 +344,9 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
 
                         const SizedBox(height: 8),
 
-                        // Auto-checking indicator
-                        if (_isChecking)
+                        if (_isProcessingVerification)
                           Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -399,18 +362,17 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Checking...',
+                                  'We detected your verification, finishing up...',
                                   style: GoogleFonts.poppins(
                                     fontSize: 14,
                                     color: AppTheme.textMedium,
-                                    fontStyle: FontStyle.italic,
                                   ),
                                 ),
                               ],
                             ),
                           )
                         else
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 24),
 
                         const SizedBox(height: 20),
 
@@ -476,7 +438,10 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                           width: double.infinity,
                           height: 56,
                           child: OutlinedButton.icon(
-                            onPressed: _resendCountdown > 0 || _isResending
+                            onPressed:
+                                _resendCountdown > 0 ||
+                                    _isResending ||
+                                    _isProcessingVerification
                                 ? null
                                 : _resendEmail,
                             icon: _isResending
@@ -548,11 +513,6 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         ],
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 }
 

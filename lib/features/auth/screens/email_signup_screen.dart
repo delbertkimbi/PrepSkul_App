@@ -554,38 +554,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       final password = _passwordController.text;
       final fullName = _nameController.text.trim();
 
-      // Validate email format
-      if (!_emailRegex.hasMatch(email)) {
-        throw Exception('Please enter a valid email address');
-      }
-
-      // Check if email already exists in profiles table
-      try {
-        final existingProfile = await SupabaseService.client
-            .from('profiles')
-            .select('email')
-            .eq('email', email)
-            .maybeSingle();
-
-        if (existingProfile != null) {
-          throw Exception(
-            'This email is already registered. Please sign in instead.',
-          );
-        }
-      } catch (checkError) {
-        // If the check itself fails, continue (don't block signup)
-        // But if we got a profile, re-throw
-        final errorStr = checkError.toString().toLowerCase();
-        if (errorStr.contains('already registered') ||
-            errorStr.contains('email')) {
-          rethrow;
-        }
-      }
-
       // Get redirect URL for email verification
       final redirectUrl = AuthService.getRedirectUrl();
-
-      // Sign up with email/password
       final response = await SupabaseService.client.auth.signUp(
         email: email,
         password: password,
@@ -596,45 +566,13 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         throw Exception('Failed to create account');
       }
 
-      // CRITICAL: Save profile data immediately (before email confirmation)
-      // This ensures profile exists when user clicks email verification link
-      try {
-        await SupabaseService.client.from('profiles').upsert({
-          'id': response.user!.id,
-          'email': email,
-          'full_name': fullName,
-          'phone_number': null,
-          'user_type': _selectedRole,
-          'avatar_url': null,
-          'survey_completed': false,
-          'is_admin': false,
-        }, onConflict: 'id');
-        print('✅ Profile created/updated for user: ${response.user!.id}');
-        
-        // Notify admins about new user signup (async, don't block)
-        NotificationHelperService.notifyAdminsAboutNewUserSignup(
-          userId: response.user!.id,
-          userType: _selectedRole!,
-          userName: fullName,
-          userEmail: email,
-        ).catchError((e) {
-          print('⚠️ Error notifying admins about new user signup: $e');
-          // Don't block signup if notification fails
-        });
-      } catch (e) {
-        print('⚠️ Error creating profile: $e');
-        // Continue anyway - profile might already exist or will be created later
-      }
-
-      // Store user role in SharedPreferences for email verification redirect
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('signup_user_role', _selectedRole!);
       await prefs.setString('signup_full_name', fullName);
       await prefs.setString('signup_email', email);
       await prefs.setString('auth_method', 'email');
 
-      // Check if email confirmation is required
-      final emailConfirmed = response.user?.emailConfirmedAt != null;
+      final user = response.user!;
 
       // If email is confirmed, navigate directly to survey
       if (emailConfirmed) {
@@ -673,21 +611,55 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
               arguments: {'userRole': _selectedRole},
             );
           }
-        }
-      } else {
-        // Email confirmation required - show confirmation screen
+      if (user.emailConfirmedAt != null) {
+        await AuthService.completeEmailVerification(user);
         if (mounted) {
-          Navigator.pushReplacement(
+          Navigator.pushNamedAndRemoveUntil(
             context,
-            MaterialPageRoute(
-              builder: (context) => EmailConfirmationScreen(
-                email: email,
-                fullName: fullName,
-                userRole: _selectedRole!,
-              ),
-            ),
+            '/profile-setup',
+            (route) => false,
+            arguments: {'userRole': _selectedRole},
           );
         }
+        return;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_outline,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Account created! Please check your email to verify your account.',
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EmailConfirmationScreen(
+              email: email,
+              fullName: fullName,
+              userRole: _selectedRole!,
+            ),
+          ),
+        );
       }
     } catch (e) {
       print('❌ Email signup error: $e');
@@ -695,11 +667,27 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMessage, style: GoogleFonts.poppins()),
-            backgroundColor: AppTheme.primaryColor,
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    errorMessage,
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red[600],
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
           ),
         );
       }
