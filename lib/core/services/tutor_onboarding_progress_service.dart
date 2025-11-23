@@ -70,6 +70,7 @@ class TutorOnboardingProgressService {
         'current_step': currentStep,
         'step_data': allStepData,
         'completed_steps': completedSteps,
+        'is_complete': completedSteps.length >= 13, // Auto-set complete if mostly done
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id');
 
@@ -95,84 +96,65 @@ class TutorOnboardingProgressService {
           .eq('user_id', userId)
           .maybeSingle();
 
-      // PATCH: Check if Step 0 is missing in existing progress and patch it
-      if (progress != null) {
-        final stepData = progress['step_data'] as Map<String, dynamic>? ?? {};
-        final step0 = stepData['0'];
-        
-        if (step0 == null || (step0 as Map).isEmpty) {
-          print('🛠️ Progress exists but Step 0 missing. Patching from profiles...');
-          try {
-            final baseProfile = await SupabaseService.client
-                .from('profiles')
-                .select('email, phone_number')
-                .eq('id', userId)
-                .maybeSingle();
-            
-            if (baseProfile != null) {
-               final email = baseProfile['email'];
-               final phone = baseProfile['phone_number'];
-               
-               if (email != null || phone != null) {
-                 final step0Data = {
-                   'email': email,
-                   'phone': phone,
-                 };
-                 
-                 // Save to DB (this updates completed_steps too)
-                 await saveStepProgress(userId, 0, step0Data);
-                 
-                 // Update local object
-                 final updatedStepData = Map<String, dynamic>.from(stepData);
-                 updatedStepData['0'] = step0Data;
-                 progress['step_data'] = updatedStepData;
-                 
-                 // Update local completed_steps
-                 final completed = List<dynamic>.from(progress['completed_steps'] ?? []);
-                 if (!completed.contains(0)) {
-                   completed.add(0);
-                   progress['completed_steps'] = completed;
-                 }
-                 print('✅ Step 0 patched successfully');
-               }
-            }
-          } catch (e) {
-            print('⚠️ Error patching Step 0: $e');
-          }
-        }
-      }
-
-      // 2. If progress found and has actual step data, return it
-      if (progress != null && 
-          progress['step_data'] != null && 
-          (progress['step_data'] as Map).isNotEmpty) {
-        print('✅ Progress loaded successfully from tracking table');
-        return progress;
-      }
-
-      // 3. If tracking record missing/empty, check existing tutor_profiles for sync
-      print('⚠️ No tracking progress found. Checking existing profile for sync...');
-      
+      // 2. Fetch Profiles (Tutor & Base) for Sync/Verification
       final profile = await SupabaseService.client
           .from('tutor_profiles')
           .select()
           .eq('user_id', userId)
           .maybeSingle();
 
-      // Fetch base profile for reliable contact info (email/phone)
       final baseProfile = await SupabaseService.client
           .from('profiles')
           .select('email, phone_number')
           .eq('id', userId)
           .maybeSingle();
 
-      if (profile == null) {
-        print('ℹ️ No existing tutor profile found. New user.');
-        return progress; // Return null or empty progress if new
+      // 3. Check Verification Status
+      bool isVerified = false;
+      if (profile != null) {
+        final status = profile['status'];
+        isVerified = (status == 'verified' || status == 'approved' || status == 'pending');
       }
 
-      // 4. Construct progress from profile data
-      print('🔄 Syncing progress from existing profile...');
+      // 4. Decide whether to use existing progress or Sync
+      bool useExisting = false;
+      if (progress != null) {
+        if (isVerified) {
+           // If verified, only use existing if it's fully complete
+           if (progress['is_complete'] == true) {
+             useExisting = true;
+           } else {
+             print('⚠️ Verified user has incomplete progress. Forcing Sync...');
+             useExisting = false;
+           }
+        } else {
+           // Not verified: Use existing if it has data
+           if (progress['step_data'] != null && (progress['step_data'] as Map).isNotEmpty) {
+              final sData = progress['step_data'] as Map;
+              // If Step 0 missing, Force Sync to pick up email/phone from baseProfile
+              if (sData['0'] == null) {
+                 print('🛠️ Step 0 missing. Forcing Sync...');
+                 useExisting = false; 
+              } else {
+                 useExisting = true;
+              }
+           }
+        }
+      }
+
+      if (useExisting) {
+        print('✅ Using existing progress from tracking table');
+        return progress;
+      }
+
+      // 5. Sync / Construct Progress
+      print('🔄 Syncing/Constructing progress from profiles...');
+      
+      if (profile == null) {
+        print('ℹ️ No existing tutor profile found. New user.');
+        return progress; 
+      }
+
       final stepData = <String, dynamic>{};
       final completedSteps = <int>[];
 
@@ -190,11 +172,9 @@ class TutorOnboardingProgressService {
 
       // --- Map Profile Fields to Steps ---
       
-      // Step 0: Contact Info (from profile table mostly, but verify here)
-      // Prioritize base profile data, fallback to tutor profile
+      // Step 0: Contact Info (Prioritize base profile data)
       final contactEmail = baseProfile?['email'] ?? profile['email'];
       final contactPhone = baseProfile?['phone_number'] ?? profile['phone_number'];
-      
       addStepIfPresent(0, {
         'phone': contactPhone,
         'email': contactEmail,
@@ -252,7 +232,7 @@ class TutorOnboardingProgressService {
         });
       }
 
-      // Step 7: Digital Readiness (Often missing in older profiles, check specific fields)
+      // Step 7: Digital Readiness
       if (profile['has_internet'] != null) {
         addStepIfPresent(7, {
           'hasInternet': profile['has_internet'],
@@ -278,7 +258,6 @@ class TutorOnboardingProgressService {
       if (profile['payment_method'] != null) {
         addStepIfPresent(10, {
           'paymentMethod': profile['payment_method'],
-          // Assuming details are in payment_details json
           'paymentNumber': (profile['payment_details'] is Map) ? profile['payment_details']['phone'] : null,
         });
       }
@@ -298,50 +277,52 @@ class TutorOnboardingProgressService {
         });
       }
 
-      // Step 13: Statement (use bio/motivation if not used in step 5, or personal_statement)
+      // Step 13: Statement
       if (profile['personal_statement'] != null || profile['bio'] != null) {
         addStepIfPresent(13, {
           'personalStatement': profile['personal_statement'] ?? profile['bio'],
-          'finalAgreements': {'terms': true}, // Assume agreed if profile exists
+          'finalAgreements': {'terms': true}, 
         });
       }
 
       // Sort completed steps
       completedSteps.sort();
 
-      // 5. Save synced progress
-      // Only save if we found completed steps
-      if (completedSteps.isNotEmpty) {
-        // Determine current step (first incomplete step)
-        int currentStep = 0;
+      // 6. Finalize Sync
+      // Force completion if verified
+      if (isVerified) {
+        print('✅ User is verified. Forcing 100% completion.');
+        // Ensure all steps 0-13 are in completedSteps
         for (int i = 0; i <= 13; i++) {
+           if (!completedSteps.contains(i)) completedSteps.add(i);
+        }
+        completedSteps.sort();
+      }
+
+      // Determine current step
+      int currentStep = 0;
+      if (completedSteps.isNotEmpty) {
+         for (int i = 0; i <= 13; i++) {
           if (!completedSteps.contains(i)) {
             currentStep = i;
             break;
           }
         }
         if (completedSteps.length == 14) currentStep = 13;
-
-        // Mark as complete if verified or pending
-        bool isComplete = false;
-        if (profile['status'] == 'verified' || profile['status'] == 'approved' || profile['status'] == 'pending') {
-           isComplete = completedSteps.length >= 13; // Allow some slack or strict 14
-        }
-
-        await saveAllProgress(userId, stepData, currentStep, completedSteps);
-        
-        // Return newly constructed progress
-        return {
-          'user_id': userId,
-          'current_step': currentStep,
-          'step_data': stepData,
-          'completed_steps': completedSteps,
-          'is_complete': isComplete,
-          'skipped_onboarding': false,
-        };
       }
 
-      return progress; // Return original null/empty if sync failed to find data
+      // Save synced progress
+      await saveAllProgress(userId, stepData, currentStep, completedSteps);
+      
+      return {
+        'user_id': userId,
+        'current_step': currentStep,
+        'step_data': stepData,
+        'completed_steps': completedSteps,
+        'is_complete': completedSteps.length >= 13,
+        'skipped_onboarding': false,
+      };
+
     } catch (e) {
       print('❌ Error loading progress: $e');
       return null;
@@ -575,4 +556,3 @@ class TutorOnboardingProgressService {
     }
   }
 }
-
