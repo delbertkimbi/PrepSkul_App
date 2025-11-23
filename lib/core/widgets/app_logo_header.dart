@@ -23,7 +23,7 @@ class AppLogoHeader extends StatelessWidget {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Image.asset(
-          'assets/images/app_logo(blue).png',
+          'assets/images/app_logo(blue-no-bg).png',
           width: logoSize,
           height: logoSize,
         ),
@@ -36,7 +36,7 @@ class AppLogoHeader extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(12),
           child: Image.asset(
-            'assets/images/app_logo(blue).png',
+            'assets/images/app_logo(blue-no-bg).png',
             width: logoSize,
             height: logoSize,
           ),

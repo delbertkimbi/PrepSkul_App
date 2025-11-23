@@ -112,6 +112,13 @@ class TutorOnboardingProgressService {
           .eq('user_id', userId)
           .maybeSingle();
 
+      // Fetch base profile for reliable contact info (email/phone)
+      final baseProfile = await SupabaseService.client
+          .from('profiles')
+          .select('email, phone_number')
+          .eq('id', userId)
+          .maybeSingle();
+
       if (profile == null) {
         print('ℹ️ No existing tutor profile found. New user.');
         return progress; // Return null or empty progress if new
@@ -137,9 +144,13 @@ class TutorOnboardingProgressService {
       // --- Map Profile Fields to Steps ---
       
       // Step 0: Contact Info (from profile table mostly, but verify here)
+      // Prioritize base profile data, fallback to tutor profile
+      final contactEmail = baseProfile?['email'] ?? profile['email'];
+      final contactPhone = baseProfile?['phone_number'] ?? profile['phone_number'];
+      
       addStepIfPresent(0, {
-        'phone': profile['phone_number'],
-        'email': profile['email'], // Often in profiles table, but maybe here too
+        'phone': contactPhone,
+        'email': contactEmail,
       });
 
       // Step 1: Academic
