@@ -495,16 +495,25 @@ class AuthService {
           
           // Local development - return exact origin (e.g., http://localhost:53790)
           // NOTE: Supabase needs http://localhost:* (with wildcard) in redirect URLs
-          print('🔍 [DEBUG] Local development detected - returning: $effectiveOrigin/email-login');
-          return '$effectiveOrigin/email-login';
+          // For Google Auth, we don't want to redirect to /email-login, but to root or /auth-method-selection
+          // Let's return just the origin for generic redirects, or check if we are in a specific flow
+          // For now, returning origin/email-login is fine for email confirmation, 
+          // but for Google Auth it might be better to just use origin.
+          // Supabase Auth usually handles "site_url" as default if redirect_to is not provided.
+          
+          // CRITICAL FIX: For Google Auth on localhost, avoid adding path that triggers restart loop
+          // Just return the origin. Supabase will append # access_token
+          print('🔍 [DEBUG] Local development detected - returning: $effectiveOrigin');
+          return effectiveOrigin; 
         }
         // Production - must match exactly what's in Supabase
-        print('🔍 [DEBUG] Production detected - returning: https://app.prepskul.com/email-login');
-        return 'https://app.prepskul.com/email-login';
+        // For production, we also want to return just the base URL so the app router handles the state
+        print('🔍 [DEBUG] Production detected - returning: https://app.prepskul.com');
+        return 'https://app.prepskul.com';
       } catch (e) {
         print('⚠️ [DEBUG] Error getting web origin: $e');
         // Fallback for production
-        return 'https://app.prepskul.com/email-login';
+        return 'https://app.prepskul.com';
       }
     } else {
       // For mobile, use deep link scheme to email login route

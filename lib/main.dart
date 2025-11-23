@@ -16,6 +16,7 @@ import 'package:prepskul/features/auth/screens/forgot_password_screen.dart';
 import 'package:prepskul/features/auth/screens/reset_password_screen.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 import 'package:prepskul/features/auth/screens/auth_method_selection_screen.dart';
+import 'package:prepskul/features/auth/screens/role_selection_screen.dart';
 import 'package:prepskul/features/auth/screens/email_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/email_login_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
@@ -401,6 +402,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         switch (settings.name) {
           case '/onboarding':
             return _createFadeRoute(() => const SimpleOnboardingScreen());
+          case '/role-selection':
+            return _createFadeRoute(() => const RoleSelectionScreen());
           case '/auth-method-selection':
             return _createFadeRoute(() => const AuthMethodSelectionScreen());
           case '/login':

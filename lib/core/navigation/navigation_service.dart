@@ -77,14 +77,16 @@ class NavigationService {
 
             final userRole = profile['user_type'] ?? 'student';
             final hasCompletedSurvey = profile['survey_completed'] ?? false;
-            final hasCompletedOnboarding =
-                prefs.getBool('onboarding_completed') ?? false;
+            
+            // Check if user_type is missing/empty (e.g., fresh Google signup)
+            // This takes priority over onboarding check for authenticated users
+            if (userRole == 'student' && (profile['user_type'] == null || profile['user_type'] == '')) {
+               // user_type is missing/invalid in DB, redirect to role selection
+               return NavigationResult('/role-selection');
+            }
 
-            if (!hasCompletedOnboarding) {
-              return NavigationResult('/onboarding');
-            } else if (!hasCompletedSurvey) {
-              // If profile exists but survey not completed, verify if we have user_type
-              // If user_type is missing (rare edge case), force profile setup
+            if (!hasCompletedSurvey) {
+              // For authenticated users, we prioritize survey/profile completion over onboarding screens
               // Note: Our previous check profile['user_type'] ?? 'student' defaults to student
               // which is fine as profile-setup will allow them to proceed
               return NavigationResult(
@@ -110,10 +112,15 @@ class NavigationService {
         }
       }
 
-      // PRIORITY 2: Check local storage
+      // PRIORITY 2: Check local storage (Only if Supabase session check failed or returned no user)
       final prefs = await SharedPreferences.getInstance();
-      final hasCompletedOnboarding =
-          prefs.getBool('onboarding_completed') ?? false;
+      final hasCompletedOnboarding = prefs.getBool('onboarding_completed') ?? false;
+      
+      // If we reach here, it means user is NOT authenticated via Supabase (or we couldn't verify)
+      // So now we check onboarding status
+      if (!hasCompletedOnboarding) {
+        return NavigationResult('/onboarding');
+      }
       final isLoggedIn = await AuthService.isLoggedIn();
       final hasSupabaseSession = SupabaseService.isAuthenticated;
       final hasCompletedSurvey = await AuthService.isSurveyCompleted();

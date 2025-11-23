@@ -208,37 +208,99 @@ class PricingService {
     return 2;
   }
 
-  /// Get trial session pricing from database
-  static Future<Map<int, int>> getTrialSessionPricing() async {
+  /// Get trial session pricing from database with full details (price, discount)
+  static Future<Map<int, Map<String, dynamic>>> getTrialSessionPricingWithDetails() async {
     try {
-      final response = await _supabase
-          .from('trial_session_pricing')
-          .select('duration_minutes, price_xaf')
-          .eq('is_active', true);
+      // Fetch pricing with potential discount columns
+      // Note: 'discount_percent' and 'discount_amount' are potential columns based on user feedback
+      // If they don't exist, Supabase might ignore or throw. We handle both cases.
+      List<dynamic> response;
+      try {
+        response = await _supabase
+            .from('trial_session_pricing')
+            .select('duration_minutes, price_xaf, discount_percent, discount_amount')
+            .eq('is_active', true);
+      } catch (e) {
+        print('⚠️ Could not fetch discount columns, falling back to basic pricing: $e');
+        response = await _supabase
+            .from('trial_session_pricing')
+            .select('duration_minutes, price_xaf')
+            .eq('is_active', true);
+      }
 
-      final pricing = <int, int>{};
+      final pricing = <int, Map<String, dynamic>>{};
       for (final row in response) {
-        pricing[row['duration_minutes'] as int] = row['price_xaf'] as int;
+        final duration = row['duration_minutes'] as int;
+        final basePrice = (row['price_xaf'] as num).toDouble();
+        final discountPercent = (row['discount_percent'] as num?)?.toDouble() ?? 0.0;
+        final discountAmount = (row['discount_amount'] as num?)?.toDouble() ?? 0.0;
+        
+        // Calculate final price
+        double finalPrice = basePrice;
+        if (discountPercent > 0) {
+          finalPrice = basePrice * (1 - discountPercent / 100);
+        } else if (discountAmount > 0) {
+          finalPrice = basePrice - discountAmount;
+        }
+
+        // Ensure price doesn't go below zero
+        if (finalPrice < 0) finalPrice = 0;
+
+        // Round to nearest 100
+        finalPrice = (finalPrice / 100).round() * 100.0;
+
+        pricing[duration] = {
+          'basePrice': basePrice,
+          'finalPrice': finalPrice,
+          'discountPercent': discountPercent,
+          'discountAmount': discountAmount,
+          'hasDiscount': discountPercent > 0 || discountAmount > 0,
+        };
       }
 
       // Default fallback if database is empty
       if (pricing.isEmpty) {
-        pricing[30] = 2000;
-        pricing[60] = 3500;
+        pricing[30] = {
+          'basePrice': 2000.0,
+          'finalPrice': 2000.0,
+          'hasDiscount': false,
+        };
+        pricing[60] = {
+          'basePrice': 3500.0,
+          'finalPrice': 3500.0,
+          'hasDiscount': false,
+        };
       }
 
       return pricing;
     } catch (e) {
-      print('⚠️ Error fetching trial session pricing: $e');
+      print('⚠️ Error fetching trial session pricing details: $e');
       // Return defaults on error
-      return {30: 2000, 60: 3500};
+      return {
+        30: {'basePrice': 2000.0, 'finalPrice': 2000.0, 'hasDiscount': false},
+        60: {'basePrice': 3500.0, 'finalPrice': 3500.0, 'hasDiscount': false},
+      };
     }
+  }
+
+  /// Get trial session pricing from database (simple map for backward compatibility)
+  static Future<Map<int, int>> getTrialSessionPricing() async {
+    final details = await getTrialSessionPricingWithDetails();
+    final simplePricing = <int, int>{};
+    details.forEach((duration, data) {
+      simplePricing[duration] = (data['finalPrice'] as double).round();
+    });
+    return simplePricing;
   }
 
   /// Get trial session price for a specific duration
   static Future<int> getTrialSessionPrice(int durationMinutes) async {
-    final pricing = await getTrialSessionPricing();
-    return pricing[durationMinutes] ?? (durationMinutes == 30 ? 2000 : 3500);
+    final details = await getTrialSessionPricingWithDetails();
+    final data = details[durationMinutes];
+    if (data != null) {
+      return (data['finalPrice'] as double).round();
+    }
+    return durationMinutes == 30 ? 2000 : 3500;
   }
 
   /// Calculate pricing for tutor from JSON data (for demo mode)

@@ -64,6 +64,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   double _trialFee = 3500.0; // Default, will be loaded from database
   bool _isLoadingPrice = false;
+  Map<int, Map<String, dynamic>> _pricingDetails = {}; // Stores pricing details for each duration
 
   // Location data (prefilled from survey)
   String _selectedLocation = 'online'; // Default to online
@@ -82,12 +83,20 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Future<void> _loadTrialPricing() async {
     try {
       setState(() => _isLoadingPrice = true);
-      final price = await PricingService.getTrialSessionPrice(
-        _selectedDuration,
-      );
+      
+      // Load detailed pricing for all durations first
+      final details = await PricingService.getTrialSessionPricingWithDetails();
+      
+      // Get price for currently selected duration
+      final currentPricing = details[_selectedDuration];
+      final price = currentPricing != null 
+          ? (currentPricing['finalPrice'] as double) 
+          : (_selectedDuration == 30 ? 2000.0 : 3500.0);
+
       if (mounted) {
         setState(() {
-          _trialFee = price.toDouble();
+          _pricingDetails = details;
+          _trialFee = price;
           _isLoadingPrice = false;
         });
       }
@@ -1144,13 +1153,28 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(
-                        '${_trialFee.toStringAsFixed(0)} XAF',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primaryColor,
-                        ),
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
+                            Text(
+                              PricingService.formatPrice(_pricingDetails[_selectedDuration]?['basePrice'] ?? 0),
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[600],
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          Text(
+                            PricingService.formatPrice(_trialFee),
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ],
                       ),
               ],
             ),
@@ -1261,12 +1285,29 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     );
   }
 
-  Widget _buildDurationOption(int minutes, String label, String price) {
+  Widget _buildDurationOption(int minutes, String label, String fallbackPrice) {
     final isSelected = _selectedDuration == minutes;
+    
+    // Get pricing details for this duration
+    final details = _pricingDetails[minutes];
+    final basePrice = details != null ? (details['basePrice'] as double) : null;
+    final finalPrice = details != null ? (details['finalPrice'] as double) : null;
+    final hasDiscount = details != null ? (details['hasDiscount'] as bool) : false;
+    
+    String displayPrice = fallbackPrice;
+    if (finalPrice != null) {
+      displayPrice = PricingService.formatPrice(finalPrice);
+    }
+
     return GestureDetector(
       onTap: () {
         setState(() => _selectedDuration = minutes);
-        _loadTrialPricing(); // Reload pricing when duration changes
+        // _loadTrialPricing(); // No need to reload from DB, we have details
+        
+        // Just update _trialFee based on cached details
+        if (finalPrice != null) {
+          setState(() => _trialFee = finalPrice);
+        }
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -1291,12 +1332,23 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
             ),
             const SizedBox(height: 4),
+            if (hasDiscount && basePrice != null) ...[
+              Text(
+                PricingService.formatPrice(basePrice),
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[500],
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+            ],
             Text(
-              price,
+              displayPrice,
               style: GoogleFonts.poppins(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
-                color: Colors.grey[600],
+                color: hasDiscount ? Colors.green[700] : Colors.grey[600],
               ),
             ),
           ],
