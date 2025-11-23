@@ -95,6 +95,53 @@ class TutorOnboardingProgressService {
           .eq('user_id', userId)
           .maybeSingle();
 
+      // PATCH: Check if Step 0 is missing in existing progress and patch it
+      if (progress != null) {
+        final stepData = progress['step_data'] as Map<String, dynamic>? ?? {};
+        final step0 = stepData['0'];
+        
+        if (step0 == null || (step0 as Map).isEmpty) {
+          print('🛠️ Progress exists but Step 0 missing. Patching from profiles...');
+          try {
+            final baseProfile = await SupabaseService.client
+                .from('profiles')
+                .select('email, phone_number')
+                .eq('id', userId)
+                .maybeSingle();
+            
+            if (baseProfile != null) {
+               final email = baseProfile['email'];
+               final phone = baseProfile['phone_number'];
+               
+               if (email != null || phone != null) {
+                 final step0Data = {
+                   'email': email,
+                   'phone': phone,
+                 };
+                 
+                 // Save to DB (this updates completed_steps too)
+                 await saveStepProgress(userId, 0, step0Data);
+                 
+                 // Update local object
+                 final updatedStepData = Map<String, dynamic>.from(stepData);
+                 updatedStepData['0'] = step0Data;
+                 progress['step_data'] = updatedStepData;
+                 
+                 // Update local completed_steps
+                 final completed = List<dynamic>.from(progress['completed_steps'] ?? []);
+                 if (!completed.contains(0)) {
+                   completed.add(0);
+                   progress['completed_steps'] = completed;
+                 }
+                 print('✅ Step 0 patched successfully');
+               }
+            }
+          } catch (e) {
+            print('⚠️ Error patching Step 0: $e');
+          }
+        }
+      }
+
       // 2. If progress found and has actual step data, return it
       if (progress != null && 
           progress['step_data'] != null && 
