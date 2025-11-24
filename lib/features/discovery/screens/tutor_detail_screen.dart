@@ -14,8 +14,13 @@ import 'web_video_helper_stub.dart'
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
+  final bool isPreview;
 
-  const TutorDetailScreen({Key? key, required this.tutor}) : super(key: key);
+  const TutorDetailScreen({
+    Key? key, 
+    required this.tutor,
+    this.isPreview = false,
+  }) : super(key: key);
 
   @override
   State<TutorDetailScreen> createState() => _TutorDetailScreenState();
@@ -121,8 +126,22 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     final education =
         widget.tutor['education'] ?? ''; // Formatted education string
     final experience = widget.tutor['experience'] ?? '';
-    final rating = (widget.tutor['rating'] ?? 0.0).toDouble();
-    final totalReviews = widget.tutor['total_reviews'] ?? 0;
+    // Calculate effective rating logic
+    final totalReviewsVal = (widget.tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    final adminApprovedRating = (widget.tutor['admin_approved_rating'] as num?)?.toDouble();
+    final calculatedRating = (widget.tutor['rating'] as num?)?.toDouble() ?? 0.0;
+
+    final rating =
+        (totalReviewsVal < 3 && adminApprovedRating != null)
+        ? adminApprovedRating!
+        : (calculatedRating > 0
+              ? calculatedRating
+              : (adminApprovedRating ?? 0.0));
+
+    final totalReviews =
+        (totalReviewsVal < 3 && adminApprovedRating != null)
+        ? 10
+        : totalReviewsVal;
     final totalStudents = widget.tutor['total_students'] ?? 0;
     final totalHoursTaught = widget.tutor['total_hours_taught'] ?? 0;
     final completedSessions =
@@ -709,6 +728,30 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
   // Action Buttons (AT THE VERY BOTTOM)
   Widget _buildActionButtons(BuildContext context) {
+    if (widget.isPreview) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              'Preview Mode - Booking Disabled',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(

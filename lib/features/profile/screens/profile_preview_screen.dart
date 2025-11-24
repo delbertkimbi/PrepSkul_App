@@ -65,7 +65,7 @@ class ProfilePreviewScreen extends StatelessWidget {
               const SizedBox(height: 32),
               
               // The Card
-              TutorCard(tutor: tutor),
+              TutorCard(tutor: tutor, isPreview: true),
               
               const SizedBox(height: 24),
               

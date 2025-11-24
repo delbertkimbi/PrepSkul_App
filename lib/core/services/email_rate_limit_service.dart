@@ -1,9 +1,9 @@
 /**
  * Email Rate Limit Service
- *
+ * 
  * Manages email sending rate limits, retries, and cooldown periods
  * to prevent abuse and ensure good user experience.
- *
+ * 
  * Supabase-managed email (free plan) currently allows **2 auth emails per hour**
  * across signup, verification, and password recovery endpoints.
  * We mirror that limit locally so that users see an accurate message before the
@@ -171,7 +171,7 @@ class EmailRateLimitService {
 
     final minutes = remaining.inMinutes;
     if (minutes < 60) {
-      return 'Email already sent—check your inbox and try again in about $minutes minute${minutes == 1 ? '' : 's'}.';
+    return 'Email already sent—check your inbox and try again in about $minutes minute${minutes == 1 ? '' : 's'}.';
     }
 
     final hours = remaining.inHours;

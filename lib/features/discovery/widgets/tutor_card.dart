@@ -7,14 +7,36 @@ import '../screens/tutor_detail_screen.dart';
 
 class TutorCard extends StatelessWidget {
   final Map<String, dynamic> tutor;
+  final bool isPreview;
 
-  const TutorCard({Key? key, required this.tutor}) : super(key: key);
+  const TutorCard({
+    Key? key,
+    required this.tutor,
+    this.isPreview = false,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final name = tutor['full_name'] ?? 'Unknown';
-    final rating = (tutor['rating'] ?? 0.0).toDouble();
-    final totalReviews = tutor['total_reviews'] ?? 0;
+    
+    // Calculate effective rating logic
+    // Use admin_approved_rating if total_reviews < 3 (displayed as 10 reviews)
+    final totalReviewsVal = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    final adminApprovedRating = (tutor['admin_approved_rating'] as num?)?.toDouble();
+    final calculatedRating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
+
+    final rating =
+        (totalReviewsVal < 3 && adminApprovedRating != null)
+        ? adminApprovedRating
+        : (calculatedRating > 0
+              ? calculatedRating
+              : (adminApprovedRating ?? 0.0));
+
+    final totalReviews =
+        (totalReviewsVal < 3 && adminApprovedRating != null)
+        ? 10
+        : totalReviewsVal;
+
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
     
@@ -56,7 +78,10 @@ class TutorCard extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => TutorDetailScreen(tutor: tutor),
+                builder: (context) => TutorDetailScreen(
+                  tutor: tutor,
+                  isPreview: isPreview,
+                ),
               ),
             );
           },
