@@ -7,6 +7,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import 'edit_profile_screen.dart';
+import 'profile_preview_screen.dart';
 import '../../tutor/screens/tutor_onboarding_screen.dart';
 import '../../discovery/screens/tutor_detail_screen.dart';
 
@@ -591,7 +592,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (context) => TutorDetailScreen(
+                                      builder: (context) => ProfilePreviewScreen(
                                         tutor: mergedProfile,
                                       ),
                                     ),

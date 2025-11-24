@@ -102,8 +102,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// Get YouTube thumbnail URL
   String? _getThumbnailUrl() {
     if (_videoId == null) return null;
-    // Use maxresdefault for best quality, fallback to hqdefault
-    return 'https://img.youtube.com/vi/$_videoId/maxresdefault.jpg';
+    // Use hqdefault for better reliability (maxresdefault often missing)
+    return 'https://img.youtube.com/vi/$_videoId/hqdefault.jpg';
   }
 
   @override
