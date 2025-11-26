@@ -300,6 +300,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     _filterTutors(); // Apply cleared filters
   }
 
+  // Check if any filter is active
+  bool get _isFilterActive =>
+      _searchController.text.isNotEmpty ||
+      _selectedSubject != null ||
+      _selectedPriceRange != null ||
+      _minRating > 0;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -432,22 +439,23 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             ),
           ),
 
-          // Results Count
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Text(
-                  '${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
+          // Results Count - only show when filtering or searching
+          if (_isFilterActive)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+                children: [
+                  Text(
+                    'Found ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
           // Tutors List
           Expanded(

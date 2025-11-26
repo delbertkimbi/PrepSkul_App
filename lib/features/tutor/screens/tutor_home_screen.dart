@@ -15,6 +15,7 @@ import '../../../features/notifications/widgets/notification_bell.dart';
 import '../widgets/onboarding_progress_tracker.dart';
 import 'tutor_admin_feedback_screen.dart';
 import 'tutor_onboarding_screen.dart';
+import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -292,7 +293,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const TutorHomeSkeleton()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(

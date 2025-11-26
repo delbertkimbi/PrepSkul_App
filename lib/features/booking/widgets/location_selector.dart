@@ -257,10 +257,10 @@ class _LocationSelectorState extends State<LocationSelector> {
                 }
                 _notifyParent();
               },
-              maxLines: 3,
+              maxLines: 1,
               decoration: InputDecoration(
                 labelText: 'Address *',
-                hintText: 'Enter your full address\nCity, Quarter, Street...',
+                hintText: 'Enter your full address (City, Quarter, Street...)',
                 hintStyle: GoogleFonts.poppins(
                   fontSize: 14,
                   color: Colors.grey[400],

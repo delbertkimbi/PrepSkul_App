@@ -6,6 +6,8 @@ import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
+
 
 class TutorRequestsScreen extends StatefulWidget {
   const TutorRequestsScreen({Key? key}) : super(key: key);
@@ -95,35 +97,61 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
           );
         }
 
-        // Step 1: Approve the booking request
-        final approvedRequest = await BookingService.approveBookingRequest(
-          request.id,
-          responseNotes: result.isEmpty ? null : result,
-        );
-
-        // Step 2: Create recurring session from approved request
-        try {
-          await RecurringSessionService.createRecurringSessionFromBooking(
-            approvedRequest,
+        if (request.isTrial) {
+          await BookingService.approveTrialRequest(
+            request.id,
+            responseNotes: result.isEmpty ? null : result,
           );
-          print('✅ Recurring session created successfully');
-        } catch (sessionError) {
-          print('⚠️ Error creating recurring session: $sessionError');
-          // Don't fail the approval if session creation fails
-          // The request is already approved, session can be created manually later
-        }
-
-        // Close loading dialog
-        if (mounted) {
-          Navigator.of(context).pop(); // Close loading dialog
-        }
-
-        if (mounted) {
-          BrandedSnackBar.showSuccess(
-            context,
-            'Request approved! Recurring sessions created.',
-            duration: const Duration(seconds: 3),
+          if (mounted) {
+            Navigator.of(context).pop(); // Close loading dialog
+            BrandedSnackBar.showSuccess(
+              context,
+              'Trial session approved! Payment request sent.',
+              duration: const Duration(seconds: 3),
+            );
+          }
+        } else {
+          // Step 1: Approve the booking request
+          final approvedRequest = await BookingService.approveBookingRequest(
+            request.id,
+            responseNotes: result.isEmpty ? null : result,
           );
+
+          // Step 2: Get payment request ID (created during approval)
+          String? paymentRequestId;
+          try {
+            paymentRequestId = await PaymentRequestService.getPaymentRequestIdByBookingRequestId(
+              request.id,
+            );
+            if (paymentRequestId != null) {
+              print('✅ Found payment request ID: $paymentRequestId');
+            }
+          } catch (e) {
+            print('⚠️ Failed to get payment request ID: $e');
+          }
+
+          // Step 3: Create recurring session from approved request
+          try {
+            await RecurringSessionService.createRecurringSessionFromBooking(
+              approvedRequest,
+              paymentRequestId: paymentRequestId,
+            );
+            print('✅ Recurring session created successfully');
+          } catch (sessionError) {
+            print('⚠️ Error creating recurring session: $sessionError');
+            // Don't fail the approval if session creation fails
+            // The request is already approved, session can be created manually later
+          }
+
+          // Close loading dialog
+          if (mounted) {
+            Navigator.of(context).pop(); // Close loading dialog
+            BrandedSnackBar.showSuccess(
+              context,
+              'Request approved! Recurring sessions created.',
+              duration: const Duration(seconds: 3),
+            );
+          }
         }
         _loadRequests(); // Refresh list
       } catch (e) {
@@ -152,7 +180,12 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
 
     if (result != null && result.isNotEmpty) {
       try {
-        await BookingService.rejectBookingRequest(request.id, reason: result);
+        if (request.isTrial) {
+          await BookingService.rejectTrialRequest(request.id, reason: result);
+        } else {
+          await BookingService.rejectBookingRequest(request.id, reason: result);
+        }
+
         if (mounted) {
           BrandedSnackBar.show(
             context,
@@ -228,18 +261,18 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _requests.isEmpty
-                ? _buildEmptyState()
-                : RefreshIndicator(
-                    onRefresh: _loadRequests,
-                    color: AppTheme.primaryColor,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: _requests.length,
-                      itemBuilder: (context, index) {
-                        return _buildRequestCard(_requests[index]);
-                      },
-                    ),
-                  ),
+                    ? _buildEmptyState()
+                    : RefreshIndicator(
+                        onRefresh: _loadRequests,
+                        color: AppTheme.primaryColor,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _requests.length,
+                          itemBuilder: (context, index) {
+                            return _buildRequestCard(_requests[index]);
+                          },
+                        ),
+                      ),
           ),
         ],
       ),
@@ -309,6 +342,8 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
 
   Widget _buildRequestCard(BookingRequest request) {
     final hasConflict = request.hasConflict && request.isPending;
+    final typeLower = request.studentType.toLowerCase();
+    final isStudent = typeLower == 'learner' || typeLower == 'student';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -330,6 +365,41 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Conflict Warning Banner (top of card like marketing design)
+              if (hasConflict) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.orange[300]!, width: 1.5),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.orange[700],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Schedule conflict detected',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange[900],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               // Header: Student info + Status
               Row(
                 children: [
@@ -342,7 +412,9 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                         : null,
                     child: request.studentAvatarUrl == null
                         ? Text(
-                            request.studentName[0].toUpperCase(),
+                            request.studentName.isNotEmpty
+                                ? request.studentName[0].toUpperCase()
+                                : 'S',
                             style: GoogleFonts.poppins(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,
@@ -351,7 +423,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                         : null,
                   ),
                   const SizedBox(width: 12),
-                  // Student Name & Type
+                  // Student Name & Type badge
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -364,14 +436,28 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                             color: AppTheme.textDark,
                           ),
                         ),
-                        Text(
-                          request.studentType == 'learner'
-                              ? 'Student'
-                              : 'Parent',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppTheme.textMedium,
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
                           ),
+                          decoration: BoxDecoration(
+                            color: (isStudent
+                                    ? AppTheme.primaryColor
+                                    : Colors.purple)
+                                .withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            isStudent ? 'STUDENT' : 'PARENT',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color:
+                                  isStudent ? AppTheme.primaryColor : Colors.purple,
+                            ),
+                          ),  
                         ),
                       ],
                     ),
@@ -399,10 +485,28 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
               ),
               const SizedBox(height: 16),
               // Schedule Info
-              _buildInfoRow(
-                Icons.calendar_today,
-                '${request.frequency}x per week • ${request.getDaysSummary()}',
-              ),
+              if (request.isTrial) ...[
+                _buildInfoRow(
+                  Icons.calendar_today,
+                  'Trial Session • ${request.scheduledDate != null ? '${request.scheduledDate!.day}/${request.scheduledDate!.month}/${request.scheduledDate!.year}' : request.getDaysSummary()}',
+                ),
+                if (request.subject != null) ...[
+                  const SizedBox(height: 8),
+                  _buildInfoRow(Icons.menu_book, 'Subject: ${request.subject}'),
+                ],
+                if (request.durationMinutes != null) ...[
+                  const SizedBox(height: 8),
+                  _buildInfoRow(
+                    Icons.timer,
+                    'Duration: ${request.durationMinutes} minutes',
+                  ),
+                ],
+              ] else ...[
+                _buildInfoRow(
+                  Icons.calendar_today,
+                  '${request.frequency}x per week • ${request.getDaysSummary()}',
+                ),
+              ],
               const SizedBox(height: 8),
               _buildInfoRow(Icons.access_time, request.getTimeRange()),
               const SizedBox(height: 8),
@@ -415,66 +519,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                 Icons.payment,
                 '${_formatPaymentPlan(request.paymentPlan)} • ${_formatCurrency(request.monthlyTotal)}',
               ),
-              // Conflict Warning Banner (prominent like static UI)
-              if (hasConflict) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange[300]!, width: 1.5),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.orange[700],
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Schedule Conflict Detected',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.orange[900],
-                              ),
-                            ),
-                            if (request.conflictDetails != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                request.conflictDetails!,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: Colors.orange[800],
-                                ),
-                              ),
-                            ] else ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                'This request conflicts with your existing schedule',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: Colors.orange[800],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               // Action Buttons (only for pending)
               if (request.isPending) ...[
                 const SizedBox(height: 16),
@@ -758,10 +802,35 @@ class _RequestDetailsSheet extends StatelessWidget {
               // Student Info
               _buildInfoRow(Icons.person, request.studentName),
               const SizedBox(height: 12),
-              _buildInfoRow(
-                Icons.calendar_today,
-                '${request.frequency}x per week • ${request.getDaysSummary()}',
-              ),
+              
+              // Schedule Info (Trial vs Recurring)
+              if (request.isTrial) ...[
+                _buildInfoRow(
+                  Icons.calendar_today,
+                  'Trial Session • ${request.scheduledDate != null ? '${request.scheduledDate!.day}/${request.scheduledDate!.month}/${request.scheduledDate!.year}' : request.getDaysSummary()}',
+                ),
+                if (request.subject != null) ...[
+                  const SizedBox(height: 12),
+                  _buildInfoRow(Icons.menu_book, 'Subject: ${request.subject}'),
+                ],
+                if (request.durationMinutes != null) ...[
+                  const SizedBox(height: 12),
+                  _buildInfoRow(
+                    Icons.timer,
+                    'Duration: ${request.durationMinutes} minutes',
+                  ),
+                ],
+                if (request.trialGoal != null) ...[
+                  const SizedBox(height: 12),
+                  _buildInfoRow(Icons.flag, 'Goal: ${request.trialGoal}'),
+                ],
+              ] else ...[
+                _buildInfoRow(
+                  Icons.calendar_today,
+                  '${request.frequency}x per week • ${request.getDaysSummary()}',
+                ),
+              ],
+              
               const SizedBox(height: 12),
               _buildInfoRow(Icons.access_time, request.getTimeRange()),
               const SizedBox(height: 12),

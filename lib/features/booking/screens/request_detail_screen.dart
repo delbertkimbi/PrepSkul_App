@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// RequestDetailScreen
 ///
@@ -71,7 +72,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final tutor = widget.request['tutor'] as Map<String, dynamic>;
+    // Get tutor data from individual fields (toJson() doesn't include tutor map)
+    final tutorName = widget.request['tutor_name'] as String? ?? 'Tutor';
+    final tutorAvatarUrl = widget.request['tutor_avatar_url'] as String?;
+    final tutorRating = widget.request['tutor_rating'] as double?;
+    final tutorIsVerified = widget.request['tutor_is_verified'] as bool? ?? false;
     final status = widget.request['status'] as String;
     final statusColor = _getStatusColor(status);
 
@@ -138,7 +143,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             const SizedBox(height: 24),
 
             // Tutor Card
-            _buildTutorCard(tutor),
+            _buildTutorCard(tutorName, tutorAvatarUrl, tutorRating, tutorIsVerified),
             const SizedBox(height: 24),
 
             // Schedule Section
@@ -254,33 +259,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  /// Get tutor avatar image - handles both network URLs and asset paths
-  ImageProvider? _getTutorAvatarImage(Map<String, dynamic> tutor) {
-    final avatarUrl = tutor['avatar_url'] ?? tutor['profile_photo_url'];
-    
-    if (avatarUrl == null || avatarUrl.toString().isEmpty) {
-      return null;
-    }
-    
-    final urlString = avatarUrl.toString();
-    
-    // Check if it's a network URL
-    if (urlString.startsWith('http://') || 
-        urlString.startsWith('https://') ||
-        urlString.startsWith('//')) {
-      return NetworkImage(urlString);
-    }
-    
-    // Otherwise, treat as asset path
-    return AssetImage(urlString);
-  }
+  Widget _buildTutorCard(String tutorName, String? tutorAvatarUrl, double? tutorRating, bool tutorIsVerified) {
+    final avatarUrl = tutorAvatarUrl;
+    final name = tutorName;
+    final rating = tutorRating ?? 4.8;
+    final isVerified = tutorIsVerified;
 
-  Widget _buildTutorCard(Map<String, dynamic> tutor) {
-    final avatarImage = _getTutorAvatarImage(tutor);
-    final tutorName = tutor['full_name'] ?? 'Tutor';
-    
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(16),
@@ -288,27 +274,26 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       ),
       child: Row(
         children: [
+          // Avatar
           CircleAvatar(
-            radius: 36,
-            backgroundColor: AppTheme.primaryColor,
-            backgroundImage: avatarImage,
-            onBackgroundImageError: avatarImage != null
-                ? (exception, stackTrace) {
-                    // Image failed to load, will show fallback
-                  }
+            radius: 40,
+            backgroundColor: Colors.grey[300],
+            backgroundImage: avatarUrl != null
+                ? CachedNetworkImageProvider(avatarUrl)
                 : null,
-            child: avatarImage == null
+            child: avatarUrl == null
                 ? Text(
-                    tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                    name.isNotEmpty ? name[0].toUpperCase() : 'T',
                     style: GoogleFonts.poppins(
                       fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[700],
                     ),
                   )
                 : null,
           ),
           const SizedBox(width: 16),
+          // Info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,7 +302,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        tutor['full_name'] ?? 'Tutor',
+                        name,
                         style: GoogleFonts.poppins(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -325,25 +310,42 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         ),
                       ),
                     ),
-                    if (tutor['is_verified'] == true)
-                      Icon(
-                        Icons.verified,
-                        size: 20,
-                        color: AppTheme.primaryColor,
+                    if (isVerified)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.verified, size: 14, color: AppTheme.primaryColor),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Verified',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.star, size: 16, color: Colors.amber[700]),
+                    Icon(Icons.star, size: 16, color: Colors.amber),
                     const SizedBox(width: 4),
                     Text(
-                      '${tutor['rating'] ?? 4.8}',
+                      rating.toStringAsFixed(1),
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
+                        color: Colors.black,
                       ),
                     ),
                   ],

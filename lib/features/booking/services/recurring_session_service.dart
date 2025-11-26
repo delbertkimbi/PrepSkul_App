@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
+
 
 /// RecurringSessionService
 ///
@@ -10,9 +12,13 @@ class RecurringSessionService {
   static SupabaseClient get _supabase => SupabaseService.client;
 
   /// Create a recurring session from an approved booking request
+  /// Create a recurring session from an approved booking request
+  /// 
+  /// [paymentRequestId] - Optional payment request ID to link after creation
   static Future<Map<String, dynamic>> createRecurringSessionFromBooking(
-    BookingRequest bookingRequest,
-  ) async {
+    BookingRequest bookingRequest, {
+    String? paymentRequestId,
+  }) async {
     try {
       // Calculate start date (next available session date)
       final startDate = _calculateStartDate(bookingRequest);
@@ -57,6 +63,20 @@ class RecurringSessionService {
           .single();
 
       print('✅ Recurring session created: ${response['id']}');
+
+      // Link payment request to recurring session if provided
+      if (paymentRequestId != null) {
+        try {
+          await PaymentRequestService.linkPaymentRequestToRecurringSession(
+            paymentRequestId,
+            response['id'] as String,
+          );
+          print('✅ Payment request linked to recurring session');
+        } catch (e) {
+          print('⚠️ Failed to link payment request to recurring session: $e');
+          // Don't fail the recurring session creation if linking fails
+        }
+      }
 
       // Generate initial individual sessions (next 8 weeks)
       try {

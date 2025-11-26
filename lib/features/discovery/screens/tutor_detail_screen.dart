@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,6 +8,7 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
+import 'dart:convert';
 // Conditional import for web-specific video helper
 import 'web_video_helper_stub.dart'
     if (dart.library.html) 'web_video_helper.dart'
@@ -123,8 +125,32 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     // Use personal_statement (with "Hello!") for detail page "About" section
     // Fallback to bio (dynamic) if personal_statement not available
     final bio = widget.tutor['personal_statement'] ?? widget.tutor['bio'] ?? '';
-    final education =
-        widget.tutor['education'] ?? ''; // Formatted education string
+    // Parse education if it's JSON
+    String education = '';
+    final eduRaw = widget.tutor['education'];
+    if (eduRaw is String) {
+      if (eduRaw.trim().startsWith('{')) {
+        try {
+          final eduMap = json.decode(eduRaw);
+          final degree = eduMap['highest_education']?.toString() ?? '';
+          final field = eduMap['field_of_study']?.toString() ?? '';
+          final uni = eduMap['institution']?.toString() ?? '';
+          
+          final parts = <String>[];
+          if (degree.isNotEmpty) parts.add(degree);
+          if (field.isNotEmpty) parts.add('in $field');
+          final mainPart = parts.join(' ');
+          
+          education = mainPart.isNotEmpty 
+              ? (uni.isNotEmpty ? '$mainPart at $uni' : mainPart)
+              : uni;
+        } catch (_) {
+          education = eduRaw;
+        }
+      } else {
+        education = eduRaw;
+      }
+    }
     final experience = widget.tutor['experience'] ?? '';
     // Calculate effective rating logic
     final totalReviewsVal = (widget.tutor['total_reviews'] as num?)?.toInt() ?? 0;

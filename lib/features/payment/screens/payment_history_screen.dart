@@ -9,6 +9,7 @@ import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:intl/intl.dart';
+import '../../../core/localization/app_localizations.dart';
 
 /// Payment History Screen
 ///
@@ -55,7 +56,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
   }
 
   Future<void> _loadPayments() async {
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -96,7 +99,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
         // Don't throw - continue showing what we can load
       }
 
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
 
       // Don't show error if all lists are empty - empty states will handle it gracefully
       // This is expected for new users who haven't made any payments yet
@@ -104,7 +109,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       // These are handled gracefully by returning empty lists
     } catch (e) {
       print('❌ Critical error loading payments: $e');
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
 
       // Only show error if it's NOT a database schema issue (table/column not found)
       // Schema issues are expected during development and should be handled silently
@@ -300,22 +307,76 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     if (_selectedFilter == 'all') return payments;
 
     return payments.where((payment) {
-      final status = _getPaymentStatus(payment);
+      final status = _getPaymentStatus(context, payment);
       return status.toLowerCase() == _selectedFilter.toLowerCase();
     }).toList();
   }
 
-  String _getPaymentStatus(Map<String, dynamic> payment) {
-    if (payment.containsKey('status')) {
-      return payment['status'] as String? ?? 'pending';
-    } else if (payment.containsKey('payment_status')) {
-      return payment['payment_status'] as String? ?? 'pending';
+  // String _getPaymentStatus(context, BuildContext context, Map<String, dynamic> payment) {
+  //     final t = AppLocalizations.of(context)!;
+  //   // Prefer explicit payment_status when available (trial and session payments),
+  //   // fall back to generic status (payment requests, trials without payment_status).
+  //   if (payment.containsKey('payment_status')) {
+  //     final raw = (payment['payment_status'] as String? ?? 'pending').toLowerCase();
+
+  //     // Normalize various underlying states into the 3 UI filters:
+  //     // - Treat "unpaid" and "processing" as "pending" so they appear under Pending.
+  //     // - Keep "paid" and "failed" as-is.
+  //     switch (raw) {
+  //       case 'unpaid':
+  //       case 'processing':
+  //         return 'pending';
+  //       case 'paid':
+  //       case 'failed':
+  //         return raw;
+  //       default:
+  //         return raw;
+  //     }
+  //   }
+
+  //   if (payment.containsKey('status')) {
+  //     return (payment['status'] as String? ?? 'pending').toLowerCase();
+  //   }
+
+  //   return 'pending';
+  // }
+
+  String _getPaymentStatus(BuildContext context, Map<String, dynamic> payment) {
+  // Optional: t is here if you later want localized error messages.
+  final t = AppLocalizations.of(context)!;
+
+  // Prefer explicit payment_status when available (trial and session payments),
+  // fall back to generic status (payment requests, trials without payment_status).
+  if (payment.containsKey('payment_status')) {
+    final raw = (payment['payment_status'] as String? ?? 'pending').toLowerCase();
+
+    // Normalize to our three filters.
+    switch (raw) {
+      case 'unpaid':
+      case 'processing':
+        return 'pending';
+      case 'paid':
+      case 'failed':
+        return raw;
+      default:
+        return 'pending';
     }
-    return 'pending';
   }
+
+  // Fallback for older records: use generic status field.
+  final genericStatus = (payment['status'] as String? ?? 'pending').toLowerCase();
+  switch (genericStatus) {
+    case 'paid':
+    case 'failed':
+      return genericStatus;
+    default:
+      return 'pending';
+  }
+}
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
@@ -324,7 +385,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Payment History',
+          t.paymentHistoryTitle,
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -337,10 +398,10 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.white,
-          tabs: const [
-            Tab(text: 'Bookings'),
-            Tab(text: 'Trials'),
-            Tab(text: 'Sessions'),
+          tabs: [
+            Tab(text: t.paymentHistoryTabBookings),
+            Tab(text: t.paymentHistoryTabTrials),
+            Tab(text: t.paymentHistoryTabSessions),
           ],
         ),
       ),
@@ -352,13 +413,13 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
             color: Colors.white,
             child: Row(
               children: [
-                _buildFilterChip('all', 'All'),
+                _buildFilterChip('all', t.paymentHistoryFilterAll),
                 const SizedBox(width: 8),
-                _buildFilterChip('pending', 'Pending'),
+                _buildFilterChip('pending', t.paymentHistoryFilterPending),
                 const SizedBox(width: 8),
-                _buildFilterChip('paid', 'Paid'),
+                _buildFilterChip('paid', t.paymentHistoryFilterPaid),
                 const SizedBox(width: 8),
-                _buildFilterChip('failed', 'Failed'),
+                _buildFilterChip('failed', t.paymentHistoryFilterFailed),
               ],
             ),
           ),
@@ -372,6 +433,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                       _buildPaymentRequestsTab(),
                       _buildTrialPaymentsTab(),
                       _buildSessionPaymentsTab(),
+                      
                     ],
                   ),
           ),
@@ -453,7 +515,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     final paymentPlan = payment['payment_plan'] as String? ?? 'monthly';
     final bookingRequest = payment['booking_requests'] as Map<String, dynamic>?;
     final tutorName = bookingRequest?['tutor_name'] as String? ?? 'Tutor';
-
+  final t = AppLocalizations.of(context)!;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 2,
@@ -521,7 +583,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'Payment Plan',
+                      t.paymentHistoryPaymentPlan,
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: Colors.grey[600],
@@ -570,7 +632,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                     ),
                   ),
                   child: Text(
-                    status == 'failed' ? 'Retry Payment' : 'Pay Now',
+                    status == 'failed' ? t.paymentHistoryRetryPayment : t.myRequestsPayNow,
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -586,8 +648,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     );
   }
 
-  Widget _buildTrialPaymentCard(Map<String, dynamic> payment) {
+Widget _buildTrialPaymentCard(BuildContext context, Map<String, dynamic> payment) {
+  final t = App
     final status = payment['payment_status'] as String? ?? 'unpaid';
+    final trialStatus = payment['status'] as String? ?? 'pending';
+    final paymentStatus = _getPaymentStatus(context, payment);
+    final isApproved = trialStatus == 'approved' || trialStatus == 'scheduled';
+    final canPay =
+        isApproved && (paymentStatus == 'pending');
+        isApproved && (status == 'unpaid' || status == 'pending');
     final amount = (payment['trial_fee'] as num?)?.toDouble() ?? 0.0;
     final subject = payment['subject'] as String? ?? 'Trial Session';
     final scheduledDate = payment['scheduled_date'] as String?;
@@ -629,11 +698,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                   ),
                 ),
                 _buildStatusBadge(
-                  status == 'paid'
+                  paymentStatus == 'paid'
                       ? 'paid'
-                      : status == 'unpaid'
-                      ? 'pending'
-                      : status,
+                      : paymentStatus,
                 ),
               ],
             ),
@@ -686,29 +753,41 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                   ),
               ],
             ),
-            if (status == 'unpaid' || status == 'pending') ...[
+            if (paymentStatus == 'pending') ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: () => _retryTrialPayment(trialId),
+                  onPressed: canPay ? () => _retryTrialPayment(trialId) : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
+                    backgroundColor: canPay
+                        ? AppTheme.primaryColor
+                        : Colors.grey[300],
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
                   child: Text(
-                    'Pay Now',
+                    canPay ? t.myRequestsPayNow : t.paymentHistoryAwaitingApproval,
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: canPay ? Colors.white : Colors.grey[700],
                     ),
                   ),
                 ),
               ),
+              if (!isApproved) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Your tutor needs to approve this trial before you can pay.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ],
           ],
         ),
@@ -816,7 +895,8 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     );
   }
 
-  Widget _buildStatusBadge(String status) {
+Widget _buildStatusBadge(BuildContext context, String status) {
+  final t = AppLocalizations.of(context)!;
     Color color;
     String label;
     IconData icon;
@@ -824,17 +904,17 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     switch (status.toLowerCase()) {
       case 'paid':
         color = Colors.green;
-        label = 'Paid';
+        label = t.paymentHistoryStatusPaid;
         icon = Icons.check_circle;
         break;
       case 'pending':
         color = Colors.orange;
-        label = 'Pending';
+        label = t.paymentHistoryStatusPending;
         icon = Icons.pending;
         break;
       case 'failed':
         color = Colors.red;
-        label = 'Failed';
+        label = t.paymentHistoryStatusFailed;
         icon = Icons.error;
         break;
       case 'unpaid':
@@ -848,7 +928,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
         icon = Icons.info;
     }
 
-    return Container(
+get    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
@@ -873,7 +953,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     );
   }
 
-  Widget _buildEmptyState(String message) {
+  Widget _idEmptyState(String message) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

@@ -3,6 +3,10 @@ import 'package:prepskul/features/booking/services/session_payment_service.dart'
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
+import 'package:prepskul/features/payment/services/recurring_payment_service.dart';
+import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+
+
 
 /// Fapshi Webhook Service
 /// 
@@ -194,12 +198,56 @@ class FapshiWebhookService {
           fapshiTransId: transactionId,
         );
 
-        // Get payment request details for notifications
+        // Get payment request details for notifications and scheduling
         final paymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
         if (paymentRequest != null) {
           final bookingRequestId = paymentRequest['booking_request_id'] as String?;
           final studentId = paymentRequest['student_id'] as String;
           final tutorId = paymentRequest['tutor_id'] as String;
+          final recurringSessionId = paymentRequest['recurring_session_id'] as String?;
+          final paymentPlan = paymentRequest['payment_plan'] as String?;
+          final monthlyTotal = paymentRequest['original_amount'] as num?;
+
+          // Ensure recurring session is active (in case it was paused)
+          if (recurringSessionId != null) {
+            try {
+              // Check if this is the first payment for this recurring session
+              // If so, ensure the session is active
+              await RecurringSessionService.updateSessionStatus(
+                recurringSessionId,
+                'active',
+              );
+              print('✅ Recurring session status verified: $recurringSessionId');
+            } catch (e) {
+              print('⚠️ Failed to update recurring session status: $e');
+              // Don't fail the payment confirmation if status update fails
+            }
+          }
+
+          // Schedule next payment if this is a recurring session payment
+          if (recurringSessionId != null && 
+              paymentPlan != null && 
+              monthlyTotal != null &&
+              (paymentPlan.toLowerCase() == 'monthly' || 
+               paymentPlan.toLowerCase() == 'biweekly' || 
+               paymentPlan.toLowerCase() == 'bi-weekly' || 
+               paymentPlan.toLowerCase() == 'weekly')) {
+            try {
+              await RecurringPaymentService.scheduleNextPayment(
+                recurringSessionId: recurringSessionId,
+                currentPaymentRequestId: paymentRequestId,
+                paymentPlan: paymentPlan,
+                monthlyTotal: monthlyTotal.toDouble(),
+                studentId: studentId,
+                tutorId: tutorId,
+                bookingRequestId: bookingRequestId,
+              );
+              print('✅ Next payment scheduled for recurring session: $recurringSessionId');
+            } catch (e) {
+              print('⚠️ Failed to schedule next payment: $e');
+              // Don't fail the payment confirmation if scheduling fails
+            }
+          }
 
           // Send success notifications
           await NotificationHelperService.notifyPaymentRequestPaid(

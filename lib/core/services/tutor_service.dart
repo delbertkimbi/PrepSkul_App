@@ -205,7 +205,8 @@ class TutorService {
               email
             )
           ''')
-          .eq('status', 'approved'); // Only show approved tutors
+          .eq('status', 'approved')
+          .neq('is_hidden', true); // Only show approved & not-hidden tutors
 
       // Also fetch profile_photo_url from tutor_profiles (if it exists)
 
@@ -248,7 +249,8 @@ class TutorService {
           final fallbackQuery = SupabaseService.client
               .from('tutor_profiles')
               .select('*')
-              .eq('status', 'approved');
+              .eq('status', 'approved')
+              .neq('is_hidden', true);
           
           final fallbackResponse = await fallbackQuery.order('rating', ascending: false);
           final fallbackTutors = fallbackResponse as List;
@@ -797,6 +799,7 @@ class TutorService {
           ''')
           .eq('user_id', tutorId)
           .eq('status', 'approved')
+          .neq('is_hidden', true)
           .single();
 
       final profile = response['profiles'];
@@ -1069,6 +1072,7 @@ class TutorService {
             )
           ''')
           .eq('status', 'approved')
+          .neq('is_hidden', true)
           .or('profiles.full_name.ilike.%$query%,subjects.cs.{$query}');
 
       return (response as List).map((tutor) {

@@ -11,6 +11,7 @@ import '../../features/profile/screens/profile_screen.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../localization/app_localizations.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -51,60 +52,67 @@ class _MainNavigationState extends State<MainNavigation> {
   }
 
   // Tutor navigation items (4 items)
-  final List<BottomNavigationBarItem> _tutorItems = [
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.home_outlined),
-      activeIcon: Icon(Icons.home),
-      label: 'Home',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.mail_outline), // inbox icon for requests
-      activeIcon: Icon(Icons.mail),
-      label: 'Requests',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.school_outlined), // sessions icon
-      activeIcon: Icon(Icons.school),
-      label: 'Sessions',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.person_outline),
-      activeIcon: Icon(Icons.person),
-      label: 'Profile',
-    ),
-  ];
+  List<BottomNavigationBarItem> _getTutorItems(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
+    return [
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.home_outlined),
+        activeIcon: const Icon(Icons.home),
+        label: t.navHome,
+      ),
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.mail_outline), // inbox icon for requests
+        activeIcon: const Icon(Icons.mail),
+        label: t.navRequests,
+      ),
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.school_outlined), // sessions icon
+        activeIcon: const Icon(Icons.school),
+        label: t.navSessions,
+      ),
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.person_outline),
+        activeIcon: const Icon(Icons.person),
+        label: t.navProfile,
+      ),
+    ];
+  }
 
   // Student/Parent navigation items (4 items)
-  final List<BottomNavigationBarItem> _studentItems = [
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.home_outlined),
-      activeIcon: Icon(Icons.home),
-      label: 'Home',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.search),
-      activeIcon: Icon(Icons.search),
-      label: 'Find Tutors',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.receipt_long_outlined), // requests icon
-      activeIcon: Icon(Icons.receipt_long),
-      label: 'Requests',
-    ),
-    const BottomNavigationBarItem(
-      icon: Icon(Icons.person_outline),
-      activeIcon: Icon(Icons.person),
-      label: 'Profile',
-    ),
-  ];
+  List<BottomNavigationBarItem> _getStudentItems(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
+    return [
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.home_outlined),
+        activeIcon: const Icon(Icons.home),
+        label: t.navHome,
+      ),
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.search),
+        activeIcon: const Icon(Icons.search),
+        label: t.navFindTutors,
+      ),
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.receipt_long_outlined), // requests icon
+        activeIcon: const Icon(Icons.receipt_long),
+        label: t.navRequests,
+      ),
+      BottomNavigationBarItem(
+        icon: const Icon(Icons.person_outline),
+        activeIcon: const Icon(Icons.person),
+        label: t.navProfile,
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     final isTutor = widget.userRole == 'tutor';
     final userType = widget.userRole == 'parent' ? 'parent' : 'student';
     
     final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
-    final items = isTutor ? _tutorItems : _studentItems;
+    final items = isTutor ? _getTutorItems(context) : _getStudentItems(context);
 
     // Wrap with PopScope to handle back navigation properly
     // Allow back navigation if there are screens to pop, prevent only at root

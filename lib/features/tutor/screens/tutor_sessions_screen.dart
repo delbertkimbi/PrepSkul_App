@@ -18,6 +18,7 @@ class TutorSessionsScreen extends StatefulWidget {
 class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   List<Map<String, dynamic>> _sessions = [];
   bool _isLoading = true;
+  final Map<String, bool> _sessionLoadingStates = {};
   String _selectedFilter = 'all'; // all, upcoming, past
 
   @override
@@ -502,11 +503,23 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     if (status == 'scheduled') ...[
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () =>
-                              _handleStartSession(session['id'] as String),
-                          icon: const Icon(Icons.play_arrow, size: 18),
+                          onPressed: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? null
+                              : () => _handleStartSession(session['id'] as String),
+                          icon: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.play_arrow, size: 18),
                           label: Text(
-                            'Start Session',
+                            (_sessionLoadingStates[session['id'] as String] ?? false)
+                                ? 'Starting...'
+                                : 'Start Session',
                             style: GoogleFonts.poppins(fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -522,11 +535,23 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     ] else if (status == 'in_progress') ...[
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () =>
-                              _handleEndSession(session['id'] as String),
-                          icon: const Icon(Icons.stop, size: 18),
+                          onPressed: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? null
+                              : () => _handleEndSession(session['id'] as String),
+                          icon: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.stop, size: 18),
                           label: Text(
-                            'End Session',
+                            (_sessionLoadingStates[session['id'] as String] ?? false)
+                                ? 'Ending...'
+                                : 'End Session',
                             style: GoogleFonts.poppins(fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -642,6 +667,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   Future<void> _handleStartSession(String sessionId) async {
+    setState(() {
+      _sessionLoadingStates[sessionId] = true;
+    });
+    
     try {
       // Use SessionLifecycleService for comprehensive start flow
       await SessionLifecycleService.startSession(sessionId);
@@ -669,6 +698,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sessionLoadingStates[sessionId] = false;
+        });
+      }
     }
   }
 
@@ -679,6 +714,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     );
 
     if (result != null) {
+      setState(() {
+        _sessionLoadingStates[sessionId] = true;
+      });
+      
       try {
         // Use SessionLifecycleService for comprehensive end flow
         await SessionLifecycleService.endSession(
@@ -712,6 +751,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               backgroundColor: Colors.red,
             ),
           );
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _sessionLoadingStates[sessionId] = false;
+          });
         }
       }
     }

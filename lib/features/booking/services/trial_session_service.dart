@@ -5,6 +5,7 @@ import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/core/services/google_calendar_service.dart';
 
 /// TrialSessionService
 ///
@@ -175,11 +176,12 @@ class TrialSessionService {
       // Get student name for notification
       final studentProfile = await _supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, avatar_url')
           .eq('id', userId)
           .maybeSingle();
 
       final studentName = studentProfile?['full_name'] as String? ?? 'Student';
+      final studentAvatarUrl = studentProfile?['avatar_url'] as String?;
 
       // Send notification to tutor
       try {
@@ -191,6 +193,7 @@ class TrialSessionService {
           subject: subject,
           scheduledDate: scheduledDate,
           scheduledTime: scheduledTime,
+          senderAvatarUrl: studentAvatarUrl,
         );
       } catch (e) {
         print('⚠️ Failed to send trial request notification: $e');
@@ -223,7 +226,7 @@ class TrialSessionService {
 
       var query = _supabase
           .from('trial_sessions')
-          .select()
+          .select() // Select all fields including payment_status
           .eq('requester_id', userId);
 
       if (status != null && status != 'all') {
@@ -231,9 +234,20 @@ class TrialSessionService {
       }
 
       final response = await query.order('created_at', ascending: false);
-      return (response as List)
-          .map((json) => TrialSession.fromJson(json))
+      final trials = (response as List)
+          .map((json) {
+            // Debug: Log payment_status from DB
+            print('🔍 DB payment_status for ${json['id']}: ${json['payment_status']}');
+            return TrialSession.fromJson(json);
+          })
           .toList();
+      
+      // Debug: Log after mapping
+      for (var trial in trials) {
+        print('🔍 Mapped trial ${trial.id}: paymentStatus=${trial.paymentStatus}');
+      }
+      
+      return trials;
     } catch (e) {
       throw Exception('Failed to fetch trial sessions: $e');
     }
@@ -403,13 +417,9 @@ class TrialSessionService {
   }) async {
     try {
       // Get trial session details
-      final session = await _supabase
-          .from('trial_sessions')
-          .select(
-            'status, tutor_id, learner_id, parent_id, requester_id, subject, scheduled_date, scheduled_time, payment_status',
-          )
-          .eq('id', sessionId)
-          .maybeSingle();
+      final session = await _supabase.from('trial_sessions').select(
+        'status, tutor_id, learner_id, parent_id, requester_id, subject, scheduled_date, scheduled_time, payment_status, calendar_event_id',
+      ).eq('id', sessionId).maybeSingle();
 
       if (session == null) {
         throw Exception('Trial session not found');
@@ -472,6 +482,17 @@ class TrialSessionService {
       } catch (e) {
         print('⚠️ Failed to send cancellation notification to tutor: $e');
         // Don't fail cancellation if notification fails
+      }
+
+      // Cancel calendar event if one exists
+      final calendarEventId = session['calendar_event_id'] as String?;
+      if (calendarEventId != null && calendarEventId.isNotEmpty) {
+        try {
+          await GoogleCalendarService.cancelEvent(calendarEventId);
+          print('✅ Calendar event cancelled for trial: $sessionId');
+        } catch (e) {
+          print('⚠️ Failed to cancel calendar event for trial $sessionId: $e');
+        }
       }
 
       print('✅ Trial session cancelled: $sessionId');
@@ -597,10 +618,18 @@ class TrialSessionService {
   static Future<String> initiatePayment({
     required String sessionId,
     required String phoneNumber,
+    TrialSession? trialSession, // Optional: pass if already available to avoid fetch
   }) async {
     try {
-      // Get trial session
-      final trial = await getTrialSessionById(sessionId);
+      // Get trial session (use provided or fetch)
+      final trial = trialSession ?? await getTrialSessionById(sessionId);
+
+      // Guard: only allow payment after tutor has approved the trial
+      if (trial.status != 'approved' && trial.status != 'scheduled') {
+        throw Exception(
+          'You can only pay after the tutor has approved the trial session.',
+        );
+      }
 
       if (trial.paymentStatus == 'paid') {
         throw Exception('Payment already completed');
@@ -640,7 +669,10 @@ class TrialSessionService {
   /// Parameters:
   /// - [sessionId]: Trial session ID
   /// - [transactionId]: Fapshi transaction ID
-  static Future<void> completePaymentAndGenerateMeet({
+  /// Returns:
+  /// - `true` if a Meet link was created and calendar setup succeeded
+  /// - `false` if payment was saved but Meet/Calendar setup failed (session is still created)
+  static Future<bool> completePaymentAndGenerateMeet({
     required String sessionId,
     required String transactionId,
   }) async {
@@ -659,55 +691,130 @@ class TrialSessionService {
       final scheduledDate = trial.scheduledDate;
       final scheduledTime = trial.scheduledTime;
 
-      // Generate Meet link
-      await MeetService.generateTrialMeetLink(
-        trialSessionId: sessionId,
-        tutorId: trial.tutorId,
-        studentId: trial.learnerId,
-        scheduledDate: scheduledDate,
-        scheduledTime: scheduledTime,
-        durationMinutes: trial.durationMinutes,
-      );
+      // Try to generate Meet link via Google Calendar (best effort).
+      // Even if this fails (e.g. calendar not connected), we still
+      // create the session so the learner can see it in "My Sessions".
+      String? meetLink;
+      var calendarOk = true;
+      try {
+        meetLink = await MeetService.generateTrialMeetLink(
+          trialSessionId: sessionId,
+          tutorId: trial.tutorId,
+          studentId: trial.learnerId,
+          scheduledDate: scheduledDate,
+          scheduledTime: scheduledTime,
+          durationMinutes: trial.durationMinutes,
+        );
+      } catch (e) {
+        calendarOk = false;
+        meetLink = null;
+        print(
+          '⚠️ Failed to generate Meet link for trial $sessionId (payment already saved): $e',
+        );
+      }
+
+      // Update trial_sessions with meet_link (even if null, so it's accessible)
+      await _supabase
+          .from('trial_sessions')
+          .update({'meet_link': meetLink})
+          .eq('id', sessionId);
+
+      // Create an individual session instance so trial appears in upcoming sessions
+      try {
+        await _supabase.from('individual_sessions').insert({
+          'recurring_session_id': null,
+          'tutor_id': trial.tutorId,
+          'learner_id': trial.learnerId,
+          'parent_id': trial.parentId,
+          'status': 'scheduled',
+          'scheduled_date':
+              scheduledDate?.toIso8601String().split('T')[0] ??
+                  trial.scheduledDate.toIso8601String().split('T')[0],
+          'scheduled_time': scheduledTime,
+          'subject': trial.subject,
+          'duration_minutes': trial.durationMinutes,
+          'location': trial.location,
+          'meeting_link': meetLink,
+          'address': null,
+          'location_description': null,
+        });
+      } catch (e) {
+        print(
+          '⚠️ Error creating individual session for trial (will still keep trial record): $e',
+        );
+      }
 
       // Send notification to student and tutor
+      final studentMessage = calendarOk
+          ? 'Your trial session payment has been confirmed. Meet link is now available.'
+          : 'Your trial session payment has been confirmed. Your lesson will appear under "My Sessions". '
+              'You can still join from there even if Google Calendar is not connected.';
+
+      final tutorMessage = calendarOk
+          ? 'Student has completed payment for the trial session. Meet link generated.'
+          : 'Student has completed payment for the trial session. The session is saved, but Google Calendar is not connected.';
+
       await NotificationService.createNotification(
         userId: trial.learnerId,
         type: 'trial_payment_completed',
         title: 'Payment Successful',
-        message:
-            'Your trial session payment has been confirmed. Meet link is now available.',
+        message: studentMessage,
       );
 
       await NotificationService.createNotification(
         userId: trial.tutorId,
         type: 'trial_payment_completed',
         title: 'Trial Payment Received',
-        message:
-            'Student has completed payment for trial session. Meet link generated.',
+        message: tutorMessage,
       );
 
       print(
-        '✅ Payment completed and Meet link generated for trial: $sessionId',
+        '✅ Payment completed for trial: $sessionId (calendarOk=$calendarOk)',
       );
+
+      return calendarOk;
     } catch (e) {
       print('❌ Error completing payment: $e');
       rethrow;
     }
   }
 
-  /// Get single trial session by ID
+  /// Get single trial session by ID with retry logic
   static Future<TrialSession> getTrialSessionById(String sessionId) async {
-    try {
-      final response = await _supabase
-          .from('trial_sessions')
-          .select()
-          .eq('id', sessionId)
-          .single();
+    int maxRetries = 3;
+    int retryDelay = 1000; // milliseconds
+    
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        final response = await _supabase
+            .from('trial_sessions')
+            .select()
+            .eq('id', sessionId)
+            .single();
 
-      return TrialSession.fromJson(response);
-    } catch (e) {
-      throw Exception('Failed to fetch trial session: $e');
+        return TrialSession.fromJson(response);
+      } catch (e) {
+        // Check if it's a network error
+        final errorString = e.toString().toLowerCase();
+        final isNetworkError = errorString.contains('failed to fetch') ||
+            errorString.contains('clientexception') ||
+            errorString.contains('network') ||
+            errorString.contains('connection');
+        
+        if (isNetworkError && attempt < maxRetries) {
+          print('⚠️ Network error fetching trial session (attempt $attempt/$maxRetries), retrying...');
+          await Future.delayed(Duration(milliseconds: retryDelay * attempt));
+          continue;
+        }
+        
+        // If it's the last attempt or not a network error, throw
+        print('❌ Failed to fetch trial session after $attempt attempts: $e');
+        throw Exception('Failed to fetch trial session: ${e.toString()}');
+      }
     }
+    
+    // Should never reach here, but just in case
+    throw Exception('Failed to fetch trial session after $maxRetries attempts');
   }
 
   /// Get upcoming trial sessions (for dashboard)

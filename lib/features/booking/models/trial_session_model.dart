@@ -30,6 +30,7 @@ class TrialSession {
   final double trialFee;
   final String paymentStatus; // unpaid, paid, refunded
   final String? paymentId;
+  final String? meetLink;
 
   // Outcome
   final bool convertedToRecurring;
@@ -60,6 +61,7 @@ class TrialSession {
     required this.trialFee,
     this.paymentStatus = 'unpaid',
     this.paymentId,
+    this.meetLink,
     this.convertedToRecurring = false,
     this.recurringSessionId,
     required this.createdAt,
@@ -89,6 +91,7 @@ class TrialSession {
       trialFee: (json['trial_fee'] as num).toDouble(),
       paymentStatus: json['payment_status'] as String? ?? 'unpaid',
       paymentId: json['payment_id'] as String?,
+      meetLink: json['meet_link'] as String?,
       convertedToRecurring: json['converted_to_recurring'] as bool? ?? false,
       recurringSessionId: json['recurring_session_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -123,6 +126,7 @@ class TrialSession {
       'trial_fee': trialFee,
       'payment_status': paymentStatus,
       'payment_id': paymentId,
+      'meet_link': meetLink,
       'converted_to_recurring': convertedToRecurring,
       'recurring_session_id': recurringSessionId,
       'created_at': createdAt.toIso8601String(),
@@ -200,6 +204,7 @@ class TrialSession {
     double? trialFee,
     String? paymentStatus,
     String? paymentId,
+    String? meetLink,
     bool? convertedToRecurring,
     String? recurringSessionId,
     DateTime? createdAt,
@@ -226,6 +231,7 @@ class TrialSession {
       trialFee: trialFee ?? this.trialFee,
       paymentStatus: paymentStatus ?? this.paymentStatus,
       paymentId: paymentId ?? this.paymentId,
+      meetLink: meetLink ?? this.meetLink,
       convertedToRecurring: convertedToRecurring ?? this.convertedToRecurring,
       recurringSessionId: recurringSessionId ?? this.recurringSessionId,
       createdAt: createdAt ?? this.createdAt,

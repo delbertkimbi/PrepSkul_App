@@ -161,6 +161,7 @@ class NotificationHelperService {
     required String requestId,
     required String studentName,
     required String subject,
+    String? senderAvatarUrl,
   }) async {
     await _sendNotificationViaAPI(
       userId: tutorId,
@@ -176,6 +177,8 @@ class NotificationHelperService {
         'student_id': studentId,
         'student_name': studentName,
         'subject': subject,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
       },
       sendEmail: true,
     );
@@ -191,6 +194,7 @@ class NotificationHelperService {
     required String tutorName,
     required String subject,
     String? paymentRequestId, // Payment request ID (created on approval)
+    String? senderAvatarUrl,
   }) async {
     // Action URL: Navigate to payment if payment request exists, otherwise to booking details
     final actionUrl = paymentRequestId != null
@@ -220,6 +224,8 @@ class NotificationHelperService {
         'tutor_name': tutorName,
         'subject': subject,
         if (paymentRequestId != null) 'payment_request_id': paymentRequestId,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
       sendEmail: true,
     );
@@ -232,6 +238,7 @@ class NotificationHelperService {
     required String requestId,
     required String tutorName,
     String? rejectionReason,
+    String? senderAvatarUrl,
   }) async {
     final message = rejectionReason != null
         ? '$tutorName has declined your booking request. Reason: $rejectionReason'
@@ -251,6 +258,8 @@ class NotificationHelperService {
         'tutor_id': tutorId,
         'tutor_name': tutorName,
         'rejection_reason': rejectionReason,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
       sendEmail: true,
     );
@@ -269,6 +278,7 @@ class NotificationHelperService {
     required String subject,
     required DateTime scheduledDate,
     required String scheduledTime,
+    String? senderAvatarUrl,
   }) async {
     await _sendNotificationViaAPI(
       userId: tutorId,
@@ -286,6 +296,8 @@ class NotificationHelperService {
         'subject': subject,
         'scheduled_date': scheduledDate.toIso8601String(),
         'scheduled_time': scheduledTime,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
       },
       sendEmail: true,
     );
@@ -300,6 +312,7 @@ class NotificationHelperService {
     required String subject,
     required DateTime scheduledDate,
     required String scheduledTime,
+    String? senderAvatarUrl,
   }) async {
     await _sendNotificationViaAPI(
       userId: studentId,
@@ -317,6 +330,8 @@ class NotificationHelperService {
         'subject': subject,
         'scheduled_date': scheduledDate.toIso8601String(),
         'scheduled_time': scheduledTime,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
       sendEmail: true,
     );
@@ -329,6 +344,7 @@ class NotificationHelperService {
     required String trialId,
     required String tutorName,
     String? rejectionReason,
+    String? senderAvatarUrl,
   }) async {
     final message = rejectionReason != null
         ? '$tutorName has declined your trial session request. Reason: $rejectionReason'
@@ -348,6 +364,8 @@ class NotificationHelperService {
         'tutor_id': tutorId,
         'tutor_name': tutorName,
         'rejection_reason': rejectionReason,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
       sendEmail: true,
     );

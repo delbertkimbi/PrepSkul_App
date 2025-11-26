@@ -20,6 +20,7 @@ class BookingReview extends StatefulWidget {
   final Map<String, String> selectedTimes;
   final String location;
   final String? address;
+  final String? locationDescription;
   final String? initialPaymentPlan;
   final Function(String paymentPlan) onPaymentPlanSelected;
 
@@ -31,6 +32,7 @@ class BookingReview extends StatefulWidget {
     required this.selectedTimes,
     required this.location,
     this.address,
+    this.locationDescription,
     this.initialPaymentPlan,
     required this.onPaymentPlanSelected,
   }) : super(key: key);
@@ -150,6 +152,10 @@ class _BookingReviewState extends State<BookingReview> {
               if (widget.address != null) ...[
                 const SizedBox(height: 12),
                 _buildDetailRow('Address', widget.address!),
+              ],
+              if (widget.locationDescription != null && widget.locationDescription!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildDetailRow('Description', widget.locationDescription!),
               ],
             ],
           ),

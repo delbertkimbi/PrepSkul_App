@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// Notification Item Widget
 /// 
@@ -92,6 +93,11 @@ class NotificationItem extends StatelessWidget {
     final priority = notification['priority'] as String? ?? 'normal';
     final actionText = notification['action_text'] as String?;
 
+    // Extract metadata for avatar
+    final metadata = notification['metadata'] as Map<String, dynamic>?;
+    final senderAvatarUrl = metadata?['sender_avatar_url'] as String?;
+    final senderInitials = metadata?['sender_initials'] as String?;
+
     return Dismissible(
       key: Key(notification['id'] as String),
       direction: DismissDirection.endToStart,
@@ -138,25 +144,77 @@ class NotificationItem extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icon with LinkedIn-style styling
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _getPriorityColor(priority).withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: _getPriorityColor(priority).withOpacity(0.1),
-                    width: 1,
+              // Icon or Avatar
+              if (senderAvatarUrl != null || senderInitials != null)
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _getPriorityColor(priority).withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: senderAvatarUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: senderAvatarUrl,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: _getPriorityColor(priority).withOpacity(0.08),
+                              child: Center(
+                                child: Text(
+                                  senderInitials ?? icon,
+                                  style: const TextStyle(fontSize: 18),
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: _getPriorityColor(priority).withOpacity(0.08),
+                              child: Center(
+                                child: Text(
+                                  senderInitials ?? icon,
+                                  style: const TextStyle(fontSize: 18),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            color: _getPriorityColor(priority).withOpacity(0.08),
+                            child: Center(
+                              child: Text(
+                                senderInitials ?? icon,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: _getPriorityColor(priority),
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                )
+              else
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: _getPriorityColor(priority).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: _getPriorityColor(priority).withOpacity(0.1),
+                      width: 1,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      icon,
+                      style: const TextStyle(fontSize: 20),
+                    ),
                   ),
                 ),
-                child: Center(
-                  child: Text(
-                    icon,
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
               const SizedBox(width: 12),
 
               // Content
@@ -244,4 +302,3 @@ class NotificationItem extends StatelessWidget {
     );
   }
 }
-

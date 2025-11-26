@@ -25,7 +25,7 @@ class BookingService {
       // Get user profile for denormalized data
       final userProfile = await SupabaseService.client
           .from('profiles')
-          .select('full_name, user_type')
+          .select('full_name, user_type, avatar_url')
           .eq('id', userId)
           .single();
 
@@ -98,13 +98,6 @@ class BookingService {
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
       };
 
-      // Log request data for debugging (excluding sensitive info)
-      print('📝 Creating booking request with student_type: "$studentType"');
-      print('📝 Request data keys: ${requestData.keys.join(", ")}');
-      print(
-        '📝 student_type value: "${requestData['student_type']}" (type: ${requestData['student_type'].runtimeType})',
-      );
-
       // Insert into booking_requests table
       try {
         final response = await SupabaseService.client
@@ -115,6 +108,7 @@ class BookingService {
 
         final requestId = response['id'] as String;
         final studentName = userProfile['full_name'] as String? ?? 'Student';
+        final studentAvatarUrl = userProfile['avatar_url'] as String?;
         final subject =
             'Tutoring Sessions'; // Could be extracted from request if available
 
@@ -128,6 +122,7 @@ class BookingService {
             requestId: requestId,
             studentName: studentName,
             subject: subject,
+            senderAvatarUrl: studentAvatarUrl,
           );
         } catch (e) {
           print('⚠️ Failed to send booking request notification: $e');
@@ -135,9 +130,6 @@ class BookingService {
         }
       } catch (e) {
         print('❌ Error inserting booking request: $e');
-        print(
-          '❌ Request data that failed: student_type="${requestData['student_type']}"',
-        );
         rethrow;
       }
     } catch (e) {
@@ -146,7 +138,7 @@ class BookingService {
     }
   }
 
-  /// Get all booking requests for a tutor
+  /// Get all booking requests for a tutor (including Trial Sessions)
   static Future<List<BookingRequest>> getTutorBookingRequests({
     String? status,
   }) async {
@@ -156,120 +148,71 @@ class BookingService {
         throw Exception('User not authenticated');
       }
 
-      print('🔍 Fetching booking requests for tutor: $userId');
-      print('🔍 Filter status: ${status ?? "all"}');
+      print('🔍 Fetching all requests for tutor: $userId');
 
-      // Try both table names (booking_requests and session_requests)
-      // Some databases might have one or the other
-      var query = SupabaseService.client
+      // 1. Fetch Recurring Booking Requests
+      var bookingQuery = SupabaseService.client
           .from('booking_requests')
           .select('*')
           .eq('tutor_id', userId);
 
       if (status != null && status != 'all') {
-        query = query.eq('status', status);
+        bookingQuery = bookingQuery.eq('status', status);
       }
 
-      List responseList;
+      final bookingResponse = await bookingQuery.order('created_at', ascending: false);
+      final bookingList = (bookingResponse as List).map((json) {
+        try {
+          return BookingRequest.fromJson(json);
+        } catch (e) {
+          print('Error parsing booking request: $e');
+          return null;
+        }
+      }).whereType<BookingRequest>().toList();
+
+      // 2. Fetch Trial Sessions
+      List<BookingRequest> trialList = [];
       try {
-        final response = await query.order('created_at', ascending: false);
-        responseList = response as List;
-        print('✅ Query successful on booking_requests table');
-      } catch (tableError) {
-        // If booking_requests doesn't exist, try session_requests
-        print('⚠️ booking_requests table error: $tableError');
-        print('🔄 Trying session_requests table instead...');
-        try {
-          var fallbackQuery = SupabaseService.client
-              .from('session_requests')
-              .select('*')
-              .eq('tutor_id', userId);
+        var trialQuery = SupabaseService.client
+            .from('trial_sessions')
+            // Use learner_id for the join relation as there is no student_id column
+            // Also fetch email so we always have a meaningful identifier
+            .select(
+              '*, student:profiles!learner_id(full_name, avatar_url, user_type, email)',
+            )
+            .eq('tutor_id', userId);
+
           if (status != null && status != 'all') {
-            fallbackQuery = fallbackQuery.eq('status', status);
-          }
-          final fallbackResponse = await fallbackQuery.order(
-            'created_at',
-            ascending: false,
-          );
-          responseList = fallbackResponse as List;
-          print('✅ Found requests in session_requests table');
-        } catch (fallbackError) {
-          print(
-            '❌ Both booking_requests and session_requests failed: $fallbackError',
-          );
-          rethrow;
+          // If filtering for pending, we should also include 'pending_payment' if that's a valid status for tutor action
+          // But sticking to 'pending' for now as that's likely what the tutor needs to approve
+          trialQuery = trialQuery.eq('status', status);
         }
-      }
 
-      print('📊 Raw response type: ${responseList.runtimeType}');
-      print('📊 Response length: ${responseList.length}');
-
-      if (responseList.isEmpty) {
-        print('⚠️ No booking requests found for tutor: $userId');
-        // Let's also check if there are any requests at all in the table
-        try {
-          final allRequestsCheck = await SupabaseService.client
-              .from('booking_requests')
-              .select('id, tutor_id, status')
-              .limit(5);
-          print(
-            '🔍 Sample booking requests in DB: ${allRequestsCheck.length} total (showing first 5)',
-          );
-          if (allRequestsCheck.isNotEmpty) {
-            print(
-              '🔍 Sample tutor_ids in DB: ${allRequestsCheck.map((r) => r['tutor_id']).toList()}',
-            );
-            print('🔍 Current tutor user_id: $userId');
-          }
-        } catch (checkError) {
-          // Try session_requests
+        final trialResponse = await trialQuery.order('created_at', ascending: false);
+        trialList = (trialResponse as List).map((json) {
           try {
-            final allRequestsCheck = await SupabaseService.client
-                .from('session_requests')
-                .select('id, tutor_id, status')
-                .limit(5);
-            print(
-              '🔍 Sample session_requests in DB: ${allRequestsCheck.length} total (showing first 5)',
-            );
-            if (allRequestsCheck.isNotEmpty) {
-              print(
-                '🔍 Sample tutor_ids in DB: ${allRequestsCheck.map((r) => r['tutor_id']).toList()}',
-              );
-              print('🔍 Current tutor user_id: $userId');
-            }
-          } catch (fallbackCheckError) {
-            print('⚠️ Could not check sample requests: $fallbackCheckError');
+            final studentProfile = json['student'] as Map<String, dynamic>? ?? {};
+            return BookingRequest.fromTrialSession(json, studentProfile, null);
+          } catch (e) {
+            print('Error parsing trial session: $e');
+            return null;
           }
-        }
-        return [];
+        }).whereType<BookingRequest>().toList();
+      } catch (e) {
+        print('❌ Error fetching trial sessions: $e');
+        // Continue with just booking list if trials fail
       }
 
-      print('✅ Found ${responseList.length} booking requests');
+      // 3. Merge and Sort
+      final allRequests = [...bookingList, ...trialList];
+      allRequests.sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Newest first
 
-      final requests = <BookingRequest>[];
-      for (var i = 0; i < responseList.length; i++) {
-        try {
-          final jsonData = responseList[i] as Map<String, dynamic>;
-          final request = BookingRequest.fromJson(jsonData);
-          requests.add(request);
-          print(
-            '✅ Parsed request ${i + 1}/${responseList.length}: ${request.id} - ${request.status}',
-          );
-        } catch (parseError) {
-          print('❌ Error parsing request ${i + 1}: $parseError');
-          print('❌ Request data: ${responseList[i]}');
-          // Continue parsing other requests even if one fails
-        }
-      }
+      print('✅ Found ${allRequests.length} total requests (${bookingList.length} recurring, ${trialList.length} trials)');
+      return allRequests;
 
-      print(
-        '✅ Successfully parsed ${requests.length}/${responseList.length} requests',
-      );
-      return requests;
     } catch (e) {
-      print('❌ Error fetching tutor booking requests: $e');
-      print('❌ Stack trace: ${StackTrace.current}');
-      rethrow;
+      print('❌ Error fetching tutor requests: $e');
+      return []; 
     }
   }
 
@@ -352,8 +295,7 @@ class BookingService {
 
       print('✅ Booking request approved: $requestId');
 
-      // PHASE 1.1: Create payment request when tutor approves
-      // This is the critical monetization feature
+      // Create payment request when tutor approves
       String? paymentRequestId;
       try {
         paymentRequestId =
@@ -365,26 +307,23 @@ class BookingService {
         );
       } catch (e) {
         print('⚠️ Failed to create payment request: $e');
-        // Don't fail the approval if payment request creation fails
-        // But log it as it's critical for monetization
       }
 
-      // Send notification to student (include payment request ID if created)
+      // Send notification to student
       try {
         final tutorName = request.tutorName;
-        final subject = 'Tutoring Sessions'; // Could be extracted if available
+        final subject = 'Tutoring Sessions';
         await NotificationHelperService.notifyBookingRequestAccepted(
           studentId: request.studentId,
           tutorId: request.tutorId,
           requestId: requestId,
           tutorName: tutorName,
           subject: subject,
-          paymentRequestId:
-              paymentRequestId, // Include payment request ID for auto-launch
+          paymentRequestId: paymentRequestId,
+          senderAvatarUrl: request.tutorAvatarUrl,
         );
       } catch (e) {
         print('⚠️ Failed to send booking acceptance notification: $e');
-        // Don't fail the approval if notification fails
       }
 
       return bookingRequest;
@@ -441,15 +380,162 @@ class BookingService {
           requestId: requestId,
           tutorName: tutorName,
           rejectionReason: reason,
+          senderAvatarUrl: request.tutorAvatarUrl,
         );
       } catch (e) {
         print('⚠️ Failed to send booking rejection notification: $e');
-        // Don't fail the rejection if notification fails
       }
 
       return bookingRequest;
     } catch (e) {
       print('❌ Error rejecting booking request: $e');
+      rethrow;
+    }
+  }
+
+  /// Approve a Trial Session
+  static Future<void> approveTrialRequest(String sessionId, {String? responseNotes}) async {
+    try {
+      print('Approving trial session: $sessionId');
+      
+      // 1. Update status
+      // NOTE: Column name in DB is `tutor_response_notes` (not `tutor_response`)
+      final updateData = {
+        'status': 'approved',
+        'responded_at': DateTime.now().toIso8601String(),
+        'tutor_response_notes': responseNotes,
+      };
+
+      // Update trial session without join (no FK relationship in DB)
+      final updatedSession = await SupabaseService.client
+          .from('trial_sessions')
+          .update(updateData)
+          .eq('id', sessionId)
+          .select()
+          .single();
+
+      print('✅ Trial session status updated to approved');
+
+      // Fetch student profile separately using learner_id
+      final learnerId = updatedSession['learner_id'] as String;
+      final studentProfile = await SupabaseService.client
+              .from('profiles')
+              .select('full_name, avatar_url, user_type')
+              .eq('id', learnerId)
+              .maybeSingle() as Map<String, dynamic>? ??
+          <String, dynamic>{};
+
+      // 2. Build a BookingRequest representation of this trial
+      final bookingRequest =
+          BookingRequest.fromTrialSession(updatedSession, studentProfile, null);
+
+      // 3. Create Payment Request (non‑blocking for notifications)
+      String? paymentRequestId;
+      try {
+        paymentRequestId =
+            await PaymentRequestService.createPaymentRequestOnApproval(
+          bookingRequest,
+        );
+        print('✅ Payment request created for trial: $paymentRequestId');
+      } catch (e) {
+        print('⚠️ Error creating payment request for trial: $e');
+        // We still want to notify the learner that the trial was approved
+      }
+
+      // 4. Notify Student (always attempt, even if payment request failed)
+      try {
+        // Fetch tutor profile for avatar + display name
+        final tutorId = SupabaseService.currentUser!.id;
+        final tutorProfile = await SupabaseService.client
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', tutorId)
+            .maybeSingle();
+
+        final tutorName = tutorProfile?['full_name'] as String? ?? 'Your Tutor';
+        final tutorAvatarUrl = tutorProfile?['avatar_url'] as String?;
+
+        // Reuse booking accepted notification so student can jump straight to payment
+        await NotificationHelperService.notifyBookingRequestAccepted(
+          studentId: bookingRequest.studentId,
+          tutorId: bookingRequest.tutorId,
+          requestId: sessionId,
+          tutorName: tutorName,
+          subject: 'Trial Session: ${bookingRequest.subject ?? "Tutoring"}',
+          paymentRequestId: paymentRequestId,
+          senderAvatarUrl: tutorAvatarUrl,
+        );
+      } catch (e) {
+        print('⚠️ Error sending approval notification for trial: $e');
+      }
+    } catch (e) {
+      print('❌ Error approving trial request: $e');
+      rethrow;
+    }
+  }
+
+  /// Reject a Trial Session
+  static Future<void> rejectTrialRequest(String sessionId, {required String reason}) async {
+    try {
+      print('Rejecting trial session: $sessionId');
+      
+      final updateData = {
+        'status': 'rejected',
+        'responded_at': DateTime.now().toIso8601String(),
+        'rejection_reason': reason,
+      };
+
+      // Update trial session without join (no FK relationship in DB)
+      final updatedSession = await SupabaseService.client
+          .from('trial_sessions')
+          .update(updateData)
+          .eq('id', sessionId)
+          .select()
+          .single();
+
+      print('✅ Trial session rejected');
+
+      // Fetch student profile separately using learner_id
+      final learnerId = updatedSession['learner_id'] as String;
+      final studentProfile = await SupabaseService.client
+          .from('profiles')
+          .select('full_name, avatar_url, user_type')
+          .eq('id', learnerId)
+          .maybeSingle() as Map<String, dynamic>? ??
+          <String, dynamic>{};
+
+      // Notify Student
+      try {
+        final bookingRequest = BookingRequest.fromTrialSession(
+          updatedSession, 
+          studentProfile, 
+          null
+        );
+        
+        // Fetch tutor profile for avatar
+        final tutorId = SupabaseService.currentUser!.id;
+        final tutorProfile = await SupabaseService.client
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', tutorId)
+            .maybeSingle();
+        
+        final tutorName = tutorProfile?['full_name'] as String? ?? 'Your Tutor';
+        final tutorAvatarUrl = tutorProfile?['avatar_url'] as String?;
+        
+        await NotificationHelperService.notifyBookingRequestRejected(
+          studentId: bookingRequest.studentId,
+          tutorId: bookingRequest.tutorId,
+          requestId: sessionId,
+          tutorName: tutorName,
+          rejectionReason: reason,
+          senderAvatarUrl: tutorAvatarUrl,
+        );
+      } catch (e) {
+        print('⚠️ Error sending rejection notification: $e');
+      }
+    } catch (e) {
+      print('❌ Error rejecting trial request: $e');
       rethrow;
     }
   }

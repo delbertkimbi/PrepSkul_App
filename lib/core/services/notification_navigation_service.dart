@@ -11,6 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -62,6 +65,17 @@ class NotificationNavigationService {
         await _navigateToBooking(pathSegments, userType);
       } else if (pathSegments[0] == 'trial-sessions') {
         await _navigateToTrialSession(pathSegments, userType);
+      } else if (pathSegments[0] == 'trials') {
+        // New trial routes: /trials/{id} or /trials/{id}/payment
+        if (pathSegments.length >= 3 && pathSegments[2] == 'payment') {
+          final trialId = pathSegments[1];
+          await _navigateToTrialPayment(trialId, userType);
+        } else {
+          await _navigateToTrialSession(
+            ['trial-sessions', ...pathSegments.sublist(1)],
+            userType,
+          );
+        }
       } else if (pathSegments[0] == 'profile') {
         await _navigateToProfile(userType: userType);
       } else if (pathSegments[0] == 'tutor') {
@@ -154,6 +168,37 @@ class NotificationNavigationService {
       arguments: {'initialTab': tab, 'trialId': trialId},
       replace: false,
     );
+  }
+
+  /// Navigate directly to trial payment screen
+  static Future<void> _navigateToTrialPayment(
+    String trialId,
+    String? userType,
+  ) async {
+    final navService = NavigationService();
+
+    try {
+      // Load trial session to pass into payment screen
+      final TrialSession trial =
+          await TrialSessionService.getTrialSessionById(trialId);
+
+      final context = navService.context;
+      if (context == null) {
+        print('⚠️ [NOTIF_NAV] No context for trial payment navigation, queuing link');
+        navService.queueDeepLink(Uri(path: '/trials/$trialId/payment'));
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TrialPaymentScreen(trialSession: trial),
+        ),
+      );
+    } catch (e) {
+      print('❌ [NOTIF_NAV] Error navigating to trial payment: $e');
+      // Fallback: navigate to trial sessions / requests tab
+      await _navigateToTrialSession(['trial-sessions', trialId], userType);
+    }
   }
 
   /// Navigate to profile

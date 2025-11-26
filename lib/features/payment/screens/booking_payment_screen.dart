@@ -6,6 +6,8 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
+import 'package:prepskul/core/utils/error_handler.dart';
+
 
 /// Booking Payment Screen
 /// 
@@ -71,7 +73,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Failed to load payment request: $e';
+          _errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         });
       }
     }
@@ -146,8 +148,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       // Start polling for payment status
       _pollPaymentStatus(paymentResponse.transId);
     } catch (e) {
+      final friendlyMessage = ErrorHandler.getUserFriendlyMessage(e);
       setState(() {
-        _errorMessage = 'Failed to initiate payment: $e';
+        _errorMessage = friendlyMessage;
         _isProcessing = false;
         _paymentStatus = 'failed';
       });

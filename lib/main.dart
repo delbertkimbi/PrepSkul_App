@@ -1297,7 +1297,7 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Stack(
           children: [
             // Main content with animated logo
-            Center(child: _SplashContent(tagline: l10n.tagline)),
+            Center(child: _SplashContent(tagline: l10n?.tagline ?? "")),
 
             // Language switcher in top right
             Positioned(top: 20, right: 20, child: const LanguageSwitcher()),

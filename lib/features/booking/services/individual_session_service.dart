@@ -60,14 +60,11 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
-      var query = _supabase
-          .from('individual_sessions')
-          .select('''
+      var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions!inner(
               student_name,
-              student_avatar_url,
-              subject
+              student_avatar_url
             )
           ''')
           .eq('tutor_id', userId)
@@ -140,14 +137,11 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
-      var query = _supabase
-          .from('individual_sessions')
-          .select('''
+      var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions!inner(
               tutor_name,
-              tutor_avatar_url,
-              subject
+              tutor_avatar_url
             )
           ''')
           .or('learner_id.eq.$userId,parent_id.eq.$userId')
@@ -180,14 +174,11 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = beforeDate ?? now;
 
-      var query = _supabase
-          .from('individual_sessions')
-          .select('''
+      var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions!inner(
               tutor_name,
-              tutor_avatar_url,
-              subject
+              tutor_avatar_url
             )
           ''')
           .or('learner_id.eq.$userId,parent_id.eq.$userId')

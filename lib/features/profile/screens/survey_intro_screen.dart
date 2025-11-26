@@ -239,14 +239,14 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
   Widget _buildBenefitsList(bool isParent) {
     final benefits = isParent
         ? [
-            '🎯 Personalized tutor matching',
-            '⚡ Faster booking with pre-filled preferences',
-            '📚 Better learning outcomes',
+            'Personalized tutor matching',
+            'Faster booking with pre-filled preferences',
+            'Better learning outcomes',
           ]
         : [
-            '🎯 Personalized tutor matching',
-            '⚡ Faster booking with pre-filled preferences',
-            '📈 Track your learning progress',
+            'Personalized tutor matching',
+            'Faster booking with pre-filled preferences',
+            'Track your learning progress',
           ];
 
     return Column(

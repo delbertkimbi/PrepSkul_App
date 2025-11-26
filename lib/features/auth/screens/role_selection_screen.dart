@@ -86,7 +86,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
                       children: [
-                        const SizedBox(height: 40),
+                        const SizedBox(height: 50),
                         
                         _buildRoleCard(
                           title: 'Student',
@@ -327,4 +327,10 @@ class WaveClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
+
+
+
+
+
+
 

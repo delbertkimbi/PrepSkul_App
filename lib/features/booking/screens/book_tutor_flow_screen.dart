@@ -233,7 +233,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         times: _selectedTimes,
         location: _selectedLocation!,
         address: _onsiteAddress,
-        locationDescription: _locationDescription,
+            locationDescription: _locationDescription,
         paymentPlan: _selectedPaymentPlan!,
         monthlyTotal: monthlyTotal,
       );
@@ -500,6 +500,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             selectedTimes: _selectedTimes,
             location: _selectedLocation ?? 'online',
             address: _onsiteAddress,
+            locationDescription: _locationDescription,
             initialPaymentPlan: _selectedPaymentPlan,
             onPaymentPlanSelected: (plan) {
               setState(() => _selectedPaymentPlan = plan);

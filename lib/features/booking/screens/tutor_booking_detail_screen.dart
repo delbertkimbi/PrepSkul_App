@@ -6,6 +6,8 @@ import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
+
 
 /// Tutor Booking Detail Screen
 ///
@@ -45,16 +47,30 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
 
     try {
       // Approve the request
-      await BookingService.approveBookingRequest(
+      final approvedRequest = await BookingService.approveBookingRequest(
         widget.request.id,
         responseNotes: _responseNotesController.text.trim().isNotEmpty
             ? _responseNotesController.text.trim()
             : null,
       );
 
+      // Get payment request ID (created during approval)
+      String? paymentRequestId;
+      try {
+        paymentRequestId = await PaymentRequestService.getPaymentRequestIdByBookingRequestId(
+          widget.request.id,
+        );
+        if (paymentRequestId != null) {
+          print('✅ Found payment request ID: $paymentRequestId');
+        }
+      } catch (e) {
+        print('⚠️ Failed to get payment request ID: $e');
+      }
+
       // Create recurring session from approved booking
       await RecurringSessionService.createRecurringSessionFromBooking(
-        widget.request,
+        approvedRequest,
+        paymentRequestId: paymentRequestId,
       );
 
       // Send notification to student

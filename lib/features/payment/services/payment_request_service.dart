@@ -280,5 +280,52 @@ class PaymentRequestService {
       rethrow;
     }
   }
-}
+  /// Link payment request to recurring session
+  /// 
+  /// Called after recurring session is created to link the payment request
+  static Future<void> linkPaymentRequestToRecurringSession(
+    String paymentRequestId,
+    String recurringSessionId,
+  ) async {
+    try {
+      await SupabaseService.client
+          .from('payment_requests')
+          .update({
+            'recurring_session_id': recurringSessionId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', paymentRequestId);
 
+      print('✅ Payment request linked to recurring session: '
+          '$paymentRequestId -> $recurringSessionId');
+    } catch (e) {
+      print('❌ Error linking payment request to recurring session: $e');
+      rethrow;
+    }
+  }
+
+  /// Get payment request by booking request ID
+  /// 
+  /// Returns the payment request created for a specific booking request
+  static Future<String?> getPaymentRequestIdByBookingRequestId(
+    String bookingRequestId,
+  ) async {
+    try {
+      final response = await SupabaseService.client
+          .from('payment_requests')
+          .select('id')
+          .eq('booking_request_id', bookingRequestId)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (response != null) {
+        return response['id'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error fetching payment request by booking request ID: $e');
+      return null;
+    }
+  }
+}

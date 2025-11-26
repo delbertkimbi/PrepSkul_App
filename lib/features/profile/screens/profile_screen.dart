@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,9 +8,12 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import 'edit_profile_screen.dart';
+import 'language_settings_screen.dart';
 import 'profile_preview_screen.dart';
 import '../../tutor/screens/tutor_onboarding_screen.dart';
 import '../../discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -252,6 +256,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         surveyData = null;
       }
 
+      if (!mounted) return;
+
       setState(() {
         _userInfo = {
           ...user,
@@ -268,6 +274,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e, stackTrace) {
       print('❌ Error loading profile: $e');
       print('❌ Stack trace: $stackTrace');
+      if (!mounted) return;
+
       setState(() {
         _isLoading = false;
         // Set safe defaults to prevent crashes
@@ -289,11 +297,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleLogout() async {
+    final t = AppLocalizations.of(context)!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Logout',
+          t.profileLogout,
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         content: Text(
@@ -308,7 +317,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('Logout', style: GoogleFonts.poppins()),
+            child: Text(t.profileLogout, style: GoogleFonts.poppins()),
           ),
         ],
       ),
@@ -324,6 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -331,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: AppTheme.primaryColor, // Deep blue
         elevation: 0,
         title: Text(
-          'Profile',
+          t.profileTitle,
           style: GoogleFonts.poppins(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -520,7 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: _buildNeumorphicSection(
-                        title: 'Learning Information',
+                        title: t.profileLearningInformation,
                         icon: Icons.school_outlined,
                         child: _buildLearningInfoSection(),
                       ),
@@ -532,14 +542,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: _buildNeumorphicSection(
-                      title: 'Settings',
+                      title: t.profileSettings,
                       icon: Icons.settings_outlined,
                       child: Column(
                         children: [
                           _buildNeumorphicSettingsItem(
                             icon: Icons.edit_outlined,
-                            title: 'Edit Profile',
-                            subtitle: 'Update your profile information',
+                            title: t.profileEditProfile,
+                            subtitle: t.profileEditProfileSubtitle,
                             onTap: () async {
                               final result = await Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -558,8 +568,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           if (widget.userType == 'tutor') ...[
                             _buildNeumorphicSettingsItem(
                               icon: Icons.school_outlined,
-                              title: 'Edit Tutor Info',
-                              subtitle: 'Update your teaching profile',
+                              title: t.profileEditTutorInfo,
+                              subtitle: t.profileEditTutorInfoSubtitle,
                               onTap: () async {
                                 final result = await Navigator.of(context).push(
                                   MaterialPageRoute(
@@ -576,8 +586,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 12),
                             _buildNeumorphicSettingsItem(
                               icon: Icons.visibility_outlined,
-                              title: 'Preview Profile',
-                              subtitle: 'See how others view your profile',
+                              title: t.profilePreviewProfile,
+                              subtitle: t.profilePreviewProfileSubtitle,
                               onTap: () {
                                 if (_tutorProfile != null) {
                                   // Merge basic info with tutor profile to ensure completeness
@@ -608,8 +618,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ],
                           _buildNeumorphicSettingsItem(
                             icon: Icons.notifications_outlined,
-                            title: 'Notifications',
-                            subtitle: 'Manage notification preferences',
+                            title: t.profileNotifications,
+                            subtitle: t.profileNotificationsSubtitle,
                             onTap: () {
                               Navigator.of(
                                 context,
@@ -619,17 +629,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
                             icon: Icons.language_outlined,
-                            title: 'Language',
-                            subtitle: 'Change app language',
+                            title: t.profileLanguage,
+                            subtitle: t.profileLanguageSubtitle,
                             onTap: () {
-                              // TODO: Navigate to language settings
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const LanguageSettingsScreen(),
+                                ),
+                              );
                             },
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
                             icon: Icons.help_outline,
-                            title: 'Help & Support',
-                            subtitle: 'Get help and contact support',
+                            title: t.profileHelpSupport,
+                            subtitle: t.profileHelpSupportSubtitle,
                             onTap: () {
                               // TODO: Navigate to help
                             },
@@ -674,7 +688,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Icon(Icons.logout, color: Colors.red, size: 20),
                             const SizedBox(width: 8),
                             Text(
-                              'Logout',
+                              t.profileLogout,
                               style: GoogleFonts.poppins(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -950,8 +964,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (goalsData is List) {
           learningGoals = goalsData;
         } else if (goalsData is String && goalsData.isNotEmpty) {
-          // Handle old data format (comma-separated string)
-          learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+          try {
+            // Try parsing as JSON first
+            final decoded = jsonDecode(goalsData);
+            if (decoded is List) {
+              learningGoals = decoded;
+            } else {
+              // Fallback to comma-separated if not a JSON list
+              learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+            }
+          } catch (e) {
+            // Fallback to comma-separated string if JSON parsing fails
+            learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+          }
         }
       }
 

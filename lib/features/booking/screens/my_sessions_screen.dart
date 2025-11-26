@@ -3,10 +3,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../services/individual_session_service.dart';
 import '../services/session_feedback_service.dart';
 import 'session_feedback_screen.dart';
+import '../../../core/localization/app_localizations.dart';
 
 /// My Sessions Screen
 ///
@@ -43,21 +46,67 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   Future<void> _loadSessions() async {
     setState(() => _isLoading = true);
     try {
-      final upcoming = await IndividualSessionService.getStudentUpcomingSessions(
-        limit: 50,
-      );
-      final past = await IndividualSessionService.getStudentPastSessions(
-        limit: 50,
-      );
+      List<Map<String, dynamic>> upcoming = [];
+      List<Map<String, dynamic>> past = [];
+
+      // 1. Fetch Individual Sessions (Normal recurring sessions)
+      try {
+        final indUpcoming = await IndividualSessionService.getStudentUpcomingSessions(limit: 50);
+        final indPast = await IndividualSessionService.getStudentPastSessions(limit: 50);
+        upcoming.addAll(indUpcoming);
+        past.addAll(indPast);
+      } catch (e) {
+        // Gracefully handle missing table or other errors
+        print('ℹ️ Could not load individual sessions (table might not exist yet): $e');
+      }
+
+      // 2. Fetch Trial Sessions (only those not yet converted to full sessions)
+      try {
+        final trialSessions = await TrialSessionService.getStudentTrialSessions();
+
+        for (final trial in trialSessions) {
+          final sessionMap = _convertTrialToSessionMap(trial);
+          if (sessionMap != null) {
+            // Classify as upcoming or past based on status and date
+            final status = sessionMap['status'];
+            final date = DateTime.parse(sessionMap['scheduled_date']);
+            final isPast = status == 'completed' || 
+                           status == 'cancelled' || 
+                           status == 'rejected' ||
+                           (date.isBefore(DateTime.now()) && status != 'scheduled');
+            
+            if (isPast) {
+              past.add(sessionMap);
+            } else {
+              upcoming.add(sessionMap);
+            }
+          }
+        }
+      } catch (e) {
+        print('⚠️ Error loading trial sessions: $e');
+      }
+
+      // Sort combined lists
+      upcoming.sort((a, b) {
+        final dateA = DateTime.parse(a['scheduled_date']);
+        final dateB = DateTime.parse(b['scheduled_date']);
+        return dateA.compareTo(dateB);
+      });
+      
+      past.sort((a, b) {
+        final dateA = DateTime.parse(a['scheduled_date']);
+        final dateB = DateTime.parse(b['scheduled_date']);
+        return dateB.compareTo(dateA); // Descending for past
+      });
 
       // Check feedback status for completed sessions
       for (final session in past) {
-        if (session['status'] == 'completed') {
+        if (session['status'] == 'completed' && session['type'] == 'individual') {
           final sessionId = session['id'] as String;
           final canSubmit = await SessionFeedbackService.canSubmitFeedback(
             sessionId,
           );
-          _feedbackSubmitted[sessionId] = !canSubmit; // If can't submit, feedback already submitted
+          _feedbackSubmitted[sessionId] = !canSubmit; 
         }
       }
 
@@ -69,15 +118,52 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     } catch (e) {
       print('❌ Error loading sessions: $e');
       setState(() => _isLoading = false);
+      // Only show error if we have absolutely nothing to show
+      if (_upcomingSessions.isEmpty && _pastSessions.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading sessions: $e'),
+              content: Text('Could not load sessions. Please try again later.'),
             backgroundColor: Colors.red,
           ),
         );
       }
     }
+    }
+  }
+
+  Map<String, dynamic>? _convertTrialToSessionMap(TrialSession trial) {
+    // Convert TrialSession object to the Map format used by _buildSessionCard
+    // Returns null if the trial shouldn't be shown (e.g., rejected/cancelled might be hidden if old?)
+    // For now, we show everything.
+    
+    // Skip pending/rejected trials if we want to keep the list clean? 
+    // Usually users want to see pending requests too.
+    
+    return {
+      'id': trial.id,
+      'status': trial.status,
+      'scheduled_date': trial.scheduledDate.toIso8601String(),
+      'scheduled_time': trial.scheduledTime,
+      'location': trial.location,
+      'duration_minutes': trial.durationMinutes,
+      'type': 'trial', // Mark as trial
+      // Simulate the nested structure expected by UI
+      'recurring_sessions': {
+        'tutor_name': 'Tutor', // We might need to fetch tutor name if not in TrialSession model
+        // Note: TrialSession model might not have tutor name directly if it's just ID.
+        // TrialSessionService.getStudentTrialSessions returns TrialSession objects.
+        // The TrialSession model has tutorId but maybe not name?
+        // We might need to fetch profiles or rely on what's available.
+        // Let's check TrialSession model properties.
+        // Assuming we can't easily get the name without a join, we'll use a placeholder or fetch it.
+        // For now, let's try to use what we have.
+        'subject': trial.subject,
+        'tutor_avatar_url': null, // Placeholder
+      },
+      // Add meeting link if available (generated after payment)
+      'meeting_link': trial.meetLink,
+    };
   }
 
   String _formatDateTime(String date, String time) {
@@ -110,7 +196,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       case 'scheduled':
         return 'Scheduled';
       case 'in_progress':
-        return 'In Progress';
+        return 'Session in Progress';
       case 'completed':
         return 'Completed';
       case 'cancelled':
@@ -165,10 +251,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session, bool isUpcoming) {
+    final isTrial = session['type'] == 'trial';
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-    final tutorName = recurringData?['tutor_name'] as String? ?? 'Tutor';
+    // For trial sessions, we might not have tutor name immediately if not joined.
+    // But TrialSessionService.getStudentTrialSessions does a simple select.
+    // We should ideally do a join there too.
+    final tutorName = recurringData?['tutor_name'] as String? ?? (isTrial ? 'Trial Tutor' : 'Tutor');
     final tutorAvatar = recurringData?['tutor_avatar_url'] as String?;
-    final subject = recurringData?['subject'] as String? ?? 'Session';
+    final subject = recurringData?['subject'] as String? ?? session['subject'] as String? ?? 'Session';
     final status = session['status'] as String;
     final scheduledDate = session['scheduled_date'] as String;
     final scheduledTime = session['scheduled_time'] as String;
@@ -195,6 +285,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Trial Badge
+              if (isTrial)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    'TRIAL SESSION',
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange[800],
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
               // Header: Tutor info and status
               Row(
                 children: [
@@ -259,6 +369,39 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
+              // Session in Progress indicator
+              if (status == 'in_progress') ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.accentGreen.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.play_circle_filled,
+                        color: AppTheme.accentGreen,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Session is currently in progress',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.accentGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               const SizedBox(height: 16),
               // Date and time
               Row(
@@ -294,7 +437,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 ],
               ),
               // Action buttons
-              if (isUpcoming && status == 'scheduled') ...[
+              if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -302,10 +445,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       Expanded(
                         child: ElevatedButton.icon(
                           onPressed: () => _joinMeeting(meetLink),
-                          icon: const Icon(Icons.video_call, size: 18),
-                          label: Text('Join Meeting', style: GoogleFonts.poppins(fontSize: 13)),
+                          icon: Icon(
+                            status == 'in_progress' ? Icons.video_call : Icons.video_call,
+                            size: 18,
+                          ),
+                          label: Text(
+                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
+                            backgroundColor: status == 'in_progress' 
+                                ? AppTheme.accentGreen 
+                                : AppTheme.primaryColor,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
@@ -496,13 +647,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'My Sessions',
+          t.mySessionsTitle,
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w600,
             fontSize: 20,
+            color: Colors.white,
           ),
         ),
         backgroundColor: AppTheme.primaryColor,

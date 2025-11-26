@@ -59,6 +59,14 @@ class NavigationService {
               .eq('id', user.id)
               .maybeSingle();
 
+          if (profile == null) {
+            print(
+              '⚠️ [NAV_SERVICE] Authenticated user has no profile - redirecting to role selection',
+            );
+            // If profile doesn't exist, sending to role selection will allow creating it
+            return NavigationResult('/role-selection');
+          }
+
           if (profile != null) {
             // Sync local session
             final prefs = await SharedPreferences.getInstance();
