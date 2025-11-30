@@ -80,5 +80,102 @@
   "commonPhone": "Téléphone",
   "commonAmount": "Montant",
   "commonScheduled": "Programmé",
-  "commonStatus": "Statut"
+  "commonStatus": "Statut",
+  "roleStudent": "ÉTUDIANT",
+  "roleParent": "PARENT",
+  "roleTutor": "TUTEUR",
+  "noPaymentRequestsFound": "Aucune demande de paiement trouvée",
+  "tutorNeedsToApprove": "Votre tuteur doit approuver cet essai avant que vous puissiez payer.",
+  "awaitingTutorApproval": "En attente d'approbation du tuteur",
+  "studentRequest": "DEMANDE D'ÉTUDIANT",
+  "parentRequest": "DEMANDE DE PARENT",
+  "goodMorning": "Bonjour 👋",
+  "goodAfternoon": "Bon après-midi 👋",
+  "goodEvening": "Bonsoir 👋",
+  "yourProgress": "Votre progression",
+  "activeTutors": "Tuteurs actifs",
+  "sessions": "Sessions",
+  "quickActions": "Actions rapides",
+  "findPerfectTutor": "Trouver le tuteur parfait",
+  "browseTutorsIn": "Parcourir les tuteurs à {location}",
+  "@browseTutorsIn": {
+    "placeholders": {
+      "location": {
+        "type": "String"
+      }
+    }
+  },
+  "myRequests": "Mes demandes",
+  "viewYourBookingRequests": "Voir vos demandes de réservation",
+  "mySessions": "Mes sessions",
+  "viewUpcomingAndCompletedSessions": "Voir les sessions à venir et terminées",
+  "paymentHistory": "Historique des paiements",
+  "viewAndManageYourPayments": "Voir et gérer vos paiements",
+  "searchPlaceholder": "Rechercher des tuteurs...",
+  "noResultsFound": "Aucun résultat trouvé",
+  "filterBySubject": "Filtrer par matière",
+  "filterByLocation": "Filtrer par lieu",
+  "filterByPrice": "Filtrer par prix",
+  "bookTrialSession": "Réserver une session d'essai",
+  "bookThisTutor": "Réserver ce tuteur",
+  "tutorProfile": "Profil du tuteur",
+  "about": "À propos",
+  "subjects": "Matières",
+  "pricing": "Tarification",
+  "reviews": "Avis",
+  "schedule": "Horaire",
+  "contact": "Contact",
+  "filterMonthlyPriceRange": "Gamme de prix mensuelle",
+  "filterMinimumRating": "Note minimale",
+  "filterAny": "Tout",
+  "filterUnder20k": "Moins de 20k/mois",
+  "filter20kTo30k": "20k - 30k/mois",
+  "filter30kTo40k": "30k - 40k/mois",
+  "filter40kTo50k": "40k - 50k/mois",
+  "filterAbove50k": "Plus de 50k/mois",
+  "filterShowTutors": "Afficher {count} tuteur",
+  "@filterShowTutors": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "filterShowTutorsPlural": "Afficher {count} tuteurs",
+  "@filterShowTutorsPlural": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "discoverTutorsNearYou": "Découvrez des tuteurs près de chez vous",
+  "requestTutorSubjectLevel": "Matière et Niveau",
+  "requestTutorEducationLevel": "Niveau d'éducation",
+  "requestTutorSpecificRequirements": "Exigences spécifiques (Optionnel)",
+  "requestTutorSelectAll": "Sélectionnez tout ce qui s'applique",
+  "requestTutorTutorPreferences": "Préférences du tuteur",
+  "requestTutorHelpFindMatch": "Aidez-nous à trouver la correspondance parfaite pour vous",
+  "requestTutorTeachingMode": "Mode d'enseignement *",
+  "requestTutorBudgetRange": "Gamme de budget",
+  "requestTutorPerMonth": "Par mois",
+  "requestTutorGenderPreference": "Préférence de genre (Optionnel)",
+  "requestTutorQualification": "Qualification du tuteur (Optionnel)",
+  "requestTutorScheduleLocation": "Horaire et Lieu",
+  "requestTutorWhenWhere": "Quand et où souhaitez-vous les sessions?",
+  "requestTutorPreferredDays": "Jours préférés *",
+  "requestTutorPreferredTime": "Heure préférée *",
+  "requestTutorLocation": "Lieu *",
+  "requestTutorLocationDescription": "Description du lieu (Optionnel)",
+  "requestTutorAdditionalDetails": "Détails supplémentaires",
+  "requestTutorRequestReason": "Pourquoi demandez-vous un tuteur?",
+  "requestTutorUrgency": "Quelle est l'urgence de cette demande?",
+  "requestTutorSubmitRequest": "Soumettre la demande",
+  "requestTutorSendWhatsApp": "Envoyer un message WhatsApp?",
+  "requestTutorWhatsAppPrompt": "Souhaitez-vous envoyer un message WhatsApp à l'équipe PrepSkul avec les détails de votre demande?",
+  "requestTutorSkip": "Ignorer",
+  "requestTutorSend": "Envoyer",
+  "requestTutorRequestSent": "Demande envoyée!",
+  "requestTutorRequestSubmitted": "Votre demande de tuteur a été soumise avec succès. Notre équipe vous contactera bientôt!",
+  "requestTutorDone": "Terminé"
 }

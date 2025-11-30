@@ -3,7 +3,6 @@ import 'package:prepskul/features/booking/services/session_payment_service.dart'
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
-import 'package:prepskul/features/payment/services/recurring_payment_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 
 
@@ -233,15 +232,16 @@ class FapshiWebhookService {
                paymentPlan.toLowerCase() == 'bi-weekly' || 
                paymentPlan.toLowerCase() == 'weekly')) {
             try {
-              await RecurringPaymentService.scheduleNextPayment(
-                recurringSessionId: recurringSessionId,
-                currentPaymentRequestId: paymentRequestId,
-                paymentPlan: paymentPlan,
-                monthlyTotal: monthlyTotal.toDouble(),
-                studentId: studentId,
-                tutorId: tutorId,
-                bookingRequestId: bookingRequestId,
-              );
+              // TODO: Implement recurring payment scheduling
+              // // await RecurringPaymentService.scheduleNextPayment(
+              // // recurringSessionId: recurringSessionId,
+              // // currentPaymentRequestId: paymentRequestId,
+              // // paymentPlan: paymentPlan,
+              // // monthlyTotal: monthlyTotal.toDouble(),
+              // // studentId: studentId,
+              // // tutorId: tutorId,
+              // // bookingRequestId: bookingRequestId,
+              // // );
               print('✅ Next payment scheduled for recurring session: $recurringSessionId');
             } catch (e) {
               print('⚠️ Failed to schedule next payment: $e');

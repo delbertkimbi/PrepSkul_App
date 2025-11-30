@@ -8,6 +8,9 @@ import '../../../core/services/survey_repository.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
+// TODO: Fix import path
+// import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
 class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({Key? key}) : super(key: key);
@@ -134,13 +137,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
     // Get greeting based on time
     final hour = DateTime.now().hour;
-    String greeting = 'Good morning';
+    String greeting = AppLocalizations.of(context)!.goodMorning;
     String greetingEmoji = '☀️';
     if (hour >= 12 && hour < 17) {
-      greeting = 'Good afternoon';
+      greeting = AppLocalizations.of(context)!.goodAfternoon;
       greetingEmoji = '👋';
     } else if (hour >= 17) {
-      greeting = 'Good evening';
+      greeting = AppLocalizations.of(context)!.goodEvening;
       greetingEmoji = '🌙';
     }
 
@@ -225,14 +228,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     ),
 
                   // Quick Stats
-                  _buildSectionTitle('Your Progress'),
+                  _buildSectionTitle(AppLocalizations.of(context)!.yourProgress),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: _buildStatCard(
                           icon: Icons.school_outlined,
-                          label: 'Active Tutors',
+                          label: AppLocalizations.of(context)!.activeTutors,
                           value: '0',
                           color: AppTheme.primaryColor,
                         ),
@@ -241,7 +244,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Expanded(
                         child: _buildStatCard(
                           icon: Icons.calendar_today_outlined,
-                          label: 'Sessions',
+                          label: AppLocalizations.of(context)!.sessions,
                           value: '0',
                           color: Colors.orange,
                         ),
@@ -251,14 +254,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 24),
 
                   // Quick Actions
-                  _buildSectionTitle('Quick Actions'),
+                  _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.search,
-                    title: 'Find Perfect Tutor',
+                    title: AppLocalizations.of(context)!.findPerfectTutor,
                     subtitle: city != null
-                        ? 'Browse tutors in $city'
-                        : 'Discover tutors near you',
+                        ? AppLocalizations.of(context)!.browseTutorsIn(city ?? '')
+                        : AppLocalizations.of(context)!.discoverTutorsNearYou,
                     color: AppTheme.primaryColor,
                     onTap: () {
                       Navigator.pushReplacementNamed(
@@ -271,7 +274,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.inbox_outlined,
-                    title: 'My Requests',
+                    title: AppLocalizations.of(context)!.myRequests,
                     subtitle: 'View your booking requests',
                     color: Colors.orange,
                     onTap: () {
@@ -285,7 +288,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.calendar_today,
-                    title: 'My Sessions',
+                    title: AppLocalizations.of(context)!.mySessions,
                     subtitle: 'View upcoming and completed sessions',
                     color: Colors.purple,
                     onTap: () {
@@ -295,13 +298,40 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.payment,
-                    title: 'Payment History',
+                    title: AppLocalizations.of(context)!.paymentHistory,
                     subtitle: 'View and manage your payments',
                     color: Colors.green,
                     onTap: () {
                       Navigator.pushNamed(context, '/payment-history');
                     },
                   ),
+                  // Learning Progress (for parents)
+                  if (_userType == 'parent') ...[
+                    const SizedBox(height: 12),
+                    _buildActionCard(
+                      icon: Icons.trending_up,
+                      title: 'Learning Progress',
+                      subtitle: 'Track your child\'s learning journey and improvement',
+                      color: AppTheme.accentGreen,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AlertDialog(
+                              title: Text('Learning Progress'),
+                              content: Text('Feature coming soon'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text('Close'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
 
                   // Removed "Your Goals" section - personal info belongs in profile
                   // This data is used behind the scenes for tutor matching, not for display

@@ -571,22 +571,20 @@ class TutorService {
             print('⚠️ Tutor ${tutor['user_id']}: Could not parse education JSON: $e');
           }
         }
-        final institution = tutor['institution'] is String ? tutor['institution'] as String : null;
-        final fieldOfStudy = tutor['field_of_study'] is String ? tutor['field_of_study'] as String : null;
-        final highestEducation = tutor['highest_education'] is String ? tutor['highest_education'] as String : null;
+        final institution = tutor['institution']?.toString();
+        final fieldOfStudy = tutor['field_of_study']?.toString();
+        final highestEducation = tutor['highest_education']?.toString();
 
         String formattedEducation = '';
         // Priority: field_of_study (program) • institution (university)
-        final program =
-            educationJson?['field_of_study']?.toString() ?? fieldOfStudy;
-        final university =
-            educationJson?['institution']?.toString() ?? institution;
+        final program = (educationJson?['field_of_study']?.toString() ?? fieldOfStudy ?? '').toString();
+        final university = (educationJson?['institution']?.toString() ?? institution ?? '').toString();
 
         final parts = <String>[];
-        if (program != null && program.trim().isNotEmpty) {
+        if (program.trim().isNotEmpty) {
           parts.add(program);
         }
-        if (university != null && university.trim().isNotEmpty) {
+        if (university.trim().isNotEmpty) {
           parts.add(university);
         }
         formattedEducation = parts.join(' • ');
@@ -674,9 +672,9 @@ class TutorService {
             availabilitySchedule;
 
         // Get video: Use video_url (primary), fallback to video_link or video_intro
-        final videoUrl = tutor['video_url'] as String?;
-        final videoLink = tutor['video_link'] as String?;
-        final videoIntro = tutor['video_intro'] as String?;
+        final videoUrl = tutor['video_url']?.toString();
+        final videoLink = tutor['video_link']?.toString();
+        final videoIntro = tutor['video_intro']?.toString();
         final effectiveVideoUrl = videoUrl ?? videoLink ?? videoIntro;
 
         // Get student success metrics - use REAL session count from individual_sessions
@@ -688,8 +686,8 @@ class TutorService {
         final completedSessions = 0;
 
         // Get avatar from tutor_profiles.profile_photo_url first, then fallback to profiles.avatar_url
-        final profilePhotoUrl = tutor['profile_photo_url'] as String?;
-        final avatarUrl = profile?['avatar_url'] as String?;
+        final profilePhotoUrl = tutor['profile_photo_url']?.toString();
+        final avatarUrl = profile?['avatar_url']?.toString();
         final effectiveAvatarUrl =
             (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
             ? profilePhotoUrl
@@ -698,10 +696,10 @@ class TutorService {
             : null;
 
         return {
-          'id': tutor['user_id'],
-          'full_name': profile?['full_name'] ?? 'Unknown',
-          'avatar_url': effectiveAvatarUrl, // Use consolidated avatar URL
-          'email': profile?['email'],
+          'id': tutor['user_id']?.toString() ?? '',
+          'full_name': (profile?['full_name']?.toString() ?? 'Unknown').toString(),
+          'avatar_url': effectiveAvatarUrl?.toString(), // Use consolidated avatar URL
+          'email': profile?['email']?.toString(),
           'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
           'personal_statement':
               effectivePersonalStatement, // Full bio for detail page (with "Hello!")
@@ -716,10 +714,8 @@ class TutorService {
                 if (institution != null) 'institution': institution,
                 if (fieldOfStudy != null) 'field_of_study': fieldOfStudy,
               },
-          'experience': formattedExperience.isNotEmpty
-              ? formattedExperience
-              : tutor['experience'],
-          'teaching_duration': teachingDuration,
+          'experience': formattedExperience.isNotEmpty ? formattedExperience : (tutor['experience']?.toString() ?? ''),
+          'teaching_duration': teachingDuration?.toString(),
           'subjects': subjects ?? [],
           'hourly_rate': effectiveRate, // Use effective rate
           'base_session_price': baseSessionPrice?.toDouble(),
@@ -742,10 +738,10 @@ class TutorService {
           'total_students': totalStudents,
           'total_hours_taught': totalHoursTaught,
           'completed_sessions': completedSessions,
-          'city': tutor['city'],
-          'quarter': tutor['quarter'],
-          'video_intro': effectiveVideoUrl, // Use effective video URL
-          'video_url': effectiveVideoUrl,
+          'city': tutor['city']?.toString(),
+          'quarter': tutor['quarter']?.toString(),
+          'video_intro': effectiveVideoUrl?.toString(), // Use effective video URL
+          'video_url': effectiveVideoUrl?.toString(),
           // Teaching style: Build from teaching_approaches, preferred_mode, preferred_session_type
           'teaching_style': _buildTeachingStyleText(
             tutor['teaching_approaches'] as List?,
@@ -754,8 +750,8 @@ class TutorService {
             tutor['handles_multiple_learners'] as bool?,
           ),
           'teaching_approaches': tutor['teaching_approaches'],
-          'preferred_mode': tutor['preferred_mode'],
-          'preferred_session_type': tutor['preferred_session_type'],
+          'preferred_mode': tutor['preferred_mode']?.toString(),
+          'preferred_session_type': tutor['preferred_session_type']?.toString(),
           'handles_multiple_learners': tutor['handles_multiple_learners'],
         };
       }).whereType<Map<String, dynamic>>().toList(); // Filter out nulls
@@ -875,16 +871,14 @@ class TutorService {
 
       String formattedEducation = '';
       // Priority: field_of_study (program) • institution (university)
-      final program =
-          educationJson?['field_of_study']?.toString() ?? fieldOfStudy;
-      final university =
-          educationJson?['institution']?.toString() ?? institution;
+      final program = (educationJson?['field_of_study']?.toString() ?? fieldOfStudy ?? '').toString();
+      final university = (educationJson?['institution']?.toString() ?? institution ?? '').toString();
 
       final parts = <String>[];
-      if (program != null && program.trim().isNotEmpty) {
+      if (program.trim().isNotEmpty) {
         parts.add(program);
       }
-      if (university != null && university.trim().isNotEmpty) {
+      if (university.trim().isNotEmpty) {
         parts.add(university);
       }
       formattedEducation = parts.join(' • ');
@@ -956,9 +950,9 @@ class TutorService {
 
       return {
         'id': response['user_id'],
-        'full_name': profile['full_name'],
-        'avatar_url': profile['avatar_url'],
-        'email': profile['email'],
+        'full_name': profile['full_name']?.toString() ?? 'Unknown',
+        'avatar_url': profile['avatar_url']?.toString(),
+        'email': profile['email']?.toString(),
         'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
         'personal_statement':
             effectivePersonalStatement, // Full bio for detail page (with "Hello!")
@@ -974,8 +968,8 @@ class TutorService {
             },
         'experience': formattedExperience.isNotEmpty
             ? formattedExperience
-            : response['experience'],
-        'teaching_duration': teachingDuration,
+            : response['experience']?.toString() ?? '',
+        'teaching_duration': teachingDuration?.toString(),
         'subjects': subjects ?? [],
         'hourly_rate': effectiveRate, // Use effective rate
         'base_session_price': baseSessionPrice?.toDouble(),
@@ -998,10 +992,10 @@ class TutorService {
         'total_students': totalStudents,
         'total_hours_taught': totalHoursTaught,
         'completed_sessions': completedSessions,
-        'city': response['city'],
-        'quarter': response['quarter'],
-        'video_intro': effectiveVideoUrl, // Use effective video URL
-        'video_url': effectiveVideoUrl,
+        'city': response['city']?.toString(),
+        'quarter': response['quarter']?.toString(),
+        'video_intro': effectiveVideoUrl?.toString(), // Use effective video URL
+        'video_url': effectiveVideoUrl?.toString(),
         // Teaching style: Build from teaching_approaches, preferred_mode, preferred_session_type
         'teaching_style': _buildTeachingStyleText(
           response['teaching_approaches'] as List?,
@@ -1010,8 +1004,8 @@ class TutorService {
           response['handles_multiple_learners'] as bool?,
         ),
         'teaching_approaches': response['teaching_approaches'],
-        'preferred_mode': response['preferred_mode'],
-        'preferred_session_type': response['preferred_session_type'],
+        'preferred_mode': response['preferred_mode']?.toString(),
+        'preferred_session_type': response['preferred_session_type']?.toString(),
         'handles_multiple_learners': response['handles_multiple_learners'],
       };
     } catch (e) {
@@ -1078,14 +1072,14 @@ class TutorService {
       return (response as List).map((tutor) {
         final profile = tutor['profiles'];
         return {
-          'id': tutor['user_id'],
-          'full_name': profile['full_name'],
-          'avatar_url': profile['avatar_url'],
-          'subjects': tutor['subjects'],
+          'id': tutor['user_id']?.toString() ?? '',
+          'full_name': profile['full_name']?.toString() ?? 'Unknown',
+          'avatar_url': profile['avatar_url']?.toString(),
+          'subjects': tutor['subjects'] ?? [],
           'hourly_rate': tutor['hourly_rate'],
           'is_verified': tutor['is_verified'] ?? false,
           'rating': tutor['rating'] ?? 0.0,
-          'city': tutor['city'],
+          'city': tutor['city']?.toString(),
         };
       }).toList();
     } catch (e) {

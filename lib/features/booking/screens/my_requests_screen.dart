@@ -16,6 +16,7 @@ import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../utils/session_date_utils.dart';
 
 class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({Key? key}) : super(key: key);
@@ -774,10 +775,21 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final t = AppLocalizations.of(context)!;
     return _buildNeomorphicCard(
       margin: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-        ),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RequestDetailScreen(
+                tutorRequest: request,
+              ),
+            ),
+          ).then((_) {
+            // Refresh after returning from detail page
+            _loadRequests();
+          });
+        },
+        borderRadius: BorderRadius.circular(20),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -870,7 +882,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: () {
-          // TODO: Navigate to detailed trial session view if needed
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RequestDetailScreen(
+                trialSession: session,
+              ),
+            ),
+          ).then((_) {
+            // Refresh after returning from detail page
+            _loadRequests();
+          });
         },
         borderRadius: BorderRadius.circular(20),
         child: Padding(
@@ -1064,12 +1086,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               ),
 
               // Simple Pay Now button (only when approved/scheduled, not paid, and session hasn't passed)
-              // Check if session date/time has passed - calculate inline to avoid variable declaration in widget tree
-              if ((session.status == 'approved' ||
-                      session.status == 'scheduled') &&
-                  session.paymentStatus.toLowerCase() != 'paid' &&
-                  session.paymentStatus.toLowerCase() != 'completed' &&
-                  !_getSessionDateTime(session).isBefore(DateTime.now())) ...[
+              // Use utility method for comprehensive check
+              if (SessionDateUtils.shouldShowPayNowButton(session)) ...[
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -1084,22 +1102,25 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       );
 
                       // Always refresh after returning from payment screen
-                      // Increase delay to ensure DB update propagates
-                      await Future.delayed(
-                        const Duration(milliseconds: 3000),
-                      );
+                      // Only refresh if payment was successful
+                      if (result == true) {
+                        // Wait a moment for database update to propagate
+                        await Future.delayed(
+                          const Duration(milliseconds: 2000),
+                        );
 
-                      if (!mounted) return;
-                      
-                      // Force refresh the specific session first
-                      await _refreshTrialSession(session.id);
-                      
-                      // Then reload all requests to ensure consistency
-                      await _loadRequests();
-                      
-                      // Force UI rebuild
-                      if (mounted) {
-                        setState(() {});
+                        if (!mounted) return;
+                        
+                        // Force refresh the specific session first
+                        await _refreshTrialSession(session.id);
+                        
+                        // Then reload all requests to ensure consistency
+                        await _loadRequests();
+                        
+                        // Force UI rebuild
+                        if (mounted) {
+                          setState(() {});
+                        }
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -1288,6 +1309,139 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             e.toString().contains('cancel instead')
                         ? 'This session has been approved. Please use the cancel button to cancel it with a reason.'
                         : 'Error: ${e.toString()}',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Delete a custom tutor request (only for pending requests)
+  Future<void> _deleteCustomRequest(String requestId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.red[300], size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Delete Custom Request',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to delete this custom tutor request? This action cannot be undone.',
+          style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Show loading indicator
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Deleting...', style: GoogleFonts.poppins()),
+                ],
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+
+        // Cancel the request (sets status to 'closed')
+        await TutorRequestService.cancelRequest(requestId);
+
+        if (!mounted) return;
+
+        // Remove from local list
+        setState(() {
+          _customRequests.removeWhere((req) => req.id == requestId);
+        });
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Custom request deleted successfully',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // Reload to ensure consistency
+        _loadRequests();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Error: ${e.toString()}',
                     style: GoogleFonts.poppins(),
                   ),
                 ),

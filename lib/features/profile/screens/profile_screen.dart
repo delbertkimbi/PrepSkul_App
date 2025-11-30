@@ -12,8 +12,8 @@ import 'language_settings_screen.dart';
 import 'profile_preview_screen.dart';
 import '../../tutor/screens/tutor_onboarding_screen.dart';
 import '../../discovery/screens/tutor_detail_screen.dart';
-import 'package:prepskul/core/localization/app_localizations.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -832,60 +832,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String? subtitle,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        splashColor: AppTheme.primaryColor.withOpacity(0.1),
+        highlightColor: AppTheme.primaryColor.withOpacity(0.05),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: Icon(icon, color: AppTheme.primaryColor, size: 20),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      subtitle,
+                      title,
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.textMedium,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
                       ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            Icon(Icons.chevron_right, color: AppTheme.textLight, size: 20),
-          ],
+              Icon(Icons.chevron_right, color: AppTheme.textLight, size: 20),
+            ],
+          ),
         ),
       ),
     );

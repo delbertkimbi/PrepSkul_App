@@ -384,8 +384,9 @@ class IndividualSessionService {
         return session['meeting_link'] as String;
       }
 
-      // If no link exists and session is online, generate one
-      if (session['location'] == 'online') {
+      // If no link exists and session is online or hybrid, generate one
+      // For hybrid sessions, Meet link is available for online mode
+      if (session['location'] == 'online' || session['location'] == 'hybrid') {
         // Check if Google Calendar is authenticated
         final isAuth = await GoogleCalendarAuthService.isAuthenticated();
         if (!isAuth) {

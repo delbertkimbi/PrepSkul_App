@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'forgot_password_email_screen.dart';
 
@@ -369,38 +370,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       return;
     }
 
-    // Check cooldown
-    if (_lastLoginAttempt != null) {
-      final difference = DateTime.now().difference(_lastLoginAttempt!).inSeconds;
-      if (difference < _cooldownSeconds) {
-        final remaining = _cooldownSeconds - difference;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.timer_outlined, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Please wait $remaining seconds before trying again.',
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.orange[800],
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
-    }
-
     setState(() => _isLoading = true);
-    // Update last attempt time
-    _lastLoginAttempt = DateTime.now();
 
     try {
       final email = _emailController.text.trim();
@@ -541,35 +511,11 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
         final isWarning = errorMessage.toLowerCase().contains('too many attempts') || 
                           errorMessage.toLowerCase().contains('wait');
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  isWarning ? Icons.warning_amber_rounded : Icons.error_outline, 
-                  color: Colors.white, 
-                  size: 20
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    errorMessage,
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: isWarning ? Colors.orange[800] : Colors.red[600],
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'OK',
-              textColor: Colors.white,
-              onPressed: () {},
-            ),
-          ),
-        );
+        if (isWarning) {
+          BrandedSnackBar.showInfo(context, errorMessage);
+        } else {
+          BrandedSnackBar.showError(context, errorMessage);
+        }
       }
     } finally {
       if (mounted) {

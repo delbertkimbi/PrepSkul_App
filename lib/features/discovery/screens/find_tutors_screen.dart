@@ -9,8 +9,11 @@ import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_matching_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -24,6 +27,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   List<Map<String, dynamic>> _tutors = [];
   List<Map<String, dynamic>> _filteredTutors = [];
   bool _isLoading = true;
+  List<MatchedTutor> _matchedTutors = []; // Store matched tutors with scores
+  Map<String, MatchScore> _matchScores = {}; // Cache match scores by tutor ID
+  String _sortBy = 'match'; // 'match', 'rating', 'price'
   String? _selectedSubject;
   String? _selectedPriceRange;
   double _minRating = 0.0;
@@ -52,13 +58,23 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   // Monthly price ranges (in XAF per month)
   // Based on typical monthly pricing: 2-3 sessions/week × 4 weeks
   // Example: 3k/session × 2 sessions/week × 4 weeks = 24k/month
-  final List<Map<String, dynamic>> _priceRanges = [
-    {'label': 'Under 20k/mo', 'min': 0, 'max': 20000},
-    {'label': '20k - 30k/mo', 'min': 20000, 'max': 30000},
-    {'label': '30k - 40k/mo', 'min': 30000, 'max': 40000},
-    {'label': '40k - 50k/mo', 'min': 40000, 'max': 50000},
-    {'label': 'Above 50k/mo', 'min': 50000, 'max': 200000},
-  ];
+
+
+
+  // Get localized price ranges
+  List<Map<String, dynamic>> _getPriceRanges(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
+    return [
+      {'label': t.filterUnder20k, 'min': 0, 'max': 20000},
+      {'label': t.filter20kTo30k, 'min': 20000, 'max': 30000},
+      {'label': t.filter30kTo40k, 'min': 30000, 'max': 40000},
+      {'label': t.filter40kTo50k, 'min': 40000, 'max': 50000},
+      {'label': t.filterAbove50k, 'min': 50000, 'max': 200000},
+    ];
+  }
+
+
+    // Get localized price ranges
 
   @override
   void initState() {
@@ -215,27 +231,79 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
     try {
       print('🔍 FindTutorsScreen: Starting to load tutors...');
-      // ✅ USING TutorService - Easy to swap demo/real data!
-      // Change TutorService.USE_DEMO_DATA to false when ready for Supabase
-      final tutors = await TutorService.fetchTutors();
-      print('🔍 FindTutorsScreen: Received ${tutors.length} tutors from TutorService');
-
-      if (mounted) {
+      
+      // Get current user info
+      final currentUserData = await AuthService.getCurrentUser();
+      if (currentUserData == null) {
+        // Fallback to regular tutor loading if no user
+        final tutors = await TutorService.fetchTutors();
         setState(() {
           _tutors = tutors;
-          _filteredTutors = _tutors;
+          _filteredTutors = tutors;
           _isLoading = false;
         });
-        print('🔍 FindTutorsScreen: Updated state with ${_tutors.length} tutors, ${_filteredTutors.length} filtered');
-        
-        // Show debug message if no tutors found
-        if (tutors.isEmpty) {
-          print('⚠️ FindTutorsScreen: No tutors found! Check TutorService logs for details.');
+        return;
       }
+
+      // Determine user type
+      final userType = await _getUserType(currentUserData['id']?.toString() ?? '');
+      
+      // Use matching algorithm if user has preferences
+      try {
+        final matchedTutors = await TutorMatchingService.matchTutorsForUser(
+          userId: currentUserData['id']?.toString() ?? '',
+          userType: userType,
+          filters: {
+            if (_selectedSubject != null) 'subject': _selectedSubject,
+            if (_selectedPriceRange != null) ..._getPriceRangeFilters(),
+            if (_minRating > 0) 'minRating': _minRating,
+          },
+        );
+
+        if (matchedTutors.isNotEmpty) {
+          // Use matched tutors
+          setState(() {
+            _matchedTutors = matchedTutors;
+            _tutors = matchedTutors.map((mt) => mt.tutor).toList();
+            _matchScores = {
+              for (var mt in matchedTutors)
+                mt.tutor['id'] as String: mt.matchScore
+            };
+            _filteredTutors = _tutors;
+            _isLoading = false;
+          });
+          print('✅ FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
+        } else {
+          // Fallback to regular loading if no matches
+          final tutors = await TutorService.fetchTutors();
+          setState(() {
+            _tutors = tutors;
+            _filteredTutors = tutors;
+            _isLoading = false;
+          });
+          print('⚠️ FindTutorsScreen: No matches found, using regular tutor list');
+        }
+      } catch (e) {
+        // Fallback to regular loading on error
+        print('⚠️ FindTutorsScreen: Matching error, using regular loading: $e');
+        final tutors = await TutorService.fetchTutors();
+        setState(() {
+          _tutors = tutors;
+          _filteredTutors = tutors;
+          _isLoading = false;
+        });
       }
     } catch (e, stackTrace) {
       print('❌ FindTutorsScreen: Error loading tutors: $e');
+      print('❌ Error type: ${e.runtimeType}');
       print('❌ Stack trace: $stackTrace');
+      
+      // Log specific error details for null type errors
+      if (e.toString().contains('null') || e.toString().contains('Null')) {
+        print('⚠️ Null type error detected - checking tutor data transformation');
+        print('⚠️ This may indicate a field is null when String is expected');
+      }
+      
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -247,6 +315,47 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       }
     }
   }
+
+  Future<String> _getUserType(String userId) async {
+    try {
+      // Check if user is a parent
+      final parentProfile = await SupabaseService.client
+          .from('parent_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      if (parentProfile != null) return 'parent';
+      
+      // Check if user is a student
+      final learnerProfile = await SupabaseService.client
+          .from('learner_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      if (learnerProfile != null) return 'student';
+      
+      return 'student'; // Default
+    } catch (e) {
+      print('⚠️ Error determining user type: $e');
+      return 'student';
+    }
+  }
+
+  Map<String, dynamic> _getPriceRangeFilters() {
+    if (_selectedPriceRange == null) return {};
+    final ranges = _getPriceRanges(context);
+    final range = ranges.firstWhere(
+      (r) => r['label'] == _selectedPriceRange,
+      orElse: () => {'min': 0, 'max': 200000},
+    );
+    return {
+      'minRate': range['min'] as int,
+      'maxRate': range['max'] as int,
+    };
+  }
+
 
   void _filterTutors() {
     setState(() {
@@ -269,7 +378,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
 
         if (_selectedPriceRange != null) {
-          final priceRange = _priceRanges.firstWhere(
+          final priceRange = _getPriceRanges(context).firstWhere(
             (range) => range['label'] == _selectedPriceRange,
           );
           // Calculate monthly price for this tutor
@@ -437,6 +546,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ),
               ],
             ),
+
+
+
           ),
 
           // Results Count - only show when filtering or searching
@@ -456,6 +568,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 ],
               ),
             ),
+
+          
 
           // Tutors List
           Expanded(
@@ -661,6 +775,31 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             ],
                           ),
                           const SizedBox(height: 4),
+                          // Match Score
+                          if (_matchScores.containsKey(tutor['id'] as String?))
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _getMatchScoreColor(_matchScores[tutor['id'] as String]!.percentage),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.auto_awesome, size: 14, color: Colors.white),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_matchScores[tutor['id'] as String]!.percentage.toStringAsFixed(0)}% Match',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           Row(
                             children: [
                               Icon(
@@ -779,6 +918,81 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       ),
     );
   }
+
+
+  Color _getMatchScoreColor(double percentage) {
+    if (percentage >= 80) return Colors.green;
+    if (percentage >= 60) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildSortChip(String label, String value, IconData icon) {
+    final isSelected = _sortBy == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _sortBy = value;
+          _applySorting();
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : Colors.grey[700],
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.white : Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _applySorting() {
+    setState(() {
+      _filteredTutors.sort((a, b) {
+        switch (_sortBy) {
+          case 'match':
+            final scoreA = _matchScores[a['id'] as String?]?.totalScore ?? 0.0;
+            final scoreB = _matchScores[b['id'] as String?]?.totalScore ?? 0.0;
+            return scoreB.compareTo(scoreA);
+          case 'rating':
+            final ratingA = (a['rating'] ?? 0.0) as double;
+            final ratingB = (b['rating'] ?? 0.0) as double;
+            return ratingB.compareTo(ratingA);
+          case 'price':
+            final pricingA = PricingService.calculateFromTutorData(a);
+            final pricingB = PricingService.calculateFromTutorData(b);
+            final priceA = (pricingA['perMonth'] ?? 0.0) as double;
+            final priceB = (pricingB['perMonth'] ?? 0.0) as double;
+            return priceA.compareTo(priceB);
+          default:
+            return 0;
+        }
+      });
+    });
+  }
+
 
   Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
     // Calculate monthly pricing but display it subtly
@@ -1089,7 +1303,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Monthly Price Range',
+                      AppLocalizations.of(context)!.filterMonthlyPriceRange,
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -1100,7 +1314,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _priceRanges.map((range) {
+                      children: _getPriceRanges(context).map((range) {
                         final label = range['label'] as String;
                         final isSelected = _selectedPriceRange == label;
                         return GestureDetector(
@@ -1142,7 +1356,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Minimum Rating',
+                      AppLocalizations.of(context)!.filterMinimumRating,
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -1155,28 +1369,32 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Slider(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            child: Slider(
                             value: _minRating,
                             min: 0,
                             max: 5,
                             divisions: 5,
-                                label: _minRating == 0 ? 'Any' : '${_minRating.toStringAsFixed(1)} ⭐',
+                                label: _minRating == 0 ? AppLocalizations.of(context)!.filterAny : '${_minRating.toStringAsFixed(1)} ⭐',
                             activeColor: AppTheme.primaryColor,
                                 inactiveColor: Colors.grey[300],
                             onChanged: (value) {
                               setState(() {
-                                _minRating = value;
+                                // Round to nearest integer for proper snapping
+                                _minRating = value.round().toDouble();
                               });
                               _filterTutors(); // Apply filter when rating changes
                             },
                           ),
                         ),
-                            const SizedBox(width: 12),
+                          ),
+                        const SizedBox(width: 12),
                         Container(
                           width: 60,
                           alignment: Alignment.center,
                           child: Text(
-                                _minRating == 0 ? 'Any' : '${_minRating.toStringAsFixed(1)}+',
+                                _minRating == 0 ? AppLocalizations.of(context)!.filterAny : '${_minRating.toStringAsFixed(1)}+',
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -1191,7 +1409,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _buildRatingIndicator(0, 'Any'),
+                            _buildRatingIndicator(0, AppLocalizations.of(context)!.filterAny),
                             _buildRatingIndicator(1, '1'),
                             _buildRatingIndicator(2, '2'),
                             _buildRatingIndicator(3, '3'),
@@ -1234,7 +1452,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     elevation: 0,
                   ),
                   child: Text(
-                    'Show ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
+                    _filteredTutors.length == 1 ? AppLocalizations.of(context)!.filterShowTutors(_filteredTutors.length) : AppLocalizations.of(context)!.filterShowTutorsPlural(_filteredTutors.length),
                     style: GoogleFonts.poppins(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1399,5 +1617,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     _searchController.removeListener(_filterTutors);
     _searchController.dispose();
     super.dispose();
-  }
+  
+
+
+  
+}
 }

@@ -34,6 +34,16 @@ class TutorRequestService {
           .eq('id', userId)
           .single();
 
+      // Build additional_notes with location description if provided
+      String? finalAdditionalNotes = additionalNotes;
+      if (locationDescription != null && locationDescription!.isNotEmpty) {
+        if (finalAdditionalNotes != null && finalAdditionalNotes.isNotEmpty) {
+          finalAdditionalNotes += '\n\nLocation Description: ' + locationDescription!;
+        } else {
+          finalAdditionalNotes = 'Location Description: ' + locationDescription!;
+        }
+      }
+
       final requestData = {
         'requester_id': userId,
         'subjects': subjects,
@@ -47,9 +57,9 @@ class TutorRequestService {
         'preferred_days': preferredDays,
         'preferred_time': preferredTime,
         'location': location,
-        'location_description': locationDescription,
+        // 'location_description': locationDescription,  // Column doesn't exist in DB, storing in additional_notes instead
         'urgency': urgency,
-        'additional_notes': additionalNotes,
+        'additional_notes': finalAdditionalNotes,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
         // Denormalized data

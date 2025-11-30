@@ -48,8 +48,8 @@ class NotificationHelperService {
     // You can also use flutter_dotenv to load from .env
     return const String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'https://app.prepskul.com/api',
-    );
+      defaultValue: 'https://app.prepskul.com/api'
+          );
   }
 
   /// Send notification via API (handles in-app, push, and email)
@@ -84,8 +84,8 @@ class NotificationHelperService {
       actionUrl: actionUrl,
       actionText: actionText,
       icon: icon,
-      metadata: metadata,
-    );
+      metadata: metadata
+          );
 
     // STEP 2: Try to send push + email via API (optional - API might not be deployed)
     // The API endpoint handles:
@@ -114,8 +114,8 @@ class NotificationHelperService {
         const Duration(seconds: 5),
         onTimeout: () {
           throw TimeoutException('Notification API request timed out');
-        },
-      );
+        }
+          );
 
       if (response.statusCode == 200) {
         // Success - push + email notifications sent via API
@@ -180,8 +180,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify student/parent when tutor accepts booking request
@@ -227,8 +227,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify student/parent when tutor rejects booking request
@@ -261,8 +261,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   // ============================================
@@ -299,8 +299,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify student/parent when tutor accepts trial request
@@ -333,8 +333,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify student/parent when tutor rejects trial request
@@ -367,8 +367,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify tutor when student/parent cancels an approved trial session
@@ -407,8 +407,8 @@ class NotificationHelperService {
         'cancellation_reason': cancellationReason,
         'cancelled_by': cancelledByText,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   // ============================================
@@ -442,8 +442,8 @@ class NotificationHelperService {
         'currency': currency,
         'session_type': sessionType,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify student/parent when payment fails
@@ -469,8 +469,8 @@ class NotificationHelperService {
         'currency': currency,
         'error_message': errorMessage,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify student/parent when payment is successful
@@ -496,9 +496,253 @@ class NotificationHelperService {
         'currency': currency,
         'session_type': sessionType,
       },
+      sendEmail: true
+          );
+  }
+
+
+  // ============================================
+  // PAYMENT REMINDER NOTIFICATIONS
+  // ============================================
+
+  /// Schedule payment reminder notifications for unpaid sessions
+  /// 
+  /// Schedules reminders at 2 days, 1 day, and 2 hours before payment deadline
+  static Future<void> schedulePaymentReminders({
+    required String studentId,
+    required String sessionId,
+    required String sessionType, // 'trial' or 'recurring'
+    required DateTime paymentDeadline,
+    required String subject,
+    required double amount,
+    required String currency,
+  }) async {
+    try {
+      // Schedule via API (backend will handle scheduling)
+      final response = await http.post(
+        Uri.parse('$_apiBaseUrl/notifications/schedule-payment-reminders'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'studentId': studentId,
+          'sessionId': sessionId,
+          'sessionType': sessionType,
+          'paymentDeadline': paymentDeadline.toIso8601String(),
+          'subject': subject,
+          'amount': amount,
+          'currency': currency,
+        })
+          );
+
+      if (response.statusCode == 200) {
+        print('✅ Payment reminders scheduled for session: $sessionId');
+      } else {
+        print('⚠️ Failed to schedule payment reminders: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error scheduling payment reminders: $e');
+      // Don't throw - scheduling reminders shouldn't fail session creation
+      // Fallback: create in-app notifications directly
+      try {
+        // 2 days before
+        final twoDaysBefore = paymentDeadline.subtract(const Duration(days: 2));
+        if (twoDaysBefore.isAfter(DateTime.now())) {
+          await _sendNotificationViaAPI(
+            userId: studentId,
+            type: 'payment_reminder',
+            title: '⏰ Payment Reminder',
+            message: 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due in 2 days.',
+            priority: 'normal',
+            actionUrl: '/payments/$sessionId',
+            actionText: 'Pay Now',
+            icon: '⏰',
+            metadata: {
+              'session_id': sessionId,
+              'session_type': sessionType,
+              'reminder_type': '2_days',
+              'deadline': paymentDeadline.toIso8601String(),
+            },
+            sendEmail: true
+          );
+        }
+
+        // 1 day before
+        final oneDayBefore = paymentDeadline.subtract(const Duration(days: 1));
+        if (oneDayBefore.isAfter(DateTime.now())) {
+          await _sendNotificationViaAPI(
+            userId: studentId,
+            type: 'payment_reminder',
+            title: '⏰ Payment Due Tomorrow',
+            message: 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due tomorrow!',
+            priority: 'high',
+            actionUrl: '/payments/$sessionId',
+            actionText: 'Pay Now',
+            icon: '⏰',
+            metadata: {
+              'session_id': sessionId,
+              'session_type': sessionType,
+              'reminder_type': '1_day',
+              'deadline': paymentDeadline.toIso8601String(),
+            },
+            sendEmail: true
+          );
+        }
+
+        // 2 hours before
+        final twoHoursBefore = paymentDeadline.subtract(const Duration(hours: 2));
+        if (twoHoursBefore.isAfter(DateTime.now())) {
+          await _sendNotificationViaAPI(
+            userId: studentId,
+            type: 'payment_reminder',
+            title: '🚨 Payment Due Soon!',
+            message: 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due in 2 hours!',
+            priority: 'urgent',
+            actionUrl: '/payments/$sessionId',
+            actionText: 'Pay Now',
+            icon: '🚨',
+            metadata: {
+              'session_id': sessionId,
+              'session_type': sessionType,
+              'reminder_type': '2_hours',
+              'deadline': paymentDeadline.toIso8601String(),
+            },
+            sendEmail: true,
+            sendPush: true
+          );
+        }
+      } catch (e2) {
+        print('⚠️ Could not create fallback payment reminder notifications: $e2');
+      }
+    }
+  }
+
+  /// Notify when payment is due soon
+  static Future<void> notifyPaymentDue({
+    required String studentId,
+    required String sessionId,
+    required String sessionType,
+    required String subject,
+    required double amount,
+    required String currency,
+    required DateTime deadline,
+    String reminderType = 'general', // '2_days', '1_day', '2_hours'
+  }) async {
+    String title;
+    String message;
+    String priority;
+
+    switch (reminderType) {
+      case '2_days':
+        title = '⏰ Payment Reminder';
+        message = 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due in 2 days.';
+        priority = 'normal';
+        break;
+      case '1_day':
+        title = '⏰ Payment Due Tomorrow';
+        message = 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due tomorrow!';
+        priority = 'high';
+        break;
+      case '2_hours':
+        title = '🚨 Payment Due Soon!';
+        message = 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due in 2 hours!';
+        priority = 'urgent';
+        break;
+      default:
+        title = '⏰ Payment Reminder';
+        message = 'Your $sessionType session for $subject (${amount.toStringAsFixed(0)} $currency) payment is due soon.';
+        priority = 'normal';
+    }
+
+    await _sendNotificationViaAPI(
+      userId: studentId,
+      type: 'payment_reminder',
+      title: title,
+      message: message,
+      priority: priority,
+      actionUrl: '/payments/$sessionId',
+      actionText: 'Pay Now',
+      icon: '⏰',
+      metadata: {
+        'session_id': sessionId,
+        'session_type': sessionType,
+        'reminder_type': reminderType,
+        'deadline': deadline.toIso8601String(),
+        'amount': amount,
+        'currency': currency,
+      },
       sendEmail: true,
+      sendPush: reminderType == '2_hours', // Push only for urgent reminders
     );
   }
+
+  /// Notify when session is expiring without payment
+  static Future<void> notifySessionExpiring({
+    required String studentId,
+    required String sessionId,
+    required String sessionType,
+    required String subject,
+    required DateTime sessionStart,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: studentId,
+      type: 'session_expiring',
+      title: '⚠️ Session Expiring Soon',
+      message: 'Your $sessionType session for $subject is scheduled for ${sessionStart.toString().split('.')[0]}. Payment is required to confirm your session.',
+      priority: 'high',
+      actionUrl: '/payments/$sessionId',
+      actionText: 'Pay Now',
+      icon: '⚠️',
+      metadata: {
+        'session_id': sessionId,
+        'session_type': sessionType,
+        'session_start': sessionStart.toIso8601String(),
+      },
+      sendEmail: true,
+      sendPush: true
+          );
+  }
+
+
+  /// Notify tutor when session is ready (payment received and session scheduled)
+  static Future<void> notifyTutorSessionReady({
+    required String tutorId,
+    required String sessionId,
+    required String sessionType, // 'trial' or 'recurring'
+    required String learnerName,
+    required String subject,
+    required DateTime scheduledDate,
+    required String scheduledTime,
+    String? meetLink,
+  }) async {
+    final formattedDate = '${scheduledDate.day}/${scheduledDate.month}/${scheduledDate.year}';
+    final message = meetLink != null
+        ? 'Payment received! Your $sessionType session with $learnerName for $subject is scheduled for $formattedDate at $scheduledTime. The meeting link is ready - you can start preparing!'
+        : 'Payment received! Your $sessionType session with $learnerName for $subject is scheduled for $formattedDate at $scheduledTime. The meeting link will be available soon.';
+    
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'session_ready',
+      title: '✅ Session Confirmed - Payment Received',
+      message: message,
+      priority: 'high',
+      actionUrl: '/sessions/$sessionId',
+      actionText: 'View Session',
+      icon: '✅',
+      metadata: {
+        'session_id': sessionId,
+        'session_type': sessionType,
+        'learner_name': learnerName,
+        'subject': subject,
+        'scheduled_date': scheduledDate.toIso8601String(),
+        'scheduled_time': scheduledTime,
+        'meet_link': meetLink,
+      },
+      sendEmail: true,
+      sendPush: true,
+    );
+  }
+
 
   // ============================================
   // SESSION NOTIFICATIONS
@@ -533,8 +777,8 @@ class NotificationHelperService {
           'tutorName': tutorName,
           'studentName': studentName,
           'subject': subject,
-        }),
-      );
+        })
+          );
 
       if (response.statusCode == 200) {
         print('✅ Session reminders scheduled for session: $sessionId');
@@ -570,8 +814,8 @@ class NotificationHelperService {
         'meet_link': meetLink,
       },
       sendEmail: true,
-      sendPush: true,
-    );
+      sendPush: true
+          );
   }
 
   /// Notify tutor when earnings are added to pending balance
@@ -597,8 +841,8 @@ class NotificationHelperService {
         'status': 'pending',
       },
       sendEmail: true,
-      sendPush: true,
-    );
+      sendPush: true
+          );
   }
 
   /// Schedule feedback reminder for 24 hours after session end
@@ -620,8 +864,8 @@ class NotificationHelperService {
           'userId': userId,
           'sessionId': sessionId,
           'reminderTime': reminderTime.toIso8601String(),
-        }),
-      );
+        })
+          );
 
       if (response.statusCode == 200) {
         print('✅ Feedback reminder scheduled for session: $sessionId');
@@ -641,8 +885,8 @@ class NotificationHelperService {
           metadata: {
             'session_id': sessionId,
             'reminder_time': reminderTime.toIso8601String(),
-          },
-        );
+          }
+          );
       }
     } catch (e) {
       print('❌ Error scheduling feedback reminder: $e');
@@ -660,8 +904,8 @@ class NotificationHelperService {
           metadata: {
             'session_id': sessionId,
             'reminder_time': reminderTime.toIso8601String(),
-          },
-        );
+          }
+          );
       } catch (e2) {
         print('⚠️ Could not create fallback feedback reminder notification: $e2');
       }
@@ -694,8 +938,8 @@ class NotificationHelperService {
         'other_party_name': otherPartyName,
         'subject': subject,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
 
     // Schedule review reminder (24 hours after session) via API
     try {
@@ -711,8 +955,8 @@ class NotificationHelperService {
           'subject': subject,
           'sessionType': sessionType,
           'sessionEndTime': sessionEndTime.toIso8601String(),
-        }),
-      );
+        })
+          );
 
       if (response.statusCode == 200) {
         print('✅ Review reminder scheduled for user: $userId');
@@ -750,8 +994,8 @@ class NotificationHelperService {
         'rating': rating,
         'session_price': sessionPrice,
         'pricing_tier': pricingTier,
-      },
-    );
+      }
+          );
   }
 
   /// Notify tutor when profile needs improvement
@@ -772,8 +1016,8 @@ class NotificationHelperService {
       metadata: {
         'improvement_requests': improvementRequests,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify tutor when profile is rejected
@@ -794,8 +1038,8 @@ class NotificationHelperService {
       metadata: {
         'rejection_reason': rejectionReason,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   // ============================================
@@ -824,8 +1068,8 @@ class NotificationHelperService {
         'booking_request_id': bookingRequestId,
         'amount': amount,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
 
     // Notify tutor
     await _sendNotificationViaAPI(
@@ -842,8 +1086,8 @@ class NotificationHelperService {
         'booking_request_id': bookingRequestId,
         'amount': amount,
       },
-      sendEmail: false,
-    );
+      sendEmail: false
+          );
   }
 
   /// Notify when payment request fails
@@ -865,8 +1109,8 @@ class NotificationHelperService {
         'payment_request_id': paymentRequestId,
         'reason': reason,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify when trial payment is completed
@@ -891,8 +1135,8 @@ class NotificationHelperService {
         'subject': subject,
         'meet_link': meetLink,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify tutor when trial payment is received
@@ -915,8 +1159,8 @@ class NotificationHelperService {
         'trial_session_id': trialSessionId,
         'subject': subject,
       },
-      sendEmail: false,
-    );
+      sendEmail: false
+          );
   }
 
   /// Notify when trial payment fails
@@ -940,8 +1184,8 @@ class NotificationHelperService {
         'subject': subject,
         'reason': reason,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   // ============================================
@@ -967,8 +1211,8 @@ class NotificationHelperService {
         'request_id': requestId,
         'requester_name': requesterName,
       },
-      sendEmail: true,
-    );
+      sendEmail: true
+          );
   }
 
   /// Notify all admins about new user signup
@@ -1022,8 +1266,8 @@ class NotificationHelperService {
             'user_name': userName,
             'user_email': userEmail,
           },
-          sendEmail: true,
-        );
+          sendEmail: true
+          );
       }
 
       print('✅ Notified ${adminResponse.length} admin(s) about new user signup: $userName');
@@ -1125,8 +1369,8 @@ class NotificationHelperService {
             'learning_path': learningPath,
             'survey_details': surveyDetails,
           },
-          sendEmail: true,
-        );
+          sendEmail: true
+          );
       }
 
       print('✅ Notified ${adminResponse.length} admin(s) about survey completion for $userName');

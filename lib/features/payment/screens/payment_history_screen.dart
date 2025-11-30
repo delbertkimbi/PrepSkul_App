@@ -8,8 +8,10 @@ import 'package:prepskul/features/payment/services/payment_request_service.dart'
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 /// Payment History Screen
 ///
@@ -79,6 +81,40 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
         // Don't throw - continue loading other payment types
       }
 
+  /// Check if any payments changed to paid and switch to Paid tab if needed
+  void _checkAndSwitchToPaidTab() {
+    // Check if there are any newly paid payments
+    bool hasNewPaidPayments = false;
+    
+    // Check trial payments
+    for (var payment in _trialPayments) {
+      final status = _getPaymentStatus(context, payment);
+      if (status == 'paid') {
+        hasNewPaidPayments = true;
+        break;
+      }
+    }
+    
+    // Check payment requests
+    if (!hasNewPaidPayments) {
+      for (var payment in _paymentRequests) {
+        final status = _getPaymentStatus(context, payment);
+        if (status == 'paid') {
+          hasNewPaidPayments = true;
+          break;
+        }
+      }
+    }
+    
+    // If we have paid payments and we're not already on a tab that shows them, switch to Paid filter
+    if (hasNewPaidPayments && _selectedFilter != 'paid') {
+      setState(() {
+        _selectedFilter = 'paid';
+      });
+    }
+  }
+
+
       // Load trial session payments
       try {
         _trialPayments = await _loadTrialPayments(userId);
@@ -101,6 +137,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
       if (mounted) {
         setState(() => _isLoading = false);
+        _checkAndSwitchToPaidTab();
       }
 
       // Don't show error if all lists are empty - empty states will handle it gracefully
@@ -464,14 +501,14 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     final filtered = _getFilteredPayments(_paymentRequests);
 
     if (filtered.isEmpty) {
-      return _buildEmptyState('No payment requests found');
+      return _buildEmptyState(context, AppLocalizations.of(context)!.noPaymentRequestsFound);
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: filtered.length,
       itemBuilder: (context, index) {
-        return _buildPaymentRequestCard(filtered[index]);
+        return _buildPaymentRequestCard(context, filtered[index]);
       },
     );
   }
@@ -480,14 +517,14 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     final filtered = _getFilteredPayments(_trialPayments);
 
     if (filtered.isEmpty) {
-      return _buildEmptyState('No trial payments found');
+      return _buildEmptyState(context, 'No trial payments found');
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: filtered.length,
       itemBuilder: (context, index) {
-        return _buildTrialPaymentCard(filtered[index]);
+        return _buildTrialPaymentCard(context, filtered[index]);
       },
     );
   }
@@ -496,7 +533,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     final filtered = _getFilteredPayments(_sessionPayments);
 
     if (filtered.isEmpty) {
-      return _buildEmptyState('No session payments found');
+      return _buildEmptyState(context, 'No session payments found');
     }
 
     return ListView.builder(
@@ -508,7 +545,35 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     );
   }
 
-  Widget _buildPaymentRequestCard(Map<String, dynamic> payment) {
+  Widget _buildEmptyState(BuildContext context, String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.payment_outlined,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaymentRequestCard(BuildContext context, Map<String, dynamic> payment) {
     final status = payment['status'] as String? ?? 'pending';
     final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
     final dueDate = payment['due_date'] as String?;
@@ -551,7 +616,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                     ],
                   ),
                 ),
-                _buildStatusBadge(status),
+                _buildStatusBadge(context, status),
               ],
             ),
             const SizedBox(height: 12),
@@ -649,14 +714,12 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
   }
 
 Widget _buildTrialPaymentCard(BuildContext context, Map<String, dynamic> payment) {
-  final t = App
+  final t = AppLocalizations.of(context)!;
     final status = payment['payment_status'] as String? ?? 'unpaid';
     final trialStatus = payment['status'] as String? ?? 'pending';
     final paymentStatus = _getPaymentStatus(context, payment);
     final isApproved = trialStatus == 'approved' || trialStatus == 'scheduled';
-    final canPay =
-        isApproved && (paymentStatus == 'pending');
-        isApproved && (status == 'unpaid' || status == 'pending');
+    final canPay = isApproved && (paymentStatus == 'pending') && !_isTrialSessionExpired(payment);
     final amount = (payment['trial_fee'] as num?)?.toDouble() ?? 0.0;
     final subject = payment['subject'] as String? ?? 'Trial Session';
     final scheduledDate = payment['scheduled_date'] as String?;
@@ -698,11 +761,14 @@ Widget _buildTrialPaymentCard(BuildContext context, Map<String, dynamic> payment
                   ),
                 ),
                 _buildStatusBadge(
-                  paymentStatus == 'paid'
-                      ? 'paid'
-                      : paymentStatus,
+                  context,
+                  _isTrialSessionExpired(payment)
+                      ? 'expired'
+                      : (paymentStatus == 'paid'
+                          ? 'paid'
+                          : paymentStatus),
                 ),
-              ],
+            ],
             ),
             const SizedBox(height: 12),
             Row(
@@ -781,7 +847,7 @@ Widget _buildTrialPaymentCard(BuildContext context, Map<String, dynamic> payment
               if (!isApproved) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Your tutor needs to approve this trial before you can pay.',
+                  AppLocalizations.of(context)!.tutorNeedsToApprove,
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     color: Colors.grey[600],
@@ -837,7 +903,7 @@ Widget _buildTrialPaymentCard(BuildContext context, Map<String, dynamic> payment
                     ],
                   ),
                 ),
-                _buildStatusBadge(status),
+                _buildStatusBadge(context, status),
               ],
             ),
             const SizedBox(height: 12),
@@ -895,6 +961,32 @@ Widget _buildTrialPaymentCard(BuildContext context, Map<String, dynamic> payment
     );
   }
 
+
+  /// Check if a trial session payment has expired based on scheduled date/time
+  bool _isTrialSessionExpired(Map<String, dynamic> payment) {
+    final scheduledDate = payment['scheduled_date'] as String?;
+    final scheduledTime = payment['scheduled_time'] as String?;
+    
+    if (scheduledDate == null) {
+      return false; // Can't determine, assume not expired
+    }
+    
+    try {
+      final dateParts = scheduledDate.split('T')[0].split('-');
+      final timeParts = (scheduledTime ?? '00:00').split(':');
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+      
+      final sessionDateTime = DateTime(year, month, day, hour, minute);
+      return sessionDateTime.isBefore(DateTime.now());
+    } catch (e) {
+      return false; // Error parsing, assume not expired
+    }
+  }
+
 Widget _buildStatusBadge(BuildContext context, String status) {
   final t = AppLocalizations.of(context)!;
     Color color;
@@ -918,17 +1010,19 @@ Widget _buildStatusBadge(BuildContext context, String status) {
         icon = Icons.error;
         break;
       case 'unpaid':
-        color = Colors.grey;
-        label = 'Unpaid';
-        icon = Icons.payment;
+      case 'expired':
+        color = Colors.red;
+        label = 'Expired';
+        icon = Icons.cancel;
         break;
+
       default:
         color = Colors.grey;
         label = status.toUpperCase();
         icon = Icons.info;
     }
 
-get    return Container(
+    return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),

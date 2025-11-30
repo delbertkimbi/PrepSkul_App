@@ -2860,12 +2860,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           children: [
             Icon(icon, size: 18, color: iconColor),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
               ),
             ),
           ],
@@ -2893,33 +2895,28 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
-                  vertical: 10,
+                  vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.softCard,
-                  borderRadius: BorderRadius.circular(8),
+                  color: isSelected
+                      ? iconColor.withOpacity(0.15)
+                      : AppTheme.softCard,
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isSelected
-                        ? AppTheme.primaryColor
+                        ? iconColor
                         : AppTheme.softBorder,
                     width: isSelected ? 2 : 1,
                   ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: AppTheme.primaryColor.withOpacity(0.3),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
                 ),
                 child: Text(
                   slot,
                   style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isSelected ? Colors.white : AppTheme.textDark,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isSelected
+                        ? iconColor
+                        : AppTheme.textMedium,
                   ),
                 ),
               ),
@@ -2929,6 +2926,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       ],
     );
   }
+
 
   Map<String, List<String>> _getCurrentAvailability() {
     return _selectedServiceType == 'tutoring'

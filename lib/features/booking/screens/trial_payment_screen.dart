@@ -61,6 +61,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     } catch (e) {
       print('⚠️ Could not load user phone: $e');
     }
+      return;
   }
 
   /// Initiate payment
@@ -98,7 +99,6 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     } catch (e) {
       String userMessage = 'Failed to initiate payment';
       final errorString = e.toString().toLowerCase();
-      
       // Provide user-friendly error messages
       if (errorString.contains('failed to fetch') || 
           errorString.contains('clientexception') ||
@@ -117,13 +117,11 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       } else {
         userMessage = 'Failed to initiate payment. Please try again.';
       }
-      
       setState(() {
         _errorMessage = userMessage;
         _isProcessing = false;
         _paymentStatus = 'failed';
       });
-      
       print('❌ Payment initiation error: $e');
     }
   }
@@ -143,12 +141,19 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           if (status.isSuccessful) {
             _paymentStatus = 'successful';
             // Complete payment and generate Meet link
-            _completePayment(transId);
+            // Payment completion moved outside setState
           } else if (status.isFailed) {
             _paymentStatus = 'failed';
             _errorMessage = 'Payment failed. Please try again.';
           }
         });
+        // Complete payment outside setState (async operation)
+        if (status.isSuccessful) {
+          final success = await _completePayment(transId);
+          // Don't navigate here - let _completePayment handle it based on calendar status
+          // If calendar is not connected, the button will be shown
+          // If calendar is connected, navigation happens in _connectCalendarAndRetry
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -173,14 +178,14 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     try {
       final fakeTransId =
           'sandbox_manual_${DateTime.now().millisecondsSinceEpoch}';
-      await _completePayment(fakeTransId);
+      await _completePayment(fakeTransId); // Returns bool but we ignore it for sandbox
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) // void function, no return needed
       setState(() {
         _errorMessage = 'Sandbox completion failed: $e';
       });
     } finally {
-      if (!mounted) return;
+      if (!mounted) // void function, no return needed
       setState(() {
         _isProcessing = false;
       });
@@ -188,7 +193,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   }
 
   /// Complete payment and generate Meet link
-  Future<void> _completePayment(String transId) async {
+  Future<bool> _completePayment(String transId) async {
     _lastTransactionId = transId;
     try {
       final calendarOk = await TrialSessionService.completePaymentAndGenerateMeet(
@@ -196,7 +201,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         transactionId: transId,
       );
 
-      if (!mounted) return;
+      if (!mounted) return false;
 
       // Update message if Calendar is not connected
       setState(() {
@@ -227,14 +232,15 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       // This ensures the parent screen reloads the requests list
       // Add a small delay to ensure database update is complete
       // Auto-navigation removed - user can manually navigate back
+      return true;
     } catch (e) {
       if (mounted) {
         setState(() {
           _errorMessage =
-              'We saved your payment but could not finish saving the lesson. '
-              'Please pull to refresh on the My Sessions page. If it is still empty, contact support.';
+              'We saved your payment but could not finish saving the lesson. Please pull to refresh on the My Sessions page. If it is still empty, contact support.';
         });
       }
+      return false;
     }
   }
 
@@ -262,7 +268,17 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     }
 
     try {
-      await _completePayment(_lastTransactionId!);
+      final success = await _completePayment(_lastTransactionId!);
+      if (success && mounted) {
+        // Calendar connected and payment completed - navigate to sessions page
+        Navigator.pop(context, true); // Return true to indicate success
+        // Navigate to sessions page
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (mounted) {
+            Navigator.pushNamed(context, '/student-nav', arguments: {'initialTab': 2}); // Sessions tab
+          }
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {

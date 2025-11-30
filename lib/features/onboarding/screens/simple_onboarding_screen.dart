@@ -4,6 +4,7 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 class SimpleOnboardingScreen extends StatefulWidget {
   const SimpleOnboardingScreen({super.key});
@@ -163,7 +164,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
             _buildPageIndicators(),
 
             // Get Started button
-            _buildGetStartedButton(),
+            _buildGetStartedButton(context),
           ],
         ),
       ),
@@ -548,7 +549,8 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
     );
   }
 
-  Widget _buildGetStartedButton() {
+  Widget _buildGetStartedButton(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Padding(
       padding: const EdgeInsets.all(20.0),
       child: SizedBox(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 /// TutorRequestDetailScreen
 ///
@@ -440,8 +441,8 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                   ),
                   child: Text(
                     student['user_type'] == 'parent'
-                        ? 'PARENT REQUEST'
-                        : 'STUDENT REQUEST',
+                        ? AppLocalizations.of(context)!.parentRequest
+                        : AppLocalizations.of(context)!.studentRequest,
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,

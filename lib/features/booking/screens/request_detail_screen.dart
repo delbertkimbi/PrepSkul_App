@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/models/tutor_request_model.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
 
 /// RequestDetailScreen
 ///
@@ -9,10 +12,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 /// Shows complete schedule, pricing, status timeline
 /// Actions: Cancel request (if pending), Contact tutor
 class RequestDetailScreen extends StatefulWidget {
-  final Map<String, dynamic> request;
+  final Map<String, dynamic>? request;
+  final TrialSession? trialSession;
+  final TutorRequest? tutorRequest;
 
-  const RequestDetailScreen({Key? key, required this.request})
-      : super(key: key);
+  const RequestDetailScreen({
+    Key? key,
+    this.request,
+    this.trialSession,
+    this.tutorRequest,
+  }) : super(key: key);
 
   @override
   State<RequestDetailScreen> createState() => _RequestDetailScreenState();
@@ -72,12 +81,506 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Handle different request types
+    if (widget.trialSession != null) {
+      return _buildTrialSessionDetail(context, widget.trialSession!);
+    } else if (widget.tutorRequest != null) {
+      return _buildTutorRequestDetail(context, widget.tutorRequest!);
+    } else if (widget.request != null) {
+      return _buildBookingRequestDetail(context, widget.request!);
+    } else {
+      return Scaffold(
+        appBar: AppBar(title: Text('Request Details')),
+        body: Center(child: Text('No request data available')),
+      );
+    }
+  }
+
+  Widget _buildTrialSessionDetail(BuildContext context, TrialSession session) {
+    final statusColor = _getStatusColor(session.status);
+    
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Trial Session Details',
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status Banner
+            _buildTrialStatusBanner(session, statusColor),
+            const SizedBox(height: 24),
+            
+            // Tutor Info Card (will be loaded asynchronously)
+            FutureBuilder<Map<String, dynamic>?>(
+              future: _loadTutorInfo(session.tutorId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  );
+                }
+                if (snapshot.hasData && snapshot.data != null) {
+                  return _buildTrialTutorCard(snapshot.data!);
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            const SizedBox(height: 24),
+            
+            // Session Details Card
+            _buildTrialSessionDetailsCard(session),
+            const SizedBox(height: 24),
+            
+            // Schedule Card
+            _buildTrialScheduleCard(session),
+            const SizedBox(height: 24),
+            
+            // Payment Card
+            _buildTrialPaymentCard(session),
+            const SizedBox(height: 24),
+            
+            // Trial Goals Card (if available)
+            if (session.trialGoal != null || session.learnerChallenges != null)
+              _buildTrialGoalsCard(session),
+            if (session.trialGoal != null || session.learnerChallenges != null)
+              const SizedBox(height: 24),
+            
+            // Actions (if pending/approved)
+            if (session.status == 'pending' || session.status == 'approved')
+              _buildTrialActions(context, session),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrialStatusBanner(TrialSession session, Color statusColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(_getStatusIcon(session.status), color: statusColor, size: 28),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  session.status.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: statusColor,
+                  ),
+                ),
+                Text(
+                  _getTrialStatusMessage(session.status),
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  String _getStatusMessage(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Waiting for tutor\'s response';
+      case 'approved':
+        return 'Tutor has accepted your request!';
+      case 'rejected':
+        return 'Tutor declined this request';
+      default:
+        return '';
+    }
+  }
+  
+  Widget _buildTrialTutorCard(Map<String, dynamic> tutorData) {
+    final tutorName = tutorData['full_name']?.toString() ?? 'Tutor';
+    final tutorAvatarUrl = tutorData['avatar_url']?.toString();
+    final tutorRating = (tutorData['rating'] ?? 0.0) as double;
+    final tutorIsVerified = tutorData['is_verified'] as bool? ?? false;
+    
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundImage: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                  ? NetworkImage(tutorAvatarUrl)
+                  : null,
+              child: tutorAvatarUrl == null || tutorAvatarUrl.isEmpty
+                  ? Text(
+                      tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        tutorName,
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      if (tutorIsVerified) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.verified, color: AppTheme.primaryColor, size: 18),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (tutorRating > 0)
+                    Row(
+                      children: [
+                        Icon(Icons.star, color: Colors.amber, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          tutorRating.toStringAsFixed(1),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrialSessionDetailsCard(TrialSession session) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Session Details',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow('Subject', session.subject),
+            _buildInfoRow('Duration', '${session.durationMinutes} minutes'),
+            _buildInfoRow('Location', session.location.toUpperCase()),
+            if (session.learnerLevel != null)
+              _buildInfoRow('Learner Level', session.learnerLevel!),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrialScheduleCard(TrialSession session) {
+    final dateStr = '${session.scheduledDate.day}/${session.scheduledDate.month}/${session.scheduledDate.year}';
+    final timeStr = session.scheduledTime;
+    
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Schedule',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 16, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  dateStr,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.access_time, size: 16, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  timeStr,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+            if (session.meetLink != null) ...[
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () {
+                  // Open Google Meet link
+                },
+                icon: const Icon(Icons.video_call, size: 18),
+                label: Text('Join Session', style: GoogleFonts.poppins()),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrialPaymentCard(TrialSession session) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Payment',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow('Trial Fee', '${session.trialFee.toStringAsFixed(0)} XAF'),
+            _buildInfoRow('Payment Status', session.paymentStatus.toUpperCase()),
+            if (session.paymentStatus == 'unpaid' && session.status == 'approved')
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: ElevatedButton(
+                  onPressed: () {
+                    // Navigate to payment screen
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('Pay Now', style: GoogleFonts.poppins()),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrialGoalsCard(TrialSession session) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Trial Goals',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (session.trialGoal != null) ...[
+              Text(
+                'Goal',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                session.trialGoal!,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (session.learnerChallenges != null) ...[
+              Text(
+                'Challenges',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                session.learnerChallenges!,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTrialActions(BuildContext context, TrialSession session) {
+    return Column(
+      children: [
+        if (session.status == 'pending')
+          ElevatedButton(
+            onPressed: () => _cancelRequest(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+            ),
+            child: Text(
+              'Cancel Request',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ),
+        if (session.status == 'approved' && session.paymentStatus == 'unpaid')
+          ElevatedButton(
+            onPressed: () {
+              // Navigate to payment
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 50),
+            ),
+            child: Text(
+              'Pay Now',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+          ),
+      ],
+    );
+  }
+  
+        Future<Map<String, dynamic>?> _loadTutorInfo(String tutorId) async {
+    try {
+      // Use TutorService to fetch tutor by ID
+      return await TutorService.fetchTutorById(tutorId);
+    } catch (e) {
+      print('Error loading tutor info: $e');
+      return null;
+    }
+  }
+  
+  String _getTrialStatusMessage(String status) {
+    switch (status) {
+      case 'pending':
+        return 'Waiting for tutor approval';
+      case 'approved':
+        return 'Tutor has approved your trial session';
+      case 'rejected':
+        return 'Tutor has rejected your request';
+      case 'scheduled':
+        return 'Session is scheduled';
+      case 'completed':
+        return 'Trial session completed';
+      case 'cancelled':
+        return 'Trial session cancelled';
+      case 'no_show':
+        return 'No show detected';
+      default:
+        return 'Unknown status';
+    }
+  }
+
+  Widget _buildTutorRequestDetail(BuildContext context, TutorRequest request) {
+    // TODO: Build tutor request detail view
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Custom Request Details'),
+        backgroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Text('Custom request detail view coming soon'),
+      ),
+    );
+  }
+
+  Widget _buildBookingRequestDetail(BuildContext context, Map<String, dynamic> request) {
     // Get tutor data from individual fields (toJson() doesn't include tutor map)
-    final tutorName = widget.request['tutor_name'] as String? ?? 'Tutor';
-    final tutorAvatarUrl = widget.request['tutor_avatar_url'] as String?;
-    final tutorRating = widget.request['tutor_rating'] as double?;
-    final tutorIsVerified = widget.request['tutor_is_verified'] as bool? ?? false;
-    final status = widget.request['status'] as String;
+    final tutorName = request['tutor_name'] as String? ?? 'Tutor';
+    final tutorAvatarUrl = request['tutor_avatar_url'] as String?;
+    final tutorRating = request['tutor_rating'] as double?;
+    final tutorIsVerified = request['tutor_is_verified'] as bool? ?? false;
+    final status = request['status'] as String;
     final statusColor = _getStatusColor(status);
 
     return Scaffold(
@@ -149,38 +652,38 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             // Schedule Section
             _buildSectionTitle('Session Schedule'),
             const SizedBox(height: 16),
-            _buildScheduleCard(),
+            _buildScheduleCard(request),
             const SizedBox(height: 24),
 
             // Location Section
             _buildSectionTitle('Location'),
             const SizedBox(height: 16),
-            _buildLocationCard(),
+            _buildLocationCard(request),
             const SizedBox(height: 24),
 
             // Pricing Section
             _buildSectionTitle('Pricing Details'),
             const SizedBox(height: 16),
-            _buildPricingCard(),
+            _buildPricingCard(request),
 
             // Status-specific content
             if (status == 'approved' &&
-                widget.request['tutor_response'] != null) ...[
+                request['tutor_response'] != null) ...[
               const SizedBox(height: 24),
               _buildSectionTitle('Tutor\'s Message'),
               const SizedBox(height: 16),
               _buildMessageCard(
-                widget.request['tutor_response'] as String,
+                request['tutor_response'] as String,
                 Colors.green,
               ),
             ],
             if (status == 'rejected' &&
-                widget.request['rejection_reason'] != null) ...[
+                request['rejection_reason'] != null) ...[
               const SizedBox(height: 24),
               _buildSectionTitle('Rejection Reason'),
               const SizedBox(height: 16),
               _buildMessageCard(
-                widget.request['rejection_reason'] as String,
+                request['rejection_reason'] as String,
                 Colors.red,
               ),
             ],
@@ -358,10 +861,10 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  Widget _buildScheduleCard() {
-    final frequency = widget.request['frequency'] as int;
-    final days = widget.request['days'] as List;
-    final times = widget.request['times'] as Map<String, dynamic>;
+  Widget _buildScheduleCard(Map<String, dynamic> request) {
+    final frequency = request['frequency'] as int;
+    final days = request['days'] as List;
+    final times = request['times'] as Map<String, dynamic>;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -425,9 +928,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  Widget _buildLocationCard() {
-    final location = widget.request['location'] as String;
-    final address = widget.request['address'] as String?;
+  Widget _buildLocationCard(Map<String, dynamic> request) {
+    final location = request['location'] as String;
+    final address = request['address'] as String?;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -449,9 +952,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
-  Widget _buildPricingCard() {
-    final monthlyTotal = widget.request['monthly_total'] as double;
-    final paymentPlan = widget.request['payment_plan'] as String;
+  Widget _buildPricingCard(Map<String, dynamic> request) {
+    final monthlyTotal = request['monthly_total'] as double;
+    final paymentPlan = request['payment_plan'] as String;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -596,7 +1099,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   IconData _getStatusIcon(String status) {
-    switch (status) {
+  switch (status.toLowerCase()) {
+
       case 'pending':
         return Icons.access_time;
       case 'approved':
@@ -604,21 +1108,43 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       case 'rejected':
         return Icons.cancel;
       default:
-        return Icons.help;
+          return Icons.info;
     }
   }
 
-  String _getStatusMessage(String status) {
-    switch (status) {
-      case 'pending':
-        return 'Waiting for tutor\'s response';
-      case 'approved':
-        return 'Tutor has accepted your request!';
-      case 'rejected':
-        return 'Tutor declined this request';
-      default:
-        return '';
-    }
-  }
 }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textMedium,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textDark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  
 

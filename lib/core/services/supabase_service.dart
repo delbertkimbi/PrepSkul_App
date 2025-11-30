@@ -103,6 +103,15 @@ class SupabaseService {
       return response;
     } catch (e) {
       print('❌ Error verifying OTP: $e');
+      final errorStr = e.toString().toLowerCase();
+      
+      // Provide helpful error messages
+      if (errorStr.contains('expired') || errorStr.contains('otp_expired')) {
+        throw Exception('This verification code has expired. Please tap "Resend Code" to get a new one.');
+      } else if (errorStr.contains('invalid') || errorStr.contains('wrong')) {
+        throw Exception('Invalid verification code. Please check the code and try again.');
+      }
+      
       rethrow;
     }
   }

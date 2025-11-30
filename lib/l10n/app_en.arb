@@ -80,5 +80,102 @@
   "commonPhone": "Phone",
   "commonAmount": "Amount",
   "commonScheduled": "Scheduled",
-  "commonStatus": "Status"
+  "commonStatus": "Status",
+  "roleStudent": "STUDENT",
+  "roleParent": "PARENT",
+  "roleTutor": "TUTOR",
+  "noPaymentRequestsFound": "No payment requests found",
+  "tutorNeedsToApprove": "Your tutor needs to approve this trial before you can pay.",
+  "awaitingTutorApproval": "Awaiting tutor approval",
+  "studentRequest": "STUDENT REQUEST",
+  "parentRequest": "PARENT REQUEST",
+  "goodMorning": "Good morning 👋",
+  "goodAfternoon": "Good afternoon 👋",
+  "goodEvening": "Good evening 👋",
+  "yourProgress": "Your Progress",
+  "activeTutors": "Active Tutors",
+  "sessions": "Sessions",
+  "quickActions": "Quick Actions",
+  "findPerfectTutor": "Find Perfect Tutor",
+  "browseTutorsIn": "Browse tutors in {location}",
+  "@browseTutorsIn": {
+    "placeholders": {
+      "location": {
+        "type": "String"
+      }
+    }
+  },
+  "myRequests": "My Requests",
+  "viewYourBookingRequests": "View your booking requests",
+  "mySessions": "My Sessions",
+  "viewUpcomingAndCompletedSessions": "View upcoming and completed sessions",
+  "paymentHistory": "Payment History",
+  "viewAndManageYourPayments": "View and manage your payments",
+  "searchPlaceholder": "Search tutors...",
+  "noResultsFound": "No results found",
+  "filterBySubject": "Filter by subject",
+  "filterByLocation": "Filter by location",
+  "filterByPrice": "Filter by price",
+  "bookTrialSession": "Book Trial Session",
+  "bookThisTutor": "Book This Tutor",
+  "tutorProfile": "Tutor Profile",
+  "about": "About",
+  "subjects": "Subjects",
+  "pricing": "Pricing",
+  "reviews": "Reviews",
+  "schedule": "Schedule",
+  "contact": "Contact",
+  "filterMonthlyPriceRange": "Monthly Price Range",
+  "filterMinimumRating": "Minimum Rating",
+  "filterAny": "Any",
+  "filterUnder20k": "Under 20k/mo",
+  "filter20kTo30k": "20k - 30k/mo",
+  "filter30kTo40k": "30k - 40k/mo",
+  "filter40kTo50k": "40k - 50k/mo",
+  "filterAbove50k": "Above 50k/mo",
+  "filterShowTutors": "Show {count} tutor",
+  "@filterShowTutors": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "filterShowTutorsPlural": "Show {count} tutors",
+  "@filterShowTutorsPlural": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "discoverTutorsNearYou": "Discover tutors near you",
+  "requestTutorSubjectLevel": "Subject & Level",
+  "requestTutorEducationLevel": "Education Level",
+  "requestTutorSpecificRequirements": "Specific Requirements (Optional)",
+  "requestTutorSelectAll": "Select all that apply",
+  "requestTutorTutorPreferences": "Tutor Preferences",
+  "requestTutorHelpFindMatch": "Help us find the perfect match for you",
+  "requestTutorTeachingMode": "Teaching Mode *",
+  "requestTutorBudgetRange": "Budget Range",
+  "requestTutorPerMonth": "Per month",
+  "requestTutorGenderPreference": "Gender Preference (Optional)",
+  "requestTutorQualification": "Tutor Qualification (Optional)",
+  "requestTutorScheduleLocation": "Schedule & Location",
+  "requestTutorWhenWhere": "When and where would you like the sessions?",
+  "requestTutorPreferredDays": "Preferred Days *",
+  "requestTutorPreferredTime": "Preferred Time *",
+  "requestTutorLocation": "Location *",
+  "requestTutorLocationDescription": "Location Description (Optional)",
+  "requestTutorAdditionalDetails": "Additional Details",
+  "requestTutorRequestReason": "Why are you requesting a tutor?",
+  "requestTutorUrgency": "How urgent is this request?",
+  "requestTutorSubmitRequest": "Submit Request",
+  "requestTutorSendWhatsApp": "Send WhatsApp Message?",
+  "requestTutorWhatsAppPrompt": "Would you like to send a WhatsApp message to PrepSkul team with your request details?",
+  "requestTutorSkip": "Skip",
+  "requestTutorSend": "Send",
+  "requestTutorRequestSent": "Request Sent!",
+  "requestTutorRequestSubmitted": "Your tutor request has been submitted successfully. Our team will contact you soon!",
+  "requestTutorDone": "Done"
 }

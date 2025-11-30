@@ -335,27 +335,40 @@ class NotificationNavigationService {
       return;
     }
 
+    final sessionId = pathSegments[1];
     final action = pathSegments.length >= 3 ? pathSegments[2] : null;
 
-    if (action == 'review') {
-      // TODO: Navigate to review screen when implemented
-      // For now, navigate to sessions tab
-      if (userType == 'tutor') {
+    if (action == 'feedback' || action == 'review') {
+      // Navigate to feedback screen
+      try {
         await navService.navigateToRoute(
-          '/tutor-nav',
+          '/sessions/$sessionId/feedback',
+          replace: false,
+        );
+      } catch (e) {
+        print('❌ [NOTIF_NAV] Error navigating to feedback screen: $e');
+        // Fallback: navigate to sessions tab
+        final role = userType == 'tutor'
+            ? 'tutor'
+            : (userType == 'parent' ? 'parent' : 'student');
+        final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+        await navService.navigateToRoute(
+          route,
           arguments: {'initialTab': 2}, // Sessions tab
           replace: false,
         );
       }
     } else {
       // Navigate to sessions tab (session details can be shown there)
-      if (userType == 'tutor') {
-        await navService.navigateToRoute(
-          '/tutor-nav',
-          arguments: {'initialTab': 2}, // Sessions tab
-          replace: false,
-        );
-      }
+      final role = userType == 'tutor'
+          ? 'tutor'
+          : (userType == 'parent' ? 'parent' : 'student');
+      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+      await navService.navigateToRoute(
+        route,
+        arguments: {'initialTab': 2}, // Sessions tab
+        replace: false,
+      );
     }
   }
 

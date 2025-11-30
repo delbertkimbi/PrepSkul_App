@@ -465,6 +465,14 @@ class AuthService {
   /// Get platform-appropriate redirect URL for email verification
   static String getRedirectUrl() {
     if (kIsWeb) {
+      final origin = Uri.base.origin;
+
+      // Allow local development redirects so OAuth can round-trip on localhost.
+      if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
+        print('🔍 [DEBUG] getRedirectUrl (web) - using local origin $origin');
+        return origin;
+      }
+
       // Web: always use the deployed app URL. Supabase must be configured with this.
       print('🔍 [DEBUG] getRedirectUrl (web) - returning https://app.prepskul.com');
       return 'https://app.prepskul.com';
@@ -501,38 +509,61 @@ class AuthService {
   }
 
   /// Check if email already exists in Supabase
-  /// Note: This is a helper method, but the best way is to catch signUp errors
+  /// Checks both the profiles table and auth.users to prevent duplicate accounts
   static Future<bool> emailExists(String email) async {
     try {
-      // Query the auth.users table via admin API or try to sign in
-      // For now, we'll rely on signUp throwing an error if email exists
-      // This method is kept for backward compatibility but may not be reliable
+      final normalizedEmail = email.toLowerCase().trim();
+      
+      // First, check the profiles table for existing email
       try {
-        final response = await SupabaseService.client.auth.signInWithPassword(
-          email: email,
-          password: 'dummy_check_password_12345!',
+        final profileResponse = await SupabaseService.client
+            .from('profiles')
+            .select('id, email, user_type')
+            .eq('email', normalizedEmail)
+            .maybeSingle();
+        
+        if (profileResponse != null) {
+          print('⚠️ Email already exists in profiles table: \$normalizedEmail');
+          return true;
+        }
+      } catch (e) {
+        print('⚠️ Error checking profiles table: \$e');
+        // Continue to check auth.users
+      }
+      
+      // Also check auth.users by attempting to get user by email
+      // Note: Supabase doesn't provide direct email lookup, so we try sign-in
+      // with a dummy password to detect if email exists
+      try {
+        await SupabaseService.client.auth.signInWithPassword(
+          email: normalizedEmail,
+          password: 'dummy_check_12345!@#\$%',
         );
-        // If sign in succeeds (unlikely with dummy password), email exists
-        return response.user != null;
+        // If sign-in doesn't throw, email exists (though password is wrong)
+        return true;
       } catch (signInError) {
         final errorString = signInError.toString().toLowerCase();
-        // If error mentions credentials or email not confirmed, email likely exists
+        // These errors indicate the email exists but password is wrong
         if (errorString.contains('invalid login credentials') ||
             errorString.contains('email not confirmed') ||
-            errorString.contains('invalid_credentials')) {
-          return true; // Email exists but password wrong
-        }
-        // If explicitly says user not found, email doesn't exist
-        if (errorString.contains('user not found') ||
-            errorString.contains('no user found') ||
+            errorString.contains('invalid_credentials') ||
             errorString.contains('invalid_grant')) {
+          print('⚠️ Email exists in auth.users: \$normalizedEmail');
+          return true;
+        }
+        // These errors indicate user doesn't exist
+        if (errorString.contains('user not found') ||
+            errorString.contains('no user found')) {
           return false;
         }
-        // Default: assume email doesn't exist (let signUp handle the real check)
+        // For other errors, be conservative and assume email might exist
+        // Let signUp handle the final validation
         return false;
       }
     } catch (e) {
-      // On any error, default to false - let signUp handle the validation
+      print('⚠️ Error checking if email exists: \$e');
+      // On error, return false and let signUp handle validation
+      // Supabase will throw an error if email already exists during signup
       return false;
     }
   }
@@ -664,16 +695,9 @@ class AuthService {
     print('🔍 [DEBUG]   errorCode: $errorCode');
     print('🔍 [DEBUG]   statusCode: $statusCode');
 
-    // Email-related errors - check both message and code
-    if (errorString.contains('user already registered') ||
-        errorString.contains('email already registered') ||
-        errorString.contains('already been registered') ||
-        errorString.contains('user already exists') ||
-        errorString.contains('email_address_already_exists') ||
-        errorString.contains('duplicate') && errorString.contains('email') ||
-        errorCode == 'email_address_already_exists' ||
-        errorCode == 'signup_disabled' ||
-        errorString.contains('email address is already registered')) {
+    // Email-related errors - ONLY match Supabase's official error code
+    // Rely on errorCode only - error messages can be misleading and cause false positives
+    if (errorCode == 'email_address_already_exists') {
       return 'This email is already registered. Please sign in instead.';
     }
 

@@ -8,6 +8,10 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
+import 'package:prepskul/features/booking/services/session_feedback_service.dart';
+// TODO: Fix import path
+// import 'package:prepskul/features/sessions/widgets/tutor_response_dialog.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'dart:convert';
 // Conditional import for web-specific video helper
 import 'web_video_helper_stub.dart'
@@ -33,11 +37,17 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   bool _isVideoInitialized = false;
   bool _isVideoLoading = false;
   String? _videoId; // For web iframe embed
+  List<Map<String, dynamic>> _reviews = [];
+  Map<String, dynamic>? _ratingStats;
+  bool _isLoadingReviews = false;
   String? _videoUrl; // Store original URL for thumbnail
+  String? _currentUserId; // Current user ID to check if viewing own profile
 
   @override
   void initState() {
     super.initState();
+    _currentUserId = SupabaseService.client.auth.currentUser?.id;
+    _loadReviews(); // Load tutor reviews
     _extractVideoId(); // Only extract ID, don't initialize player yet
   }
 
@@ -540,6 +550,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         ),
                         const SizedBox(height: 12),
                       _buildCertificationsSection(),
+                const SizedBox(height: 20),
+                // Reviews Section
+                _buildReviewsSection(),
+                const SizedBox(height: 20),
                       ],
                     ),
                   ),
@@ -1457,5 +1471,473 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Load reviews for this tutor
+  Future<void> _loadReviews() async {
+    try {
+      setState(() => _isLoadingReviews = true);
+      
+      final tutorId = widget.tutor['user_id'] ?? widget.tutor['id'];
+      if (tutorId == null) {
+        setState(() => _isLoadingReviews = false);
+        return;
+      }
+      
+      final reviews = await SessionFeedbackService.getTutorReviews(tutorId.toString());
+      final ratingStats = await SessionFeedbackService.getTutorRatingStats(tutorId.toString());
+      
+      if (mounted) {
+        setState(() {
+          _reviews = reviews;
+          _ratingStats = ratingStats;
+          _isLoadingReviews = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading reviews: $e');
+      if (mounted) {
+        setState(() => _isLoadingReviews = false);
+      }
+    }
+  }
+
+  /// Build reviews section
+  Widget _buildReviewsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.star_outline,
+                size: 24,
+                color: AppTheme.primaryColor,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Reviews',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (_isLoadingReviews)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_reviews.isEmpty)
+            Text(
+              'No reviews yet. Be the first to review this tutor!',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            )
+          else ...[
+            // Rating Summary
+            if (_ratingStats != null) ...[
+              _buildRatingSummary(_ratingStats!),
+              const SizedBox(height: 20),
+            ],
+            // Reviews List
+            ..._reviews.take(5).map((review) => _buildReviewCard(review)),
+            if (_reviews.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Showing 5 of ${_reviews.length} reviews',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Build rating summary
+  Widget _buildRatingSummary(Map<String, dynamic> stats) {
+    final averageRating = (stats['average_rating'] as num?)?.toDouble() ?? 0.0;
+    final totalReviews = (stats['total_reviews'] as num?)?.toInt() ?? 0;
+    final ratingDistribution = stats['rating_distribution'] as Map<int, int>? ?? {};
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                averageRating.toStringAsFixed(1),
+                style: GoogleFonts.poppins(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: List.generate(5, (index) {
+                      return Icon(
+                        index < averageRating.round()
+                            ? Icons.star
+                            : Icons.star_border,
+                        size: 20,
+                        color: Colors.amber[700],
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$totalReviews ${totalReviews == 1 ? 'review' : 'reviews'}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (ratingDistribution.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            ...ratingDistribution.entries.map((entry) {
+              final rating = entry.key;
+              final count = entry.value;
+              final percentage = totalReviews > 0 ? (count / totalReviews * 100) : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      '$rating',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(Icons.star, size: 14, color: Colors.amber[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: percentage / 100,
+                        backgroundColor: Colors.grey[200],
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber[700]!),
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$count',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Build individual review card
+  Widget _buildReviewCard(Map<String, dynamic> review) {
+    final rating = review['student_rating'] as int? ?? 0;
+    final reviewText = review['student_review'] as String?;
+    final submittedAt = review['student_feedback_submitted_at'] as String?;
+    final wouldRecommend = review['student_would_recommend'] as bool?;
+    final whatWentWell = review['student_what_went_well'] as String?;
+    final whatCouldImprove = review['student_what_could_improve'] as String?;
+    
+    // Format date
+    String dateText = 'Recently';
+    if (submittedAt != null) {
+      try {
+        final date = DateTime.parse(submittedAt);
+        final now = DateTime.now();
+        final difference = now.difference(date);
+        
+        if (difference.inDays == 0) {
+          dateText = 'Today';
+        } else if (difference.inDays == 1) {
+          dateText = 'Yesterday';
+        } else if (difference.inDays < 7) {
+          dateText = '${difference.inDays} days ago';
+        } else if (difference.inDays < 30) {
+          dateText = '${(difference.inDays / 7).floor()} weeks ago';
+        } else {
+          dateText = '${(difference.inDays / 30).floor()} months ago';
+        }
+      } catch (e) {
+        dateText = 'Recently';
+      }
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Stars
+              ...List.generate(5, (index) {
+                return Icon(
+                  index < rating ? Icons.star : Icons.star_border,
+                  size: 16,
+                  color: Colors.amber[700],
+                );
+              }),
+              const SizedBox(width: 8),
+              Text(
+                dateText,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              if (wouldRecommend == true) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.thumb_up, size: 12, color: AppTheme.accentGreen),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Recommended',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.accentGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (reviewText != null && reviewText.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              reviewText,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[800],
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (whatWentWell != null && whatWentWell.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.accentGreen.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 16, color: AppTheme.accentGreen),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'What went well:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          whatWentWell,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (whatCouldImprove != null && whatCouldImprove.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline, size: 16, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Could improve:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          whatCouldImprove,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          // Tutor Response Section
+          if (review['tutor_response'] != null && (review['tutor_response'] as String).isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.reply, size: 16, color: AppTheme.primaryColor),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tutor Response:',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    review['tutor_response'] as String,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.grey[800],
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          // Respond Button (only for tutor viewing their own profile)
+          if (_currentUserId != null && 
+              widget.tutor['user_id'] == _currentUserId &&
+              (review['tutor_response'] == null || (review['tutor_response'] as String).isEmpty)) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _showResponseDialog(review),
+                icon: const Icon(Icons.reply, size: 16),
+                label: Text(
+                  'Respond',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.primaryColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  Future<void> _showResponseDialog(Map<String, dynamic> review) async {
+    final feedbackId = review['id'] as String;
+    final existingResponse = review['tutor_response'] as String?;
+    
+    // TODO: Uncomment when file available
+    // final result = await TutorResponseDialog.show(
+    //   context,
+    //   feedbackId: feedbackId,
+    //   existingResponse: existingResponse,
+    // );
+    final result = null; // Placeholder
+    if (result != null) {
+      // Reload reviews to show the new response
+      _loadReviews();
+    }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/data/app_data.dart';
@@ -38,8 +39,8 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   String? _tutorGender;
   String? _tutorQualification;
   String? _teachingMode; // online, onsite, hybrid
-  int _minBudget = 2500;
-  int _maxBudget = 15000;
+  int _minBudget = 20000;  // Monthly budget (XAF)
+  int _maxBudget = 100000;  // Monthly budget (XAF)
 
   // Step 3: Schedule & Location
   List<String> _preferredDays = [];
@@ -103,8 +104,27 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         }
 
         if (surveyData != null && mounted) {
-          // Get user's subjects from survey
-          final userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+          // Get user's subjects/skills from survey based on learning path
+          final learningPath = surveyData['learning_path']?.toString();
+          List<String> userSubjects = [];
+          
+          if (learningPath == 'Academic Tutoring') {
+            // For academic tutoring, use subjects
+            userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+          } else if (learningPath == 'Skill Development') {
+            // For skill development, use skills
+            userSubjects = List<String>.from(surveyData['skills'] ?? []);
+          } else if (learningPath == 'Exam Preparation') {
+            // For exam preparation, use exam_subjects
+            userSubjects = List<String>.from(surveyData['exam_subjects'] ?? []);
+          } else {
+            // Fallback to subjects if learning path not set
+            userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+            // Also check skills as fallback
+            if (userSubjects.isEmpty) {
+              userSubjects = List<String>.from(surveyData['skills'] ?? []);
+            }
+          }
 
           // Map education level from survey to display format
           String? educationLevel = _mapEducationLevel(surveyData);
@@ -125,8 +145,16 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             );
           }
 
-          // If no subjects found, use a default list
-          if (availableSubjects.isEmpty) {
+          // If no subjects found from education level, try to use user's subjects
+          // or fall back to defaults
+          if (availableSubjects.isEmpty && userSubjects.isNotEmpty) {
+            // Use user's subjects as the base list
+            availableSubjects = List<String>.from(userSubjects);
+          }
+          
+                    // Prioritize user's subjects from survey
+          // Only use generic subjects if BOTH user's subjects AND available subjects are empty
+          if (availableSubjects.isEmpty && userSubjects.isEmpty) {
             availableSubjects = [
               'Mathematics',
               'Physics',
@@ -140,16 +168,90 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
               'History',
             ];
           }
-
-          setState(() {
+          
+          // If user has subjects but no available subjects, use user's subjects as available
+          if (availableSubjects.isEmpty && userSubjects.isNotEmpty) {
+            availableSubjects = List<String>.from(userSubjects);
+          }
+setState(() {
             _userSubjects = userSubjects;
             _selectedSubjects = List<String>.from(
               userSubjects,
             ); // Pre-select user's subjects
-            _availableSubjects = availableSubjects;
+
+            // Combine user's subjects/skills with available subjects
+            // CRITICAL: User's selected subjects MUST appear FIRST
+            final Set<String> allSubjectsSet = {};
+            
+            // Step 1: Add user's selected subjects/skills FIRST (these are pre-selected)
+            for (var subject in userSubjects) {
+              if (subject != null && subject.toString().trim().isNotEmpty) {
+                allSubjectsSet.add(subject.toString().trim());
+              }
+            }
+            
+            // Step 2: Add available subjects from user's niche (education level/stream)
+            for (var subject in availableSubjects) {
+              if (subject != null && subject.toString().trim().isNotEmpty) {
+                allSubjectsSet.add(subject.toString().trim());
+              }
+            }
+            
+            // Step 3: Build final list with user's subjects FIRST, then others alphabetically
+            final List<String> finalSubjectsList = [];
+            
+            // Add user's subjects FIRST (in the order they were selected)
+            for (var subject in userSubjects) {
+              final subjectStr = subject.toString().trim();
+              if (subjectStr.isNotEmpty && allSubjectsSet.contains(subjectStr) && !finalSubjectsList.contains(subjectStr)) {
+                finalSubjectsList.add(subjectStr);
+              }
+            }
+            
+            // Add other available subjects (alphabetically sorted)
+            final otherSubjects = allSubjectsSet
+                .where((s) => !userSubjects.contains(s))
+                .toList()
+              ..sort();
+            finalSubjectsList.addAll(otherSubjects);
+            
+            // If still empty, add defaults
+            if (finalSubjectsList.isEmpty) {
+              finalSubjectsList.addAll([
+                'Mathematics',
+                'Physics',
+                'Chemistry',
+                'Biology',
+                'English',
+                'French',
+                'Computer Science',
+                'Economics',
+                'Geography',
+                'History',
+              ]);
+            }
+            
+            _availableSubjects = finalSubjectsList;
             _educationLevel = educationLevel;
-            _minBudget = surveyData?['budget_min'] as int? ?? 2500;
-            _maxBudget = surveyData?['budget_max'] as int? ?? 15000;
+            
+            // Pre-fill specific requirements from survey
+            final specificReqs = surveyData?['specific_requirements'];
+            final learningGoals = surveyData?['learning_goals'];
+            final challenges = surveyData?['challenges'];
+            
+            if (specificReqs != null) {
+              if (specificReqs is List) {
+                _selectedRequirements = List<String>.from(specificReqs);
+              } else if (specificReqs is String) {
+                _selectedRequirements = specificReqs.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+              }
+            } else if (learningGoals != null && learningGoals is List) {
+              _selectedRequirements = List<String>.from(learningGoals);
+            } else if (challenges != null && challenges is List) {
+              _selectedRequirements = List<String>.from(challenges);
+            }
+            _minBudget = ((surveyData?['budget_min'] as num?)?.toInt() ?? 20000).clamp(2000, 200000);  // Monthly budget default
+            _maxBudget = ((surveyData?['budget_max'] as num?)?.toInt() ?? 100000).clamp(2000, 200000);  // Monthly budget default
             _tutorGender = surveyData?['tutor_gender_preference']?.toString();
             _tutorQualification = surveyData?['tutor_qualification_preference']
                 ?.toString();
@@ -211,14 +313,21 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
   /// Map education level from survey to display format
   String? _mapEducationLevel(Map<String, dynamic> surveyData) {
-    final eduLevel =
-        surveyData['education_level']?.toString() ??
-        surveyData['selected_education_level']?.toString();
-
-    if (eduLevel == null) return null;
+    // First check if class_level is available (more specific)
+    final classLevel = surveyData['class_level']?.toString() ?? 
+                       surveyData['class']?.toString();
+    
+    // Then check education_level
+    final eduLevel = surveyData['education_level']?.toString() ??
+                    surveyData['selected_education_level']?.toString();
+    
+    // Prefer class_level if available, otherwise use education_level
+    final levelToMap = classLevel ?? eduLevel;
+    
+    if (levelToMap == null) return null;
 
     // Normalize the education level (trim and lowercase for comparison)
-    final normalized = eduLevel.trim().toLowerCase();
+    final normalized = levelToMap.trim().toLowerCase();
 
     // Map survey education level to request tutor format
     // Handle various formats that might come from survey
@@ -447,7 +556,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                     ),
                     child: Text(
                       _currentStep == _totalSteps - 1
-                          ? 'Submit Request'
+                          ? AppLocalizations.of(context)!.requestTutorSubmitRequest
                           : 'Continue',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
@@ -466,7 +575,8 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   }
 
   Widget _buildStep1SubjectLevel() {
-    // Use available subjects (from user's niche) or default
+    // Use available subjects - user's selected subjects will be first
+    // This list is already properly ordered from _prefillFromData
     final subjects = _availableSubjects.isNotEmpty
         ? _availableSubjects
         : [
@@ -481,6 +591,12 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             'Geography',
             'History',
           ];
+    
+    // Debug: Print to verify user's subjects are first
+    if (_userSubjects.isNotEmpty) {
+      print('📚 User\'s selected subjects (should appear first): ${_userSubjects}');
+      print('📚 Available subjects list: ${subjects.take(10).toList()}');
+    }
 
     final levels = [
       'Primary School',
@@ -507,6 +623,40 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
               color: AppTheme.textDark,
             ),
           ),
+          if (_userSubjects.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.star,
+                    size: 16,
+                    color: AppTheme.primaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Your selected subjects are pre-filled below',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
             _userSubjects.isNotEmpty
@@ -568,7 +718,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
           // Education Level - Pre-selected from survey
           Text(
-            'Education Level',
+            AppLocalizations.of(context)!.requestTutorEducationLevel,
             style: GoogleFonts.poppins(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -611,7 +761,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
           // Specific Requirements - Now selectable options
           Text(
-            'Specific Requirements (Optional)',
+            AppLocalizations.of(context)!.requestTutorSpecificRequirements,
             style: GoogleFonts.poppins(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -620,7 +770,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Select all that apply',
+            AppLocalizations.of(context)!.requestTutorSelectAll,
             style: GoogleFonts.poppins(
               fontSize: 13,
               color: AppTheme.textMedium,
@@ -741,7 +891,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Tutor Preferences',
+            AppLocalizations.of(context)!.requestTutorTutorPreferences,
             style: GoogleFonts.poppins(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -750,7 +900,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Help us find the perfect match for you',
+            AppLocalizations.of(context)!.requestTutorHelpFindMatch,
             style: GoogleFonts.poppins(
               fontSize: 14,
               color: AppTheme.textMedium,
@@ -759,7 +909,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Teaching Mode
-          _buildSectionTitle('Teaching Mode *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorTeachingMode),
           const SizedBox(height: 12),
           _buildOptionCard(
             icon: Icons.laptop_mac,
@@ -787,9 +937,9 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Budget Range
-          _buildSectionTitle('Budget Range'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorBudgetRange),
           Text(
-            'Per month',
+            AppLocalizations.of(context)!.requestTutorPerMonth,
             style: GoogleFonts.poppins(
               fontSize: 12,
               color: AppTheme.textMedium,
@@ -818,9 +968,9 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             ],
           ),
           RangeSlider(
-            values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
+            values: RangeValues(_minBudget.toDouble().clamp(2000.0, 200000.0), _maxBudget.toDouble().clamp(2000.0, 200000.0)),
             min: 2000,
-            max: 20000,
+            max: 200000,  // Monthly budget range
             divisions: 36,
             activeColor: AppTheme.primaryColor,
             onChanged: (values) {
@@ -833,7 +983,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 24),
 
           // Gender Preference
-          _buildSectionTitle('Gender Preference (Optional)'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorGenderPreference),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -857,7 +1007,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 24),
 
           // Qualification
-          _buildSectionTitle('Tutor Qualification (Optional)'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorQualification),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -917,7 +1067,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Schedule & Location',
+            AppLocalizations.of(context)!.requestTutorScheduleLocation,
             style: GoogleFonts.poppins(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -926,7 +1076,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'When and where would you like the sessions?',
+            AppLocalizations.of(context)!.requestTutorWhenWhere,
             style: GoogleFonts.poppins(
               fontSize: 14,
               color: AppTheme.textMedium,
@@ -935,7 +1085,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Preferred Days
-          _buildSectionTitle('Preferred Days *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorPreferredDays),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -967,7 +1117,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Preferred Time
-          _buildSectionTitle('Preferred Time *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorPreferredTime),
           const SizedBox(height: 12),
           ...times.map((time) {
             return RadioListTile<String>(
@@ -982,7 +1132,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Location
-          _buildSectionTitle('Location *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorLocation),
           const SizedBox(height: 12),
           TextField(
             controller: _locationController,
@@ -1012,7 +1162,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             controller: _locationDescriptionController,
             maxLines: 3,
             decoration: InputDecoration(
-              labelText: 'Location Description (Optional)',
+              labelText: AppLocalizations.of(context)!.requestTutorLocationDescription,
               hintText:
                   'Add landmarks, nearby buildings, or clear directions to help the tutor find your location easily',
               hintStyle: GoogleFonts.poppins(
@@ -1089,6 +1239,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                           final options = _getRequirementOptions();
                           final option = options.firstWhere(
                             (o) => o['value'] == r,
+                            orElse: () => {'label': r, 'value': r},
                           );
                           return option['label'] as String;
                         })
@@ -1117,7 +1268,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Urgency
-          _buildSectionTitle('How urgent is this request?'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorUrgency),
           const SizedBox(height: 12),
           ...['urgent', 'normal', 'flexible'].map((urgencyLevel) {
             final labels = {
@@ -1539,7 +1690,10 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             ? _selectedRequirements
                   .map((r) {
                     final options = _getRequirementOptions();
-                    final option = options.firstWhere((o) => o['value'] == r);
+                    final option = options.firstWhere(
+                      (o) => o['value'] == r,
+                      orElse: () => {'label': r, 'value': r},
+                    );
                     return option['label'] as String;
                   })
                   .join(', ')
@@ -1552,19 +1706,26 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         preferredDays: _preferredDays,
         preferredTime: _preferredTime!,
         location: _locationController.text.trim(),
-        locationDescription:
-            _locationDescriptionController.text.trim().isNotEmpty
-            ? _locationDescriptionController.text.trim()
-            : null,
+        locationDescription: null,  // Column doesn't exist in DB, storing in additional_notes instead
         urgency: _urgency,
-        additionalNotes: _requestReason == 'other'
-            ? _customReasonController.text.trim()
-            : (_requestReason != null
-                  ? _getRequestReasonOptions().firstWhere(
-                          (r) => r['value'] == _requestReason,
-                        )['title']
-                        as String
-                  : null),
+        additionalNotes: () {
+          String notes = '';
+          if (_requestReason == 'other') {
+            notes = _customReasonController.text.trim();
+          } else if (_requestReason != null) {
+            final reasonOption = _getRequestReasonOptions().firstWhere(
+              (r) => r['value'] == _requestReason,
+              orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
+            );
+            notes = reasonOption['title'] as String;
+          }
+          // Append location description if provided (for hybrid/onsite)
+          if (_locationDescriptionController.text.trim().isNotEmpty) {
+            if (notes.isNotEmpty) notes += '\n\n';
+            notes += 'Location Description: ' + _locationDescriptionController.text.trim();
+          }
+          return notes.isEmpty ? null : notes;
+        }(),
       );
 
       // Send WhatsApp notification to PrepSkul team
@@ -1639,10 +1800,18 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
     final userProfile = await AuthService.getUserProfile();
     final userName = userProfile?['full_name'] ?? 'User';
     final userPhone = userProfile?['phone_number'] ?? 'Not provided';
+    
+    // Get user type for personalized message
+    final userType = userProfile?['user_type']?.toString() ?? 'user';
+      final isParent = userType == 'parent';
+      
+      final greeting = isParent 
+          ? 'Hello PrepSkul Team,\n\nI\'m requesting a tutor for my child.'
+          : 'Hello PrepSkul Team,\n\nI\'m looking for a tutor.';
+      
+      final message = '''\$greeting
 
-    final message =
-        '''
-🎓 *New Tutor Request* 
+*Request Details - Request #$requestId* 
 
 *Request ID:* $requestId
 *From:* $userName ($userPhone)
@@ -1662,9 +1831,15 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
 ${_selectedRequirements.isNotEmpty ? '*Requirements:*\n${_selectedRequirements.map((r) {
                 final options = _getRequirementOptions();
-                final option = options.firstWhere((o) => o['value'] == r);
+                final option = options.firstWhere(
+                  (o) => o['value'] == r,
+                  orElse: () => {'label': r, 'value': r},
+                );
                 return option['label'] as String;
-              }).join(', ')}\n\n' : ''}${_requestReason != null ? '*Reason for Request:*\n${_requestReason == 'other' ? (_customReasonController.text.trim().isNotEmpty ? _customReasonController.text.trim() : 'Other') : _getRequestReasonOptions().firstWhere((r) => r['value'] == _requestReason)['title']}\n\n' : ''}---
+              }).join(', ')}\n\n' : ''}${_requestReason != null ? '*Reason for Request:*\n${_requestReason == 'other' ? (_customReasonController.text.trim().isNotEmpty ? _customReasonController.text.trim() : 'Other') : _getRequestReasonOptions().firstWhere(
+                  (r) => r['value'] == _requestReason,
+                  orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
+                )['title']}\n\n' : ''}---
 Please find a tutor for this user as soon as possible.
 ''';
 
@@ -1672,13 +1847,78 @@ Please find a tutor for this user as soon as possible.
       'https://wa.me/237653301997?text=${Uri.encodeComponent(message)}',
     );
 
-    try {
-      if (await canLaunchUrl(whatsappUrl)) {
-        await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+          // Show dialog to ask if user wants to send WhatsApp message
+      if (mounted) {
+        final shouldSend = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              AppLocalizations.of(context)!.requestTutorSendWhatsApp,
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            content: Text(
+              AppLocalizations.of(context)!.requestTutorWhatsAppPrompt,
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  AppLocalizations.of(context)!.requestTutorSkip,
+                  style: GoogleFonts.poppins(
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                ),
+                child: Text(
+                  AppLocalizations.of(context)!.requestTutorSend,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ?? false;
+        
+        if (shouldSend) {
+          try {
+            if (await canLaunchUrl(whatsappUrl)) {
+              await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Could not open WhatsApp'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            print('Could not launch WhatsApp: \$e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Could not open WhatsApp'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        }
       }
-    } catch (e) {
-      print('Could not launch WhatsApp: $e');
-    }
   }
 
   void _showSuccessDialog() {
@@ -1740,7 +1980,7 @@ Please find a tutor for this user as soon as possible.
                   ),
                 ),
                 child: Text(
-                  'Done',
+                  AppLocalizations.of(context)!.requestTutorDone,
                   style: GoogleFonts.poppins(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,

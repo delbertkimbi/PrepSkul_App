@@ -2,6 +2,8 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/booking/services/availability_service.dart';
 
 class BookingService {
   /// Create a booking request in the database
@@ -75,6 +77,85 @@ class BookingService {
       print(
         '🔍 Booking request - user_type: "$rawUserType" → student_type: "$studentType"',
       );
+
+      // Check for existing pending/active booking requests with this tutor
+      final existingRequestsQuery = SupabaseService.client
+          .from('booking_requests')
+          .select('id, status, created_at, tutor_name')
+          .eq('student_id', userId)
+          .eq('tutor_id', tutorUserId)
+          .or('status.eq.pending,status.eq.approved')
+          .order('created_at', ascending: false)
+          .limit(1);
+      
+      final existingRequests = await existingRequestsQuery;
+
+      if (existingRequests.isNotEmpty) {
+        final existingRequest = existingRequests[0];
+        final existingStatus = existingRequest['status'] as String;
+        final tutorName = existingRequest['tutor_name'] as String? ?? 'this tutor';
+        
+        String message;
+        if (existingStatus == 'pending') {
+          message = 'You already have a pending booking request with $tutorName. Please wait for the tutor to respond before creating another request.';
+        } else if (existingStatus == 'approved') {
+          message = 'You already have an approved booking with $tutorName. Please complete or cancel your existing booking before creating a new one.';
+        } else {
+          message = 'You already have an active booking request with $tutorName. Please wait for it to be processed.';
+        }
+        
+        throw Exception(message);
+      }
+
+      // Also check for pending/approved trial sessions with this tutor
+      final existingTrialsQuery = SupabaseService.client
+          .from('trial_sessions')
+          .select('id, status, scheduled_date, scheduled_time')
+          .eq('requester_id', userId)
+          .eq('tutor_id', tutorUserId)
+          .or('status.eq.pending,status.eq.approved,status.eq.scheduled')
+          .order('created_at', ascending: false)
+          .limit(1);
+      
+      final existingTrials = await existingTrialsQuery;
+
+      if (existingTrials.isNotEmpty) {
+        final existingTrial = existingTrials[0];
+        final trialStatus = existingTrial['status'] as String;
+        final scheduledDate = existingTrial['scheduled_date'] as String?;
+        final scheduledTime = existingTrial['scheduled_time'] as String?;
+        
+        String message;
+        if (trialStatus == 'pending') {
+          message = 'You already have a pending trial session request with this tutor. Please wait for the tutor to respond before creating a regular booking.';
+        } else if (trialStatus == 'approved' || trialStatus == 'scheduled') {
+          message = 'You already have an ${trialStatus == 'approved' ? 'approved' : 'scheduled'} trial session with this tutor';
+          if (scheduledDate != null && scheduledTime != null) {
+            message += ' scheduled for $scheduledDate at $scheduledTime';
+          }
+          message += '. Please complete this trial before creating a regular booking.';
+        } else {
+          message = 'You already have an active trial session with this tutor. Please complete it before creating a regular booking.';
+        }
+        
+        throw Exception(message);
+      }
+
+      // Check for schedule conflicts on student/parent side
+      final studentConflict = await checkStudentScheduleConflicts(
+        studentId: userId,
+        requestedDays: days,
+        requestedTimes: times,
+      );
+      
+      if (studentConflict.hasConflict) {
+        // Build conflict message
+        final conflictMessages = studentConflict.conflictDetails.values.toList();
+        final conflictMessage = conflictMessages.join('\n');
+        throw Exception(
+          'Schedule Conflict: You already have a session scheduled at the same time with another tutor.\n\n$conflictMessage\n\nPlease choose a different time slot.'
+        );
+      }
 
       // Create booking request data
       final requestData = {
@@ -307,6 +388,19 @@ class BookingService {
         );
       } catch (e) {
         print('⚠️ Failed to create payment request: $e');
+      }
+
+      // Create recurring session from approved booking
+      try {
+        await RecurringSessionService.createRecurringSessionFromBooking(
+          bookingRequest,
+          paymentRequestId: paymentRequestId,
+        );
+        print('✅ Recurring session created for approved booking');
+      } catch (e) {
+        print('⚠️ Failed to create recurring session: $e');
+        // Don't fail the approval if session creation fails
+        // The request is already approved, session can be created manually later
       }
 
       // Send notification to student
@@ -571,5 +665,173 @@ class BookingService {
       print('⚠️ Error checking conflicts: $e');
       return false; // Assume no conflict on error
     }
+  }
+
+  /// Check for schedule conflicts on student/parent side
+  /// 
+  /// Checks if the student/parent already has sessions scheduled at the requested times
+  /// with other tutors (recurring sessions, individual sessions, or trial sessions)
+  static Future<ConflictResult> checkStudentScheduleConflicts({
+    required String studentId,
+    required List<String> requestedDays,
+    required Map<String, String> requestedTimes,
+  }) async {
+    try {
+      final List<String> conflictingDays = [];
+      final Map<String, String> conflictDetails = {};
+      
+      // 1. Check recurring sessions (active sessions with other tutors)
+      final recurringSessions = await SupabaseService.client
+          .from('recurring_sessions')
+          .select('id, days, times, tutor_name, status')
+          .or('student_id.eq.$studentId,learner_id.eq.$studentId')
+          .eq('status', 'active');
+      
+      for (final session in recurringSessions as List) {
+        final sessionDays = List<String>.from(session['days'] ?? []);
+        final sessionTimes = Map<String, String>.from(session['times'] ?? {});
+        final tutorName = session['tutor_name'] as String? ?? 'another tutor';
+        
+        for (final requestedDay in requestedDays) {
+          final requestedTime = requestedTimes[requestedDay];
+          if (requestedTime == null) continue;
+          
+          if (sessionDays.contains(requestedDay)) {
+            final existingTime = sessionTimes[requestedDay];
+            if (existingTime != null && _normalizeTime(existingTime) == _normalizeTime(requestedTime)) {
+              if (!conflictingDays.contains(requestedDay)) {
+                conflictingDays.add(requestedDay);
+                conflictDetails[requestedDay] = 
+                    'You have a session with $tutorName on $requestedDay at $existingTime';
+              }
+            }
+          }
+        }
+      }
+      
+      // 2. Check individual sessions (upcoming scheduled sessions)
+      // Get next 30 days of individual sessions
+      final now = DateTime.now();
+      final futureDate = now.add(const Duration(days: 30));
+      
+      final individualSessionsResponse = await SupabaseService.client
+          .from('individual_sessions')
+          .select('scheduled_date, scheduled_time, tutor_id, status, tutor:profiles!tutor_id(full_name)')
+          .or('learner_id.eq.$studentId,parent_id.eq.$studentId')
+          .inFilter('status', ['scheduled', 'in_progress'])
+          .gte('scheduled_date', now.toIso8601String().split('T')[0])
+          .lte('scheduled_date', futureDate.toIso8601String().split('T')[0]);
+      
+      final individualSessions = individualSessionsResponse as List;
+      
+      for (final session in individualSessions) {
+        final scheduledDate = session['scheduled_date'] as String?;
+        final scheduledTime = session['scheduled_time'] as String?;
+        final tutorProfile = session['tutor'] as Map<String, dynamic>?;
+        final tutorName = tutorProfile?['full_name'] as String? ?? 'another tutor';
+        
+        if (scheduledDate == null || scheduledTime == null) continue;
+        
+        // Convert date to day name
+        final sessionDate = DateTime.parse(scheduledDate);
+        final dayName = _getDayName(sessionDate);
+        
+        // Check if this day/time conflicts with requested schedule
+        if (requestedDays.contains(dayName)) {
+          final requestedTime = requestedTimes[dayName];
+          if (requestedTime != null && _normalizeTime(scheduledTime) == _normalizeTime(requestedTime)) {
+            if (!conflictingDays.contains(dayName)) {
+              conflictingDays.add(dayName);
+              conflictDetails[dayName] = 
+                  'You have a session with $tutorName on $dayName at ${_formatTime(scheduledTime)}';
+            }
+          }
+        }
+      }
+      
+      // 3. Check trial sessions (upcoming scheduled trials)
+      final trialSessionsResponse = await SupabaseService.client
+          .from('trial_sessions')
+          .select('scheduled_date, scheduled_time, tutor_id, status, tutor:profiles!tutor_id(full_name)')
+          .or('requester_id.eq.$studentId,learner_id.eq.$studentId,parent_id.eq.$studentId')
+          .inFilter('status', ['pending', 'approved', 'scheduled'])
+          .gte('scheduled_date', now.toIso8601String().split('T')[0])
+          .lte('scheduled_date', futureDate.toIso8601String().split('T')[0]);
+      
+      final trialSessions = trialSessionsResponse as List;
+      
+      for (final session in trialSessions) {
+        final scheduledDate = session['scheduled_date'] as String?;
+        final scheduledTime = session['scheduled_time'] as String?;
+        final tutorProfile = session['tutor'] as Map<String, dynamic>?;
+        final tutorName = tutorProfile?['full_name'] as String? ?? 'another tutor';
+        
+        if (scheduledDate == null || scheduledTime == null) continue;
+        
+        // Convert date to day name
+        final sessionDate = DateTime.parse(scheduledDate);
+        final dayName = _getDayName(sessionDate);
+        
+        // Check if this day/time conflicts with requested schedule
+        if (requestedDays.contains(dayName)) {
+          final requestedTime = requestedTimes[dayName];
+          if (requestedTime != null && _normalizeTime(scheduledTime) == _normalizeTime(requestedTime)) {
+            if (!conflictingDays.contains(dayName)) {
+              conflictingDays.add(dayName);
+              conflictDetails[dayName] = 
+                  'You have a trial session with $tutorName on $dayName at ${_formatTime(scheduledTime)}';
+            }
+          }
+        }
+      }
+      
+      return ConflictResult(
+        hasConflict: conflictingDays.isNotEmpty,
+        conflictingDays: conflictingDays,
+        conflictDetails: conflictDetails,
+      );
+    } catch (e) {
+      print('⚠️ Error checking student schedule conflicts: $e');
+      // Don't block booking if conflict check fails - just log the error
+      return ConflictResult(
+        hasConflict: false,
+        conflictingDays: [],
+        conflictDetails: {},
+      );
+    }
+  }
+  
+  /// Normalize time strings for comparison (handles different formats)
+  static String _normalizeTime(String time) {
+    // Remove spaces and convert to uppercase
+    final cleaned = time.trim().toUpperCase();
+    // Handle formats like "4:00 PM", "16:00", "4:00PM", etc.
+    // For now, simple comparison - can be enhanced
+    return cleaned.replaceAll(' ', '').replaceAll(':', '');
+  }
+  
+  /// Format time for display
+  static String _formatTime(String time) {
+    // Try to parse and format nicely
+    try {
+      // If it's in HH:MM:SS format, extract HH:MM
+      if (time.contains(':')) {
+        final parts = time.split(':');
+        final hour = int.parse(parts[0]);
+        final minute = parts[1];
+        final isPM = hour >= 12;
+        final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
+        return '$displayHour:$minute ${isPM ? 'PM' : 'AM'}';
+      }
+    } catch (e) {
+      // If parsing fails, return as is
+    }
+    return time;
+  }
+  
+  /// Get day name from date
+  static String _getDayName(DateTime date) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[date.weekday - 1];
   }
 }

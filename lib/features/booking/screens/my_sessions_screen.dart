@@ -9,6 +9,12 @@ import '../../../core/theme/app_theme.dart';
 import '../services/individual_session_service.dart';
 import '../services/session_feedback_service.dart';
 import 'session_feedback_screen.dart';
+// TODO: Fix import path
+// import 'package:prepskul/features/sessions/services/session_transcript_service.dart';
+// TODO: Fix import path
+// import 'package:prepskul/features/sessions/screens/session_summary_screen.dart';
+import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
+import 'package:prepskul/core/services/auth_service.dart';
 import '../../../core/localization/app_localizations.dart';
 
 /// My Sessions Screen
@@ -29,6 +35,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   List<Map<String, dynamic>> _pastSessions = [];
   bool _isLoading = true;
   final Map<String, bool> _feedbackSubmitted = {}; // Cache feedback status
+  final Map<String, bool> _hasTranscript = {}; // Cache transcript availability
 
   @override
   void initState() {
@@ -99,14 +106,28 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         return dateB.compareTo(dateA); // Descending for past
       });
 
-      // Check feedback status for completed sessions
+      // Check feedback status and transcript availability for completed sessions
       for (final session in past) {
-        if (session['status'] == 'completed' && session['type'] == 'individual') {
+        if (session['status'] == 'completed') {
           final sessionId = session['id'] as String;
-          final canSubmit = await SessionFeedbackService.canSubmitFeedback(
-            sessionId,
-          );
-          _feedbackSubmitted[sessionId] = !canSubmit; 
+          final sessionType = session['type'] as String? ?? 'individual';
+          
+          // Check feedback status
+          if (sessionType == 'individual') {
+            final canSubmit = await SessionFeedbackService.canSubmitFeedback(
+              sessionId,
+            );
+            _feedbackSubmitted[sessionId] = !canSubmit;
+          }
+          
+          // Check transcript availability
+          bool hasTranscript = false;
+          if (sessionType == 'individual') {
+            // hasTranscript = await SessionTranscriptService.hasIndividualSessionTranscript(sessionId);
+          } else if (sessionType == 'trial') {
+            // hasTranscript = await SessionTranscriptService.hasTranscript(sessionId, 'trial');
+          }
+          _hasTranscript[sessionId] = hasTranscript;
         }
       }
 
@@ -218,6 +239,27 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     if (result == true) {
       _loadSessions();
     }
+  }
+
+  Future<void> _openSessionSummary(Map<String, dynamic> session) async {
+    final sessionId = session['id'] as String;
+    final sessionType = session['type'] as String? ?? 'individual';
+    
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AlertDialog(
+          title: Text('Session Summary'),
+          content: Text('Feature coming soon'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _joinMeeting(String? meetLink) async {
@@ -530,6 +572,23 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     ],
                   ),
                 ),
+                // Session Summary button for completed online sessions
+                if (isCompleted && _hasTranscript[sessionId] == true) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openSessionSummary(session),
+                      icon: const Icon(Icons.description, size: 18),
+                      label: const Text('View Session Summary'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryColor,
+                        side: BorderSide(color: AppTheme.primaryColor),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ],
           ),
@@ -538,7 +597,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
-  void _showSessionDetails(Map<String, dynamic> session) {
+  void _showSessionDetails(Map<String, dynamic> session) async {
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     final tutorName = recurringData?['tutor_name'] as String? ?? 'Tutor';
     final subject = recurringData?['subject'] as String? ?? 'Session';
@@ -548,6 +607,19 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final location = session['location'] as String? ?? 'online';
     final meetLink = session['meeting_link'] as String?;
     final status = session['status'] as String;
+    final sessionId = session['id'] as String;
+    final onsiteAddress = session['onsite_address'] as String?;
+    
+    // Get current user info for check-in
+    String? currentUserId;
+    String? userType;
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      currentUserId = userProfile?['id'] as String?;
+      userType = userProfile?['user_type'] as String?;
+    } catch (e) {
+      print('⚠️ Error getting user profile: \$e');
+    }
 
     showDialog(
       context: context,
@@ -579,7 +651,20 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               _buildDetailRow('Duration', '$duration minutes'),
               _buildDetailRow('Location', location == 'online' ? 'Online' : 'On-site'),
               _buildDetailRow('Status', _getStatusLabel(status)),
-              if (location == 'online' && meetLink != null && meetLink.isNotEmpty) ...[
+              // Location map for onsite sessions
+              if (location == 'onsite' && onsiteAddress != null && onsiteAddress.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                SessionLocationMap(
+                  address: onsiteAddress,
+                  coordinates: null, // Could be extracted from address if available
+                  sessionId: sessionId,
+                  currentUserId: currentUserId,
+                  userType: userType,
+                  showCheckIn: status == 'scheduled' || status == 'in_progress',
+                ),
+              ],
+              
+                            if (location == 'online' && meetLink != null && meetLink.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
                   onPressed: () {

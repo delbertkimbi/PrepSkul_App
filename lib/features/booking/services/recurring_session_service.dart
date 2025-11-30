@@ -324,7 +324,7 @@ class RecurringSessionService {
             'scheduled_date': dateFormatted,
             'scheduled_time': timeFormatted,
             'duration_minutes': durationMinutes,
-            'location': location == 'hybrid' ? 'online' : location, // Default hybrid to online
+            'location': location, // Supports 'online', 'onsite', or 'hybrid'
             'onsite_address': location == 'onsite' || location == 'hybrid' ? address : null,
             'status': 'scheduled',
             'created_at': DateTime.now().toIso8601String(),

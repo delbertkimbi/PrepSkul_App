@@ -1,10 +1,12 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 
 /// TrialSessionService
@@ -138,6 +140,37 @@ class TrialSessionService {
         }
 
         throw Exception(message);
+      }
+
+      // Check for schedule conflicts with other tutors at the same time
+      // Convert scheduledDate to DateTime and get day name
+      final sessionDate = DateTime.parse(scheduledDate.toIso8601String().split('T')[0]);
+      final dayName = _getDayName(sessionDate);
+      final requestedTimes = <String, String>{dayName: scheduledTime};
+      final requestedDays = <String>[dayName];
+      
+      try {
+        final studentConflict = await BookingService.checkStudentScheduleConflicts(
+          studentId: userId,
+          requestedDays: requestedDays,
+          requestedTimes: requestedTimes,
+        );
+        
+        if (studentConflict.hasConflict) {
+          // Build conflict message
+          final conflictMessages = studentConflict.conflictDetails.values.toList();
+          final conflictMessage = conflictMessages.join('\n');
+          throw Exception(
+            'Schedule Conflict: You already have a session scheduled at the same time with another tutor.\n\n$conflictMessage\n\nPlease choose a different time slot.'
+          );
+        }
+      } catch (e) {
+        // If conflict check fails, log but don't block - the error might be from the conflict itself
+        if (e.toString().contains('Schedule Conflict')) {
+          rethrow; // Re-throw conflict errors
+        }
+        print('⚠️ Error checking trial schedule conflicts: $e');
+        // Continue with trial creation if conflict check fails (non-blocking)
       }
 
       // Create trial session data
@@ -337,6 +370,27 @@ class TrialSessionService {
       } catch (e) {
         print('⚠️ Failed to send trial acceptance notification: $e');
         // Don't fail the approval if notification fails
+      }
+
+      // Schedule payment reminder notifications
+      try {
+        final sessionDateTime = SessionDateUtils.getSessionDateTime(trialSession);
+        final paymentDeadline = SessionDateUtils.getPaymentDeadline(trialSession, hoursBefore: 24);
+        
+        await NotificationHelperService.schedulePaymentReminders(
+          studentId: trialSession.learnerId ?? trialSession.requesterId,
+          sessionId: sessionId,
+          sessionType: 'trial',
+          paymentDeadline: paymentDeadline,
+          subject: subject,
+          amount: trialSession.trialFee,
+          currency: 'XAF',
+        );
+        
+        print('✅ Payment reminders scheduled for trial session: $sessionId');
+      } catch (e) {
+        print('⚠️ Failed to schedule payment reminders: $e');
+        // Don't fail approval if reminder scheduling fails
       }
 
       return trialSession;
@@ -742,6 +796,35 @@ class TrialSessionService {
         print(
           '⚠️ Error creating individual session for trial (will still keep trial record): $e',
         );
+
+        
+        // Notify tutor that session is ready and payment received
+        try {
+          // Get learner name for notification
+          final learnerProfile = await _supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', trial.learnerId)
+              .maybeSingle();
+          
+          final learnerName = learnerProfile?['full_name'] as String? ?? 'Student';
+          
+          await NotificationHelperService.notifyTutorSessionReady(
+            tutorId: trial.tutorId,
+            sessionId: trial.id,
+            sessionType: 'trial',
+            learnerName: learnerName,
+            subject: trial.subject,
+            scheduledDate: scheduledDate ?? trial.scheduledDate,
+            scheduledTime: scheduledTime,
+            meetLink: meetLink,
+          );
+          
+          print('✅ Notified tutor that session is ready: ${trial.id}');
+        } catch (e) {
+          print('⚠️ Failed to notify tutor: $e');
+          // Don't fail payment completion if notification fails
+        }
       }
 
       // Send notification to student and tutor
@@ -842,4 +925,131 @@ class TrialSessionService {
       throw Exception('Failed to fetch upcoming trials: $e');
     }
   }
+
+
+  /// Auto-cancel expired trial sessions that haven't been paid
+  /// 
+  /// Cancels sessions where:
+  /// - Status is 'approved' or 'scheduled'
+  /// - Payment status is NOT 'paid' or 'completed'
+  /// - Scheduled date/time has passed
+  static Future<int> autoCancelExpiredSessions() async {
+    try {
+      final now = DateTime.now();
+      final today = now.toIso8601String().split('T')[0];
+      final currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      
+      // Query expired unpaid sessions
+      // Get sessions where date has passed OR (date is today and time has passed)
+      final expiredQuery = _supabase
+          .from('trial_sessions')
+          .select()
+          .inFilter('status', ['approved', 'scheduled'])
+          .not('payment_status', 'in', ['paid', 'completed'])
+          .or('scheduled_date.lt.$today,scheduled_date.eq.$today.and(scheduled_time.lte.$currentTime)');
+      
+      final expiredSessions = await expiredQuery;
+      
+      if (expiredSessions.isEmpty) {
+        return 0;
+      }
+      
+      int cancelledCount = 0;
+      
+      for (final sessionData in expiredSessions as List) {
+        final sessionId = sessionData['id'] as String;
+        final scheduledDate = sessionData['scheduled_date'] as String;
+        final scheduledTime = sessionData['scheduled_time'] as String;
+        
+        // Parse and verify the session has actually passed
+        try {
+          final dateParts = scheduledDate.split('T')[0].split('-');
+          final timeParts = scheduledTime.split(':');
+          final year = int.parse(dateParts[0]);
+          final month = int.parse(dateParts[1]);
+          final day = int.parse(dateParts[2]);
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          
+          final sessionDateTime = DateTime(year, month, day, hour, minute);
+          
+          if (sessionDateTime.isBefore(now)) {
+            // Cancel the session
+            await _supabase
+                .from('trial_sessions')
+                .update({
+                  'status': 'expired',
+                  'rejection_reason': 'Payment not completed before session time',
+                  'updated_at': now.toIso8601String(),
+                })
+                .eq('id', sessionId);
+            
+            // Notify both parties
+            final learnerId = sessionData['learner_id'] as String?;
+            final requesterId = sessionData['requester_id'] as String?;
+            final tutorId = sessionData['tutor_id'] as String?;
+            final subject = sessionData['subject'] as String? ?? 'Trial Session';
+            
+            final studentId = learnerId ?? requesterId;
+            
+            if (studentId != null) {
+              try {
+                await NotificationService.createNotification(
+                  userId: studentId,
+                  type: 'trial_expired',
+                  title: '⏰ Trial Session Expired',
+                  message: 'Payment not completed before session time. The session has been cancelled.',
+                  priority: 'high',
+                );
+              } catch (e) {
+                print('⚠️ Failed to notify student of expired session: $e');
+              }
+            }
+            
+            if (tutorId != null) {
+              try {
+                await NotificationService.createNotification(
+                  userId: tutorId,
+                  type: 'trial_expired',
+                  title: '⏰ Trial Session Expired',
+                  message: 'A trial session for $subject was cancelled because payment was not completed before the session time.',
+                  priority: 'normal',
+                );
+              } catch (e) {
+                print('⚠️ Failed to notify tutor of expired session: $e');
+              }
+            }
+            
+            cancelledCount++;
+            print('✅ Cancelled expired trial session: $sessionId');
+          }
+        } catch (e) {
+          print('⚠️ Error processing expired session $sessionId: $e');
+          continue;
+        }
+      }
+      
+      if (cancelledCount > 0) {
+        print('✅ Auto-cancelled $cancelledCount expired trial session(s)');
+      }
+      
+      return cancelledCount;
+    } catch (e) {
+      print('❌ Error auto-cancelling expired sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Get day name from date
+  static String _getDayName(DateTime date) {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[date.weekday - 1];
+  }
+
+  /// Normalize time string for comparison
+  static String _normalizeTime(String time) {
+    // Remove any whitespace and convert to lowercase for comparison
+    return time.trim().toLowerCase();
+  }
+
 }

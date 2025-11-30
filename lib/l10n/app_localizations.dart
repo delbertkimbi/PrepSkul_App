@@ -580,6 +580,462 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Status'**
   String get commonStatus;
+
+  /// No description provided for @roleStudent.
+  ///
+  /// In en, this message translates to:
+  /// **'STUDENT'**
+  String get roleStudent;
+
+  /// No description provided for @roleParent.
+  ///
+  /// In en, this message translates to:
+  /// **'PARENT'**
+  String get roleParent;
+
+  /// No description provided for @roleTutor.
+  ///
+  /// In en, this message translates to:
+  /// **'TUTOR'**
+  String get roleTutor;
+
+  /// No description provided for @noPaymentRequestsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No payment requests found'**
+  String get noPaymentRequestsFound;
+
+  /// No description provided for @tutorNeedsToApprove.
+  ///
+  /// In en, this message translates to:
+  /// **'Your tutor needs to approve this trial before you can pay.'**
+  String get tutorNeedsToApprove;
+
+  /// No description provided for @awaitingTutorApproval.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting tutor approval'**
+  String get awaitingTutorApproval;
+
+  /// No description provided for @studentRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'STUDENT REQUEST'**
+  String get studentRequest;
+
+  /// No description provided for @parentRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'PARENT REQUEST'**
+  String get parentRequest;
+
+  /// No description provided for @goodMorning.
+  ///
+  /// In en, this message translates to:
+  /// **'Good morning 👋'**
+  String get goodMorning;
+
+  /// No description provided for @goodAfternoon.
+  ///
+  /// In en, this message translates to:
+  /// **'Good afternoon 👋'**
+  String get goodAfternoon;
+
+  /// No description provided for @goodEvening.
+  ///
+  /// In en, this message translates to:
+  /// **'Good evening 👋'**
+  String get goodEvening;
+
+  /// No description provided for @yourProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Your Progress'**
+  String get yourProgress;
+
+  /// No description provided for @activeTutors.
+  ///
+  /// In en, this message translates to:
+  /// **'Active Tutors'**
+  String get activeTutors;
+
+  /// No description provided for @sessions.
+  ///
+  /// In en, this message translates to:
+  /// **'Sessions'**
+  String get sessions;
+
+  /// No description provided for @quickActions.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick Actions'**
+  String get quickActions;
+
+  /// No description provided for @findPerfectTutor.
+  ///
+  /// In en, this message translates to:
+  /// **'Find Perfect Tutor'**
+  String get findPerfectTutor;
+
+  /// No description provided for @browseTutorsIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse tutors in {location}'**
+  String browseTutorsIn(String location);
+
+  /// No description provided for @myRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'My Requests'**
+  String get myRequests;
+
+  /// No description provided for @viewYourBookingRequests.
+  ///
+  /// In en, this message translates to:
+  /// **'View your booking requests'**
+  String get viewYourBookingRequests;
+
+  /// No description provided for @mySessions.
+  ///
+  /// In en, this message translates to:
+  /// **'My Sessions'**
+  String get mySessions;
+
+  /// No description provided for @viewUpcomingAndCompletedSessions.
+  ///
+  /// In en, this message translates to:
+  /// **'View upcoming and completed sessions'**
+  String get viewUpcomingAndCompletedSessions;
+
+  /// No description provided for @paymentHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Payment History'**
+  String get paymentHistory;
+
+  /// No description provided for @viewAndManageYourPayments.
+  ///
+  /// In en, this message translates to:
+  /// **'View and manage your payments'**
+  String get viewAndManageYourPayments;
+
+  /// No description provided for @searchPlaceholder.
+  ///
+  /// In en, this message translates to:
+  /// **'Search tutors...'**
+  String get searchPlaceholder;
+
+  /// No description provided for @noResultsFound.
+  ///
+  /// In en, this message translates to:
+  /// **'No results found'**
+  String get noResultsFound;
+
+  /// No description provided for @filterBySubject.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by subject'**
+  String get filterBySubject;
+
+  /// No description provided for @filterByLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by location'**
+  String get filterByLocation;
+
+  /// No description provided for @filterByPrice.
+  ///
+  /// In en, this message translates to:
+  /// **'Filter by price'**
+  String get filterByPrice;
+
+  /// No description provided for @bookTrialSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Book Trial Session'**
+  String get bookTrialSession;
+
+  /// No description provided for @bookThisTutor.
+  ///
+  /// In en, this message translates to:
+  /// **'Book This Tutor'**
+  String get bookThisTutor;
+
+  /// No description provided for @tutorProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Tutor Profile'**
+  String get tutorProfile;
+
+  /// No description provided for @about.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get about;
+
+  /// No description provided for @subjects.
+  ///
+  /// In en, this message translates to:
+  /// **'Subjects'**
+  String get subjects;
+
+  /// No description provided for @pricing.
+  ///
+  /// In en, this message translates to:
+  /// **'Pricing'**
+  String get pricing;
+
+  /// No description provided for @reviews.
+  ///
+  /// In en, this message translates to:
+  /// **'Reviews'**
+  String get reviews;
+
+  /// No description provided for @schedule.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedule'**
+  String get schedule;
+
+  /// No description provided for @contact.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact'**
+  String get contact;
+
+  /// No description provided for @filterMonthlyPriceRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Monthly Price Range'**
+  String get filterMonthlyPriceRange;
+
+  /// No description provided for @filterMinimumRating.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum Rating'**
+  String get filterMinimumRating;
+
+  /// No description provided for @filterAny.
+  ///
+  /// In en, this message translates to:
+  /// **'Any'**
+  String get filterAny;
+
+  /// No description provided for @filterUnder20k.
+  ///
+  /// In en, this message translates to:
+  /// **'Under 20k/mo'**
+  String get filterUnder20k;
+
+  /// No description provided for @filter20kTo30k.
+  ///
+  /// In en, this message translates to:
+  /// **'20k - 30k/mo'**
+  String get filter20kTo30k;
+
+  /// No description provided for @filter30kTo40k.
+  ///
+  /// In en, this message translates to:
+  /// **'30k - 40k/mo'**
+  String get filter30kTo40k;
+
+  /// No description provided for @filter40kTo50k.
+  ///
+  /// In en, this message translates to:
+  /// **'40k - 50k/mo'**
+  String get filter40kTo50k;
+
+  /// No description provided for @filterAbove50k.
+  ///
+  /// In en, this message translates to:
+  /// **'Above 50k/mo'**
+  String get filterAbove50k;
+
+  /// No description provided for @filterShowTutors.
+  ///
+  /// In en, this message translates to:
+  /// **'Show {count} tutor'**
+  String filterShowTutors(int count);
+
+  /// No description provided for @filterShowTutorsPlural.
+  ///
+  /// In en, this message translates to:
+  /// **'Show {count} tutors'**
+  String filterShowTutorsPlural(int count);
+
+  /// No description provided for @discoverTutorsNearYou.
+  ///
+  /// In en, this message translates to:
+  /// **'Discover tutors near you'**
+  String get discoverTutorsNearYou;
+
+  /// No description provided for @requestTutorSubjectLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Subject & Level'**
+  String get requestTutorSubjectLevel;
+
+  /// No description provided for @requestTutorEducationLevel.
+  ///
+  /// In en, this message translates to:
+  /// **'Education Level'**
+  String get requestTutorEducationLevel;
+
+  /// No description provided for @requestTutorSpecificRequirements.
+  ///
+  /// In en, this message translates to:
+  /// **'Specific Requirements (Optional)'**
+  String get requestTutorSpecificRequirements;
+
+  /// No description provided for @requestTutorSelectAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Select all that apply'**
+  String get requestTutorSelectAll;
+
+  /// No description provided for @requestTutorTutorPreferences.
+  ///
+  /// In en, this message translates to:
+  /// **'Tutor Preferences'**
+  String get requestTutorTutorPreferences;
+
+  /// No description provided for @requestTutorHelpFindMatch.
+  ///
+  /// In en, this message translates to:
+  /// **'Help us find the perfect match for you'**
+  String get requestTutorHelpFindMatch;
+
+  /// No description provided for @requestTutorTeachingMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Teaching Mode *'**
+  String get requestTutorTeachingMode;
+
+  /// No description provided for @requestTutorBudgetRange.
+  ///
+  /// In en, this message translates to:
+  /// **'Budget Range'**
+  String get requestTutorBudgetRange;
+
+  /// No description provided for @requestTutorPerMonth.
+  ///
+  /// In en, this message translates to:
+  /// **'Per month'**
+  String get requestTutorPerMonth;
+
+  /// No description provided for @requestTutorGenderPreference.
+  ///
+  /// In en, this message translates to:
+  /// **'Gender Preference (Optional)'**
+  String get requestTutorGenderPreference;
+
+  /// No description provided for @requestTutorQualification.
+  ///
+  /// In en, this message translates to:
+  /// **'Tutor Qualification (Optional)'**
+  String get requestTutorQualification;
+
+  /// No description provided for @requestTutorScheduleLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedule & Location'**
+  String get requestTutorScheduleLocation;
+
+  /// No description provided for @requestTutorWhenWhere.
+  ///
+  /// In en, this message translates to:
+  /// **'When and where would you like the sessions?'**
+  String get requestTutorWhenWhere;
+
+  /// No description provided for @requestTutorPreferredDays.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred Days *'**
+  String get requestTutorPreferredDays;
+
+  /// No description provided for @requestTutorPreferredTime.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred Time *'**
+  String get requestTutorPreferredTime;
+
+  /// No description provided for @requestTutorLocation.
+  ///
+  /// In en, this message translates to:
+  /// **'Location *'**
+  String get requestTutorLocation;
+
+  /// No description provided for @requestTutorLocationDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Location Description (Optional)'**
+  String get requestTutorLocationDescription;
+
+  /// No description provided for @requestTutorAdditionalDetails.
+  ///
+  /// In en, this message translates to:
+  /// **'Additional Details'**
+  String get requestTutorAdditionalDetails;
+
+  /// No description provided for @requestTutorRequestReason.
+  ///
+  /// In en, this message translates to:
+  /// **'Why are you requesting a tutor?'**
+  String get requestTutorRequestReason;
+
+  /// No description provided for @requestTutorUrgency.
+  ///
+  /// In en, this message translates to:
+  /// **'How urgent is this request?'**
+  String get requestTutorUrgency;
+
+  /// No description provided for @requestTutorSubmitRequest.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit Request'**
+  String get requestTutorSubmitRequest;
+
+  /// No description provided for @requestTutorSendWhatsApp.
+  ///
+  /// In en, this message translates to:
+  /// **'Send WhatsApp Message?'**
+  String get requestTutorSendWhatsApp;
+
+  /// No description provided for @requestTutorWhatsAppPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'Would you like to send a WhatsApp message to PrepSkul team with your request details?'**
+  String get requestTutorWhatsAppPrompt;
+
+  /// No description provided for @requestTutorSkip.
+  ///
+  /// In en, this message translates to:
+  /// **'Skip'**
+  String get requestTutorSkip;
+
+  /// No description provided for @requestTutorSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get requestTutorSend;
+
+  /// No description provided for @requestTutorRequestSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Request Sent!'**
+  String get requestTutorRequestSent;
+
+  /// No description provided for @requestTutorRequestSubmitted.
+  ///
+  /// In en, this message translates to:
+  /// **'Your tutor request has been submitted successfully. Our team will contact you soon!'**
+  String get requestTutorRequestSubmitted;
+
+  /// No description provided for @requestTutorDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Done'**
+  String get requestTutorDone;
 }
 
 class _AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {

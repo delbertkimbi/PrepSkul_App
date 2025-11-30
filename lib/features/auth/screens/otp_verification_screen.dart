@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/core/widgets/branded_snackbar.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -222,9 +223,36 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       }
     } catch (e) {
       print('❌ OTP Verification Error: $e');
-      _showError(
-        'Invalid code. Error: ${e.toString().length > 50 ? e.toString().substring(0, 50) : e.toString()}',
-      );
+      final errorStr = e.toString().toLowerCase();
+      
+      // Check for specific error types
+      String errorMessage;
+      bool shouldResend = false;
+      
+      if (errorStr.contains('expired') || errorStr.contains('otp_expired')) {
+        errorMessage = 'This code has expired. Please request a new code.';
+        shouldResend = true;
+      } else if (errorStr.contains('invalid') || errorStr.contains('wrong')) {
+        errorMessage = 'Invalid code. Please check and try again, or request a new code.';
+      } else if (errorStr.contains('rate limit') || errorStr.contains('too many')) {
+        errorMessage = 'Too many attempts. Please wait a moment and try again.';
+      } else {
+        errorMessage = 'Verification failed. Please try again or request a new code.';
+      }
+      
+      if (mounted) {
+        BrandedSnackBar.showError(context, errorMessage);
+        
+        // If expired, offer to resend automatically
+        if (shouldResend && _canResend) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              _resendOTP();
+            }
+          });
+        }
+      }
+      
       // Clear OTP fields
       for (var controller in _otpControllers) {
         controller.clear();

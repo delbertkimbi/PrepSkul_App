@@ -3,8 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
-import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
-import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
@@ -28,9 +26,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
   bool _obscureConfirmPassword = true;
   String? _selectedRole;
   bool _isLoading = false;
-  // Cooldown timer
-  DateTime? _lastSignupAttempt;
-  static const int _cooldownSeconds = 60;
 
   @override
   Widget build(BuildContext context) {
@@ -484,14 +479,13 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                     const SizedBox(height: 16),
                                     TextButton(
                                       onPressed: () {
-                                        Navigator.pushNamedAndRemoveUntil(
+                                        Navigator.pushReplacementNamed(
                                           context,
-                                          '/auth-method-selection',
-                                          (route) => false,
+                                          '/beautiful-signup',
                                         );
                                       },
                                       child: Text(
-                                        'Try another auth method',
+                                        'Use phone number instead',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
                                           color: AppTheme.primaryColor,
@@ -551,38 +545,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       return;
     }
 
-    // Check cooldown
-    if (_lastSignupAttempt != null) {
-      final difference = DateTime.now().difference(_lastSignupAttempt!).inSeconds;
-      if (difference < _cooldownSeconds) {
-        final remaining = _cooldownSeconds - difference;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.timer_outlined, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Please wait $remaining seconds before trying again.',
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.orange[800],
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        return;
-      }
-    }
-
     setState(() => _isLoading = true);
-    // Update last attempt time
-    _lastSignupAttempt = DateTime.now();
 
     try {
       final email = _emailController.text.trim();
@@ -595,10 +558,6 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         email: email,
         password: password,
         emailRedirectTo: redirectUrl,
-        data: {
-          'full_name': fullName,
-          'user_type': _selectedRole,
-        },
       );
 
       if (response.user == null) {
@@ -613,64 +572,15 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
 
       final user = response.user!;
 
-      // If email is confirmed, navigate directly to survey
       if (user.emailConfirmedAt != null) {
-        // Save session
-        await AuthService.saveSession(
-          userId: user.id,
-          userRole: _selectedRole!,
-          phone: '',
-          fullName: fullName,
-          surveyCompleted: false,
-          rememberMe: true,
-        );
-
-        // Update profile with name and role (if not already set)
         await AuthService.completeEmailVerification(user);
-
-        // Navigate based on role
         if (mounted) {
-          final navService = NavigationService();
-          if (navService.isReady) {
-            final routeResult = await navService.determineInitialRoute();
-            navService.navigateToRoute(
-              routeResult.route,
-              arguments: routeResult.arguments,
-              replace: true,
-            );
-          } else {
-             // Fallback if nav service not ready (unlikely)
-             if (_selectedRole == 'tutor') {
-               // ... (existing tutor logic kept as fallback or simplified)
-                final userId = user.id;
-                final progress = await TutorOnboardingProgressService.loadProgress(userId);
-                final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
-                
-                if (progress == null && !onboardingSkipped) {
-                  Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
-                } else {
-                  Navigator.pushReplacementNamed(context, '/tutor-nav');
-                }
-             } else {
-               // Check if intro seen
-               final prefs = await SharedPreferences.getInstance();
-               final introSeen = prefs.getBool('survey_intro_seen') ?? false;
-               
-               if (!introSeen) {
-                 Navigator.pushReplacementNamed(
-                   context, 
-                   '/survey-intro',
-                   arguments: {'userType': _selectedRole},
-                 );
-               } else {
-                 Navigator.pushReplacementNamed(
-                   context,
-                   '/profile-setup',
-                   arguments: {'userRole': _selectedRole},
-                 );
-               }
-             }
-          }
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/profile-setup',
+            (route) => false,
+            arguments: {'userRole': _selectedRole},
+          );
         }
         return;
       }
@@ -716,18 +626,11 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       print('❌ Email signup error: $e');
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
-        final isWarning = errorMessage.toLowerCase().contains('too many attempts') || 
-                          errorMessage.toLowerCase().contains('wait');
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
-                Icon(
-                  isWarning ? Icons.warning_amber_rounded : Icons.error_outline, 
-                  color: Colors.white, 
-                  size: 20
-                ),
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -737,7 +640,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                 ),
               ],
             ),
-            backgroundColor: isWarning ? Colors.orange[800] : Colors.red[600],
+            backgroundColor: Colors.red[600],
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
             duration: const Duration(seconds: 5),

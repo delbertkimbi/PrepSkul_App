@@ -8,6 +8,8 @@ import '../../../features/booking/services/recurring_session_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/session_lifecycle_service.dart';
 
+import '../../../core/services/supabase_service.dart';
+import '../../../features/sessions/widgets/hybrid_mode_selection_dialog.dart';
 class TutorSessionsScreen extends StatefulWidget {
   const TutorSessionsScreen({Key? key}) : super(key: key);
 
@@ -223,7 +225,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         ],
       ),
     );
-  }
+}
+
+
 
   Widget _buildFilterChip(String filter, String label) {
     final isSelected = _selectedFilter == filter;
@@ -666,14 +670,49 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     }
   }
 
-  Future<void> _handleStartSession(String sessionId) async {
-    setState(() {
-      _sessionLoadingStates[sessionId] = true;
-    });
-    
+      Future<void> _handleStartSession(String sessionId) async {
+    // Get session details to check if it's hybrid
     try {
-      // Use SessionLifecycleService for comprehensive start flow
-      await SessionLifecycleService.startSession(sessionId);
+      final session = await SupabaseService.client
+          .from('individual_sessions')
+          .select('location, onsite_address, meeting_link')
+          .eq('id', sessionId)
+          .single();
+
+      final location = session['location'] as String? ?? 'online';
+      final address = session['onsite_address'] as String? ?? '';
+      final meetLink = session['meeting_link'] as String?;
+
+      // For hybrid sessions, show mode selection dialog
+      bool? isOnline;
+      if (location == 'hybrid') {
+        final selectedMode = await HybridModeSelectionDialog.show(
+          context,
+          sessionAddress: address,
+          meetingLink: meetLink,
+        );
+
+        if (selectedMode == null) {
+          // User cancelled
+          return;
+        }
+
+        isOnline = selectedMode;
+      } else {
+        // For online/onsite, determine from location
+        isOnline = location == 'online';
+      }
+
+      setState(() {
+        _sessionLoadingStates[sessionId] = true;
+      });
+
+      // Use SessionLifecycleService with mode selection
+      await SessionLifecycleService.startSession(
+        sessionId,
+        isOnline: isOnline ?? false,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -691,6 +730,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       _loadSessions(); // Refresh
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _sessionLoadingStates[sessionId] = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to start session: $e'),
@@ -698,14 +740,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _sessionLoadingStates[sessionId] = false;
-        });
-      }
     }
   }
+
 
   Future<void> _handleEndSession(String sessionId) async {
     final result = await showDialog<Map<String, dynamic>>(
@@ -848,6 +885,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
 }
 
 // End Session Dialog
+
 class _EndSessionDialog extends StatefulWidget {
   @override
   State<_EndSessionDialog> createState() => _EndSessionDialogState();

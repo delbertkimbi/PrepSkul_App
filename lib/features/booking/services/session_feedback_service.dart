@@ -361,6 +361,8 @@ class SessionFeedbackService {
             student_what_could_improve,
             student_would_recommend,
             student_feedback_submitted_at,
+            tutor_response,
+            tutor_response_submitted_at,
             review_displayed,
             individual_sessions!inner(
               tutor_id,
@@ -374,6 +376,14 @@ class SessionFeedbackService {
 
       return (reviews as List).cast<Map<String, dynamic>>();
     } catch (e) {
+      // Handle case where table doesn't exist yet (migration not run)
+      final errorStr = e.toString();
+      if (errorStr.contains('PGRST205') || 
+          errorStr.contains('Could not find the table') || 
+          errorStr.contains('session_feedback')) {
+        print('ℹ️ session_feedback table does not exist yet. Reviews will be available after migration.');
+        return [];
+      }
       print('❌ Error fetching tutor reviews: $e');
       return [];
     }
@@ -499,6 +509,49 @@ class SessionFeedbackService {
       return null;
     }
   }
+  /// Submit tutor response to a student review
+  static Future<void> submitTutorResponse({
+    required String feedbackId,
+    required String response,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      final feedback = await _supabase
+          .from('session_feedback')
+          .select('id, session_id, individual_sessions!inner(tutor_id)')
+          .eq('id', feedbackId)
+          .single();
+
+      final tutorId = feedback['individual_sessions']['tutor_id'] as String;
+      if (tutorId != userId) {
+        throw Exception('Unauthorized: Only the tutor can respond');
+      }
+
+      final existing = await _supabase
+          .from('session_feedback')
+          .select('tutor_response')
+          .eq('id', feedbackId)
+          .single();
+
+      if (existing['tutor_response'] != null) {
+        throw Exception('You have already responded');
+      }
+
+      await _supabase
+          .from('session_feedback')
+          .update({
+            'tutor_response': response.trim(),
+            'tutor_response_submitted_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', feedbackId);
+
+      print('✅ Tutor response submitted: $feedbackId');
+    } catch (e) {
+      print('❌ Error submitting tutor response: $e');
+      rethrow;
+    }
+  }
 }
-
-

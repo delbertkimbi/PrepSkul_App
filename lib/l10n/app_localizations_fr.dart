@@ -250,4 +250,238 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get commonStatus => 'Statut';
+
+  @override
+  String get roleStudent => 'ÉTUDIANT';
+
+  @override
+  String get roleParent => 'PARENT';
+
+  @override
+  String get roleTutor => 'TUTEUR';
+
+  @override
+  String get noPaymentRequestsFound => 'Aucune demande de paiement trouvée';
+
+  @override
+  String get tutorNeedsToApprove => 'Votre tuteur doit approuver cet essai avant que vous puissiez payer.';
+
+  @override
+  String get awaitingTutorApproval => 'En attente d\'approbation du tuteur';
+
+  @override
+  String get studentRequest => 'DEMANDE D\'ÉTUDIANT';
+
+  @override
+  String get parentRequest => 'DEMANDE DE PARENT';
+
+  @override
+  String get goodMorning => 'Bonjour 👋';
+
+  @override
+  String get goodAfternoon => 'Bon après-midi 👋';
+
+  @override
+  String get goodEvening => 'Bonsoir 👋';
+
+  @override
+  String get yourProgress => 'Votre progression';
+
+  @override
+  String get activeTutors => 'Tuteurs actifs';
+
+  @override
+  String get sessions => 'Sessions';
+
+  @override
+  String get quickActions => 'Actions rapides';
+
+  @override
+  String get findPerfectTutor => 'Trouver le tuteur parfait';
+
+  @override
+  String browseTutorsIn(String location) {
+    return 'Parcourir les tuteurs à $location';
+  }
+
+  @override
+  String get myRequests => 'Mes demandes';
+
+  @override
+  String get viewYourBookingRequests => 'Voir vos demandes de réservation';
+
+  @override
+  String get mySessions => 'Mes sessions';
+
+  @override
+  String get viewUpcomingAndCompletedSessions => 'Voir les sessions à venir et terminées';
+
+  @override
+  String get paymentHistory => 'Historique des paiements';
+
+  @override
+  String get viewAndManageYourPayments => 'Voir et gérer vos paiements';
+
+  @override
+  String get searchPlaceholder => 'Rechercher des tuteurs...';
+
+  @override
+  String get noResultsFound => 'Aucun résultat trouvé';
+
+  @override
+  String get filterBySubject => 'Filtrer par matière';
+
+  @override
+  String get filterByLocation => 'Filtrer par lieu';
+
+  @override
+  String get filterByPrice => 'Filtrer par prix';
+
+  @override
+  String get bookTrialSession => 'Réserver une session d\'essai';
+
+  @override
+  String get bookThisTutor => 'Réserver ce tuteur';
+
+  @override
+  String get tutorProfile => 'Profil du tuteur';
+
+  @override
+  String get about => 'À propos';
+
+  @override
+  String get subjects => 'Matières';
+
+  @override
+  String get pricing => 'Tarification';
+
+  @override
+  String get reviews => 'Avis';
+
+  @override
+  String get schedule => 'Horaire';
+
+  @override
+  String get contact => 'Contact';
+
+  @override
+  String get filterMonthlyPriceRange => 'Gamme de prix mensuelle';
+
+  @override
+  String get filterMinimumRating => 'Note minimale';
+
+  @override
+  String get filterAny => 'Tout';
+
+  @override
+  String get filterUnder20k => 'Moins de 20k/mois';
+
+  @override
+  String get filter20kTo30k => '20k - 30k/mois';
+
+  @override
+  String get filter30kTo40k => '30k - 40k/mois';
+
+  @override
+  String get filter40kTo50k => '40k - 50k/mois';
+
+  @override
+  String get filterAbove50k => 'Plus de 50k/mois';
+
+  @override
+  String filterShowTutors(int count) {
+    return 'Afficher $count tuteur';
+  }
+
+  @override
+  String filterShowTutorsPlural(int count) {
+    return 'Afficher $count tuteurs';
+  }
+
+  @override
+  String get discoverTutorsNearYou => 'Découvrez des tuteurs près de chez vous';
+
+  @override
+  String get requestTutorSubjectLevel => 'Matière et Niveau';
+
+  @override
+  String get requestTutorEducationLevel => 'Niveau d\'éducation';
+
+  @override
+  String get requestTutorSpecificRequirements => 'Exigences spécifiques (Optionnel)';
+
+  @override
+  String get requestTutorSelectAll => 'Sélectionnez tout ce qui s\'applique';
+
+  @override
+  String get requestTutorTutorPreferences => 'Préférences du tuteur';
+
+  @override
+  String get requestTutorHelpFindMatch => 'Aidez-nous à trouver la correspondance parfaite pour vous';
+
+  @override
+  String get requestTutorTeachingMode => 'Mode d\'enseignement *';
+
+  @override
+  String get requestTutorBudgetRange => 'Gamme de budget';
+
+  @override
+  String get requestTutorPerMonth => 'Par mois';
+
+  @override
+  String get requestTutorGenderPreference => 'Préférence de genre (Optionnel)';
+
+  @override
+  String get requestTutorQualification => 'Qualification du tuteur (Optionnel)';
+
+  @override
+  String get requestTutorScheduleLocation => 'Horaire et Lieu';
+
+  @override
+  String get requestTutorWhenWhere => 'Quand et où souhaitez-vous les sessions?';
+
+  @override
+  String get requestTutorPreferredDays => 'Jours préférés *';
+
+  @override
+  String get requestTutorPreferredTime => 'Heure préférée *';
+
+  @override
+  String get requestTutorLocation => 'Lieu *';
+
+  @override
+  String get requestTutorLocationDescription => 'Description du lieu (Optionnel)';
+
+  @override
+  String get requestTutorAdditionalDetails => 'Détails supplémentaires';
+
+  @override
+  String get requestTutorRequestReason => 'Pourquoi demandez-vous un tuteur?';
+
+  @override
+  String get requestTutorUrgency => 'Quelle est l\'urgence de cette demande?';
+
+  @override
+  String get requestTutorSubmitRequest => 'Soumettre la demande';
+
+  @override
+  String get requestTutorSendWhatsApp => 'Envoyer un message WhatsApp?';
+
+  @override
+  String get requestTutorWhatsAppPrompt => 'Souhaitez-vous envoyer un message WhatsApp à l\'équipe PrepSkul avec les détails de votre demande?';
+
+  @override
+  String get requestTutorSkip => 'Ignorer';
+
+  @override
+  String get requestTutorSend => 'Envoyer';
+
+  @override
+  String get requestTutorRequestSent => 'Demande envoyée!';
+
+  @override
+  String get requestTutorRequestSubmitted => 'Votre demande de tuteur a été soumise avec succès. Notre équipe vous contactera bientôt!';
+
+  @override
+  String get requestTutorDone => 'Terminé';
 }

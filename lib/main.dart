@@ -24,6 +24,7 @@ import 'package:prepskul/features/tutor/screens/tutor_onboarding_choice_screen.d
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
 import 'package:prepskul/features/booking/screens/my_sessions_screen.dart';
+import 'package:prepskul/features/booking/screens/session_feedback_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:prepskul/core/navigation/main_navigation.dart';
@@ -529,6 +530,17 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           return MaterialPageRoute(
             builder: (context) => const MySessionsScreen(),
           );
+        }
+        // Session Feedback route: /sessions/{sessionId}/feedback
+        if (settings.name?.startsWith('/sessions/') == true && 
+            settings.name?.endsWith('/feedback') == true) {
+          final pathParts = settings.name!.split('/');
+          if (pathParts.length >= 3) {
+            final sessionId = pathParts[2]; // /sessions/{sessionId}/feedback
+            return MaterialPageRoute(
+              builder: (context) => SessionFeedbackScreen(sessionId: sessionId),
+            );
+          }
         }
         return null;
       },

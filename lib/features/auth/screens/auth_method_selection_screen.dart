@@ -36,6 +36,18 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenHeight < 700;
+    final isVerySmallScreen = screenHeight < 600;
+    
+    // Responsive dimensions
+    final headerHeight = isVerySmallScreen ? 150.0 : (isSmallScreen ? 175.0 : 200.0);
+    final headerTopPadding = isVerySmallScreen ? 15.0 : (isSmallScreen ? 22.0 : 29.0);
+    final headerBottomPadding = isVerySmallScreen ? 20.0 : (isSmallScreen ? 25.0 : 30.0);
+    final titleFontSize = isVerySmallScreen ? 26.0 : (isSmallScreen ? 28.0 : 32.0);
+    final subtitleFontSize = isVerySmallScreen ? 12.0 : 14.0;
+    final contentTopSpacing = isVerySmallScreen ? 40.0 : (isSmallScreen ? 60.0 : 90.0);
+    
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -48,7 +60,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
             child: ClipPath(
               clipper: WaveClipper(),
               child: Container(
-                height: 200,
+                height: headerHeight,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -69,7 +81,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
               children: [
                 // Header content inside the wave
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 29.0, 24.0, 30.0),
+                  padding: EdgeInsets.fromLTRB(24.0, headerTopPadding, 24.0, headerBottomPadding),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -84,7 +96,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             _isLogin ? 'Welcome Back' : 'Join PrepSkul',
                             key: ValueKey<bool>(_isLogin),
                           style: GoogleFonts.poppins(
-                            fontSize: 32,
+                            fontSize: titleFontSize,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                             ),
@@ -99,7 +111,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             _isLogin ? 'Sign in to continue' : 'Create an account to get started',
                             key: ValueKey<String>(_isLogin ? 'signin-sub' : 'signup-sub'),
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: subtitleFontSize,
                             fontWeight: FontWeight.w400,
                             color: Colors.white.withOpacity(0.95),
                             ),
@@ -117,7 +129,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 90),
+                        SizedBox(height: contentTopSpacing),
 
                         // Google Sign In Button - Primary
                         _AuthMethodButton(
@@ -151,7 +163,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                               child: Text(
                                 'OR',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: subtitleFontSize,
                                   color: AppTheme.textLight,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -226,7 +238,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                 _isLogin ? 'Don\'t have an account? ' : 'Already have an account? ',
                                 key: ValueKey<String>(_isLogin ? 'no-account' : 'has-account'),
                               style: GoogleFonts.poppins(
-                                fontSize: 14,
+                                fontSize: subtitleFontSize,
                                 color: AppTheme.textMedium,
                                 ),
                               ),
@@ -243,7 +255,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                   _isLogin ? 'Sign up' : 'Sign in',
                                   key: ValueKey<String>(_isLogin ? 'signup-btn' : 'signin-btn'),
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: subtitleFontSize,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.primaryColor,
                                   ),
