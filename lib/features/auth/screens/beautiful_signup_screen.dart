@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
@@ -328,7 +330,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                   ),
                                   suffixIcon: GestureDetector(
                                     onTap: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _obscurePassword = !_obscurePassword;
                                       });
                                     },
@@ -407,7 +409,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                   ),
                                   suffixIcon: GestureDetector(
                                     onTap: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _obscureConfirmPassword =
                                             !_obscureConfirmPassword;
                                       });
@@ -617,7 +619,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       }
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       // Send OTP via Supabase
@@ -650,7 +652,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }
@@ -659,7 +661,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
     final isSelected = _selectedRole == value;
     return GestureDetector(
       onTap: () {
-        setState(() {
+        safeSetState(() {
           _selectedRole = value;
         });
       },

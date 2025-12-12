@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
@@ -33,6 +36,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   List<TutorRequest> _customRequests = [];
   List<TrialSession> _trialSessions = [];
   String _selectedFilter = 'all'; // all, pending, custom, trial, booking
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -44,6 +49,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -52,7 +58,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Future<void> _loadRequests() async {
     if (mounted) {
-      setState(() {
+      safeSetState(() {
         _isLoading = true;
       });
     }
@@ -64,9 +70,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       if (userId != null) {
         try {
           bookingRequests = await BookingService.getStudentBookingRequests(userId);
-          print('✅ Loaded ${bookingRequests.length} booking requests');
+          LogService.success('Loaded ${bookingRequests.length} booking requests');
         } catch (e) {
-          print('❌ Error loading booking requests: $e');
+          LogService.error('Error loading booking requests: $e');
         }
       }
 
@@ -74,18 +80,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       List<TutorRequest> customRequests = [];
       try {
         customRequests = await TutorRequestService.getUserRequests();
-        print('✅ Loaded ${customRequests.length} custom requests');
+        LogService.success('Loaded ${customRequests.length} custom requests');
       } catch (e) {
-        print('❌ Error loading custom requests: $e');
+        LogService.error('Error loading custom requests: $e');
       }
 
       // Load trial sessions - force fresh fetch
       // Add timestamp to cache bust and ensure fresh data
       final trials = await TrialSessionService.getStudentTrialSessions();
-      print('✅ Loaded ${trials.length} trial sessions');
+      LogService.success('Loaded ${trials.length} trial sessions');
       // Debug: Log payment statuses
       for (var trial in trials) {
-        print('🔍 Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}');
+        LogService.debug('Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}');
       }
 
       // Load tutor info for all trials
@@ -93,7 +99,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
       if (!mounted) return;
 
-      setState(() {
+      safeSetState(() {
         _trialSessions = trials;
         _bookingRequests = bookingRequests;
         _customRequests = customRequests;
@@ -106,10 +112,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _checkForCompletedTrials();
       }
     } catch (e) {
-      print('❌ Error loading requests: $e');
+      LogService.error('Error loading requests: $e');
       if (!mounted) return;
 
-      setState(() {
+      safeSetState(() {
         _isLoading = false;
       });
     }
@@ -118,7 +124,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   /// Force refresh a specific trial session after payment
   Future<void> _refreshTrialSession(String sessionId) async {
     try {
-      print('🔄 Starting refresh for trial session: $sessionId');
+      LogService.info('Starting refresh for trial session: $sessionId');
       
       // Directly fetch the trial session from DB to get latest payment_status
       final response = await SupabaseService.client
@@ -131,30 +137,30 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         // Log raw DB values for debugging
         final rawPaymentStatus = response['payment_status']?.toString() ?? 'null';
         final rawStatus = response['status']?.toString() ?? 'null';
-        print('🔍 DB raw values - payment_status: $rawPaymentStatus, status: $rawStatus');
+        LogService.debug('DB raw values - payment_status: $rawPaymentStatus, status: $rawStatus');
         
         final updatedTrial = TrialSession.fromJson(response);
-        print('🔄 Refreshed trial $sessionId: paymentStatus=${updatedTrial.paymentStatus}, status=${updatedTrial.status}');
+        LogService.info('Refreshed trial $sessionId', 'paymentStatus=${updatedTrial.paymentStatus}, status=${updatedTrial.status}');
         
         // Update in the list
         final index = _trialSessions.indexWhere((t) => t.id == sessionId);
         if (index != -1 && mounted) {
           final oldPaymentStatus = _trialSessions[index].paymentStatus;
-          setState(() {
+          safeSetState(() {
             _trialSessions[index] = updatedTrial;
           });
-          print('✅ Updated trial in UI: $oldPaymentStatus → ${updatedTrial.paymentStatus}');
+          LogService.success('Updated trial in UI: $oldPaymentStatus → ${updatedTrial.paymentStatus}');
         } else if (index == -1) {
-          print('⚠️ Trial session not found in list, reloading all requests...');
+          LogService.warning('Trial session not found in list, reloading all requests...');
           if (mounted) await _loadRequests();
         }
       } else {
-        print('⚠️ No response from DB for trial session: $sessionId');
+        LogService.warning('No response from DB for trial session: $sessionId');
         if (mounted) await _loadRequests();
       }
     } catch (e, stackTrace) {
-      print('❌ Error refreshing trial session: $e');
-      print('❌ Stack trace: $stackTrace');
+      LogService.error('Error refreshing trial session: $e');
+      LogService.error('Stack trace: $stackTrace');
       // Fallback: reload all requests
       if (mounted) await _loadRequests();
     }
@@ -206,7 +212,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         },
       );
     } catch (e) {
-      print('❌ Error fetching tutor data: $e');
+      LogService.error('Error fetching tutor data: $e');
     }
   }
 
@@ -228,7 +234,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             )
             .inFilter('user_id', tutorIds);
 
-        print('🔍 Loaded ${tutorProfiles.length} tutor profiles for trials');
+        LogService.debug('Loaded ${tutorProfiles.length} tutor profiles for trials');
 
         // Cache tutor info
         for (var tutor in tutorProfiles) {
@@ -273,7 +279,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           };
         }
       } catch (e) {
-        print('⚠️ Error loading tutor info with relationship join: $e');
+        LogService.warning('Error loading tutor info with relationship join: $e');
         // Fallback: fetch profiles separately
         for (final tutorId in tutorIds) {
           try {
@@ -330,21 +336,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               'rating': effectiveRating,
             };
 
-            print(
-              '✅ Cached tutor info (fallback) for $tutorId: ${_tutorInfoCache[tutorId]?['full_name']}',
-            );
+            LogService.success('Cached tutor info (fallback) for $tutorId', _tutorInfoCache[tutorId]?['full_name']);
           } catch (e2) {
-            print('⚠️ Error loading tutor info for $tutorId: $e2');
+            LogService.warning('Error loading tutor info for $tutorId: $e2');
           }
         }
       }
 
       // Trigger rebuild to show loaded tutor info
       if (mounted) {
-        setState(() {});
+        safeSetState(() {});
       }
     } catch (e) {
-      print('⚠️ Error loading tutor info for trials: $e');
+      LogService.warning('Error loading tutor info for trials: $e');
       // Silently fail - tutor info will show defaults
     }
   }
@@ -450,28 +454,123 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       ..._trialSessions.map((r) => _RequestItem(type: 'trial', trial: r)),
     ];
 
-    if (allRequests.isEmpty) {
-      return _buildRequestTutorCard(context, 
-        title: t.myRequestsEmptyTitle,
-        subtitle:
-            'Tell us what you\'re looking for and we\'ll find the perfect match for you',
-        showButton: true,
-      );
-    }
+    // Filter by search query
+    final filteredRequests = _searchQuery.isEmpty
+        ? allRequests
+        : allRequests.where((item) {
+            final query = _searchQuery.toLowerCase();
+            if (item.type == 'booking') {
+              final booking = item.booking!;
+              return booking.tutorName.toLowerCase().contains(query) ||
+                     (booking.subject?.toLowerCase().contains(query) ?? false);
+            } else if (item.type == 'custom') {
+              final custom = item.custom!;
+              return custom.formattedSubjects.toLowerCase().contains(query);
+            } else {
+              final trial = item.trial!;
+              final tutorName = _tutorInfoCache[trial.tutorId]?['full_name']?.toString().toLowerCase() ?? '';
+              return tutorName.contains(query) ||
+                     trial.subject.toLowerCase().contains(query);
+            }
+          }).toList();
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: allRequests.length,
-      itemBuilder: (ctx, index) {
-        final item = allRequests[index];
-        if (item.type == 'booking') {
-          return _buildBookingRequestCard(context, item.booking!);
-        } else if (item.type == 'custom') {
-          return _buildCustomRequestCard(context, item.custom!);
-        } else {
-          return _buildTrialSessionCard(context, item.trial!);
-        }
-      },
+    return Column(
+      children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search by tutor name or subject...',
+              prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: Colors.grey),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.grey[100],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            onChanged: (value) {
+              setState(() => _searchQuery = value);
+            },
+          ),
+        ),
+        // Results count
+        if (_searchQuery.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${filteredRequests.length} result${filteredRequests.length != 1 ? 's' : ''} found',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+          ),
+        // List
+        Expanded(
+          child: filteredRequests.isEmpty
+              ? _searchQuery.isNotEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No results found',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Try a different search term',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _buildRequestTutorCard(context, 
+                      title: t.myRequestsEmptyTitle,
+                      subtitle:
+                          'Tell us what you\'re looking for and we\'ll find the perfect match for you',
+                      showButton: true,
+                    )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  itemCount: filteredRequests.length,
+                  itemBuilder: (ctx, index) {
+                    final item = filteredRequests[index];
+                    if (item.type == 'booking') {
+                      return _buildBookingRequestCard(context, item.booking!);
+                    } else if (item.type == 'custom') {
+                      return _buildCustomRequestCard(context, item.custom!);
+                    } else {
+                      return _buildTrialSessionCard(context, item.trial!);
+                    }
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -878,6 +977,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final tutorAvatarUrl = tutorInfo['avatar_url'];
     final tutorRating = (tutorInfo['rating'] ?? 0.0) as double;
 
+    // Determine status for display (combine payment and session status)
+    String displayStatus = session.status;
+    if (session.status == 'approved' && session.paymentStatus == 'unpaid') {
+      displayStatus = 'awaiting_payment';
+    } else if (session.paymentStatus == 'paid') {
+      displayStatus = 'paid';
+    }
+
     return _buildNeomorphicCard(
       margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
@@ -895,255 +1002,357 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           });
         },
         borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header: badge + status
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[100],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      t.myRequestsTrialSession,
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blue[900],
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  _buildStatusChip(context, session.status),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Tutor info
-              Row(
-                children: [
-                  ClipOval(
-                    child: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: tutorAvatarUrl,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
-                              width: 48,
-                              height: 48,
-                              color: AppTheme.primaryColor,
-                              child: Center(
-                                child: Text(
-                                  tutorName.isNotEmpty
-                                      ? tutorName[0].toUpperCase()
-                                      : 'T',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              width: 48,
-                              height: 48,
-                              color: AppTheme.primaryColor,
-                              child: Center(
-                                child: Text(
-                                  tutorName.isNotEmpty
-                                      ? tutorName[0].toUpperCase()
-                                      : 'T',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        : Container(
-                            width: 48,
-                            height: 48,
-                            color: AppTheme.primaryColor,
-                            child: Center(
-                              child: Text(
-                                tutorName.isNotEmpty
-                                    ? tutorName[0].toUpperCase()
-                                    : 'T',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
+                ? LinearGradient(
+                    colors: [
+                      Colors.green.withOpacity(0.03),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Modern header: Tutor info with integrated status
+                Row(
+                  children: [
+                    // Avatar with status indicator
+                    Stack(
                       children: [
-                        Text(
-                          tutorName,
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
+                        ClipOval(
+                          child: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: tutorAvatarUrl,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        tutorName.isNotEmpty
+                                            ? tutorName[0].toUpperCase()
+                                            : 'T',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) => Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        tutorName.isNotEmpty
+                                            ? tutorName[0].toUpperCase()
+                                            : 'T',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      tutorName.isNotEmpty
+                                          ? tutorName[0].toUpperCase()
+                                          : 'T',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                         ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.star,
-                              size: 16,
-                              color: Colors.amber[700],
+                        // Status indicator dot
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(displayStatus),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              tutorRating > 0
-                                  ? tutorRating.toStringAsFixed(1)
-                                  : 'N/A',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
+                    const SizedBox(width: 12),
+                    // Tutor name and rating
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  tutorName,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textDark,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              // Single status badge (compact, modern)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _getStatusColor(displayStatus).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _getStatusColor(displayStatus).withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  _getStatusLabel(displayStatus),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: _getStatusColor(displayStatus),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.star_rounded,
+                                size: 14,
+                                color: Colors.amber[600],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                tutorRating > 0
+                                    ? tutorRating.toStringAsFixed(1)
+                                    : 'New',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  session.subject,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              
+                const SizedBox(height: 16),
+              
+                // Session details - modern horizontal layout
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[200]!, width: 1),
                   ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              // Session details
-              Wrap(
-                spacing: 16,
-                runSpacing: 8,
-                children: [
-                  _buildInlineInfo(
-                    Icons.calendar_today,
-                    session.formattedDate,
-                  ),
-                  _buildInlineInfo(
-                    Icons.access_time,
-                    session.formattedTime,
-                  ),
-                  _buildInlineInfo(
-                    Icons.timer,
-                    session.formattedDuration,
-                  ),
-                  _buildInlineInfo(
-                    Icons.location_on,
-                    session.location == 'online' ? 'Online' : 'On-site',
-                  ),
-                ],
-              ),
-
-              if (session.trialGoal != null &&
-                  session.trialGoal!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text(
-                  session.trialGoal!,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: AppTheme.textDark,
-                    height: 1.4,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildModernInfoItem(
+                        Icons.calendar_today_outlined,
+                        session.formattedDate,
+                      ),
+                      Container(
+                        width: 1,
+                        height: 20,
+                        color: Colors.grey[300],
+                      ),
+                      _buildModernInfoItem(
+                        Icons.access_time_outlined,
+                        session.formattedTime,
+                      ),
+                      Container(
+                        width: 1,
+                        height: 20,
+                        color: Colors.grey[300],
+                      ),
+                      _buildModernInfoItem(
+                        session.location == 'online' 
+                            ? Icons.video_call_outlined 
+                            : Icons.location_on_outlined,
+                        session.location == 'online' ? 'Online' : 'On-site',
+                      ),
+                    ],
                   ),
                 ),
-              ],
 
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '${session.trialFee.toStringAsFixed(0)} XAF',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  _buildPaymentStatusBadge(context, session),
-                ],
-              ),
-
-              // Simple Pay Now button (only when approved/scheduled, not paid, and session hasn't passed)
-              // Use utility method for comprehensive check
-              if (SessionDateUtils.shouldShowPayNowButton(session)) ...[
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final result = await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              TrialPaymentScreen(trialSession: session),
+                // Trial goal/reason - full width text above price
+                if (session.trialGoal != null && session.trialGoal!.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.lightbulb_outline,
+                        size: 16,
+                        color: Colors.blue[700],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          session.trialGoal!,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[800],
+                            height: 1.4,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      );
+                      ),
+                    ],
+                  ),
+                ],
 
-                      // Always refresh after returning from payment screen
-                      // Only refresh if payment was successful
-                      if (result == true) {
-                        // Wait a moment for database update to propagate
-                        await Future.delayed(
-                          const Duration(milliseconds: 2000),
+                // Price section - modern design
+                const SizedBox(height: 14),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Trial Fee',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${session.trialFee.toStringAsFixed(0)} XAF',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Pay Now button - modern design
+                if (SessionDateUtils.shouldShowPayNowButton(session)) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                TrialPaymentScreen(trialSession: session),
+                          ),
                         );
 
-                        if (!mounted) return;
-                        
-                        // Force refresh the specific session first
-                        await _refreshTrialSession(session.id);
-                        
-                        // Then reload all requests to ensure consistency
-                        await _loadRequests();
-                        
-                        // Force UI rebuild
-                        if (mounted) {
-                          setState(() {});
+                        // Always refresh after returning from payment screen
+                        // Only refresh if payment was successful
+                        if (result == true) {
+                          // Wait a moment for database update to propagate
+                          await Future.delayed(
+                            const Duration(milliseconds: 2000),
+                          );
+
+                          if (!mounted) return;
+                          
+                          // Force refresh the specific session first
+                          await _refreshTrialSession(session.id);
+                          
+                          // Then reload all requests to ensure consistency
+                          await _loadRequests();
+                          
+                          // Force UI rebuild
+                          if (mounted) {
+                            safeSetState(() {});
+                          }
                         }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        elevation: 2,
                       ),
-                      elevation: 2,
-                    ),
-                    child: Text(
-                      t.myRequestsPayNow,
-                      style: GoogleFonts.poppins(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                      child: Text(
+                        t.myRequestsPayNow,
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -1260,7 +1469,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         );
         final tutorId = sessionToDelete.tutorId;
 
-        setState(() {
+        safeSetState(() {
           _trialSessions.removeWhere((session) => session.id == sessionId);
           // Clean up cache if no other sessions for this tutor
           final hasOtherSessions = _trialSessions.any(
@@ -1403,7 +1612,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         if (!mounted) return;
 
         // Remove from local list
-        setState(() {
+        safeSetState(() {
           _customRequests.removeWhere((req) => req.id == requestId);
         });
 
@@ -1601,7 +1810,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         if (!mounted) return;
 
         // Update local state to show cancelled status
-        setState(() {
+        safeSetState(() {
           final index = _trialSessions.indexWhere((s) => s.id == sessionId);
           if (index != -1) {
             _trialSessions[index] = session.copyWith(status: 'cancelled');
@@ -1733,9 +1942,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _loadRequests();
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
+        ErrorHandlerService.showErrorSnackbar(context, e, 'Failed to reject session');
       }
     }
   }
@@ -1809,6 +2016,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           fontWeight: FontWeight.w600,
           color: chipColor,
         ),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        softWrap: false,
       ),
     );
   }
@@ -1872,6 +2082,93 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         ),
       ],
     );
+  }
+
+  Widget _buildCompactInfo(IconData icon, String text) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: AppTheme.primaryColor),
+        const SizedBox(height: 4),
+        Text(
+          text,
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: AppTheme.textDark,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModernInfoItem(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.orange;
+      case 'approved':
+      case 'scheduled':
+        return Colors.green;
+      case 'awaiting_payment':
+        return Colors.blue;
+      case 'paid':
+        return Colors.green;
+      case 'rejected':
+      case 'cancelled':
+        return Colors.red;
+      case 'completed':
+        return Colors.blue;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getStatusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Pending';
+      case 'approved':
+        return 'Approved';
+      case 'scheduled':
+        return 'Scheduled';
+      case 'awaiting_payment':
+        return 'Pay Now';
+      case 'paid':
+        return 'Paid';
+      case 'rejected':
+        return 'Rejected';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'completed':
+        return 'Completed';
+      default:
+        return status;
+    }
   }
 
   Widget _buildPaymentStatusBadge(BuildContext context, TrialSession session) {
@@ -1981,7 +2278,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
-        setState(() {
+        safeSetState(() {
           _selectedFilter = filter;
         });
       },

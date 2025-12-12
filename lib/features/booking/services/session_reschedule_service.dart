@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -224,14 +225,14 @@ class SessionRescheduleService {
           );
         }
       } catch (e) {
-        print('⚠️ Failed to send reschedule request notification: $e');
+        LogService.warning('Failed to send reschedule request notification: $e');
         // Don't fail the request if notification fails
       }
 
-      print('✅ Reschedule request created: ${response['id']}');
+      LogService.success('Reschedule request created: ${response['id']}');
       return response;
     } catch (e) {
-      print('❌ Error creating reschedule request: $e');
+      LogService.error('Error creating reschedule request: $e');
       rethrow;
     }
   }
@@ -336,12 +337,12 @@ class SessionRescheduleService {
           sendEmail: true,
         );
       } catch (e) {
-        print('⚠️ Failed to send approval notification: $e');
+        LogService.warning('Failed to send approval notification: $e');
       }
 
-      print('✅ Reschedule request approved: $requestId');
+      LogService.success('Reschedule request approved: $requestId');
     } catch (e) {
-      print('❌ Error approving reschedule request: $e');
+      LogService.error('Error approving reschedule request: $e');
       rethrow;
     }
   }
@@ -444,12 +445,12 @@ class SessionRescheduleService {
           sendEmail: true,
         );
       } catch (e) {
-        print('⚠️ Failed to send rejection notification: $e');
+        LogService.warning('Failed to send rejection notification: $e');
       }
 
-      print('✅ Reschedule request rejected: $requestId');
+      LogService.success('Reschedule request rejected: $requestId');
     } catch (e) {
-      print('❌ Error rejecting reschedule request: $e');
+      LogService.error('Error rejecting reschedule request: $e');
       rethrow;
     }
   }
@@ -531,9 +532,9 @@ class SessionRescheduleService {
       // If session has a Meet link, it may need to be regenerated
       // (This can be handled separately or the Meet link can be updated)
 
-      print('✅ Session rescheduled: $sessionId');
+      LogService.success('Session rescheduled: $sessionId');
     } catch (e) {
-      print('❌ Error applying reschedule: $e');
+      LogService.error('Error applying reschedule: $e');
       rethrow;
     }
   }
@@ -561,7 +562,7 @@ class SessionRescheduleService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching reschedule requests: $e');
+      LogService.error('Error fetching reschedule requests: $e');
       rethrow;
     }
   }
@@ -611,9 +612,9 @@ class SessionRescheduleService {
           })
           .eq('id', sessionId);
 
-      print('✅ Reschedule request cancelled: $requestId');
+      LogService.success('Reschedule request cancelled: $requestId');
     } catch (e) {
-      print('❌ Error cancelling reschedule request: $e');
+      LogService.error('Error cancelling reschedule request: $e');
       rethrow;
     }
   }

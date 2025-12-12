@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/navigation/route_guards.dart';
 import 'package:prepskul/core/navigation/navigation_state.dart';
@@ -30,7 +31,7 @@ class NavigationService {
     _navigatorKey = navigatorKey;
     _isNavigationReady = true;
     _analytics.initialize();
-    print('✅ [NAV_SERVICE] Navigation service initialized');
+    LogService.success('[NAV_SERVICE] Navigation service initialized');
   }
 
   /// Check if navigation is ready
@@ -46,12 +47,12 @@ class NavigationService {
   /// This is the single source of truth for route determination
   Future<NavigationResult> determineInitialRoute() async {
     try {
-      print('🔍 [NAV_SERVICE] Determining initial route...');
+      LogService.debug('[NAV_SERVICE] Determining initial route...');
 
       // PRIORITY 1: Check Supabase session (most reliable)
       final user = SupabaseService.currentUser;
       if (user != null) {
-        print('✅ [NAV_SERVICE] User authenticated via Supabase');
+        LogService.success('[NAV_SERVICE] User authenticated via Supabase');
         try {
           final profile = await SupabaseService.client
               .from('profiles')
@@ -60,7 +61,7 @@ class NavigationService {
               .maybeSingle();
 
           if (profile == null) {
-            print(
+            LogService.debug(
               '⚠️ [NAV_SERVICE] Authenticated user has no profile - redirecting to role selection',
             );
             // If profile doesn't exist, sending to role selection will allow creating it
@@ -80,10 +81,15 @@ class NavigationService {
                 fullName: profile['full_name'] ?? '',
                 surveyCompleted: profile['survey_completed'] ?? false,
               );
-              print('✅ [NAV_SERVICE] Session synced to local storage');
+              LogService.success('[NAV_SERVICE] Session synced to local storage');
             }
 
             final userRole = profile['user_type'] ?? 'student';
+            LogService.debug('[NAV_SERVICE] User role from profile: $userRole');
+            LogService.debug('[NAV_SERVICE] User email: ${user.email ?? "unknown"}');
+            if (userRole == 'tutor' && user.email?.contains('student') == true) {
+              LogService.warning('[NAV_SERVICE] WARNING: User has tutor role but email suggests student!');
+            }
             final hasCompletedSurvey = profile['survey_completed'] ?? false;
             
             // Check if user_type is missing/empty (e.g., fresh Google signup)
@@ -111,7 +117,7 @@ class NavigationService {
             }
           }
         } catch (e) {
-          print('⚠️ [NAV_SERVICE] Error fetching profile: $e');
+          LogService.warning('[NAV_SERVICE] Error fetching profile: $e');
           _analytics.trackNavigationError(
             '/',
             'Error fetching profile: $e',
@@ -134,7 +140,7 @@ class NavigationService {
       final hasCompletedSurvey = await AuthService.isSurveyCompleted();
       final userRole = await AuthService.getUserRole();
 
-      print(
+      LogService.debug(
         '📊 [NAV_SERVICE] State: onboarding=$hasCompletedOnboarding, loggedIn=$isLoggedIn, supabase=$hasSupabaseSession, survey=$hasCompletedSurvey, role=$userRole',
       );
 
@@ -183,7 +189,7 @@ class NavigationService {
               );
             }
           } catch (e) {
-            print('⚠️ Error checking onboarding status: $e');
+            LogService.warning('Error checking onboarding status: $e');
             // Fallback to profile setup
             result = NavigationResult(
               '/profile-setup',
@@ -220,7 +226,7 @@ class NavigationService {
 
       return result;
     } catch (e) {
-      print('❌ [NAV_SERVICE] Error determining route: $e');
+      LogService.error('[NAV_SERVICE] Error determining route: $e');
       _analytics.trackNavigationError(
         '/',
         'Error determining route: $e',
@@ -249,7 +255,7 @@ class NavigationService {
     bool clearStack = false,
   }) async {
     if (!isReady) {
-      print('⚠️ [NAV_SERVICE] Navigation not ready, queueing route: $route');
+      LogService.warning('[NAV_SERVICE] Navigation not ready, queueing route: $route');
       // Queue for later if not ready
       _pendingDeepLinks.add(
         Uri(
@@ -263,14 +269,14 @@ class NavigationService {
     }
 
     if (!_state.canNavigate()) {
-      print('⚠️ [NAV_SERVICE] Navigation debounced or in progress');
+      LogService.warning('[NAV_SERVICE] Navigation debounced or in progress');
       return;
     }
 
     // Check route guards
     final guardResult = await RouteGuard.canNavigateTo(route);
     if (!guardResult.allowed) {
-      print(
+      LogService.debug(
         '🚫 [NAV_SERVICE] Route guard failed, redirecting to: ${guardResult.redirectRoute}',
       );
       _analytics.trackRouteGuardBlocked(
@@ -291,7 +297,7 @@ class NavigationService {
     if (context == null) {
       // This is expected during app initialization - deep links are queued
       // Only log as debug, not error, to reduce noise
-      print(
+      LogService.debug(
         'ℹ️ [NAV_SERVICE] Navigator not ready yet (deep link will be queued)',
       );
       return;
@@ -301,7 +307,7 @@ class NavigationService {
     _state.setCurrentRoute(route);
 
     try {
-      print('🚀 [NAV_SERVICE] Navigating to: $route');
+      LogService.info('[NAV_SERVICE] Navigating to: $route');
       final startTime = DateTime.now();
 
       if (clearStack) {
@@ -335,7 +341,7 @@ class NavigationService {
       );
     } catch (e, stackTrace) {
       _state.completeNavigation();
-      print('❌ [NAV_SERVICE] Navigation error: $e');
+      LogService.error('[NAV_SERVICE] Navigation error: $e');
       _analytics.trackNavigationError(
         route,
         e.toString(),
@@ -356,13 +362,13 @@ class NavigationService {
         'queue_size': _pendingDeepLinks.length,
       },
     );
-    print('📥 [NAV_SERVICE] Deep link queued: ${uri.path}');
+    LogService.debug('📥 [NAV_SERVICE] Deep link queued: ${uri.path}');
   }
 
   /// Process all pending deep links
   Future<void> processPendingDeepLinks() async {
     if (!isReady) {
-      print('⚠️ [NAV_SERVICE] Navigation not ready, cannot process deep links');
+      LogService.warning('[NAV_SERVICE] Navigation not ready, cannot process deep links');
       return;
     }
 
@@ -370,7 +376,7 @@ class NavigationService {
       return;
     }
 
-    print(
+    LogService.debug(
       '📤 [NAV_SERVICE] Processing ${_pendingDeepLinks.length} pending deep links',
     );
 

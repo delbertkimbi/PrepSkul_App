@@ -1,4 +1,5 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 
 /// Location Check-In Service
@@ -128,7 +129,7 @@ class LocationCheckInService {
 
       return distance <= allowedRadiusMeters;
     } catch (e) {
-      print('❌ Error verifying location proximity: $e');
+      LogService.error('Error verifying location proximity: $e');
       return false;
     }
   }
@@ -240,7 +241,7 @@ class LocationCheckInService {
             : 'Check-in recorded, but location could not be verified. Please ensure you are at the correct address.',
       };
     } catch (e) {
-      print('❌ Error checking in to session: $e');
+      LogService.error('Error checking in to session: $e');
       return {
         'success': false,
         'verified': false,
@@ -276,7 +277,7 @@ class LocationCheckInService {
         'checked_in_at': attendance['joined_at'] as String?,
       };
     } catch (e) {
-      print('❌ Error getting check-in status: $e');
+      LogService.error('Error getting check-in status: $e');
       return null;
     }
   }

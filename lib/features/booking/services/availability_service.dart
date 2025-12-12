@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/models/recurring_session_model.dart';
 
 /// AvailabilityService
@@ -190,6 +191,43 @@ class AvailabilityService {
   }
 
   /// Get blocked time slots for a specific date
+  
+  /// Normalize time string to "HH:mm" format
+  /// Handles formats like "7:00 PM", "19:00", "7:00 AM", etc.
+  static String _normalizeTimeTo24Hour(String time) {
+    // If already in 24-hour format (HH:mm), return as is
+    if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(time.split(' ')[0])) {
+      final parts = time.split(' ')[0].split(':');
+      final hour = int.parse(parts[0]);
+      if (hour >= 0 && hour <= 23) {
+        return '${parts[0].padLeft(2, '0')}:${parts[1]}';
+      }
+    }
+    
+    // Parse 12-hour format (e.g., "7:00 PM")
+    try {
+      final parts = time.split(' ');
+      final timePart = parts[0].split(':');
+      var hour = int.parse(timePart[0]);
+      final minute = timePart.length > 1 ? timePart[1] : '00';
+      
+      // Check for AM/PM
+      if (parts.length > 1) {
+        final ampm = parts[1].toUpperCase();
+        if (ampm == 'PM' && hour != 12) {
+          hour += 12;
+        } else if (ampm == 'AM' && hour == 12) {
+          hour = 0;
+        }
+      }
+      
+      return '${hour.toString().padLeft(2, '0')}:$minute';
+    } catch (e) {
+      // If parsing fails, return as is (might already be in correct format)
+      return time;
+    }
+  }
+  
   static Future<List<String>> getBlockedTimesForDate(
       String tutorId, DateTime date) async {
     try {
@@ -208,7 +246,7 @@ class AvailabilityService {
         final days = List<String>.from(session['days'] ?? []);
         final times = Map<String, String>.from(session['times'] ?? {});
         if (days.contains(dayName) && times.containsKey(dayName)) {
-          blockedTimes.add(times[dayName]!);
+          blockedTimes.add(_normalizeTimeTo24Hour(times[dayName]!));
         }
       }
 
@@ -247,7 +285,7 @@ class AvailabilityService {
 
       return blockedTimes.toSet().toList(); // Remove duplicates
     } catch (e) {
-      print('Error getting blocked times for date: $e');
+      LogService.debug('Error getting blocked times for date: $e');
       return [];
     }
   }
@@ -306,7 +344,7 @@ class AvailabilityService {
         return !dayBlockedSlots.contains(slot);
       }).toList();
     } catch (e) {
-      print('Failed to get available times: $e'); // Log but don't crash
+      LogService.debug('Failed to get available times: $e'); // Log but don't crash
       // Return defaults on error
       return ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
     }

@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 
 /// Assignment Service
@@ -75,9 +76,9 @@ class AssignmentService {
         );
       }
 
-      print('✅ Created ${actionItems.length} assignments from action items');
+      LogService.success('Created ${actionItems.length} assignments from action items');
     } catch (e) {
-      print('❌ Error creating assignments: $e');
+      LogService.error('Error creating assignments: $e');
       rethrow;
     }
   }
@@ -106,7 +107,7 @@ class AssignmentService {
       final response = await query.order('due_date', ascending: true);
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error getting student assignments: $e');
+      LogService.error('Error getting student assignments: $e');
       return [];
     }
   }
@@ -129,7 +130,7 @@ class AssignmentService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error getting tutor assignments: $e');
+      LogService.error('Error getting tutor assignments: $e');
       return [];
     }
   }
@@ -170,9 +171,9 @@ class AssignmentService {
         );
       }
 
-      print('✅ Assignment marked as completed: $assignmentId');
+      LogService.success('Assignment marked as completed: $assignmentId');
     } catch (e) {
-      print('❌ Error marking assignment as completed: $e');
+      LogService.error('Error marking assignment as completed: $e');
       rethrow;
     }
   }
@@ -196,9 +197,9 @@ class AssignmentService {
           })
           .eq('id', assignmentId);
 
-      print('✅ Assignment due date updated: $assignmentId');
+      LogService.success('Assignment due date updated: $assignmentId');
     } catch (e) {
-      print('❌ Error updating assignment due date: $e');
+      LogService.error('Error updating assignment due date: $e');
       rethrow;
     }
   }
@@ -226,7 +227,7 @@ class AssignmentService {
       }
       return null;
     } catch (e) {
-      print('❌ Error getting session details: $e');
+      LogService.error('Error getting session details: $e');
       return null;
     }
   }

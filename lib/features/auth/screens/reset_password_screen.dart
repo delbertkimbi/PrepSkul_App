@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -47,7 +49,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
     });
 
@@ -58,7 +60,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         await SupabaseService.client.auth.updateUser(
           UserAttributes(password: _passwordController.text),
         );
-        print('✅ Password updated successfully via email recovery');
+        LogService.success('Password updated successfully via email recovery');
       } else {
         // Phone OTP recovery: Verify OTP first, then update password
         await AuthService.resetPassword(
@@ -100,7 +102,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
         });
       }
@@ -199,7 +201,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               : Icons.visibility,
                         ),
                         onPressed: () {
-                          setState(() {
+                          safeSetState(() {
                             _obscurePassword = !_obscurePassword;
                           });
                         },
@@ -235,7 +237,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               : Icons.visibility,
                         ),
                         onPressed: () {
-                          setState(() {
+                          safeSetState(() {
                             _obscureConfirmPassword = !_obscureConfirmPassword;
                           });
                         },

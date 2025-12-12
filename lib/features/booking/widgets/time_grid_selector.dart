@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/booking/services/availability_service.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Step 3: Time Grid Selector
 ///
@@ -64,7 +66,7 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
   Future<void> _loadAvailability() async {
     if (_currentDay.isEmpty) return;
     
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _afternoonSlots = [];
       _eveningSlots = [];
@@ -98,7 +100,7 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
       }
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _availableSlots = slots;
           _afternoonSlots = afternoon;
           _eveningSlots = evening;
@@ -106,9 +108,9 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
         });
       }
     } catch (e) {
-      print('Error loading availability: $e');
+      LogService.debug('Error loading availability: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }
@@ -133,7 +135,7 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
   }
 
   void _selectTime(String time) {
-    setState(() {
+    safeSetState(() {
       _selectedTimes[_currentDay] = time;
     });
     widget.onTimesSelected(_selectedTimes);
@@ -141,14 +143,14 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
 
   void _nextDay() {
     if (_currentDayIndex < widget.selectedDays.length - 1) {
-      setState(() => _currentDayIndex++);
+      safeSetState(() => _currentDayIndex++);
       _loadAvailability();
     }
   }
 
   void _previousDay() {
     if (_currentDayIndex > 0) {
-      setState(() => _currentDayIndex--);
+      safeSetState(() => _currentDayIndex--);
       _loadAvailability();
     }
   }

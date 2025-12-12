@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
@@ -240,7 +242,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                   ),
                                   suffixIcon: GestureDetector(
                                     onTap: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _obscurePassword = !_obscurePassword;
                                       });
                                     },
@@ -417,7 +419,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       }
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       // Check if user exists in Supabase
@@ -440,7 +442,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
             ),
           );
         }
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
         return;
       }
 
@@ -474,7 +476,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }

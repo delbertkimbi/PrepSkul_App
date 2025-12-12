@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
+import '../../../core/services/log_service.dart';
 import '../../../core/widgets/app_logo_header.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -30,6 +32,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   ProfileCompletionStatus? _completionStatus;
   bool _isLoading = true;
   String? _approvalStatus; // 'pending', 'approved', 'rejected'
+  String? _adminNotes; // Admin review notes (rejection reason, etc.)
   bool _hasDismissedApprovalCard = false; // Track if user dismissed approval card
   bool _onboardingSkipped = false;
   bool _onboardingComplete = false;
@@ -50,12 +53,12 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       final skipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
       final complete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
       
-      setState(() {
+      safeSetState(() {
         _onboardingSkipped = skipped;
         _onboardingComplete = complete;
       });
     } catch (e) {
-      print('⚠️ Error checking onboarding status: $e');
+      LogService.warning('Error checking onboarding status: $e');
     }
   }
 
@@ -86,14 +89,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         await _syncDismissalToDatabase(userId, true);
       }
       
-      setState(() {
+      safeSetState(() {
         _hasDismissedApprovalCard = isDismissed;
       });
     } catch (e) {
-      print('⚠️ Error checking dismissed approval card: $e');
+      LogService.warning('Error checking dismissed approval card: $e');
       // Fallback to SharedPreferences only
       final prefs = await SharedPreferences.getInstance();
-      setState(() {
+      safeSetState(() {
         _hasDismissedApprovalCard = prefs.getBool('tutor_approval_card_dismissed') ?? false;
       });
     }
@@ -106,14 +109,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           .update({'approval_banner_dismissed': dismissed})
           .eq('user_id', userId);
     } catch (e) {
-      print('⚠️ Error syncing dismissal to database: $e');
+      LogService.warning('Error syncing dismissal to database: $e');
       // Don't fail if database update fails
     }
   }
 
   Future<void> _dismissApprovalCard() async {
     // Optimistically update UI first for immediate feedback
-    setState(() {
+    safeSetState(() {
       _hasDismissedApprovalCard = true;
     });
 
@@ -128,7 +131,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Sync to database for cross-device persistence (fire and forget)
       _syncDismissalToDatabase(userId, true);
     } catch (e) {
-      print('⚠️ Error dismissing approval card: $e');
+      LogService.warning('Error dismissing approval card: $e');
       // UI is already updated, so user experience is preserved
     }
   }
@@ -165,6 +168,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
       // Check if approval status changed (reset dismissal ONLY if status actually changed from non-approved to approved)
       final newApprovalStatus = tutorData?['status'] as String?;
+      final adminNotes = tutorData?['admin_review_notes'] as String?;
       
       // Check dismissal status from database (cross-device)
       final tutorProfileCheck = await SupabaseService.client
@@ -197,7 +201,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _hasDismissedApprovalCard = true;
       }
 
-      setState(() {
+      safeSetState(() {
         _userInfo = {
           ...user,
           'fullName': fullName, // Use updated name from database
@@ -205,6 +209,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _tutorProfile = tutorData;
         _completionStatus = status;
         _approvalStatus = newApprovalStatus;
+        _adminNotes = adminNotes;
         _onboardingSkipped = onboardingSkipped;
         _onboardingComplete = onboardingComplete;
         _isLoading = false;
@@ -215,8 +220,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _checkAndSendOnboardingNotification();
       }
     } catch (e) {
-      print('Error loading user info: $e');
-      setState(() {
+      LogService.debug('Error loading user info: $e');
+      safeSetState(() {
         _isLoading = false;
       });
     }
@@ -259,11 +264,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           
           // Save today's date to avoid sending multiple notifications per day
           await prefs.setString('onboarding_notification_date', today);
-          print('✅ Onboarding notification sent to tutor: $userId');
+          LogService.success('Onboarding notification sent to tutor: $userId');
         }
       }
     } catch (e) {
-      print('⚠️ Error sending onboarding notification: $e');
+      LogService.warning('Error sending onboarding notification: $e');
       // Don't block the UI if notification fails
     }
   }
@@ -299,14 +304,51 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Welcome Header
-                  Text(
-                    'Welcome back, ${_getFirstName(_userInfo?['fullName']?.toString() ?? 'Tutor')}!',
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
-                    ),
+                  // Welcome Header with Approved Badge
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Welcome back, ${_getFirstName(_userInfo?['fullName']?.toString() ?? 'Tutor')}!',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      if (_approvalStatus == 'approved')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentGreen.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.accentGreen.withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.verified,
+                                size: 14,
+                                color: AppTheme.accentGreen,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Approved',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.accentGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 16),
 
@@ -697,7 +739,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Your application was not approved. View details to see the reason and what needs to be corrected.',
+              'Your application was not approved.${_adminNotes != null && _adminNotes!.isNotEmpty ? '\n\nReason: ${_adminNotes!.length > 100 ? "${_adminNotes!.substring(0, 100)}..." : _adminNotes}' : ''}',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 color: AppTheme.textDark,

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
+
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
+
 import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// RequestDetailScreen
 ///
@@ -61,7 +67,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
 
     if (confirm == true) {
-      setState(() => _isCanceling = true);
+      safeSetState(() => _isCanceling = true);
       // TODO: Call API to cancel
       await Future.delayed(const Duration(seconds: 1));
 
@@ -164,9 +170,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             if (session.trialGoal != null || session.learnerChallenges != null)
               const SizedBox(height: 24),
             
-            // Actions (if pending/approved)
-            if (session.status == 'pending' || session.status == 'approved')
-              _buildTrialActions(context, session),
+            // Action buttons at bottom
+            _buildTrialActions(context, session),
           ],
         ),
       ),
@@ -414,12 +419,22 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             const SizedBox(height: 12),
             _buildInfoRow('Trial Fee', '${session.trialFee.toStringAsFixed(0)} XAF'),
             _buildInfoRow('Payment Status', session.paymentStatus.toUpperCase()),
-            if (session.paymentStatus == 'unpaid' && session.status == 'approved')
+            if (SessionDateUtils.shouldShowPayNowButton(session))
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: ElevatedButton(
                   onPressed: () {
-                    // Navigate to payment screen
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => TrialPaymentScreen(trialSession: session),
+                      ),
+                    ).then((success) {
+                      if (success == true) {
+                        // Refresh the screen
+                        safeSetState(() {});
+                      }
+                    });
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
@@ -496,38 +511,86 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
   
   Widget _buildTrialActions(BuildContext context, TrialSession session) {
-    return Column(
-      children: [
-        if (session.status == 'pending')
-          ElevatedButton(
-            onPressed: () => _cancelRequest(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-            ),
-            child: Text(
-              'Cancel Request',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-            ),
-          ),
-        if (session.status == 'approved' && session.paymentStatus == 'unpaid')
-          ElevatedButton(
+    // If not approved, show no action button
+    if (session.status != 'approved' && session.status != 'scheduled') {
+      return const SizedBox.shrink();
+    }
+    
+    // If approved but not paid, show Pay Now button
+    if (session.status == 'approved' && session.paymentStatus == 'unpaid') {
+      if (SessionDateUtils.shouldShowPayNowButton(session)) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: ElevatedButton(
             onPressed: () {
-              // Navigate to payment
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TrialPaymentScreen(trialSession: session),
+                ),
+              ).then((success) {
+                if (success == true) {
+                  // Refresh the screen
+                  safeSetState(() {});
+                }
+              });
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             child: Text(
               'Pay Now',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              style: GoogleFonts.poppins(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
             ),
           ),
-      ],
-    );
+        );
+      }
+      return const SizedBox.shrink();
+    }
+    
+    // If paid, show View Session button
+    if (session.paymentStatus == 'paid' || session.status == 'scheduled') {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: ElevatedButton.icon(
+          onPressed: () {
+            // Navigate to My Sessions screen (tab 1 in student nav)
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/student-nav',
+              (route) => false,
+              arguments: {'initialTab': 1}, // Sessions tab (0=Home, 1=Sessions, 2=Requests, 3=Profile)
+            );
+          },
+          icon: const Icon(Icons.calendar_today, size: 20),
+          label: Text(
+            'View Session',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    return const SizedBox.shrink();
   }
   
         Future<Map<String, dynamic>?> _loadTutorInfo(String tutorId) async {
@@ -535,7 +598,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       // Use TutorService to fetch tutor by ID
       return await TutorService.fetchTutorById(tutorId);
     } catch (e) {
-      print('Error loading tutor info: $e');
+      LogService.debug('Error loading tutor info: $e');
       return null;
     }
   }

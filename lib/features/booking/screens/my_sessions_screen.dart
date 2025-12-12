@@ -4,8 +4,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
+import '../../../core/services/log_service.dart';
 import '../services/individual_session_service.dart';
 import '../services/session_feedback_service.dart';
 import 'session_feedback_screen.dart';
@@ -15,7 +18,13 @@ import 'session_feedback_screen.dart';
 // import 'package:prepskul/features/sessions/screens/session_summary_screen.dart';
 import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'package:prepskul/core/services/google_calendar_service.dart';
+import 'package:prepskul/core/services/google_calendar_auth_service.dart';
+import 'package:prepskul/features/sessions/services/meet_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 
 /// My Sessions Screen
 ///
@@ -36,12 +45,34 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   bool _isLoading = true;
   final Map<String, bool> _feedbackSubmitted = {}; // Cache feedback status
   final Map<String, bool> _hasTranscript = {}; // Cache transcript availability
+  bool? _isCalendarConnected; // Cache calendar connection status (null = not checked yet)
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadSessions();
+    _checkCalendarConnection();
+  }
+
+  /// Check if Google Calendar is connected (cache the result)
+  /// This prevents showing the dialog multiple times
+  Future<void> _checkCalendarConnection() async {
+    try {
+      final isConnected = await GoogleCalendarAuthService.isAuthenticated();
+      if (mounted) {
+        setState(() {
+          _isCalendarConnected = isConnected;
+        });
+      }
+    } catch (e) {
+      LogService.warning('Error checking calendar connection: $e');
+      if (mounted) {
+        setState(() {
+          _isCalendarConnected = false;
+        });
+      }
+    }
   }
 
   @override
@@ -51,7 +82,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   }
 
   Future<void> _loadSessions() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       List<Map<String, dynamic>> upcoming = [];
       List<Map<String, dynamic>> past = [];
@@ -64,33 +95,51 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         past.addAll(indPast);
       } catch (e) {
         // Gracefully handle missing table or other errors
-        print('ℹ️ Could not load individual sessions (table might not exist yet): $e');
+        LogService.info('Could not load individual sessions (table might not exist yet): $e');
       }
 
-      // 2. Fetch Trial Sessions (only those not yet converted to full sessions)
+      // 2. Auto-detect and mark expired sessions before loading
+      try {
+        await TrialSessionService.autoMarkExpiredAttendedSessions();
+      } catch (e) {
+        LogService.warning('Error auto-marking expired sessions: $e');
+      }
+
+      // 3. Fetch Trial Sessions (only those not yet converted to full sessions)
       try {
         final trialSessions = await TrialSessionService.getStudentTrialSessions();
 
         for (final trial in trialSessions) {
           final sessionMap = _convertTrialToSessionMap(trial);
           if (sessionMap != null) {
-            // Classify as upcoming or past based on status and date
+            // Classify as upcoming or past using SessionDateUtils
             final status = sessionMap['status'];
-            final date = DateTime.parse(sessionMap['scheduled_date']);
-            final isPast = status == 'completed' || 
-                           status == 'cancelled' || 
-                           status == 'rejected' ||
-                           (date.isBefore(DateTime.now()) && status != 'scheduled');
+            final isCompleted = status == 'completed' || status == 'cancelled' || status == 'rejected' || status == 'expired';
             
-            if (isPast) {
+            // Use SessionDateUtils for time-based classification
+            if (isCompleted) {
               past.add(sessionMap);
             } else {
-              upcoming.add(sessionMap);
+              // Check if session is expired or upcoming using SessionDateUtils
+              final isExpired = SessionDateUtils.isSessionExpired(trial);
+              final isUpcoming = SessionDateUtils.isSessionUpcoming(trial);
+              
+              // If expired but not yet marked, mark it now
+              if (isExpired && status != 'expired') {
+                // Update status to expired in the map
+                sessionMap['status'] = 'expired';
+              }
+              
+              if (isExpired || !isUpcoming || status == 'expired') {
+                past.add(sessionMap);
+              } else {
+                upcoming.add(sessionMap);
+              }
             }
           }
         }
       } catch (e) {
-        print('⚠️ Error loading trial sessions: $e');
+        LogService.warning('Error loading trial sessions: $e');
       }
 
       // Sort combined lists
@@ -131,14 +180,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         }
       }
 
-      setState(() {
+      safeSetState(() {
         _upcomingSessions = upcoming;
         _pastSessions = past;
         _isLoading = false;
       });
     } catch (e) {
-      print('❌ Error loading sessions: $e');
-      setState(() => _isLoading = false);
+      LogService.error('Error loading sessions: $e');
+      safeSetState(() => _isLoading = false);
       // Only show error if we have absolutely nothing to show
       if (_upcomingSessions.isEmpty && _pastSessions.isEmpty) {
       if (mounted) {
@@ -199,6 +248,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
   String _getStatusColor(String status) {
     switch (status) {
+      case 'expired':
+        return '#F44336'; // Red for expired
       case 'scheduled':
         return '#4CAF50'; // Green
       case 'in_progress':
@@ -222,6 +273,10 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         return 'Completed';
       case 'cancelled':
         return 'Cancelled';
+      case 'expired':
+        return 'Expired';
+      case 'approved':
+        return 'Approved';
       default:
         return status;
     }
@@ -289,6 +344,264 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           ),
         );
       }
+    }
+  }
+
+  /// Add session to Google Calendar
+  /// Creates calendar event and Meet link (if online) for the session
+  /// Once user connects calendar, we remember it and NEVER ask again
+  Future<void> _addSessionToCalendar(Map<String, dynamic> session) async {
+    try {
+      // Check if Google Calendar is authenticated
+      // Use cached value if available, otherwise check
+      bool isAuthenticated = _isCalendarConnected ?? false;
+      if (!isAuthenticated) {
+        // Check again to be sure
+        isAuthenticated = await GoogleCalendarAuthService.isAuthenticated();
+        if (!isAuthenticated) {
+          // Show dialog to authenticate (ONLY FIRST TIME - never shown again after connection)
+          final shouldAuth = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.calendar_today, color: AppTheme.primaryColor),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Connect Google Calendar',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'To add sessions to your calendar, please connect your Google account.\n\nOnce connected, we will remember your preference and you will never be asked again.',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.poppins(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    'Connect',
+                    style: GoogleFonts.poppins(),
+                  ),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldAuth != true) return;
+
+          // Authenticate - this stores tokens in SharedPreferences
+          // Once stored, isAuthenticated() will always return true
+          final authSuccess = await GoogleCalendarAuthService.signIn();
+          if (!authSuccess) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Failed to connect Google Calendar. Please try again.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+          
+          // Update cached connection status
+          // This ensures we never show the dialog again
+          if (mounted) {
+            setState(() {
+              _isCalendarConnected = true;
+            });
+          }
+          
+          // Show success message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Google Calendar connected! Adding session...',
+                        style: GoogleFonts.poppins(),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: AppTheme.accentGreen,
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          // Update cache if we got a different result
+          if (mounted) {
+            setState(() {
+              _isCalendarConnected = true;
+            });
+          }
+        }
+      }
+
+      // Get session details
+      final sessionId = session['id'] as String;
+      final scheduledDate = DateTime.parse(session['scheduled_date'] as String);
+      final scheduledTime = session['scheduled_time'] as String;
+      final duration = session['duration_minutes'] as int? ?? 60;
+      final location = session['location'] as String? ?? 'online';
+      final subject = session['subject'] as String? ?? 'Tutoring Session';
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      final tutorName = recurringData?['tutor_name'] as String? ?? 'Tutor';
+      final studentName = recurringData?['student_name'] as String? ?? 'Student';
+
+      // Parse time
+      final timeParts = scheduledTime.split(':');
+      final hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1].split(' ')[0]);
+      final isPM = scheduledTime.toUpperCase().contains('PM');
+      final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
+
+      final startTime = DateTime(
+        scheduledDate.year,
+        scheduledDate.month,
+        scheduledDate.day,
+        hour24,
+        minute,
+      );
+
+      // Get user emails
+      final userProfile = await AuthService.getUserProfile();
+      final userEmail = userProfile?['email'] as String?;
+      
+      // Get tutor/student emails
+      final tutorId = session['tutor_id'] as String? ?? recurringData?['tutor_id'] as String?;
+      final studentId = session['learner_id'] as String? ?? recurringData?['student_id'] as String?;
+      
+      final attendeeEmails = <String>[];
+      if (userEmail != null) attendeeEmails.add(userEmail);
+      
+      // Try to get tutor and student emails
+      try {
+        if (tutorId != null) {
+          final tutorProfile = await SupabaseService.client
+              .from('profiles')
+              .select('email')
+              .eq('id', tutorId)
+              .maybeSingle();
+          final tutorEmail = tutorProfile?['email'] as String?;
+          if (tutorEmail != null && !attendeeEmails.contains(tutorEmail)) {
+            attendeeEmails.add(tutorEmail);
+          }
+        }
+        if (studentId != null) {
+          final studentProfile = await SupabaseService.client
+              .from('profiles')
+              .select('email')
+              .eq('id', studentId)
+              .maybeSingle();
+          final studentEmail = studentProfile?['email'] as String?;
+          if (studentEmail != null && !attendeeEmails.contains(studentEmail)) {
+            attendeeEmails.add(studentEmail);
+          }
+        }
+      } catch (e) {
+        LogService.warning('Could not fetch attendee emails: $e');
+      }
+
+      // Show loading
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()),
+        );
+      }
+
+      // Create calendar event
+      final calendarEvent = await GoogleCalendarService.createSessionEvent(
+        title: 'PrepSkul Session: $subject',
+        startTime: startTime,
+        durationMinutes: duration,
+        attendeeEmails: attendeeEmails,
+        description: 'Tutoring session with $tutorName',
+      );
+
+      // Update session with calendar event ID and Meet link
+      await SupabaseService.client
+          .from('individual_sessions')
+          .update({
+            'calendar_event_id': calendarEvent.id,
+            if (location == 'online' && calendarEvent.meetLink.isNotEmpty)
+              'meeting_link': calendarEvent.meetLink,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', sessionId);
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Show success
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    location == 'online' && calendarEvent.meetLink.isNotEmpty
+                        ? 'Session added to calendar with Meet link!'
+                        : 'Session added to calendar!',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: AppTheme.accentGreen,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Reload sessions to show updated calendar status
+      _loadSessions();
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted) {
+        try {
+          Navigator.pop(context);
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding to calendar: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      LogService.error('Error adding session to calendar: $e');
     }
   }
 
@@ -444,6 +757,41 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 ),
                 const SizedBox(height: 12),
               ],
+              // Expired session indicator
+              if (status == 'expired') ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.red.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        color: Colors.red[700],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This session expired and was never attended',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.red[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
               const SizedBox(height: 16),
               // Date and time
               Row(
@@ -501,6 +849,39 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                 : AppTheme.primaryColor,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // Add to Calendar button
+                    // Show ONLY if:
+                    // 1. Session doesn't have calendar_event_id yet, AND
+                    // 2. User hasn't connected calendar (so they can connect), OR
+                    // 3. User has connected calendar (so they can add this session)
+                    if ((session['calendar_event_id'] == null || 
+                         (session['calendar_event_id'] as String? ?? '').isEmpty))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _addSessionToCalendar(session),
+                          icon: Icon(
+                            _isCalendarConnected == true 
+                                ? Icons.calendar_today 
+                                : Icons.calendar_today_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _isCalendarConnected == true
+                                ? 'Add to Calendar'
+                                : 'Connect & Add',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryColor,
+                            side: BorderSide(color: AppTheme.primaryColor),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
@@ -618,7 +999,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       currentUserId = userProfile?['id'] as String?;
       userType = userProfile?['user_type'] as String?;
     } catch (e) {
-      print('⚠️ Error getting user profile: \$e');
+      LogService.warning('Error getting user profile: \$e');
     }
 
     showDialog(
@@ -664,20 +1045,54 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 ),
               ],
               
-                            if (location == 'online' && meetLink != null && meetLink.isNotEmpty) ...[
+                            // Action buttons in details dialog
+              if (status == 'scheduled' || status == 'in_progress') ...[
                 const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _joinMeeting(meetLink);
-                  },
-                  icon: const Icon(Icons.video_call, size: 18),
-                  label: Text('Join Meeting', style: GoogleFonts.poppins()),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _joinMeeting(meetLink);
+                        },
+                        icon: const Icon(Icons.video_call, size: 18),
+                        label: Text('Join Meeting', style: GoogleFonts.poppins()),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        ),
+                      ),
+                    // Add to Calendar button (if no calendar event exists)
+                    if (session['calendar_event_id'] == null || 
+                        (session['calendar_event_id'] as String? ?? '').isEmpty)
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _addSessionToCalendar(session);
+                        },
+                        icon: Icon(
+                          _isCalendarConnected == true 
+                              ? Icons.calendar_today 
+                              : Icons.calendar_today_outlined,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _isCalendarConnected == true
+                              ? 'Add to Calendar'
+                              : 'Connect & Add',
+                          style: GoogleFonts.poppins(),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primaryColor,
+                          side: BorderSide(color: AppTheme.primaryColor),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ],

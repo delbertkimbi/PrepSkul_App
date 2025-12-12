@@ -43,7 +43,7 @@ class PaymentService {
 
       return status;
     } catch (e) {
-      print('❌ Error processing trial payment: $e');
+      LogService.error('Error processing trial payment: $e');
       rethrow;
     }
   }
@@ -77,7 +77,7 @@ class PaymentService {
 
       return status;
     } catch (e) {
-      print('❌ Error processing booking payment: $e');
+      LogService.error('Error processing booking payment: $e');
       rethrow;
     }
   }
@@ -92,7 +92,7 @@ class PaymentService {
       final status = await FapshiService.getPaymentStatus(transactionId);
       return status.isSuccessful;
     } catch (e) {
-      print('❌ Error verifying payment: $e');
+      LogService.error('Error verifying payment: $e');
       return false;
     }
   }
@@ -135,7 +135,7 @@ class PaymentService {
 
       return status;
     } catch (e) {
-      print('❌ Error processing payment request payment: $e');
+      LogService.error('Error processing payment request payment: $e');
       rethrow;
     }
   }

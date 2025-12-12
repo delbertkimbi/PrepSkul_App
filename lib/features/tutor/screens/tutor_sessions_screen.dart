@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
@@ -30,7 +32,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   Future<void> _loadSessions() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       // Try to load individual sessions first (more specific)
       List<Map<String, dynamic>> individualSessions = [];
@@ -51,7 +53,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           }
         }
       } catch (e) {
-        print(
+        LogService.debug(
           '⚠️ Could not load individual sessions, falling back to recurring: $e',
         );
       }
@@ -89,7 +91,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           }
         });
 
-        setState(() {
+        safeSetState(() {
           _sessions = filtered;
           _isLoading = false;
         });
@@ -142,13 +144,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         });
       }
 
-      setState(() {
+      safeSetState(() {
         _sessions = filtered;
         _isLoading = false;
       });
     } catch (e) {
-      print('❌ Error loading sessions: $e');
-      setState(() => _isLoading = false);
+      LogService.error('Error loading sessions: $e');
+      safeSetState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -235,7 +237,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
-        setState(() {
+        safeSetState(() {
           _selectedFilter = filter;
         });
         _loadSessions();
@@ -703,7 +705,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         isOnline = location == 'online';
       }
 
-      setState(() {
+      safeSetState(() {
         _sessionLoadingStates[sessionId] = true;
       });
 
@@ -730,7 +732,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       _loadSessions(); // Refresh
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _sessionLoadingStates[sessionId] = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
@@ -751,7 +753,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     );
 
     if (result != null) {
-      setState(() {
+      safeSetState(() {
         _sessionLoadingStates[sessionId] = true;
       });
       
@@ -791,7 +793,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         }
       } finally {
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _sessionLoadingStates[sessionId] = false;
           });
         }
@@ -818,7 +820,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         }
       }
     } catch (e) {
-      print('❌ Error opening Meet link: $e');
+      LogService.error('Error opening Meet link: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

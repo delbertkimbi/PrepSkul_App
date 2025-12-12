@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
@@ -33,18 +36,18 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
   }
 
   Future<void> _loadRequests() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
     });
 
     try {
       final requests = await BookingService.getTutorBookingRequests();
-      setState(() {
+      safeSetState(() {
         _allRequests = requests;
         _isLoading = false;
       });
     } catch (e) {
-      print('❌ Error loading booking requests: $e');
+      LogService.error('Error loading booking requests: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -52,7 +55,7 @@ class _TutorPendingRequestsScreenState extends State<TutorPendingRequestsScreen>
             backgroundColor: Colors.red,
           ),
         );
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
         });
       }

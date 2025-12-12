@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 
 /// Quality Assurance Service
@@ -25,7 +26,7 @@ class QualityAssuranceService {
     int qualityAssuranceHours = 24,
   }) async {
     try {
-      print('🔍 Processing pending earnings for quality assurance...');
+      LogService.debug('Processing pending earnings for quality assurance...');
 
       // Get all pending earnings that have passed QA period
       final cutoffTime = DateTime.now()
@@ -57,11 +58,11 @@ class QualityAssuranceService {
           .lt('pending_balance_added_at', cutoffTime);
 
       if (pendingEarnings.isEmpty) {
-        print('✅ No pending earnings ready for QA processing');
+        LogService.success('No pending earnings ready for QA processing');
         return;
       }
 
-      print('📊 Found ${pendingEarnings.length} pending earnings to process');
+      LogService.info('Found ${pendingEarnings.length} pending earnings to process');
 
       int processed = 0;
       int skipped = 0;
@@ -73,14 +74,14 @@ class QualityAssuranceService {
           
           // Skip if payment not confirmed
           if (sessionPayment?['payment_status'] != 'paid') {
-            print('⚠️ Skipping earning ${earning['id']}: Payment not confirmed');
+            LogService.warning('Skipping earning ${earning['id']}: Payment not confirmed');
             skipped++;
             continue;
           }
 
           // Skip if session not completed
           if (session?['status'] != 'completed') {
-            print('⚠️ Skipping earning ${earning['id']}: Session not completed');
+            LogService.warning('Skipping earning ${earning['id']}: Session not completed');
             skipped++;
             continue;
           }
@@ -112,14 +113,14 @@ class QualityAssuranceService {
             processed++;
           }
         } catch (e) {
-          print('❌ Error processing earning ${earning['id']}: $e');
+          LogService.error('Error processing earning ${earning['id']}: $e');
           skipped++;
         }
       }
 
-      print('✅ QA Processing complete: $processed moved to active, $skipped skipped');
+      LogService.success('QA Processing complete: $processed moved to active, $skipped skipped');
     } catch (e) {
-      print('❌ Error processing pending earnings: $e');
+      LogService.error('Error processing pending earnings: $e');
       rethrow;
     }
   }
@@ -187,18 +188,18 @@ class QualityAssuranceService {
             if (lateMinutes > 5) {
               issues.isLate = true;
               issues.lateMinutes = lateMinutes;
-              print('⚠️ Late arrival detected: $lateMinutes minutes late');
+              LogService.warning('Late arrival detected: $lateMinutes minutes late');
             }
           }
         } catch (e) {
-          print('⚠️ Error checking late arrival: $e');
+          LogService.warning('Error checking late arrival: $e');
         }
       }
 
       // Check for no-show (tutor never joined)
       if (tutorJoinedAt == null && session['status'] == 'completed') {
         issues.isNoShow = true;
-        print('⚠️ No-show detected: Tutor never joined');
+        LogService.warning('No-show detected: Tutor never joined');
       }
 
       // Check feedback for poor ratings and complaints
@@ -213,7 +214,7 @@ class QualityAssuranceService {
         if (rating != null && rating < 3) {
           issues.hasPoorRating = true;
           issues.rating = rating;
-          print('⚠️ Poor rating detected: $rating stars');
+          LogService.warning('Poor rating detected: $rating stars');
         }
 
         // Check for complaint keywords in review or improvement feedback
@@ -237,7 +238,7 @@ class QualityAssuranceService {
         for (final keyword in complaintKeywords) {
           if (combinedText.contains(keyword)) {
             issues.hasComplaint = true;
-            print('⚠️ Complaint detected in feedback');
+            LogService.warning('Complaint detected in feedback');
             break;
           }
         }
@@ -245,7 +246,7 @@ class QualityAssuranceService {
 
       return issues;
     } catch (e) {
-      print('❌ Error detecting issues: $e');
+      LogService.error('Error detecting issues: $e');
       return SessionIssues(); // Return empty issues on error
     }
   }
@@ -348,7 +349,7 @@ class QualityAssuranceService {
           },
         );
 
-        print('✅ Fine applied: ${fineAmount.toStringAsFixed(0)} XAF, remaining: ${remainingAmount.toStringAsFixed(0)} XAF');
+        LogService.success('Fine applied: ${fineAmount.toStringAsFixed(0)} XAF, remaining: ${remainingAmount.toStringAsFixed(0)} XAF');
       } else {
         // No action needed, move to active
         await _moveToActiveBalance(
@@ -358,7 +359,7 @@ class QualityAssuranceService {
         );
       }
     } catch (e) {
-      print('❌ Error processing issues: $e');
+      LogService.error('Error processing issues: $e');
       rethrow;
     }
   }
@@ -389,9 +390,9 @@ class QualityAssuranceService {
           })
           .eq('id', paymentId);
 
-      print('✅ Moved ${earningsAmount.toStringAsFixed(0)} XAF to active balance for tutor: $tutorId');
+      LogService.success('Moved ${earningsAmount.toStringAsFixed(0)} XAF to active balance for tutor: $tutorId');
     } catch (e) {
-      print('❌ Error moving to active balance: $e');
+      LogService.error('Error moving to active balance: $e');
       rethrow;
     }
   }
@@ -480,9 +481,9 @@ class QualityAssuranceService {
         },
       );
 
-      print('✅ Refund processed: ${sessionFee?.toStringAsFixed(0) ?? 'N/A'} XAF for session: $sessionId');
+      LogService.success('Refund processed: ${sessionFee?.toStringAsFixed(0) ?? 'N/A'} XAF for session: $sessionId');
     } catch (e) {
-      print('❌ Error processing refund: $e');
+      LogService.error('Error processing refund: $e');
       rethrow;
     }
   }

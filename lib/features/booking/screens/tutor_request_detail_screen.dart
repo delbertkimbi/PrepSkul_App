@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 
 /// TutorRequestDetailScreen
@@ -96,7 +98,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     );
 
     if (response != null) {
-      setState(() => _isProcessing = true);
+      safeSetState(() => _isProcessing = true);
       // TODO: Call API to approve
       await Future.delayed(const Duration(seconds: 1));
 
@@ -208,7 +210,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     );
 
     if (result != null) {
-      setState(() => _isProcessing = true);
+      safeSetState(() => _isProcessing = true);
       // TODO: Call API to reject
       await Future.delayed(const Duration(seconds: 1));
 
@@ -253,6 +255,9 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Status Banner
+            _buildStatusBanner(status),
+            const SizedBox(height: 24),
             // Conflict Warning (if applicable)
             if (hasConflict && isPending)
               Container(
@@ -305,20 +310,14 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             const SizedBox(height: 24),
 
             // Schedule Section
-            _buildSectionTitle('Requested Schedule'),
-            const SizedBox(height: 16),
             _buildScheduleCard(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Location Section
-            _buildSectionTitle('Location'),
-            const SizedBox(height: 16),
             _buildLocationCard(),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // Revenue Section
-            _buildSectionTitle('Revenue Details'),
-            const SizedBox(height: 16),
             _buildRevenueCard(),
 
             const SizedBox(height: 32),
@@ -379,20 +378,79 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     );
   }
 
-  Widget _buildStudentCard(Map<String, dynamic> student) {
+
+  Widget _buildStatusBanner(String status) {
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+        statusColor = Colors.orange;
+        statusIcon = Icons.pending;
+        statusText = 'PENDING';
+        break;
+      case 'APPROVED':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'APPROVED';
+        break;
+      case 'REJECTED':
+        statusColor = Colors.red;
+        statusIcon = Icons.cancel;
+        statusText = 'REJECTED';
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.info;
+        statusText = status.toUpperCase();
+    }
+    
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primaryColor.withOpacity(0.05),
-            AppTheme.primaryColor.withOpacity(0.02),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+        color: statusColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withOpacity(0.3), width: 1.5),
       ),
       child: Row(
+        children: [
+          Icon(statusIcon, color: statusColor, size: 24),
+          const SizedBox(width: 12),
+          Text(
+            'Status: $statusText',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: statusColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildStudentCard(Map<String, dynamic> student) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              AppTheme.primaryColor.withOpacity(0.08),
+              AppTheme.primaryColor.withOpacity(0.03),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Row(
         children: [
           CircleAvatar(
             radius: 36,
@@ -456,6 +514,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -465,64 +524,70 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     final days = widget.request['days'] as List? ?? [];
     final times = widget.request['times'] as Map<String, dynamic>? ?? {};
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[300]!),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildDetailRow('Frequency', '$frequency sessions per week'),
-          const SizedBox(height: 16),
-          _buildDetailRow('Days', days.join(', ')),
-          const SizedBox(height: 16),
-          Text(
-            'Session Times:',
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[800],
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...days.map((day) {
-            final time = times[day] ?? 'Not set';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '$day: ',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black,
-                    ),
-                  ),
-                  Text(
-                    time,
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: Colors.grey[700],
-                    ),
-                  ),
-                ],
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow(Icons.event_repeat, 'Frequency', '$frequency sessions per week'),
+            if (days.isNotEmpty) ...[
+              _buildDetailRow(Icons.calendar_today, 'Days', days.join(', ')),
+              const SizedBox(height: 8),
+              Text(
+                'Session Times',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textLight,
+                ),
               ),
-            );
-          }).toList(),
-        ],
+              const SizedBox(height: 12),
+              ...days.map((day) {
+                final time = times[day] ?? 'Not set';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '$day',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        time,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -531,22 +596,22 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     final location = widget.request['location'] as String? ?? 'Not specified';
     final address = widget.request['address'] as String?;
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[300]!),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildDetailRow('Format', location.toUpperCase()),
-          if (address != null) ...[
-            const SizedBox(height: 16),
-            _buildDetailRow('Address', address),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildDetailRow(Icons.location_on, 'Location', location.toUpperCase()),
+            if (address != null)
+              _buildDetailRow(Icons.home, 'Address', address),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -555,61 +620,32 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     final monthlyTotal = widget.request['monthly_total'] as double? ?? 0.0;
     final paymentPlan = widget.request['payment_plan'] as String? ?? 'Not specified';
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE8F5E9), Color(0xFFF1F8E9)],
-        ),
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green[200]!),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
       ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Monthly Revenue',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
-              ),
-              Text(
-                '${monthlyTotal.toStringAsFixed(0)} XAF',
-                style: GoogleFonts.poppins(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.green[700],
-                ),
-              ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.green[50]!,
+              Colors.green[100]!.withOpacity(0.5),
             ],
           ),
-          const SizedBox(height: 12),
-          Divider(color: Colors.grey[300]),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Payment Plan',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: Colors.grey[700],
-                ),
-              ),
-              Text(
-                paymentPlan.toUpperCase(),
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black,
-                ),
-              ),
-            ],
-          ),
-        ],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _buildDetailRow(Icons.attach_money, 'Monthly Revenue', '${monthlyTotal.toStringAsFixed(0)} XAF', iconColor: Colors.green[700]),
+            const SizedBox(height: 8),
+            _buildDetailRow(Icons.payment, 'Payment Plan', paymentPlan.toUpperCase(), iconColor: Colors.green[700]),
+          ],
+        ),
       ),
     );
   }
@@ -625,28 +661,52 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(
-            label,
-            style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
+  Widget _buildDetailRow(IconData icon, String label, String value, {Color? iconColor}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: (iconColor ?? AppTheme.primaryColor).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: iconColor ?? AppTheme.primaryColor,
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textLight,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

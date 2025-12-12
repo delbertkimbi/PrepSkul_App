@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
+import '../../../core/services/log_service.dart';
 import '../../../data/app_data.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import '../../../core/services/storage_service.dart';
@@ -40,7 +42,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   void initState() {
     super.initState();
     _customQuarterController.addListener(() {
-      setState(() {
+      safeSetState(() {
         _customQuarter = _customQuarterController.text;
       });
     });
@@ -75,7 +77,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Future<void> _loadAuthMethod() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
+    safeSetState(() {
       _authMethod =
           prefs.getString('auth_method') ?? 'phone'; // Default to phone
     });
@@ -102,7 +104,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         });
       }
     } catch (e) {
-      print('❌ Error initializing: $e');
+      LogService.error('Error initializing: $e');
       // Fallback to old SharedPreferences method
       await _loadSavedData();
     }
@@ -116,7 +118,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         final user = await AuthService.getCurrentUser();
         _userId = user['userId'] as String?;
       } catch (e) {
-        print('⚠️ Cannot save: userId not available');
+        LogService.warning('Cannot save: userId not available');
         return;
       }
     }
@@ -160,9 +162,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         completedSteps,
       );
 
-      print('✅ Auto-saved step $_currentStep to database');
+      LogService.success('Auto-saved step $_currentStep to database');
     } catch (e) {
-      print('❌ Error saving to database: $e');
+      LogService.error('Error saving to database: $e');
     }
   }
 
@@ -193,14 +195,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         completedSteps,
       );
 
-      print('✅ Progress saved before exiting to dashboard');
+      LogService.success('Progress saved before exiting to dashboard');
 
       // Navigate to tutor dashboard
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/tutor-nav');
       }
     } catch (e) {
-      print('❌ Error saving progress before exit: $e');
+      LogService.error('Error saving progress before exit: $e');
       // Still navigate even if save fails
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -438,7 +440,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
     if (existingData != null && needsImprovement) {
       // Load from database (existing tutor profile)
-      print('📝 Loading existing tutor profile data for improvement');
+      LogService.info('Loading existing tutor profile data for improvement');
       await _loadFromDatabaseData(existingData);
       return;
     }
@@ -452,7 +454,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           return;
         }
       } catch (e) {
-        print('⚠️ Error loading from database: $e');
+        LogService.warning('Error loading from database: $e');
       }
     }
 
@@ -465,7 +467,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         final data = jsonDecode(savedDataString) as Map<String, dynamic>;
         await _loadFromSharedPreferencesData(data);
       } catch (e) {
-        print('⚠️ Error loading saved data: $e');
+        LogService.warning('Error loading saved data: $e');
       }
     } else if (existingData != null) {
       // If no saved data but existingData exists, load from it
@@ -498,7 +500,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         }
       }
 
-        setState(() {
+        safeSetState(() {
         _currentStep = firstIncompleteStep;
       });
 
@@ -507,7 +509,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         _availableQuarters = AppData.cities[_selectedCity!] ?? [];
       }
 
-      print('✅ Loaded progress from database - resuming at step $_currentStep');
+      LogService.success('Loaded progress from database - resuming at step $_currentStep');
 
       // Jump to saved step
       if (_currentStep > 0) {
@@ -516,7 +518,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         });
       }
     } catch (e) {
-      print('⚠️ Error loading from progress data: $e');
+      LogService.warning('Error loading from progress data: $e');
     }
   }
 
@@ -634,7 +636,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   // Load from SharedPreferences (backward compatibility)
   Future<void> _loadFromSharedPreferencesData(Map<String, dynamic> data) async {
-    setState(() {
+    safeSetState(() {
       _currentStep = data['currentStep'] ?? 0;
       _emailController.text = data['email'] ?? '';
       _selectedEducation = data['selectedEducation'];
@@ -686,11 +688,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               .maybeSingle();
           profileData = profileResponse;
         } catch (e) {
-          print('⚠️ Error fetching profile data: $e');
+          LogService.warning('Error fetching profile data: $e');
         }
       }
 
-      setState(() {
+      safeSetState(() {
         // Email and Phone from profiles table
         _emailController.text =
             profileData?['email']?.toString() ??
@@ -788,7 +790,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             });
           }
         }
-        print(
+        LogService.debug(
           '✅ Loaded tutoring availability: \${_tutoringAvailability.keys.toList()}',
         );
         // Also check test_session_availability if needed
@@ -899,15 +901,15 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         // Also populate _uploadedDocuments for UI (CRITICAL: Must be done for images to display)
         if (_profilePhotoUrl != null && _profilePhotoUrl!.isNotEmpty) {
           _uploadedDocuments['profile_picture'] = _profilePhotoUrl!;
-          print('✅ Loaded profile photo URL: $_profilePhotoUrl');
+          LogService.success('Loaded profile photo URL: $_profilePhotoUrl');
         }
         if (_idCardFrontUrl != null && _idCardFrontUrl!.isNotEmpty) {
           _uploadedDocuments['id_front'] = _idCardFrontUrl!;
-          print('✅ Loaded ID front URL: $_idCardFrontUrl');
+          LogService.success('Loaded ID front URL: $_idCardFrontUrl');
         }
         if (_idCardBackUrl != null && _idCardBackUrl!.isNotEmpty) {
           _uploadedDocuments['id_back'] = _idCardBackUrl!;
-          print('✅ Loaded ID back URL: $_idCardBackUrl');
+          LogService.success('Loaded ID back URL: $_idCardBackUrl');
         }
 
         // Social media links
@@ -939,7 +941,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               }
               _socialMediaLinks[normalizedKey] = value.toString();
             });
-            print('✅ Loaded social media links: $_socialMediaLinks');
+            LogService.success('Loaded social media links: $_socialMediaLinks');
           }
         } else if (data['social_links'] != null) {
           // Try legacy field
@@ -963,7 +965,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               }
               _socialMediaLinks[normalizedKey] = value.toString();
             });
-            print(
+            LogService.debug(
               '✅ Loaded social media links from legacy field: $_socialMediaLinks',
             );
           }
@@ -976,14 +978,14 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           final certs = data['certificates_urls'] is String
               ? jsonDecode(data['certificates_urls'])
               : data['certificates_urls'];
-          print('📜 Loading certificates: $certs');
+          LogService.debug('📜 Loading certificates: $certs');
           if (certs is List && certs.isNotEmpty) {
             // Only use the LAST certificate URL (most recent upload) for "last_certificate"
             // This replaces any previous certificates when a tutor re-uploads
             final lastCertUrl = certs.last.toString();
             _certificateUrls['last_certificate'] = lastCertUrl;
             _uploadedDocuments['last_certificate'] = lastCertUrl;
-            print(
+            LogService.debug(
               '✅ Loaded latest certificate URL: $lastCertUrl (replacing ${certs.length - 1} previous certificate(s))',
             );
             // Clear old numbered certificate entries - we only keep the latest
@@ -993,11 +995,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             if (lastCert != null && lastCert.isNotEmpty) {
               _certificateUrls['last_certificate'] = lastCert;
               _uploadedDocuments['last_certificate'] = lastCert;
-              print('✅ Loaded certificate: last_certificate = $lastCert');
+              LogService.success('Loaded certificate: last_certificate = $lastCert');
             }
           }
         } else {
-          print('⚠️ No certificates_urls found in data');
+          LogService.warning('No certificates_urls found in data');
         }
 
         // Personal Statement
@@ -1033,7 +1035,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         }
       });
 
-      print('✅ Loaded existing tutor profile data - all fields prefilled');
+      LogService.success('Loaded existing tutor profile data - all fields prefilled');
 
       // Show a message that data is prefilled
       if (mounted) {
@@ -1050,7 +1052,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         );
       }
     } catch (e) {
-      print('⚠️ Error loading from database data: $e');
+      LogService.warning('Error loading from database data: $e');
     }
   }
 
@@ -1314,7 +1316,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
-          setState(() {
+          safeSetState(() {
             _currentStep = index;
           });
         },
@@ -1554,7 +1556,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _selectedEducation,
             onSelectionChanged: (value) {
-              setState(() => _selectedEducation = value);
+              safeSetState(() => _selectedEducation = value);
               _saveData();
             },
             isSingleSelection: true,
@@ -1587,7 +1589,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: 'Have you received tutor training or certification before?',
             value: _hasTraining,
             onChanged: (value) {
-              setState(() => _hasTraining = value);
+              safeSetState(() => _hasTraining = value);
               _saveData();
             },
             icon: Icons.verified,
@@ -1615,7 +1617,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             value: _selectedCity,
             items: AppData.cities.keys.toList(),
             onChanged: (value) {
-              setState(() {
+              safeSetState(() {
                 _selectedCity = value;
                 _selectedQuarter = null;
                 _customQuarter = null;
@@ -1633,7 +1635,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             value: _isCustomQuarter ? 'Other' : _selectedQuarter,
             items: [..._availableQuarters, 'Other'],
             onChanged: (value) {
-              setState(() {
+              safeSetState(() {
                 if (value == 'Other') {
                   _isCustomQuarter = true;
                   _selectedQuarter = null;
@@ -1684,7 +1686,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _selectedTutoringAreas,
             onSelectionChanged: (values) {
-              setState(() => _selectedTutoringAreas = values);
+              safeSetState(() => _selectedTutoringAreas = values);
               _saveData();
             },
             isSingleSelection: false,
@@ -1705,7 +1707,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _selectedLearnerLevels,
             onSelectionChanged: (values) {
-              setState(() => _selectedLearnerLevels = values);
+              safeSetState(() => _selectedLearnerLevels = values);
               _saveData();
             },
             isSingleSelection: false,
@@ -1781,7 +1783,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             options: specializationOptions,
             selectedValue: _selectedSpecializations,
             onSelectionChanged: (values) =>
-                setState(() => _selectedSpecializations = values),
+                safeSetState(() => _selectedSpecializations = values),
           ),
 
           const SizedBox(height: 24),
@@ -1883,7 +1885,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                   options: entry.value,
                   selectedValue: _selectedSpecializations,
                   onSelectionChanged: (values) {
-                    setState(() => _selectedSpecializations = values);
+                    safeSetState(() => _selectedSpecializations = values);
                     _saveData();
                   },
                 ),
@@ -2019,7 +2021,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: 'Do you have previous tutoring or teaching experience?',
             value: _hasExperience,
             onChanged: (value) {
-              setState(() => _hasExperience = value);
+              safeSetState(() => _hasExperience = value);
               _saveData();
             },
             icon: Icons.work_history,
@@ -2039,7 +2041,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               ],
               selectedValue: _experienceDuration,
               onSelectionChanged: (value) =>
-                  setState(() => _experienceDuration = value),
+                  safeSetState(() => _experienceDuration = value),
               isSingleSelection: true,
             ),
 
@@ -2068,7 +2070,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               ],
               selectedValue: _taughtLevels,
               onSelectionChanged: (values) =>
-                  setState(() => _taughtLevels = values),
+                  safeSetState(() => _taughtLevels = values),
               isSingleSelection: false,
             ),
           ],
@@ -2226,7 +2228,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             options: ['Online Only', 'In Person', 'Both Online & In Person'],
             selectedValue: _preferredMode,
             onSelectionChanged: (value) =>
-                setState(() => _preferredMode = value),
+                safeSetState(() => _preferredMode = value),
             isSingleSelection: true,
           ),
 
@@ -2244,7 +2246,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _teachingApproaches,
             onSelectionChanged: (values) =>
-                setState(() => _teachingApproaches = values),
+                safeSetState(() => _teachingApproaches = values),
             isSingleSelection: false,
           ),
 
@@ -2256,7 +2258,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             options: ['One-on-one', 'Small Groups (2-5)', 'Larger Groups'],
             selectedValue: _preferredSessionType,
             onSelectionChanged: (value) =>
-                setState(() => _preferredSessionType = value),
+                safeSetState(() => _preferredSessionType = value),
             isSingleSelection: true,
           ),
 
@@ -2267,7 +2269,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: 'Open to handling multiple learners at once?',
             value: _handlesMultipleLearners,
             onChanged: (value) =>
-                setState(() => _handlesMultipleLearners = value),
+                safeSetState(() => _handlesMultipleLearners = value),
             icon: Icons.people,
           ),
 
@@ -2285,7 +2287,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _hoursPerWeek,
             onSelectionChanged: (value) =>
-                setState(() => _hoursPerWeek = value),
+                safeSetState(() => _hoursPerWeek = value),
             isSingleSelection: true,
           ),
         ],
@@ -2317,7 +2319,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _devices,
             onSelectionChanged: (values) {
-              setState(() => _devices = values);
+              safeSetState(() => _devices = values);
               _saveData();
             },
             isSingleSelection: false,
@@ -2330,7 +2332,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: 'Reliable internet connection for online sessions?',
             value: _hasInternet,
             onChanged: (value) {
-              setState(() => _hasInternet = value);
+              safeSetState(() => _hasInternet = value);
               _saveData();
             },
             icon: Icons.wifi,
@@ -2351,7 +2353,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _teachingTools,
             onSelectionChanged: (values) =>
-                setState(() => _teachingTools = values),
+                safeSetState(() => _teachingTools = values),
             isSingleSelection: false,
           ),
 
@@ -2362,7 +2364,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: 'Access to teaching materials (notes, slides, PDFs)?',
             value: _hasMaterials,
             onChanged: (value) {
-              setState(() => _hasMaterials = value);
+              safeSetState(() => _hasMaterials = value);
               _saveData();
             },
             icon: Icons.folder,
@@ -2375,7 +2377,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             title: 'Interested in free digital teaching training?',
             value: _wantsTraining,
             onChanged: (value) {
-              setState(() => _wantsTraining = value);
+              safeSetState(() => _wantsTraining = value);
               _saveData();
             },
             icon: Icons.school,
@@ -2472,7 +2474,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           children: [
             Expanded(
               child: GestureDetector(
-                onTap: () => setState(() => _selectedServiceType = 'tutoring'),
+                onTap: () => safeSetState(() => _selectedServiceType = 'tutoring'),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -2534,7 +2536,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Expanded(
               child: GestureDetector(
                 onTap: () =>
-                    setState(() => _selectedServiceType = 'test_sessions'),
+                    safeSetState(() => _selectedServiceType = 'test_sessions'),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -2659,7 +2661,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: () => setState(() => _selectedDay = day),
+                  onTap: () => safeSetState(() => _selectedDay = day),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -2882,7 +2884,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
             return GestureDetector(
               onTap: () {
-                setState(() {
+                safeSetState(() {
                   final currentAvailability = _getCurrentAvailability();
                   currentAvailability[day] ??= [];
                   if (isSelected) {
@@ -2958,7 +2960,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
             selectedValue: _expectedRate,
             onSelectionChanged: (value) =>
-                setState(() => _expectedRate = value),
+                safeSetState(() => _expectedRate = value),
             isSingleSelection: true,
           ),
 
@@ -3023,7 +3025,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             options: ['MTN Mobile Money', 'Orange Money', 'Bank Transfer'],
             selectedValue: _paymentMethod,
             onSelectionChanged: (value) =>
-                setState(() => _paymentMethod = value),
+                safeSetState(() => _paymentMethod = value),
             isSingleSelection: true,
           ),
 
@@ -3172,7 +3174,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           ],
           selectedValue: _pricingFactors,
           onSelectionChanged: (values) =>
-              setState(() => _pricingFactors = values),
+              safeSetState(() => _pricingFactors = values),
           isSingleSelection: false,
         ),
 
@@ -3228,7 +3230,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               Checkbox(
                 value: _agreesToPaymentPolicy,
                 onChanged: (value) =>
-                    setState(() => _agreesToPaymentPolicy = value ?? false),
+                    safeSetState(() => _agreesToPaymentPolicy = value ?? false),
                 activeColor: AppTheme.primaryColor,
               ),
               Expanded(
@@ -3298,7 +3300,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 'I agree for PrepSkul to verify my credentials and background',
             value: _agreesToVerification,
             onChanged: (value) {
-              setState(() => _agreesToVerification = value);
+              safeSetState(() => _agreesToVerification = value);
               _saveData();
             },
             icon: Icons.verified_user,
@@ -3467,7 +3469,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               return Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: GestureDetector(
-                  onTap: () => setState(() => _selectedDocumentType = docType),
+                  onTap: () => safeSetState(() => _selectedDocumentType = docType),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -3764,7 +3766,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 );
               },
               errorBuilder: (context, error, stackTrace) {
-                print('❌ Error loading image $uploadedUrl: $error');
+                LogService.error('Error loading image $uploadedUrl: $error');
                 return _buildFileIcon(docType);
               },
             ),
@@ -4002,7 +4004,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     child: TextFormField(
                       initialValue: _socialMediaLinks[platformName] ?? '',
                       onChanged: (value) {
-                        setState(() {
+                        safeSetState(() {
                           _socialMediaLinks[platformName] = value;
                         });
                       },
@@ -4102,7 +4104,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               .map(
                 (platformName) => ListTile(
                   onTap: () {
-                    setState(() {
+                    safeSetState(() {
                       _socialMediaLinks[platformName] = '';
                     });
                     Navigator.pop(context);
@@ -4707,7 +4709,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           validator: validator,
           onChanged: (value) {
             // Trigger rebuild to update button state
-            setState(() {});
+            safeSetState(() {});
             // Save to database
             _saveData();
           },
@@ -4843,7 +4845,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             child: Checkbox(
               value: isChecked,
               onChanged: (value) {
-                setState(() {
+                safeSetState(() {
                   _finalAgreements[key] = value ?? false;
                 });
                 _saveData();
@@ -5100,7 +5102,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         documentType: documentType.toLowerCase().replaceAll(' ', '_'),
       );
 
-      setState(() {
+      safeSetState(() {
         _uploadedDocuments[documentType] = uploadedUrl;
 
         // Also update specific URL variables for database storage
@@ -5174,7 +5176,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   void _generatePersonalStatement() {
     // Generate personal statement based on user responses
     String statement = _createPersonalStatement();
-    setState(() {
+    safeSetState(() {
       _statementController.text = statement;
     });
   }
@@ -5479,7 +5481,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     } catch (e) {
       // Close loading dialog
       Navigator.of(context).pop();
-      print('Error submitting application: $e');
+      LogService.debug('Error submitting application: $e');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -5517,7 +5519,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
     if (lastCertUrl != null && lastCertUrl.isNotEmpty) {
       certificateUrls.add(lastCertUrl);
-      print('✅ Adding latest certificate to submission: $lastCertUrl');
+      LogService.success('Adding latest certificate to submission: $lastCertUrl');
     } else {
       // Fallback: Check other certificate types only if last_certificate doesn't exist
       ['degree_certificate', 'training_certificate'].forEach((docType) {

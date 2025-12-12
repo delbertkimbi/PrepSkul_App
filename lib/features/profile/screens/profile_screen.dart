@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
@@ -14,6 +15,7 @@ import '../../tutor/screens/tutor_onboarding_screen.dart';
 import '../../discovery/screens/tutor_detail_screen.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -55,7 +57,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // If profile doesn't exist, try to create it from stored signup data or auth user
       if (profileResponse == null) {
-        print('⚠️ Profile not found for user $userId, attempting to create...');
+        LogService.warning('Profile not found for user $userId, attempting to create...');
         try {
           // Get stored signup data as fallback
           final prefs = await SharedPreferences.getInstance();
@@ -121,9 +123,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .eq('id', userId)
               .maybeSingle();
 
-          print('✅ Profile created for user: $userId');
+          LogService.success('Profile created for user: $userId');
         } catch (e) {
-          print('⚠️ Error creating profile: $e');
+          LogService.warning('Error creating profile: $e');
           // Continue with fallback values
         }
       }
@@ -250,15 +252,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           surveyData = await SurveyRepository.getParentSurvey(userId);
         }
       } catch (surveyError, stackTrace) {
-        print('⚠️ Error loading survey data: $surveyError');
-        print('⚠️ Stack trace: $stackTrace');
+        LogService.warning('Error loading survey data: $surveyError');
+        LogService.warning('Stack trace: $stackTrace');
         // Continue without survey data - don't block profile display
         surveyData = null;
       }
 
       if (!mounted) return;
 
-      setState(() {
+      safeSetState(() {
         _userInfo = {
           ...user,
           'phone': phoneNumber, // Use phone from database
@@ -272,11 +274,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _isLoading = false;
       });
     } catch (e, stackTrace) {
-      print('❌ Error loading profile: $e');
-      print('❌ Stack trace: $stackTrace');
+      LogService.error('Error loading profile: $e');
+      LogService.error('Stack trace: $stackTrace');
       if (!mounted) return;
 
-      setState(() {
+      safeSetState(() {
         _isLoading = false;
         // Set safe defaults to prevent crashes
         _userInfo = {
@@ -522,6 +524,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   const SizedBox(height: 8),
 
+                  
+                  // Survey Completion Card (if not completed)
+                  if ((widget.userType == 'student' || 
+                       widget.userType == 'learner' || 
+                       widget.userType == 'parent') && 
+                      (_surveyData == null || 
+                       (_userInfo?['surveyCompleted'] != true))) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _buildSurveyCompletionCard(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   // Personal Information Section (from survey)
                   if (_surveyData != null &&
                       (widget.userType == 'student' ||
@@ -1217,8 +1232,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } catch (e, stackTrace) {
       // Handle any type casting errors gracefully
-      print('❌ Error building learning info section: $e');
-      print('❌ Stack trace: $stackTrace');
+      LogService.error('Error building learning info section: $e');
+      LogService.error('Stack trace: $stackTrace');
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Text(
@@ -1270,6 +1285,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSurveyCompletionCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryColor.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Complete Your Profile Survey',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Help us understand your needs so we can match you with the best tutors.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  '/profile-setup',
+                  arguments: {'userRole': widget.userType},
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Complete Survey',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

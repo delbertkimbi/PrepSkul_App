@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 // Helper function to safely cast dynamic values
 T? _safeCast<T>(dynamic value) {
@@ -191,9 +192,7 @@ class TutorService {
       // Build query - use INNER join to ensure we only get tutors with profiles
       // The relationship is: tutor_profiles.user_id -> profiles.id
       // Try multiple relationship syntaxes for compatibility
-      print(
-        '🔍 Query: Fetching approved tutors with profile data via user_id relationship',
-      );
+      LogService.database('Fetching approved tutors with profile data via user_id relationship');
       
       var query = SupabaseService.client
           .from('tutor_profiles')
@@ -231,20 +230,18 @@ class TutorService {
         query = query.eq('is_verified', isVerified);
       }
 
-      print('🔍 Executing query...');
+      LogService.database('Executing query...');
       List rawTutors;
       try {
       final response = await query.order('rating', ascending: false);
         rawTutors = response as List;
-        print(
-          '✅ Query successful! Raw query returned ${rawTutors.length} approved tutors from Supabase',
-        );
+        LogService.success('Query successful: Raw query returned ${rawTutors.length} approved tutors from Supabase');
       } catch (queryError) {
-        print('❌ Query failed with error: $queryError');
-        print('❌ Query error type: ${queryError.runtimeType}');
+        LogService.error('Query failed with error: $queryError');
+        LogService.error('Query error type: ${queryError.runtimeType}');
         
         // Try fallback query without relationship join
-        print('🔄 Attempting fallback query without relationship join...');
+        LogService.info('Attempting fallback query without relationship join...');
         try {
           final fallbackQuery = SupabaseService.client
               .from('tutor_profiles')
@@ -254,66 +251,82 @@ class TutorService {
           
           final fallbackResponse = await fallbackQuery.order('rating', ascending: false);
           final fallbackTutors = fallbackResponse as List;
-          print('✅ Fallback query returned ${fallbackTutors.length} tutors');
+          LogService.success('Fallback query returned ${fallbackTutors.length} tutors');
           
           if (fallbackTutors.isEmpty) {
-            print('⚠️ Fallback query also returned no tutors');
+            LogService.warning('Fallback query also returned no tutors');
             return [];
           }
           
-          // Fetch profiles separately for each tutor
-          print('🔄 Fetching profiles separately...');
-          final tutorsWithProfiles = <Map<String, dynamic>>[];
-          for (var tutor in fallbackTutors) {
+          // Fetch all profiles in one batch query (fixes N+1 problem)
+          LogService.database('Fetching profiles for tutors in batch');
+          final userIds = fallbackTutors
+              .map((t) => t['user_id']?.toString())
+              .where((id) => id != null)
+              .cast<String>()
+              .toList();
+
+          if (userIds.isEmpty) {
+            LogService.warning('No user IDs found for profile fetching');
+            rawTutors = [];
+          } else {
             try {
-              final userId = tutor['user_id']?.toString();
-              if (userId == null) continue;
-              
-              final profileResponse = await SupabaseService.client
+              final profilesResponse = await SupabaseService.client
                   .from('profiles')
-                  .select('full_name, avatar_url, email')
-                  .eq('id', userId)
-                  .maybeSingle();
-              
-              if (profileResponse != null) {
-                tutor['profiles'] = profileResponse;
-                tutorsWithProfiles.add(tutor);
+                  .select('id, full_name, avatar_url, email')
+                  .inFilter('id', userIds);
+
+              // Create a map for O(1) lookup
+              final profileMap = {
+                for (var profile in profilesResponse as List)
+                  profile['id'] as String: profile
+              };
+
+              // Attach profiles to tutors
+              final tutorsWithProfiles = <Map<String, dynamic>>[];
+              for (var tutor in fallbackTutors) {
+                final userId = tutor['user_id']?.toString();
+                if (userId != null && profileMap.containsKey(userId)) {
+                  tutor['profiles'] = profileMap[userId];
+                  tutorsWithProfiles.add(tutor);
+                }
               }
+
+              LogService.success('Fetched ${tutorsWithProfiles.length} tutors with profiles in batch');
+              rawTutors = tutorsWithProfiles;
             } catch (e) {
-              print('⚠️ Could not fetch profile for tutor ${tutor['user_id']}: $e');
+              LogService.error('Failed to fetch profiles in batch', e);
+              rawTutors = [];
             }
           }
-          
-          print('✅ Successfully fetched ${tutorsWithProfiles.length} tutors with profiles');
-          rawTutors = tutorsWithProfiles;
         } catch (fallbackError) {
-          print('❌ Fallback query also failed: $fallbackError');
+          LogService.error('Fallback query also failed: $fallbackError');
           rethrow; // Re-throw the original error
         }
       }
 
       if (rawTutors.isEmpty) {
-        print('⚠️ No tutors found with status="approved"');
+        LogService.warning('No tutors found with status="approved"');
         // Let's check what statuses exist and if there are any tutors at all
         try {
           final statusCheck = await SupabaseService.client
               .from('tutor_profiles')
               .select('status, user_id')
               .limit(10);
-          print('📋 Sample tutor statuses: $statusCheck');
+          LogService.debug('Sample tutor statuses', statusCheck);
           
           // Also check total tutors without filter
           final allTutors = await SupabaseService.client
               .from('tutor_profiles')
               .select('status')
               .limit(100);
-          print('📋 Total tutors checked: ${(allTutors as List).length}');
+          LogService.debug('Total tutors checked', (allTutors as List).length);
           if ((allTutors as List).isNotEmpty) {
             final statuses = (allTutors as List).map((t) => t['status']).toSet();
-            print('📋 Available statuses: $statuses');
+            LogService.debug('Available statuses', statuses);
           }
         } catch (e) {
-          print('⚠️ Could not check tutor statuses: $e');
+          LogService.warning('Could not check tutor statuses: $e');
         }
         return []; // Return empty list if no tutors found
       } else {
@@ -323,15 +336,13 @@ class TutorService {
           final profile = tutor['profiles'];
           final subjects = tutor['subjects'];
           final status = tutor['status'];
-          print('🔍 Tutor Debug - userId: $userId, status: $status');
-          print('   - Profile: ${profile != null ? "exists" : "NULL"}');
-          print('   - Full name: ${profile?['full_name'] ?? "MISSING"}');
-          print(
-            '   - Subjects: ${subjects ?? "NULL"} (type: ${subjects.runtimeType})',
-          );
-          print('   - Subjects is List: ${subjects is List}');
+          LogService.database('Tutor Debug - userId: $userId, status: $status');
+          // Profile existence logged above
+          // Full name logged above
+          // Subjects details logged above
+          // Subjects type logged above
           if (subjects is List) {
-            print('   - Subjects length: ${subjects.length}');
+            // Subjects length logged above
           }
         }
       }
@@ -344,7 +355,7 @@ class TutorService {
         // Ensure tutor has a profile and required fields
         final profilesData = tutor['profiles'];
         if (profilesData == null) {
-          print('❌ FILTERED OUT: Tutor $userId has no profile data');
+          LogService.error('FILTERED OUT: Tutor $userId has no profile data');
           return false;
         }
 
@@ -363,7 +374,7 @@ class TutorService {
               profile = Map<String, dynamic>.from(decoded[0]);
             }
           } catch (e) {
-            print('⚠️ Tutor $userId: Could not parse profile JSON string: $e');
+            LogService.warning('Tutor $userId: Could not parse profile JSON string: $e');
             return false;
           }
         } else if (profilesData is List && profilesData.isNotEmpty) {
@@ -375,14 +386,14 @@ class TutorService {
         }
 
         if (profile == null) {
-          print('❌ FILTERED OUT: Tutor $userId has invalid profile data type: ${profilesData.runtimeType}');
+          LogService.error('FILTERED OUT: Tutor $userId has invalid profile data type: ${profilesData.runtimeType}');
           return false;
         }
 
         // Check for required fields
         final fullName = profile['full_name']?.toString() ?? '';
         if (fullName.trim().isEmpty) {
-          print(
+          LogService.debug(
             '❌ FILTERED OUT: Tutor $userId has no full_name (profile exists but name is empty)',
           );
           return false;
@@ -401,7 +412,7 @@ class TutorService {
             specializations != null &&
             specializations is List &&
             specializations.isNotEmpty) {
-          print(
+          LogService.debug(
             'ℹ️ Tutor $userId has specializations but no subjects - using specializations: $specializations',
           );
           subjects = specializations;
@@ -409,26 +420,26 @@ class TutorService {
 
         // Log if tutor has no subjects/specializations
         if (subjects == null) {
-          print(
+          LogService.debug(
             '⚠️ Tutor $userId has null subjects and specializations - will show but may not match subject filters',
           );
         } else if (subjects is List && subjects.isEmpty) {
-          print(
+          LogService.debug(
             '⚠️ Tutor $userId has empty subjects/specializations array - will show but may not match subject filters',
           );
         } else if (subjects is String && subjects.trim().isEmpty) {
-          print(
+          LogService.debug(
             '⚠️ Tutor $userId has empty subjects/specializations string - will show but may not match subject filters',
           );
         }
 
-        print(
+        LogService.debug(
           '✅ Tutor $userId PASSED all checks: name="$fullName", subjects=$subjects',
         );
         return true;
       }).toList();
 
-      print(
+      LogService.debug(
         '✅ After filtering: ${filteredTutors.length} tutors available for display',
       );
 
@@ -453,7 +464,7 @@ class TutorService {
               }
             }
           } catch (e) {
-            print('⚠️ Tutor ${tutor['user_id']}: Could not parse profile JSON string: $e');
+            LogService.warning('Tutor ${tutor['user_id']}: Could not parse profile JSON string: $e');
             return null;
           }
         } else if (profilesData is List && profilesData.isNotEmpty) {
@@ -469,7 +480,7 @@ class TutorService {
                 profile = Map<String, dynamic>.from(decoded);
               }
             } catch (e) {
-              print('⚠️ Tutor ${tutor['user_id']}: Could not parse profile from list: $e');
+              LogService.warning('Tutor ${tutor['user_id']}: Could not parse profile from list: $e');
               return null;
             }
           }
@@ -477,7 +488,7 @@ class TutorService {
         
         // If we couldn't get a valid profile, skip this tutor
         if (profile == null) {
-          print('⚠️ Tutor ${tutor['user_id']}: No valid profile data found (type: ${profilesData?.runtimeType ?? 'null'})');
+          LogService.warning('Tutor ${tutor['user_id']}: No valid profile data found (type: ${profilesData?.runtimeType ?? 'null'})');
           return null;
         }
 
@@ -568,7 +579,7 @@ class TutorService {
               educationJson = Map<String, dynamic>.from(decoded);
             }
           } catch (e) {
-            print('⚠️ Tutor ${tutor['user_id']}: Could not parse education JSON: $e');
+            LogService.warning('Tutor ${tutor['user_id']}: Could not parse education JSON: $e');
           }
         }
         final institution = tutor['institution']?.toString();
@@ -773,8 +784,8 @@ class TutorService {
 
       return tutors;
     } catch (e) {
-      print('❌ Error fetching tutors from Supabase: $e');
-      print('Stack trace: ${StackTrace.current}');
+      LogService.error('Error fetching tutors from Supabase: $e');
+      // Stack trace logged in LogService.error above
       return [];
     }
   }
@@ -1009,7 +1020,7 @@ class TutorService {
         'handles_multiple_learners': response['handles_multiple_learners'],
       };
     } catch (e) {
-      print('❌ Error fetching tutor by ID from Supabase: $e');
+      LogService.error('Error fetching tutor by ID from Supabase: $e');
       return null;
     }
   }
@@ -1083,7 +1094,7 @@ class TutorService {
         };
       }).toList();
     } catch (e) {
-      print('❌ Error searching tutors in Supabase: $e');
+      LogService.error('Error searching tutors in Supabase: $e');
       return [];
     }
   }

@@ -12,6 +12,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:device_info_plus/device_info_plus.dart';
@@ -20,7 +21,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 /// Top-level function for handling background messages
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('📱 Background message received: ${message.messageId}');
+  // Background message logged in LogService (if available in isolate)
   // Handle background message
   // Note: Don't use UI code here, this runs in a separate isolate
 }
@@ -42,7 +43,7 @@ class PushNotificationService {
     Function(dynamic)? onNotificationTap,
   }) async {
     if (_initialized) {
-      print('⚠️ PushNotificationService already initialized');
+      LogService.warning('PushNotificationService already initialized');
       return;
     }
 
@@ -52,7 +53,7 @@ class PushNotificationService {
       // On web, FCM requires service worker setup which may not be available
       // In-app notifications from Supabase work fine on web without FCM
       if (kIsWeb) {
-        print('🌐 Initializing push notifications for web');
+        LogService.info('Initializing push notifications for web');
         
         try {
           // Try to set up message handlers (may fail if service worker not configured)
@@ -63,17 +64,17 @@ class PushNotificationService {
 
           // Listen for token refresh
           _firebaseMessaging.onTokenRefresh.listen((newToken) {
-            print('🔄 FCM token refreshed: $newToken');
+            LogService.info('FCM token refreshed: $newToken');
             _updateTokenInDatabase(newToken);
           });
 
           _initialized = true;
-          print('✅ PushNotificationService initialized for web');
+          LogService.success('PushNotificationService initialized for web');
         } catch (e) {
           // FCM may not work on web if service worker is not configured
           // This is OK - in-app notifications from Supabase still work
-          print('⚠️ FCM not available on web (service worker not configured): $e');
-          print('ℹ️ In-app notifications will still work via Supabase Realtime');
+          LogService.warning('FCM not available on web (service worker not configured): $e');
+          LogService.info('In-app notifications will still work via Supabase Realtime');
           _initialized = true; // Mark as initialized so app doesn't block
         }
         return;
@@ -82,12 +83,12 @@ class PushNotificationService {
       // Initialize local notifications immediately (without requesting permission)
       // Do this first so it's ready when permission is granted
       _initializeLocalNotifications().catchError((error) {
-        print('⚠️ Error initializing local notifications: $error');
+        LogService.warning('Error initializing local notifications: $error');
       });
 
       // Set up message handlers immediately (doesn't require permission)
       _setupMessageHandlers().catchError((error) {
-        print('⚠️ Error setting up message handlers: $error');
+        LogService.warning('Error setting up message handlers: $error');
       });
 
       // Check if permission was already granted and complete initialization if so
@@ -98,11 +99,11 @@ class PushNotificationService {
       // The splash screen should transition without waiting for push notifications
       // Permission will be requested later when appropriate (after onboarding/login)
       _initialized = true;
-      print('✅ PushNotificationService initialized (permission will be requested when appropriate)');
+      LogService.success('PushNotificationService initialized (permission will be requested when appropriate)');
 
       return;
     } catch (e) {
-      print('❌ Error initializing PushNotificationService: $e');
+      LogService.error('Error initializing PushNotificationService: $e');
       // Don't fail the app if push notifications fail to initialize
     }
   }
@@ -117,10 +118,10 @@ class PushNotificationService {
       }
       
       final settings = await _firebaseMessaging.getNotificationSettings();
-      print('📱 Current notification permission: ${settings.authorizationStatus}');
+      LogService.info('Current notification permission: ${settings.authorizationStatus}');
       return settings.authorizationStatus;
     } catch (e) {
-      print('❌ Error checking permission status: $e');
+      LogService.error('Error checking permission status: $e');
       return AuthorizationStatus.notDetermined;
     }
   }
@@ -135,7 +136,7 @@ class PushNotificationService {
       // If already authorized or provisional, don't request again
       if (currentStatus == AuthorizationStatus.authorized ||
           currentStatus == AuthorizationStatus.provisional) {
-        print('✅ Notification permission already granted');
+        LogService.success('Notification permission already granted');
         // Complete initialization if not already done
         await _completeMobileInitialization();
         return currentStatus;
@@ -143,12 +144,12 @@ class PushNotificationService {
       
       // If denied, don't request again (user must enable in settings)
       if (currentStatus == AuthorizationStatus.denied) {
-        print('⚠️ Notification permission was denied - user must enable in settings');
+        LogService.warning('Notification permission was denied - user must enable in settings');
         return currentStatus;
       }
 
       // Only request if status is notDetermined
-      print('📱 Requesting notification permission...');
+      LogService.info('Requesting notification permission...');
       final settings = await _firebaseMessaging.requestPermission(
         alert: true,
         announcement: false,
@@ -159,20 +160,20 @@ class PushNotificationService {
         sound: true,
       );
 
-      print('📱 Notification permission result: ${settings.authorizationStatus}');
+      LogService.info('Notification permission result: ${settings.authorizationStatus}');
       
       // Complete initialization if permission was granted
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        print('✅ Push notification permission granted');
+        LogService.success('Push notification permission granted');
         await _completeMobileInitialization();
       } else {
-        print('⚠️ Push notification permission not granted (status: ${settings.authorizationStatus})');
+        LogService.warning('Push notification permission not granted (status: ${settings.authorizationStatus})');
       }
       
       return settings.authorizationStatus;
     } catch (e) {
-      print('❌ Error requesting permission: $e');
+      LogService.error('Error requesting permission: $e');
       return AuthorizationStatus.notDetermined;
     }
   }
@@ -183,11 +184,11 @@ class PushNotificationService {
       final status = await getPermissionStatus();
       if (status == AuthorizationStatus.authorized ||
           status == AuthorizationStatus.provisional) {
-        print('✅ Notification permission already granted, completing initialization');
+        LogService.success('Notification permission already granted, completing initialization');
         await _completeMobileInitialization();
       }
     } catch (e) {
-      print('⚠️ Error checking permission for initialization: $e');
+      LogService.warning('Error checking permission for initialization: $e');
     }
   }
 
@@ -195,7 +196,7 @@ class PushNotificationService {
   Future<void> _initializeLocalNotifications() async {
     // Skip on web - web doesn't support local notifications the same way
     if (kIsWeb) {
-      print('⚠️ Local notifications not supported on web');
+      LogService.warning('Local notifications not supported on web');
       return;
     }
 
@@ -254,7 +255,7 @@ class PushNotificationService {
         // Retry getting token after a delay (APNS might become available)
         Future.delayed(const Duration(seconds: 2), () {
           _getToken().catchError((error) {
-            print('⚠️ Retry getting FCM token failed: $error');
+            LogService.warning('Retry getting FCM token failed: $error');
             return null; // Return null on error
           });
         });
@@ -265,13 +266,13 @@ class PushNotificationService {
 
       // Listen for token refresh
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        print('🔄 FCM token refreshed: $newToken');
+        LogService.info('FCM token refreshed: $newToken');
         _updateTokenInDatabase(newToken);
       });
 
-      print('✅ Push notification mobile initialization completed');
+      LogService.success('Push notification mobile initialization completed');
     } catch (e) {
-      print('⚠️ Error completing mobile initialization: $e');
+      LogService.warning('Error completing mobile initialization: $e');
       // Don't throw - app should continue
     }
   }
@@ -286,30 +287,30 @@ class PushNotificationService {
 
       // Handle foreground messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print('📱 Foreground message received: ${message.messageId}');
+        LogService.info('Foreground message received: ${message.messageId}');
         _handleForegroundMessage(message);
       });
 
       // Handle notification taps (when app is in background or terminated)
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        print('📱 Notification tapped: ${message.messageId}');
+        LogService.info('Notification tapped: ${message.messageId}');
         _handleNotificationTapFromMessage(message);
       });
 
       // Check if app was opened from a terminated state via notification
       final initialMessage = await _firebaseMessaging.getInitialMessage();
       if (initialMessage != null) {
-        print('📱 App opened from terminated state via notification');
+        LogService.info('App opened from terminated state via notification');
         _handleNotificationTapFromMessage(initialMessage);
       }
     } catch (e) {
       // On web, FCM may not be available
       if (kIsWeb) {
-        print('ℹ️ FCM message handlers not available on web: $e');
+        LogService.info('FCM message handlers not available on web: $e');
         // Don't throw - in-app notifications still work
       } else {
         // Don't rethrow - allow app to continue
-        print('⚠️ Error setting up message handlers: $e');
+        LogService.warning('Error setting up message handlers: $e');
       }
     }
   }
@@ -318,7 +319,7 @@ class PushNotificationService {
   Future<void> _handleForegroundMessage(dynamic message) async {
     // Skip on web - web handles notifications differently via FCM
     if (kIsWeb) {
-      print('📱 Web foreground notification received - handled by browser');
+      LogService.info('Web foreground notification received - handled by browser');
       return;
     }
 
@@ -373,7 +374,7 @@ class PushNotificationService {
   void _handleNotificationTap(String payload) {
     // Parse payload and navigate
     // You can decode the data and navigate accordingly
-    print('📱 Local notification tapped: $payload');
+    LogService.info('Local notification tapped: $payload');
   }
 
   /// Get FCM token
@@ -385,19 +386,19 @@ class PushNotificationService {
           // Request APNS token first (this is required for iOS)
           final apnsToken = await _firebaseMessaging.getAPNSToken();
           if (apnsToken == null) {
-            print('⚠️ APNS token not available yet - this is normal on simulator or before permission is granted');
-            print('ℹ️ FCM token will be available once APNS token is set (usually after permission is granted)');
+            LogService.warning('APNS token not available yet - this is normal on simulator or before permission is granted');
+            LogService.info('FCM token will be available once APNS token is set (usually after permission is granted)');
             // Don't throw error - this is expected behavior on iOS simulator or before permission
             return null;
           }
-          print('✅ APNS token obtained: $apnsToken');
+          LogService.success('APNS token obtained: $apnsToken');
         } catch (apnsError) {
           // If APNS token fails, it might be because:
           // 1. Running on simulator (APNS not available)
           // 2. Permission not granted yet
           // 3. App not properly configured for push notifications
-          print('⚠️ Could not get APNS token: $apnsError');
-          print('ℹ️ This is normal on iOS simulator or before permission is granted');
+          LogService.warning('Could not get APNS token: $apnsError');
+          LogService.info('This is normal on iOS simulator or before permission is granted');
           // Continue anyway - might still work on real device
         }
       }
@@ -405,32 +406,33 @@ class PushNotificationService {
       // Now get FCM token
       _currentToken = await _firebaseMessaging.getToken();
       if (_currentToken != null) {
-        print('✅ FCM token obtained: $_currentToken');
+        LogService.success('FCM token obtained: $_currentToken');
         await _storeTokenInDatabase(_currentToken!);
       } else {
-        print('⚠️ FCM token is null');
+        LogService.warning('FCM token is null');
       }
       return _currentToken;
     } catch (e) {
       // Check if it's the APNS token error
       final errorString = e.toString();
       if (errorString.contains('apns-token-not-set')) {
-        print('⚠️ APNS token not set yet - this is normal on iOS simulator or before permission is granted');
-        print('ℹ️ Push notifications will work once APNS token is available (usually on real device after permission)');
+        LogService.warning('APNS token not set yet - this is normal on iOS simulator or before permission is granted');
+        LogService.info('Push notifications will work once APNS token is available (usually on real device after permission)');
         // Don't treat this as a critical error - it's expected behavior
         return null;
       }
-      print('❌ Error getting FCM token: $e');
+      LogService.error('Error getting FCM token: $e');
       return null;
     }
   }
 
   /// Store FCM token in database
+  /// Uses UPSERT to handle duplicates gracefully (prevents race conditions)
   Future<void> _storeTokenInDatabase(String token) async {
     try {
       final userId = SupabaseService.client.auth.currentUser?.id;
       if (userId == null) {
-        print('⚠️ User not authenticated, cannot store FCM token');
+        LogService.warning('User not authenticated, cannot store FCM token');
         return;
       }
 
@@ -438,30 +440,9 @@ class PushNotificationService {
       final deviceInfo = await _getDeviceInfo();
       final platform = _getPlatform();
       
-      // Check if token already exists
-      final existingToken = await SupabaseService.client
-          .from('fcm_tokens')
-          .select()
-          .eq('token', token)
-          .maybeSingle();
-
-      if (existingToken != null) {
-        // Update existing token
-        await SupabaseService.client
-            .from('fcm_tokens')
-            .update({
-              'is_active': true,
-              'platform': platform,
-              'device_id': deviceInfo['device_id'],
-              'device_name': deviceInfo['device_name'],
-              'app_version': deviceInfo['app_version'],
-              'updated_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', existingToken['id']);
-        
-        print('✅ FCM token updated in database');
-      } else {
-        // Insert new token
+      // Try to insert the token first
+      // If it's a duplicate, update the existing token instead
+      try {
         await SupabaseService.client
             .from('fcm_tokens')
             .insert({
@@ -473,11 +454,43 @@ class PushNotificationService {
               'app_version': deviceInfo['app_version'],
               'is_active': true,
             });
-        
-        print('✅ FCM token stored in database');
+        LogService.success('FCM token stored in database');
+      } catch (insertError) {
+        // If insert fails due to duplicate token, update the existing token
+        if (insertError.toString().contains('duplicate') || 
+            insertError.toString().contains('23505') ||
+            insertError.toString().contains('unique constraint')) {
+          // Token already exists - update it instead
+          try {
+            await SupabaseService.client
+                .from('fcm_tokens')
+                .update({
+                  'user_id': userId,
+                  'is_active': true,
+                  'platform': platform,
+                  'device_id': deviceInfo['device_id'],
+                  'device_name': deviceInfo['device_name'],
+                  'app_version': deviceInfo['app_version'],
+                  'updated_at': DateTime.now().toIso8601String(),
+                })
+                .eq('token', token);
+            LogService.success('FCM token updated in database (duplicate handled)');
+          } catch (updateError) {
+            // If update also fails, log but don't throw (token might be in use by another user)
+            LogService.info('FCM token exists but update failed (may belong to different user): $updateError');
+          }
+        } else {
+          // Some other error occurred
+          rethrow;
+        }
       }
     } catch (e) {
-      print('❌ Error storing FCM token: $e');
+      // Only log error if it's not a duplicate key error (which we handle gracefully)
+      if (!e.toString().contains('duplicate') && !e.toString().contains('23505')) {
+        LogService.error('Error storing FCM token: $e');
+      } else {
+        LogService.info('FCM token duplicate detected and handled gracefully');
+      }
     }
   }
 
@@ -517,7 +530,7 @@ class PushNotificationService {
         'app_version': appVersion,
       };
     } catch (e) {
-      print('❌ Error getting device info: $e');
+      LogService.error('Error getting device info: $e');
       return {
         'device_id': kIsWeb ? 'web-unknown' : null,
         'device_name': kIsWeb ? 'Web Browser' : null,
@@ -546,9 +559,9 @@ class PushNotificationService {
           .eq('user_id', userId)
           .eq('is_active', true);
 
-      print('✅ All FCM tokens deactivated for user');
+      LogService.success('All FCM tokens deactivated for user');
     } catch (e) {
-      print('❌ Error deactivating FCM tokens: $e');
+      LogService.error('Error deactivating FCM tokens: $e');
     }
   }
 

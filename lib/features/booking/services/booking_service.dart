@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
@@ -60,23 +61,17 @@ class BookingService {
         studentType = 'parent';
       } else {
         // Log unexpected value and default to 'learner'
-        print(
-          '⚠️ Unexpected user_type: "$rawUserType" (normalized: "$userType"), defaulting to "learner"',
-        );
+        LogService.warning('Unexpected user_type: "$rawUserType" (normalized: "$userType"), defaulting to "learner"');
         studentType = 'learner';
       }
 
       // Final validation - ensure it's one of the allowed values
       if (studentType != 'learner' && studentType != 'parent') {
-        print(
-          '❌ Invalid student_type after mapping: "$studentType", forcing to "learner"',
-        );
+        LogService.error('Invalid student_type after mapping: "$studentType", forcing to "learner"');
         studentType = 'learner';
       }
 
-      print(
-        '🔍 Booking request - user_type: "$rawUserType" → student_type: "$studentType"',
-      );
+      LogService.debug('Booking request', 'user_type: "$rawUserType" → student_type: "$studentType"');
 
       // Check for existing pending/active booking requests with this tutor
       final existingRequestsQuery = SupabaseService.client
@@ -193,7 +188,7 @@ class BookingService {
         final subject =
             'Tutoring Sessions'; // Could be extracted from request if available
 
-        print('✅ Booking request created successfully: $requestId');
+        LogService.success('Booking request created successfully: $requestId');
 
         // Send notification to tutor
         try {
@@ -206,15 +201,15 @@ class BookingService {
             senderAvatarUrl: studentAvatarUrl,
           );
         } catch (e) {
-          print('⚠️ Failed to send booking request notification: $e');
+          LogService.warning('Failed to send booking request notification: $e');
           // Don't fail the request creation if notification fails
         }
       } catch (e) {
-        print('❌ Error inserting booking request: $e');
+        LogService.error('Error inserting booking request: $e');
         rethrow;
       }
     } catch (e) {
-      print('❌ Error creating booking request: $e');
+      LogService.error('Error creating booking request: $e');
       rethrow;
     }
   }
@@ -229,7 +224,7 @@ class BookingService {
         throw Exception('User not authenticated');
       }
 
-      print('🔍 Fetching all requests for tutor: $userId');
+      LogService.debug('Fetching all requests for tutor: $userId');
 
       // 1. Fetch Recurring Booking Requests
       var bookingQuery = SupabaseService.client
@@ -246,7 +241,7 @@ class BookingService {
         try {
           return BookingRequest.fromJson(json);
         } catch (e) {
-          print('Error parsing booking request: $e');
+          LogService.error('Error parsing booking request', e);
           return null;
         }
       }).whereType<BookingRequest>().toList();
@@ -275,12 +270,12 @@ class BookingService {
             final studentProfile = json['student'] as Map<String, dynamic>? ?? {};
             return BookingRequest.fromTrialSession(json, studentProfile, null);
           } catch (e) {
-            print('Error parsing trial session: $e');
+            LogService.error('Error parsing trial session', e);
             return null;
           }
         }).whereType<BookingRequest>().toList();
       } catch (e) {
-        print('❌ Error fetching trial sessions: $e');
+        LogService.error('Error fetching trial sessions: $e');
         // Continue with just booking list if trials fail
       }
 
@@ -288,11 +283,11 @@ class BookingService {
       final allRequests = [...bookingList, ...trialList];
       allRequests.sort((a, b) => b.createdAt.compareTo(a.createdAt)); // Newest first
 
-      print('✅ Found ${allRequests.length} total requests (${bookingList.length} recurring, ${trialList.length} trials)');
+      LogService.success('Found ${allRequests.length} total requests (${bookingList.length} recurring, ${trialList.length} trials)');
       return allRequests;
 
     } catch (e) {
-      print('❌ Error fetching tutor requests: $e');
+      LogService.error('Error fetching tutor requests: $e');
       return []; 
     }
   }
@@ -313,7 +308,7 @@ class BookingService {
           .map((json) => BookingRequest.fromJson(json))
           .toList();
     } catch (e) {
-      print('❌ Error fetching student booking requests: $e');
+      LogService.error('Error fetching student booking requests: $e');
       throw Exception('Failed to fetch booking requests: $e');
     }
   }
@@ -329,7 +324,7 @@ class BookingService {
 
       return BookingRequest.fromJson(response);
     } catch (e) {
-      print('❌ Error fetching booking request: $e');
+      LogService.error('Error fetching booking request: $e');
       throw Exception('Failed to fetch booking request: $e');
     }
   }
@@ -374,7 +369,7 @@ class BookingService {
 
       final bookingRequest = BookingRequest.fromJson(updated);
 
-      print('✅ Booking request approved: $requestId');
+      LogService.success('Booking request approved: $requestId');
 
       // Create payment request when tutor approves
       String? paymentRequestId;
@@ -383,11 +378,9 @@ class BookingService {
             await PaymentRequestService.createPaymentRequestOnApproval(
               bookingRequest,
             );
-        print(
-          '✅ Payment request created for approved booking: $paymentRequestId',
-        );
+        LogService.success('Payment request created for approved booking', paymentRequestId);
       } catch (e) {
-        print('⚠️ Failed to create payment request: $e');
+        LogService.warning('Failed to create payment request: $e');
       }
 
       // Create recurring session from approved booking
@@ -396,9 +389,9 @@ class BookingService {
           bookingRequest,
           paymentRequestId: paymentRequestId,
         );
-        print('✅ Recurring session created for approved booking');
+        LogService.success('Recurring session created for approved booking');
       } catch (e) {
-        print('⚠️ Failed to create recurring session: $e');
+        LogService.warning('Failed to create recurring session: $e');
         // Don't fail the approval if session creation fails
         // The request is already approved, session can be created manually later
       }
@@ -417,12 +410,12 @@ class BookingService {
           senderAvatarUrl: request.tutorAvatarUrl,
         );
       } catch (e) {
-        print('⚠️ Failed to send booking acceptance notification: $e');
+        LogService.warning('Failed to send booking acceptance notification: $e');
       }
 
       return bookingRequest;
     } catch (e) {
-      print('❌ Error approving booking request: $e');
+      LogService.error('Error approving booking request: $e');
       rethrow;
     }
   }
@@ -463,7 +456,7 @@ class BookingService {
 
       final bookingRequest = BookingRequest.fromJson(updated);
 
-      print('✅ Booking request rejected: $requestId');
+      LogService.success('Booking request rejected: $requestId');
 
       // Send notification to student
       try {
@@ -477,12 +470,12 @@ class BookingService {
           senderAvatarUrl: request.tutorAvatarUrl,
         );
       } catch (e) {
-        print('⚠️ Failed to send booking rejection notification: $e');
+        LogService.warning('Failed to send booking rejection notification: $e');
       }
 
       return bookingRequest;
     } catch (e) {
-      print('❌ Error rejecting booking request: $e');
+      LogService.error('Error rejecting booking request: $e');
       rethrow;
     }
   }
@@ -490,7 +483,7 @@ class BookingService {
   /// Approve a Trial Session
   static Future<void> approveTrialRequest(String sessionId, {String? responseNotes}) async {
     try {
-      print('Approving trial session: $sessionId');
+      LogService.info('Approving trial session: $sessionId');
       
       // 1. Update status
       // NOTE: Column name in DB is `tutor_response_notes` (not `tutor_response`)
@@ -508,7 +501,7 @@ class BookingService {
           .select()
           .single();
 
-      print('✅ Trial session status updated to approved');
+      LogService.success('Trial session status updated to approved');
 
       // Fetch student profile separately using learner_id
       final learnerId = updatedSession['learner_id'] as String;
@@ -530,9 +523,9 @@ class BookingService {
             await PaymentRequestService.createPaymentRequestOnApproval(
           bookingRequest,
         );
-        print('✅ Payment request created for trial: $paymentRequestId');
+        LogService.success('Payment request created for trial: $paymentRequestId');
       } catch (e) {
-        print('⚠️ Error creating payment request for trial: $e');
+        LogService.warning('Error creating payment request for trial: $e');
         // We still want to notify the learner that the trial was approved
       }
 
@@ -560,10 +553,10 @@ class BookingService {
           senderAvatarUrl: tutorAvatarUrl,
         );
       } catch (e) {
-        print('⚠️ Error sending approval notification for trial: $e');
+        LogService.warning('Error sending approval notification for trial: $e');
       }
     } catch (e) {
-      print('❌ Error approving trial request: $e');
+      LogService.error('Error approving trial request: $e');
       rethrow;
     }
   }
@@ -571,7 +564,7 @@ class BookingService {
   /// Reject a Trial Session
   static Future<void> rejectTrialRequest(String sessionId, {required String reason}) async {
     try {
-      print('Rejecting trial session: $sessionId');
+      LogService.debug('Rejecting trial session: $sessionId');
       
       final updateData = {
         'status': 'rejected',
@@ -587,7 +580,7 @@ class BookingService {
           .select()
           .single();
 
-      print('✅ Trial session rejected');
+      LogService.success('Trial session rejected');
 
       // Fetch student profile separately using learner_id
       final learnerId = updatedSession['learner_id'] as String;
@@ -626,10 +619,10 @@ class BookingService {
           senderAvatarUrl: tutorAvatarUrl,
         );
       } catch (e) {
-        print('⚠️ Error sending rejection notification: $e');
+        LogService.warning('Error sending rejection notification: $e');
       }
     } catch (e) {
-      print('❌ Error rejecting trial request: $e');
+      LogService.error('Error rejecting trial request: $e');
       rethrow;
     }
   }
@@ -662,7 +655,7 @@ class BookingService {
 
       return false; // No conflicts
     } catch (e) {
-      print('⚠️ Error checking conflicts: $e');
+      LogService.warning('Error checking conflicts: $e');
       return false; // Assume no conflict on error
     }
   }
@@ -791,7 +784,7 @@ class BookingService {
         conflictDetails: conflictDetails,
       );
     } catch (e) {
-      print('⚠️ Error checking student schedule conflicts: $e');
+      LogService.warning('Error checking student schedule conflicts: $e');
       // Don't block booking if conflict check fails - just log the error
       return ConflictResult(
         hasConflict: false,

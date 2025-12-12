@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
@@ -12,6 +13,7 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Payment History Screen
 ///
@@ -59,7 +61,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
   Future<void> _loadPayments() async {
     if (mounted) {
-      setState(() => _isLoading = true);
+      safeSetState(() => _isLoading = true);
     }
 
     try {
@@ -74,9 +76,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
         _paymentRequests = await PaymentRequestService.getAllPaymentRequests(
           userId,
         );
-        print('✅ Loaded ${_paymentRequests.length} payment requests');
+        LogService.success('Loaded ${_paymentRequests.length} payment requests');
       } catch (e) {
-        print('⚠️ Error loading payment requests: $e');
+        LogService.warning('Error loading payment requests: $e');
         _paymentRequests = [];
         // Don't throw - continue loading other payment types
       }
@@ -108,7 +110,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
     
     // If we have paid payments and we're not already on a tab that shows them, switch to Paid filter
     if (hasNewPaidPayments && _selectedFilter != 'paid') {
-      setState(() {
+      safeSetState(() {
         _selectedFilter = 'paid';
       });
     }
@@ -118,9 +120,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       // Load trial session payments
       try {
         _trialPayments = await _loadTrialPayments(userId);
-        print('✅ Loaded ${_trialPayments.length} trial payments');
+        LogService.success('Loaded ${_trialPayments.length} trial payments');
       } catch (e) {
-        print('⚠️ Error loading trial payments: $e');
+        LogService.warning('Error loading trial payments: $e');
         _trialPayments = [];
         // Don't throw - continue loading other payment types
       }
@@ -128,15 +130,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       // Load session payments
       try {
         _sessionPayments = await _loadSessionPayments(userId);
-        print('✅ Loaded ${_sessionPayments.length} session payments');
+        LogService.success('Loaded ${_sessionPayments.length} session payments');
       } catch (e) {
-        print('⚠️ Error loading session payments: $e');
+        LogService.warning('Error loading session payments: $e');
         _sessionPayments = [];
         // Don't throw - continue showing what we can load
       }
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
         _checkAndSwitchToPaidTab();
       }
 
@@ -145,9 +147,9 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       // Also don't show error for database schema issues (tables/columns not found)
       // These are handled gracefully by returning empty lists
     } catch (e) {
-      print('❌ Critical error loading payments: $e');
+      LogService.error('Critical error loading payments: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
 
       // Only show error if it's NOT a database schema issue (table/column not found)
@@ -203,7 +205,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       try {
         return List<Map<String, dynamic>>.from(response);
       } catch (castError) {
-        print('⚠️ Error casting trial payments response: $castError');
+        LogService.warning('Error casting trial payments response: $castError');
         // Try to parse manually if direct cast fails
         return response.whereType<Map<String, dynamic>>().toList();
       }
@@ -218,7 +220,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
           (errorString.contains('column') && errorString.contains('not found'));
 
       if (!isSchemaError) {
-        print('❌ Error loading trial payments: $e');
+        LogService.error('Error loading trial payments: $e');
       }
       return [];
     }
@@ -270,7 +272,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
                 errorString.contains('not found'));
 
         if (!isSchemaError) {
-          print('⚠️ Join query failed, trying direct query: $joinError');
+          LogService.warning('Join query failed, trying direct query: $joinError');
         }
 
         // If join fails, try loading from individual_sessions and get payment info
@@ -317,20 +319,20 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
 
           return paymentsWithSessions;
         } catch (directError) {
-          print('⚠️ Direct query also failed: $directError');
+          LogService.warning('Direct query also failed: $directError');
           // If both fail, return empty list (table might not exist)
           return [];
         }
       }
     } catch (e) {
-      print('❌ Error loading session payments: $e');
-      print('❌ Stack trace: ${StackTrace.current}');
+      LogService.error('Error loading session payments: $e');
+      LogService.error('Stack trace: ${StackTrace.current}');
       // Check if it's a table not found error
       if (e.toString().contains('does not exist') ||
           e.toString().contains('relation') ||
           e.toString().contains('PGRST') ||
           e.toString().contains('schema cache')) {
-        print(
+        LogService.debug(
           '⚠️ Session payments or individual_sessions table might not exist yet',
         );
       }
@@ -485,7 +487,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
-        setState(() => _selectedFilter = value);
+        safeSetState(() => _selectedFilter = value);
       },
       selectedColor: AppTheme.primaryColor.withOpacity(0.2),
       checkmarkColor: AppTheme.primaryColor,

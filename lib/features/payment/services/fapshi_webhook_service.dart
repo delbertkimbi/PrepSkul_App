@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
@@ -41,7 +42,7 @@ class FapshiWebhookService {
     String? failureReason,
   }) async {
     try {
-      print('🔔 Fapshi webhook received: $transactionId, status: $status, externalId: $externalId');
+      LogService.debug('🔔 Fapshi webhook received: $transactionId, status: $status, externalId: $externalId');
 
       // Normalize status
       final normalizedStatus = _normalizeStatus(status);
@@ -69,7 +70,7 @@ class FapshiWebhookService {
           failureReason: failureReason,
         );
       } else {
-        print('⚠️ Unknown externalId pattern: $externalId');
+        LogService.warning('Unknown externalId pattern: $externalId');
         // Try to find by transaction ID in any payment table
         await _handleByTransactionId(
           transactionId: transactionId,
@@ -78,9 +79,9 @@ class FapshiWebhookService {
         );
       }
 
-      print('✅ Webhook processed successfully: $transactionId');
+      LogService.success('Webhook processed successfully: $transactionId');
     } catch (e) {
-      print('❌ Error processing webhook: $e');
+      LogService.error('Error processing webhook: $e');
       // Don't rethrow - webhook should not fail
       // Log error for monitoring
     }
@@ -109,7 +110,7 @@ class FapshiWebhookService {
     String? failureReason,
   }) async {
     try {
-      print('📝 Processing trial session payment: $trialSessionId');
+      LogService.debug('📝 Processing trial session payment: $trialSessionId');
 
       if (status == 'SUCCESS') {
         // Payment successful
@@ -150,14 +151,14 @@ class FapshiWebhookService {
                 .eq('id', trialSessionId);
           }
         } catch (e) {
-          print('⚠️ Error generating Meet link: $e');
+          LogService.warning('Error generating Meet link: $e');
           // Don't fail the webhook if Meet link generation fails
         }
 
         // Send notifications
         await _sendTrialPaymentSuccessNotifications(trialSessionId);
 
-        print('✅ Trial session payment confirmed: $trialSessionId');
+        LogService.success('Trial session payment confirmed: $trialSessionId');
       } else if (status == 'FAILED' || status == 'EXPIRED') {
         // Payment failed
         await _supabase
@@ -171,10 +172,10 @@ class FapshiWebhookService {
         // Send failure notification
         await _sendTrialPaymentFailureNotification(trialSessionId, failureReason);
 
-        print('⚠️ Trial session payment failed: $trialSessionId');
+        LogService.warning('Trial session payment failed: $trialSessionId');
       }
     } catch (e) {
-      print('❌ Error handling trial session payment webhook: $e');
+      LogService.error('Error handling trial session payment webhook: $e');
       rethrow;
     }
   }
@@ -187,7 +188,7 @@ class FapshiWebhookService {
     String? failureReason,
   }) async {
     try {
-      print('💰 Processing payment request payment: $paymentRequestId');
+      LogService.info('Processing payment request payment: $paymentRequestId');
 
       if (status == 'SUCCESS') {
         // Payment successful
@@ -216,37 +217,18 @@ class FapshiWebhookService {
                 recurringSessionId,
                 'active',
               );
-              print('✅ Recurring session status verified: $recurringSessionId');
+              LogService.success('Recurring session status verified: $recurringSessionId');
             } catch (e) {
-              print('⚠️ Failed to update recurring session status: $e');
+              LogService.warning('Failed to update recurring session status: $e');
               // Don't fail the payment confirmation if status update fails
             }
           }
 
-          // Schedule next payment if this is a recurring session payment
-          if (recurringSessionId != null && 
-              paymentPlan != null && 
-              monthlyTotal != null &&
-              (paymentPlan.toLowerCase() == 'monthly' || 
-               paymentPlan.toLowerCase() == 'biweekly' || 
-               paymentPlan.toLowerCase() == 'bi-weekly' || 
-               paymentPlan.toLowerCase() == 'weekly')) {
-            try {
-              // TODO: Implement recurring payment scheduling
-              // // await RecurringPaymentService.scheduleNextPayment(
-              // // recurringSessionId: recurringSessionId,
-              // // currentPaymentRequestId: paymentRequestId,
-              // // paymentPlan: paymentPlan,
-              // // monthlyTotal: monthlyTotal.toDouble(),
-              // // studentId: studentId,
-              // // tutorId: tutorId,
-              // // bookingRequestId: bookingRequestId,
-              // // );
-              print('✅ Next payment scheduled for recurring session: $recurringSessionId');
-            } catch (e) {
-              print('⚠️ Failed to schedule next payment: $e');
-              // Don't fail the payment confirmation if scheduling fails
-            }
+          // Note: Recurring payment requests are created upfront when booking is approved
+          // For bi-weekly/weekly plans, all payment requests are created in advance
+          // No need to schedule next payment dynamically - they already exist
+          if (recurringSessionId != null) {
+            LogService.debug('Recurring session payment confirmed: $recurringSessionId. Next payment requests already exist.');
           }
 
           // Send success notifications
@@ -259,7 +241,7 @@ class FapshiWebhookService {
           );
         }
 
-        print('✅ Payment request payment confirmed: $paymentRequestId');
+        LogService.success('Payment request payment confirmed: $paymentRequestId');
       } else if (status == 'FAILED' || status == 'EXPIRED') {
         // Payment failed
         await PaymentRequestService.updatePaymentRequestStatus(
@@ -279,10 +261,10 @@ class FapshiWebhookService {
           );
         }
 
-        print('⚠️ Payment request payment failed: $paymentRequestId');
+        LogService.warning('Payment request payment failed: $paymentRequestId');
       }
     } catch (e) {
-      print('❌ Error handling payment request payment webhook: $e');
+      LogService.error('Error handling payment request payment webhook: $e');
       rethrow;
     }
   }
@@ -297,7 +279,7 @@ class FapshiWebhookService {
     String? failureReason,
   }) async {
     try {
-      print('📚 Processing session payment: $sessionId');
+      LogService.debug('📚 Processing session payment: $sessionId');
 
       // Use existing session payment webhook handler
       await SessionPaymentService.handlePaymentWebhook(
@@ -306,9 +288,9 @@ class FapshiWebhookService {
         failureReason: failureReason,
       );
 
-      print('✅ Session payment webhook processed: $sessionId');
+      LogService.success('Session payment webhook processed: $sessionId');
     } catch (e) {
-      print('❌ Error handling session payment webhook: $e');
+      LogService.error('Error handling session payment webhook: $e');
       rethrow;
     }
   }
@@ -372,9 +354,9 @@ class FapshiWebhookService {
         return;
       }
 
-      print('⚠️ Payment not found for transaction: $transactionId');
+      LogService.warning('Payment not found for transaction: $transactionId');
     } catch (e) {
-      print('❌ Error handling by transaction ID: $e');
+      LogService.error('Error handling by transaction ID: $e');
     }
   }
 
@@ -409,7 +391,7 @@ class FapshiWebhookService {
         subject: subject,
       );
     } catch (e) {
-      print('⚠️ Error sending trial payment success notifications: $e');
+      LogService.warning('Error sending trial payment success notifications: $e');
     }
   }
 
@@ -435,7 +417,7 @@ class FapshiWebhookService {
         reason: reason ?? 'Payment failed',
       );
     } catch (e) {
-      print('⚠️ Error sending trial payment failure notification: $e');
+      LogService.warning('Error sending trial payment failure notification: $e');
     }
   }
 }

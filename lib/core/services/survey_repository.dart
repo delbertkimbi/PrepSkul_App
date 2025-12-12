@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,7 +14,7 @@ class SurveyRepository {
     String? contactInfo, // Email or phone based on auth method
   ) async {
     try {
-      print('📝 Saving tutor survey for user: $userId');
+      LogService.info('Saving tutor survey for user: $userId');
 
       // CRITICAL: Ensure profile exists in profiles table BEFORE saving tutor profile
       // This prevents foreign key constraint violations
@@ -25,13 +26,13 @@ class SurveyRepository {
             .eq('id', userId)
             .maybeSingle();
       } catch (e) {
-        print('⚠️ Error checking profile existence: $e');
+        LogService.warning('Error checking profile existence: $e');
         existingProfile = null;
       }
 
       if (existingProfile == null) {
         // Profile doesn't exist - create it first
-        print('⚠️ Profile not found for user $userId, creating profile...');
+        LogService.warning('Profile not found for user $userId, creating profile...');
         final user = SupabaseService.client.auth.currentUser;
         if (user == null) {
           throw Exception(
@@ -64,9 +65,9 @@ class SurveyRepository {
             'is_admin': false,
           }, onConflict: 'id');
 
-          print('✅ Profile created for user: $userId');
+          LogService.success('Profile created for user: $userId');
         } catch (profileError) {
-          print('❌ Error creating profile: $profileError');
+          LogService.error('Error creating profile: $profileError');
           throw Exception(
             'Failed to create user profile. Please ensure you are properly signed up and try again. Error: $profileError',
           );
@@ -79,9 +80,9 @@ class SurveyRepository {
                 .from('profiles')
                 .update({'user_type': 'tutor'})
                 .eq('id', userId);
-            print('✅ Updated user_type to tutor for user: $userId');
+            LogService.success('Updated user_type to tutor for user: $userId');
           } catch (e) {
-            print('⚠️ Error updating user_type: $e');
+            LogService.warning('Error updating user_type: $e');
             // Continue anyway - not critical
           }
         }
@@ -99,7 +100,7 @@ class SurveyRepository {
       // If status is 'rejected' or 'needs_improvement', set to 'pending' when tutor updates
       if (currentStatus == 'rejected' || currentStatus == 'needs_improvement') {
         data['status'] = 'pending';
-        print(
+        LogService.debug(
           '🔄 Status changed from $currentStatus to pending due to profile update',
         );
       }
@@ -149,11 +150,11 @@ class SurveyRepository {
           // Success! Break out of retry loop
           success = true;
           if (removedColumns.isNotEmpty) {
-            print(
+            LogService.debug(
               '⚠️ Successfully saved after removing ${removedColumns.length} missing columns: ${removedColumns.join(", ")}',
             );
           } else {
-            print('✅ Successfully saved tutor profile');
+            LogService.success('Successfully saved tutor profile');
           }
           break;
         } catch (e) {
@@ -164,7 +165,7 @@ class SurveyRepository {
           if (errorStr.contains('23503') ||
               errorStr.contains('foreign key constraint') ||
               errorStr.contains('Key is not present in table "profiles"')) {
-            print(
+            LogService.debug(
               '❌ Foreign key constraint violation: Profile does not exist for user $userId',
             );
             throw Exception(
@@ -200,14 +201,14 @@ class SurveyRepository {
                 filteredData.containsKey(missingColumn)) {
               removedColumns.add(missingColumn);
               filteredData.remove(missingColumn);
-              print(
+              LogService.debug(
                 '⚠️ Removed missing column "$missingColumn" from update (column may not exist yet). Retry ${retryCount + 1}/$maxRetries',
               );
               retryCount++;
               continue; // Retry with the problematic column removed
             } else {
               // Couldn't extract column name or column already removed
-              print('❌ Column error but could not identify column: $errorStr');
+              LogService.error('Column error but could not identify column: $errorStr');
               rethrow;
             }
           } else {
@@ -245,24 +246,24 @@ class SurveyRepository {
             .update(profileUpdates)
             .eq('id', userId);
 
-        print('✅ Updated profile with survey completion status');
+        LogService.success('Updated profile with survey completion status');
       } catch (profileUpdateError) {
-        print('⚠️ Error updating profile (non-critical): $profileUpdateError');
+        LogService.warning('Error updating profile (non-critical): $profileUpdateError');
         // Don't throw - profile update is not critical for tutor profile save
       }
 
       // Mark onboarding as complete in progress tracking
       try {
         await TutorOnboardingProgressService.markOnboardingComplete(userId);
-        print('✅ Onboarding marked as complete');
+        LogService.success('Onboarding marked as complete');
       } catch (progressError) {
-        print('⚠️ Error marking onboarding complete (non-critical): $progressError');
+        LogService.warning('Error marking onboarding complete (non-critical): $progressError');
         // Don't throw - this is not critical for survey save
       }
 
-      print('✅ Tutor survey saved successfully');
+      LogService.success('Tutor survey saved successfully');
     } catch (e) {
-      print('❌ Error saving tutor survey: $e');
+      LogService.error('Error saving tutor survey: $e');
       rethrow;
     }
   }
@@ -270,7 +271,7 @@ class SurveyRepository {
   /// Get tutor survey data
   static Future<Map<String, dynamic>?> getTutorSurvey(String userId) async {
     try {
-      print('📖 Fetching tutor survey for user: $userId');
+      LogService.debug('Fetching tutor survey for user: $userId');
 
       // Fetch tutor profile
       final tutorResponse = await SupabaseService.client
@@ -297,14 +298,14 @@ class SurveyRepository {
           tutorResponse['phone_number'] = profileResponse['phone_number'];
         }
       } catch (e) {
-        print('⚠️ Error fetching profile data: $e');
+        LogService.warning('Error fetching profile data: $e');
         // Continue without profile data
       }
 
-      print('✅ Tutor survey fetched successfully');
+      LogService.success('Tutor survey fetched successfully');
       return tutorResponse;
     } catch (e) {
-      print('❌ Error fetching tutor survey: $e');
+      LogService.error('Error fetching tutor survey: $e');
       return null;
     }
   }
@@ -315,7 +316,7 @@ class SurveyRepository {
     Map<String, dynamic> updates,
   ) async {
     try {
-      print('📝 Updating tutor survey for user: $userId');
+      LogService.info('Updating tutor survey for user: $userId');
 
       // Check current status before updating
       final currentProfile = await SupabaseService.client
@@ -329,7 +330,7 @@ class SurveyRepository {
       // If status is 'rejected' or 'needs_improvement', set to 'pending' when tutor updates
       if (currentStatus == 'rejected' || currentStatus == 'needs_improvement') {
         updates['status'] = 'pending';
-        print(
+        LogService.debug(
           '🔄 Status changed from $currentStatus to pending due to profile update',
         );
       }
@@ -342,9 +343,9 @@ class SurveyRepository {
           .update(updates)
           .eq('user_id', userId);
 
-      print('✅ Tutor survey updated successfully');
+      LogService.success('Tutor survey updated successfully');
     } catch (e) {
-      print('❌ Error updating tutor survey: $e');
+      LogService.error('Error updating tutor survey: $e');
       rethrow;
     }
   }
@@ -357,7 +358,7 @@ class SurveyRepository {
     Map<String, dynamic> data,
   ) async {
     try {
-      print('📝 Saving student survey for user: $userId');
+      LogService.info('Saving student survey for user: $userId');
 
       // CRITICAL: Ensure profile exists before saving to learner_profiles
       // This prevents foreign key constraint violations
@@ -369,14 +370,14 @@ class SurveyRepository {
             .eq('id', userId)
             .maybeSingle();
       } catch (e) {
-        print('⚠️ Error checking profile existence: $e');
+        LogService.warning('Error checking profile existence: $e');
         // If query fails, try to create profile anyway
         existingProfile = null;
       }
 
       if (existingProfile == null) {
         // Profile doesn't exist - create it first
-        print('⚠️ Profile not found for user $userId, creating profile...');
+        LogService.warning('Profile not found for user $userId, creating profile...');
         final user = SupabaseService.client.auth.currentUser;
         if (user == null) {
           throw Exception('User not authenticated. Cannot create profile.');
@@ -430,9 +431,9 @@ class SurveyRepository {
             'is_admin': false,
           }, onConflict: 'id');
 
-          print('✅ Profile created for user: $userId');
+          LogService.success('Profile created for user: $userId');
         } catch (profileError) {
-          print('⚠️ Error creating profile: $profileError');
+          LogService.warning('Error creating profile: $profileError');
           // If profile creation fails, continue anyway - might already exist
           // or will be handled by database constraints
         }
@@ -488,11 +489,11 @@ class SurveyRepository {
           }
           success = true;
           if (removedColumns.isNotEmpty) {
-            print(
+            LogService.debug(
               '⚠️ Successfully saved after removing ${removedColumns.length} missing columns: ${removedColumns.join(", ")}',
             );
           } else {
-            print('✅ Successfully saved learner profile');
+            LogService.success('Successfully saved learner profile');
           }
           break;
         } catch (e) {
@@ -501,7 +502,7 @@ class SurveyRepository {
           // Check for duplicate key error - means record exists, try update instead
           if (errorStr.contains('23505') ||
               errorStr.contains('duplicate key')) {
-            print(
+            LogService.debug(
               '⚠️ Duplicate key detected, switching to update instead of insert',
             );
             try {
@@ -510,11 +511,11 @@ class SurveyRepository {
                   .update(filteredData)
                   .eq('user_id', userId);
               success = true;
-              print('✅ Successfully updated learner profile');
+              LogService.success('Successfully updated learner profile');
               break;
             } catch (updateError) {
               // If update also fails, continue with retry logic
-              print(
+              LogService.debug(
                 '⚠️ Update also failed, continuing with retry: $updateError',
               );
             }
@@ -544,13 +545,13 @@ class SurveyRepository {
                 filteredData.containsKey(missingColumn)) {
               removedColumns.add(missingColumn);
               filteredData.remove(missingColumn);
-              print(
+              LogService.debug(
                 '⚠️ Removed missing column "$missingColumn" from update (column may not exist yet). Retry ${retryCount + 1}/$maxRetries',
               );
               retryCount++;
               continue;
             } else {
-              print('❌ Column error but could not identify column: $errorStr');
+              LogService.error('Column error but could not identify column: $errorStr');
               rethrow;
             }
           } else {
@@ -571,9 +572,9 @@ class SurveyRepository {
           .update({'survey_completed': true})
           .eq('id', userId);
 
-      print('✅ Student survey saved successfully');
+      LogService.success('Student survey saved successfully');
     } catch (e) {
-      print('❌ Error saving student survey: $e');
+      LogService.error('Error saving student survey: $e');
       rethrow;
     }
   }
@@ -581,7 +582,7 @@ class SurveyRepository {
   /// Get student survey data
   static Future<Map<String, dynamic>?> getStudentSurvey(String userId) async {
     try {
-      print('📖 Fetching student survey for user: $userId');
+      LogService.debug('Fetching student survey for user: $userId');
 
       final response = await SupabaseService.client
           .from('learner_profiles')
@@ -589,10 +590,10 @@ class SurveyRepository {
           .eq('user_id', userId)
           .maybeSingle();
 
-      print('✅ Student survey fetched: ${response != null}');
+      LogService.success('Student survey fetched: ${response != null}');
       return response;
     } catch (e) {
-      print('❌ Error fetching student survey: $e');
+      LogService.error('Error fetching student survey: $e');
       return null;
     }
   }
@@ -603,16 +604,16 @@ class SurveyRepository {
     Map<String, dynamic> updates,
   ) async {
     try {
-      print('📝 Updating student survey for user: $userId');
+      LogService.info('Updating student survey for user: $userId');
 
       await SupabaseService.client
           .from('learner_profiles')
           .update(updates)
           .eq('user_id', userId);
 
-      print('✅ Student survey updated successfully');
+      LogService.success('Student survey updated successfully');
     } catch (e) {
-      print('❌ Error updating student survey: $e');
+      LogService.error('Error updating student survey: $e');
       rethrow;
     }
   }
@@ -625,7 +626,7 @@ class SurveyRepository {
     Map<String, dynamic> data,
   ) async {
     try {
-      print('📝 Saving parent survey for user: $userId');
+      LogService.info('Saving parent survey for user: $userId');
 
       // CRITICAL: Ensure profile exists before saving to parent_profiles
       // This prevents foreign key constraint violations
@@ -637,14 +638,14 @@ class SurveyRepository {
             .eq('id', userId)
             .maybeSingle();
       } catch (e) {
-        print('⚠️ Error checking profile existence: $e');
+        LogService.warning('Error checking profile existence: $e');
         // If query fails, try to create profile anyway
         existingProfile = null;
       }
 
       if (existingProfile == null) {
         // Profile doesn't exist - create it first
-        print('⚠️ Profile not found for user $userId, creating profile...');
+        LogService.warning('Profile not found for user $userId, creating profile...');
         final user = SupabaseService.client.auth.currentUser;
         if (user == null) {
           throw Exception('User not authenticated. Cannot create profile.');
@@ -661,9 +662,9 @@ class SurveyRepository {
             'is_admin': false,
           }, onConflict: 'id');
 
-          print('✅ Profile created for user: $userId');
+          LogService.success('Profile created for user: $userId');
         } catch (profileError) {
-          print('⚠️ Error creating profile: $profileError');
+          LogService.warning('Error creating profile: $profileError');
           // If profile creation fails, continue anyway - might already exist
           // or will be handled by database constraints
         }
@@ -718,11 +719,11 @@ class SurveyRepository {
           }
           success = true;
           if (removedColumns.isNotEmpty) {
-            print(
+            LogService.debug(
               '⚠️ Successfully saved after removing ${removedColumns.length} missing columns: ${removedColumns.join(", ")}',
             );
           } else {
-            print('✅ Successfully saved parent profile');
+            LogService.success('Successfully saved parent profile');
           }
           break;
         } catch (e) {
@@ -731,7 +732,7 @@ class SurveyRepository {
           // Check for duplicate key error - means record exists, try update instead
           if (errorStr.contains('23505') ||
               errorStr.contains('duplicate key')) {
-            print(
+            LogService.debug(
               '⚠️ Duplicate key detected, switching to update instead of insert',
             );
             try {
@@ -740,11 +741,11 @@ class SurveyRepository {
                   .update(filteredData)
                   .eq('user_id', userId);
               success = true;
-              print('✅ Successfully updated parent profile');
+              LogService.success('Successfully updated parent profile');
               break;
             } catch (updateError) {
               // If update also fails, continue with retry logic
-              print(
+              LogService.debug(
                 '⚠️ Update also failed, continuing with retry: $updateError',
               );
             }
@@ -774,13 +775,13 @@ class SurveyRepository {
                 filteredData.containsKey(missingColumn)) {
               removedColumns.add(missingColumn);
               filteredData.remove(missingColumn);
-              print(
+              LogService.debug(
                 '⚠️ Removed missing column "$missingColumn" from update (column may not exist yet). Retry ${retryCount + 1}/$maxRetries',
               );
               retryCount++;
               continue;
             } else {
-              print('❌ Column error but could not identify column: $errorStr');
+              LogService.error('Column error but could not identify column: $errorStr');
               rethrow;
             }
           } else {
@@ -801,9 +802,9 @@ class SurveyRepository {
           .update({'survey_completed': true})
           .eq('id', userId);
 
-      print('✅ Parent survey saved successfully');
+      LogService.success('Parent survey saved successfully');
     } catch (e) {
-      print('❌ Error saving parent survey: $e');
+      LogService.error('Error saving parent survey: $e');
       rethrow;
     }
   }
@@ -811,7 +812,7 @@ class SurveyRepository {
   /// Get parent survey data
   static Future<Map<String, dynamic>?> getParentSurvey(String userId) async {
     try {
-      print('📖 Fetching parent survey for user: $userId');
+      LogService.debug('Fetching parent survey for user: $userId');
 
       final response = await SupabaseService.client
           .from('parent_profiles')
@@ -819,10 +820,10 @@ class SurveyRepository {
           .eq('user_id', userId)
           .maybeSingle();
 
-      print('✅ Parent survey fetched: ${response != null}');
+      LogService.success('Parent survey fetched: ${response != null}');
       return response;
     } catch (e) {
-      print('❌ Error fetching parent survey: $e');
+      LogService.error('Error fetching parent survey: $e');
       return null;
     }
   }
@@ -833,16 +834,16 @@ class SurveyRepository {
     Map<String, dynamic> updates,
   ) async {
     try {
-      print('📝 Updating parent survey for user: $userId');
+      LogService.info('Updating parent survey for user: $userId');
 
       await SupabaseService.client
           .from('parent_profiles')
           .update(updates)
           .eq('user_id', userId);
 
-      print('✅ Parent survey updated successfully');
+      LogService.success('Parent survey updated successfully');
     } catch (e) {
-      print('❌ Error updating parent survey: $e');
+      LogService.error('Error updating parent survey: $e');
       rethrow;
     }
   }

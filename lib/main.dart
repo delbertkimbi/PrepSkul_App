@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -31,6 +32,8 @@ import 'package:prepskul/core/navigation/main_navigation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/push_notification_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:prepskul/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,13 +58,13 @@ void main() async {
         final firebaseOptions = DefaultFirebaseOptions.currentPlatform;
         try {
           await Firebase.initializeApp(options: firebaseOptions);
-          print('✅ Firebase initialized');
+          LogService.success('Firebase initialized');
         } catch (e) {
           // If already initialized, Firebase will throw an error
           // This is fine - just continue
           if (e.toString().contains('already been initialized') ||
               e.toString().contains('already initialized')) {
-            print('✅ Firebase already initialized');
+            LogService.success('Firebase already initialized');
           } else {
             rethrow;
           }
@@ -69,8 +72,8 @@ void main() async {
       } catch (e) {
         // If firebase_options.dart module fails to load, log warning but continue
         // This allows app to start even if Firebase module has loading issues
-        print('⚠️ Firebase options not available (module loading issue): $e');
-        print(
+        LogService.warning('Firebase options not available (module loading issue): $e');
+        LogService.debug(
           'ℹ️ App will continue without Firebase - some features may be limited',
         );
       }
@@ -80,48 +83,75 @@ void main() async {
         await Firebase.initializeApp(
           options: DefaultFirebaseOptions.currentPlatform,
         );
-        print('✅ Firebase initialized');
+        LogService.success('Firebase initialized');
       } catch (e) {
         // If already initialized, Firebase will throw an error
         // This is fine - just continue
         if (e.toString().contains('already been initialized') ||
             e.toString().contains('already initialized')) {
-          print('✅ Firebase already initialized');
+          LogService.success('Firebase already initialized');
         } else {
           rethrow;
         }
       }
     }
 
-    // Initialize Supabase
-    await Supabase.initialize(
-      url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
-      anonKey:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU',
-      authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.pkce,
-      ),
-    );
-    print('✅ Supabase initialized');
+    // Load environment variables (if .env file exists)
+    try {
+      await dotenv.load(fileName: ".env");
+      LogService.success('Environment variables loaded');
+    } catch (e) {
+      LogService.debug('No .env file found or error loading: $e');
+      LogService.info('Using default/compiled environment values');
+    }
+
+    // Print current configuration
+    AppConfig.printConfig();
+
+    // Initialize Supabase with AppConfig
+    final supabaseUrl = AppConfig.supabaseUrl;
+    final supabaseAnonKey = AppConfig.supabaseAnonKey;
+    
+    if (supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
+      );
+      LogService.success('Supabase initialized (${AppConfig.environment})');
+    } else {
+      // Fallback to hardcoded values if env not set (for backward compatibility)
+      await Supabase.initialize(
+        url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
+        anonKey:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU',
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
+      );
+      LogService.warning('Supabase initialized with fallback values (set SUPABASE_URL_DEV/PROD in .env)');
+    }
 
     // Initialize LanguageService - make resilient to module loading failures
     try {
       await LanguageService.initialize();
-      print('✅ LanguageService initialized');
+      LogService.success('LanguageService initialized');
     } catch (e) {
       // If LanguageService module fails to load, log warning but continue
       // This allows app to start even if localization module has loading issues
-      print('⚠️ LanguageService not available (module loading issue): $e');
-      print('ℹ️ App will continue with default locale (English)');
+      LogService.warning('LanguageService not available (module loading issue): $e');
+      LogService.info('App will continue with default locale (English)');
     }
 
     // Initialize auth state listener
     try {
       AuthService.initAuthListener();
-      print('✅ AuthService initialized');
+      LogService.success('AuthService initialized');
     } catch (e) {
-      print('⚠️ AuthService not available (module loading issue): $e');
-      print('ℹ️ App will continue without auth state listener');
+      LogService.warning('AuthService not available (module loading issue): $e');
+      LogService.info('App will continue without auth state listener');
     }
 
     // Initialize push notifications in background (non-blocking)
@@ -129,19 +159,19 @@ void main() async {
     if (!kIsWeb || (kIsWeb && Firebase.apps.isNotEmpty)) {
       // Don't await - let splash screen transition happen
       _initializePushNotifications().catchError((error) {
-        print(
+        LogService.debug(
           '⚠️ Push notification initialization error (non-blocking): $error',
         );
       });
     } else {
-      print(
+      LogService.debug(
         'ℹ️ Skipping push notification initialization on web (Firebase not available)',
       );
     }
 
-    print('✅ App initialization complete');
+    LogService.success('App initialization complete');
   } catch (e) {
-    print('❌ Error initializing app: $e');
+    LogService.error('Error initializing app: $e');
     // Even if initialization fails, run the app so user sees error screen
   }
 
@@ -158,15 +188,15 @@ Future<void> _initializePushNotifications() async {
         // This will be handled by the navigation system
         final data = message?.data;
         if (data != null) {
-          print('📱 Notification tapped: ${data.toString()}');
+          LogService.debug('📱 Notification tapped: ${data.toString()}');
         } else {
-          print('📱 Notification tapped (no data)');
+          LogService.debug('📱 Notification tapped (no data)');
         }
       },
     );
-    print('✅ Push notifications initialized');
+    LogService.success('Push notifications initialized');
   } catch (e) {
-    print('❌ Error initializing push notifications: $e');
+    LogService.error('Error initializing push notifications: $e');
   }
 }
 
@@ -205,7 +235,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         _handleDeepLink(initialLink);
       }
     } catch (e) {
-      print('⚠️ Error getting initial link: $e');
+      LogService.warning('Error getting initial link: $e');
     }
 
     // Listen for incoming links while app is running
@@ -214,14 +244,14 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         _handleDeepLink(uri);
       },
       onError: (err) {
-        print('❌ Error listening to deep links: $err');
+        LogService.error('Error listening to deep links: $err');
       },
     );
   }
 
   /// Handle deep link navigation from email notifications
   void _handleDeepLink(Uri uri) async {
-    print('🔗 Deep link received: $uri');
+    LogService.debug('🔗 Deep link received: $uri');
 
     // Extract path from URL
     // Examples:
@@ -253,6 +283,28 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       '/sessions',
     ];
 
+    
+    // Check if this is an email verification link from Supabase
+    // Supabase verification links: https://[project].supabase.co/auth/v1/verify?token=...&type=signup
+    if (uri.queryParameters.containsKey('type') && 
+        (uri.queryParameters['type'] == 'signup' || uri.queryParameters['type'] == 'email')) {
+      LogService.debug('📧 [DEEP_LINK] Email verification link detected');
+      // Store verification token and redirect to email login
+      final prefs = await SharedPreferences.getInstance();
+      if (uri.queryParameters.containsKey('token')) {
+        await prefs.setString('email_verification_token', uri.queryParameters['token']!);
+      }
+      // Navigate to email login screen (not auth method selection)
+      final navService = NavigationService();
+      if (navService.isReady) {
+        await navService.navigateToRoute('/email-login', replace: true);
+      } else {
+        // Queue for when navigation is ready
+        navService.queueDeepLink(Uri.parse('/email-login'));
+      }
+      return; // Exit early, don't process as regular deep link
+    }
+    
     // Check if this is a protected route
     final isProtectedRoute = protectedRoutes.any(
       (route) => path.startsWith(route),
@@ -265,17 +317,17 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     if (isProtectedRoute && (!isAuthenticated || user == null)) {
       // User is not authenticated but trying to access a protected route
       // Store the intended destination and redirect to email login
-      print(
+      LogService.debug(
         '🔒 [DEEP_LINK] Protected route requires authentication, redirecting to email login',
       );
-      print('🔒 [DEEP_LINK] Intended destination: $path');
+      LogService.debug('🔒 [DEEP_LINK] Intended destination: $path');
 
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('pending_deep_link', path);
-        print('✅ [DEEP_LINK] Stored pending deep link: $path');
+        LogService.success('[DEEP_LINK] Stored pending deep link: $path');
       } catch (e) {
-        print('⚠️ [DEEP_LINK] Error storing pending deep link: $e');
+        LogService.warning('[DEEP_LINK] Error storing pending deep link: $e');
       }
 
       // Queue navigation to email login (will process when app is ready)
@@ -286,7 +338,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       } else {
         // Queue email login navigation
         navService.queueDeepLink(Uri.parse('/email-login'));
-        print(
+        LogService.debug(
           '📥 [DEEP_LINK] Email login queued, will process when app is ready',
         );
       }
@@ -301,7 +353,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     } else {
       // Queue for later processing
       navService.queueDeepLink(uri);
-      print('📥 [DEEP_LINK] Deep link queued, will process when app is ready');
+      LogService.debug('📥 [DEEP_LINK] Deep link queued, will process when app is ready');
     }
   }
 
@@ -324,15 +376,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     } catch (e) {
       // If Provider module fails to load, use fallback without Provider
       // This allows app to start even if state management package has loading issues
-      print('⚠️ Provider not available (module loading issue): $e');
-      print('ℹ️ App will continue without Provider - using default locale');
+      LogService.warning('Provider not available (module loading issue): $e');
+      LogService.info('App will continue without Provider - using default locale');
       // Get locale - make resilient to LanguageService module loading failures
       Locale defaultLocale;
       try {
         defaultLocale = LanguageService.currentLocale;
       } catch (e) {
         // Fallback to English if LanguageService module fails to load
-        print('⚠️ LanguageService.currentLocale not available, using English');
+        LogService.warning('LanguageService.currentLocale not available, using English');
         defaultLocale = const Locale('en');
       }
       return _buildMaterialApp(defaultLocale);
@@ -347,7 +399,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       supportedLocales = LanguageService.supportedLocales;
     } catch (e) {
       // Fallback to default locales if LanguageService module fails to load
-      print(
+      LogService.debug(
         '⚠️ LanguageService.supportedLocales not available, using defaults',
       );
       supportedLocales = const [Locale('en'), Locale('fr')];
@@ -359,7 +411,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       appTheme = AppTheme.lightTheme;
     } catch (e) {
       // Fallback to default theme if AppTheme module fails to load
-      print('⚠️ AppTheme not available, using default theme');
+      LogService.warning('AppTheme not available, using default theme');
       appTheme = ThemeData(primarySwatch: Colors.blue, useMaterial3: true);
     }
 
@@ -599,12 +651,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       // We should wait a bit longer for Supabase to process the code and potentially
       // confirm the email, which might trigger navigation handlers in SplashScreen
       if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
-        print('🔗 [INIT_LOAD] Auth code detected in URL - waiting for processing');
+        LogService.debug('🔗 [INIT_LOAD] Auth code detected in URL - waiting for processing');
         // Give Supabase auth listener time to fire
         await Future.delayed(const Duration(seconds: 2)); 
       }
 
-      print(
+      LogService.debug(
         '✅ [INIT_LOAD] User authenticated - checking onboarding/survey status',
       );
       // CRITICAL: Always check onboarding completion before allowing access
@@ -617,7 +669,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           try {
             // Always use determineInitialRoute which checks onboarding/survey completion
             final result = await navService.determineInitialRoute();
-            print('✅ [INIT_LOAD] Determined route: ${result.route}');
+            LogService.success('[INIT_LOAD] Determined route: ${result.route}');
             // Navigate to determined route (could be onboarding, survey, or dashboard)
             if (mounted) {
               WebSplashService.removeSplash();
@@ -630,7 +682,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             }
             return; // Exit early - navigation complete
           } catch (e) {
-            print('⚠️ [INIT_LOAD] Error navigating authenticated user: $e');
+            LogService.warning('[INIT_LOAD] Error navigating authenticated user: $e');
             // On error, check onboarding status explicitly before fallback
             final prefs = await SharedPreferences.getInstance();
             final hasCompletedOnboarding =
@@ -658,7 +710,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 }
                 return;
               } catch (e2) {
-                print('⚠️ [INIT_LOAD] Error in fallback navigation: $e2');
+                LogService.warning('[INIT_LOAD] Error in fallback navigation: $e2');
               }
             }
           }
@@ -671,7 +723,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     // If not authenticated, proceed with normal flow (but still check quickly)
     // Check if we have a code first (wait longer if so)
     if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
-       print('🔗 [INIT_LOAD] Auth code detected (unauthenticated) - waiting for processing');
+       LogService.debug('🔗 [INIT_LOAD] Auth code detected (unauthenticated) - waiting for processing');
        await Future.delayed(const Duration(seconds: 2));
     } else {
        // Wait for minimum 300ms to show animation (reduced from 500ms)
@@ -722,7 +774,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           }
         }
       } catch (e) {
-        print('⚠️ [INIT_LOAD] Error during navigation: $e');
+        LogService.warning('[INIT_LOAD] Error during navigation: $e');
         // Fallback: navigate to auth screen only if not authenticated
         if (mounted && !SupabaseService.isAuthenticated) {
           final navService = NavigationService();
@@ -830,7 +882,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
   /// Initialize splash screen - Simplified using NavigationService
   Future<void> _initializeSplash() async {
-    print('🚀 [SPLASH] Initializing...');
+    LogService.debug('🚀 [SPLASH] Initializing...');
 
     // Start background tasks (non-blocking)
     _preloadOnboardingImages();
@@ -848,7 +900,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // If password reset or email confirmation handled navigation, don't navigate normally
     if (handledByCallback) {
-      print(
+      LogService.debug(
         '✅ [SPLASH] Navigation handled by password reset or email confirmation',
       );
       return;
@@ -859,7 +911,7 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(const Duration(milliseconds: 100));
 
     // Navigate using NavigationService (single source of truth)
-    print('🚀 [SPLASH] Starting navigation check...');
+    LogService.debug('🚀 [SPLASH] Starting navigation check...');
     if (mounted) {
       _navigateToNextScreen();
     }
@@ -869,7 +921,7 @@ class _SplashScreenState extends State<SplashScreen> {
       if (mounted) {
         final navService = NavigationService();
         if (navService.isReady && navService.currentRoute == null) {
-          print('⏰ [SPLASH] TIMEOUT - Forcing navigation to auth screen');
+          LogService.debug('⏰ [SPLASH] TIMEOUT - Forcing navigation to auth screen');
           navService.navigateToRoute('/auth-method-selection', replace: true);
         }
       }
@@ -883,14 +935,14 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       final navService = NavigationService();
       if (!navService.isReady) {
-        print('⚠️ [SPLASH] NavigationService not ready yet');
+        LogService.warning('[SPLASH] NavigationService not ready yet');
         return;
       }
 
       // Use NavigationService to determine route (single source of truth)
       final result = await navService.determineInitialRoute();
 
-      print('🚀 [SPLASH] Determined route: ${result.route}');
+      LogService.debug('🚀 [SPLASH] Determined route: ${result.route}');
 
       // Navigate using NavigationService (handles guards and state)
       await navService.navigateToRoute(
@@ -904,7 +956,7 @@ class _SplashScreenState extends State<SplashScreen> {
         navService.processPendingDeepLinks();
       });
     } catch (e) {
-      print('❌ [SPLASH] Navigation error: $e');
+      LogService.error('[SPLASH] Navigation error: $e');
       // On any error, go to auth
       if (mounted) {
         final navService = NavigationService();
@@ -937,7 +989,7 @@ class _SplashScreenState extends State<SplashScreen> {
         } catch (e) {
           // Ignore errors if widget is unmounted (expected during navigation)
           if (mounted) {
-            print('Warning: Could not preload $imagePath: $e');
+            LogService.debug('Warning: Could not preload $imagePath: $e');
           }
         }
       }
@@ -954,13 +1006,13 @@ class _SplashScreenState extends State<SplashScreen> {
       final AuthChangeEvent event = data.event;
       final Session? session = data.session;
 
-      print('🔐 Auth state changed: $event');
+      LogService.debug('🔐 Auth state changed: $event');
 
       // Handle email confirmation
       if (event == AuthChangeEvent.signedIn &&
           session != null &&
           session.user.emailConfirmedAt != null) {
-        print('✅ Email confirmed via deep link!');
+        LogService.success('Email confirmed via deep link!');
         Future.microtask(() => _handleEmailConfirmation());
       }
     });
@@ -974,25 +1026,25 @@ class _SplashScreenState extends State<SplashScreen> {
       final code = uri.queryParameters['code'];
       final type = uri.queryParameters['type'];
 
-      print('🔍 [DEBUG] Checking URL for email confirmation callback');
-      print('🔍 [DEBUG] URL: ${uri.toString()}');
-      print('🔍 [DEBUG] Code: $code, Type: $type');
+      LogService.debug('[DEBUG] Checking URL for email confirmation callback');
+      LogService.debug('[DEBUG] URL: ${uri.toString()}');
+      LogService.debug('[DEBUG] Code: $code, Type: $type');
 
       if (code != null && type != 'recovery') {
         // This is likely an email confirmation code
-        print('📧 [DEBUG] Email confirmation code detected!');
+        LogService.debug('📧 [DEBUG] Email confirmation code detected!');
 
         try {
           // Exchange code for session
           await SupabaseService.client.auth.exchangeCodeForSession(code);
-          print('✅ Email confirmation code verified! Session created.');
+          LogService.success('Email confirmation code verified! Session created.');
 
           // The auth state change listener will handle navigation
           // But we can also directly navigate here if needed
           Future.microtask(() => _handleEmailConfirmation());
           return true; // Indicate that navigation was handled
         } catch (e) {
-          print('❌ Error verifying email confirmation code: $e');
+          LogService.error('Error verifying email confirmation code: $e');
           // Show error but continue to normal flow
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1011,7 +1063,7 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
     } catch (e) {
-      print('⚠️ Error checking email confirmation callback: $e');
+      LogService.warning('Error checking email confirmation callback: $e');
     }
     return false; // No email confirmation detected, continue normal navigation
   }
@@ -1024,23 +1076,23 @@ class _SplashScreenState extends State<SplashScreen> {
       final code = uri.queryParameters['code'];
       final type = uri.queryParameters['type'];
 
-      print('🔍 [DEBUG] Checking URL for password reset callback');
-      print('🔍 [DEBUG] URL: ${uri.toString()}');
-      print('🔍 [DEBUG] Code: $code, Type: $type');
+      LogService.debug('[DEBUG] Checking URL for password reset callback');
+      LogService.debug('[DEBUG] URL: ${uri.toString()}');
+      LogService.debug('[DEBUG] Code: $code, Type: $type');
 
       if (code != null) {
         // Check if it's a password reset (recovery type)
         if (type == 'recovery' ||
             uri.path.contains('reset') ||
             uri.path.contains('recovery')) {
-          print('🔑 [DEBUG] Password reset code detected!');
+          LogService.debug('🔑 [DEBUG] Password reset code detected!');
 
           try {
             // Exchange code for session - Supabase validates the recovery code
             // For password reset, Supabase creates a temporary session when code is valid
             await SupabaseService.client.auth.exchangeCodeForSession(code);
 
-            print('✅ Password reset code verified! Session created.');
+            LogService.success('Password reset code verified! Session created.');
             // User is now authenticated with a recovery session
             // Navigate to password reset screen to change password
             // Note: ResetPasswordScreen needs to handle email recovery (no OTP needed)
@@ -1052,7 +1104,7 @@ class _SplashScreenState extends State<SplashScreen> {
             }
             return true; // Indicate that navigation was handled
           } catch (e) {
-            print('❌ Error verifying password reset code: $e');
+            LogService.error('Error verifying password reset code: $e');
             // Show error and continue to normal flow
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1072,17 +1124,17 @@ class _SplashScreenState extends State<SplashScreen> {
         }
       }
     } catch (e) {
-      print('⚠️ Error checking password reset callback: $e');
+      LogService.warning('Error checking password reset callback: $e');
     }
     return false; // No password reset detected, continue normal navigation
   }
 
   Future<void> _handleEmailConfirmation() async {
-    print('🔐 Handling email confirmation...');
+    LogService.debug('🔐 Handling email confirmation...');
     final user = SupabaseService.currentUser;
 
     if (user == null) {
-      print('⚠️ No user found after email confirmation');
+      LogService.warning('No user found after email confirmation');
       return;
     }
 
@@ -1101,7 +1153,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // If profile doesn't exist, create it using stored signup data
     if (existingProfile == null) {
-      print('📝 Profile not found - creating from stored signup data');
+      LogService.debug('📝 Profile not found - creating from stored signup data');
       try {
         // Create profile using stored signup data
         await SupabaseService.client.from('profiles').upsert({
@@ -1127,7 +1179,7 @@ class _SplashScreenState extends State<SplashScreen> {
         await prefs.remove('signup_full_name');
         await prefs.remove('signup_email');
       } catch (e) {
-        print('⚠️ Error creating profile: $e');
+        LogService.warning('Error creating profile: $e');
         // Continue anyway - try to use stored data
       }
     } else {
@@ -1180,7 +1232,7 @@ class _SplashScreenState extends State<SplashScreen> {
               currentName == 'User')) {
         updates['full_name'] = nameToUse;
         needsUpdate = true;
-        print('✅ Updating profile name from "$currentName" to "$nameToUse"');
+        LogService.success('Updating profile name from "$currentName" to "$nameToUse"');
       }
 
       if (needsUpdate) {
@@ -1197,9 +1249,9 @@ class _SplashScreenState extends State<SplashScreen> {
               .eq('id', user.id)
               .maybeSingle();
 
-          print('✅ Profile updated successfully');
+          LogService.success('Profile updated successfully');
         } catch (e) {
-          print('⚠️ Error updating profile: $e');
+          LogService.warning('Error updating profile: $e');
         }
       }
 
@@ -1215,7 +1267,7 @@ class _SplashScreenState extends State<SplashScreen> {
         await prefs.remove('signup_email');
       } else {
         // Profile still has invalid name, keep stored data for next attempt
-        print(
+        LogService.debug(
           '⚠️ Profile still has invalid name "$finalName", keeping stored signup data',
         );
       }
@@ -1289,7 +1341,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted && navService.isReady) {
       // Use determineInitialRoute to handle all logic (intro screen, onboarding, etc.)
       final routeResult = await navService.determineInitialRoute();
-      print('✅ [EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}');
+      LogService.success('[EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}');
       
       await navService.navigateToRoute(
         routeResult.route,

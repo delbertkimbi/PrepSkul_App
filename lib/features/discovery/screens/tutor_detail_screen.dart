@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,7 @@ import 'package:prepskul/features/booking/services/session_feedback_service.dart
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/widgets/tutor_response_dialog.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:convert';
 // Conditional import for web-specific video helper
 import 'web_video_helper_stub.dart'
@@ -62,24 +64,24 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       if (_videoUrl!.isNotEmpty) {
         final videoId = YoutubePlayer.convertUrlToId(_videoUrl!);
         if (videoId != null && videoId.isNotEmpty) {
-          setState(() {
+          safeSetState(() {
             _videoId = videoId;
           });
         } else {
-          print('⚠️ Could not extract video ID from URL: $_videoUrl');
+          LogService.warning('Could not extract video ID from URL: $_videoUrl');
         }
       } else {
-        print('ℹ️ No video URL provided for tutor');
+        LogService.info('No video URL provided for tutor');
       }
     } catch (e) {
-      print('❌ Error extracting video ID: $e');
+      LogService.error('Error extracting video ID: $e');
     }
   }
 
   void _initializeVideo() {
     if (_isVideoInitialized || _isVideoLoading || _videoId == null) return;
 
-    setState(() {
+    safeSetState(() {
       _isVideoLoading = true;
     });
 
@@ -87,7 +89,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       // Check if running on web - use iframe embed instead
       if (kIsWeb) {
         // For web, we'll use an iframe embed (handled in build method)
-        setState(() {
+        safeSetState(() {
           _isVideoInitialized = true;
           _isVideoLoading = false;
         });
@@ -103,14 +105,14 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             hideControls: false,
           ),
         );
-        setState(() {
+        safeSetState(() {
           _isVideoInitialized = true;
           _isVideoLoading = false;
         });
       }
     } catch (e) {
-      print('❌ Error initializing video: $e');
-      setState(() {
+      LogService.error('Error initializing video: $e');
+      safeSetState(() {
         _isVideoLoading = false;
       });
     }
@@ -1394,7 +1396,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         web_video.registerYouTubeIframe(viewType, videoId);
       } catch (e) {
         // View factory might already be registered, that's okay
-        print('ℹ️ View factory registration: $e');
+        LogService.info('View factory registration: $e');
       }
 
       return Container(
@@ -1476,11 +1478,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// Load reviews for this tutor
   Future<void> _loadReviews() async {
     try {
-      setState(() => _isLoadingReviews = true);
+      safeSetState(() => _isLoadingReviews = true);
       
       final tutorId = widget.tutor['user_id'] ?? widget.tutor['id'];
       if (tutorId == null) {
-        setState(() => _isLoadingReviews = false);
+        safeSetState(() => _isLoadingReviews = false);
         return;
       }
       
@@ -1488,16 +1490,16 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       final ratingStats = await SessionFeedbackService.getTutorRatingStats(tutorId.toString());
       
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _reviews = reviews;
           _ratingStats = ratingStats;
           _isLoadingReviews = false;
         });
       }
     } catch (e) {
-      print('❌ Error loading reviews: $e');
+      LogService.error('Error loading reviews: $e');
       if (mounted) {
-        setState(() => _isLoadingReviews = false);
+        safeSetState(() => _isLoadingReviews = false);
       }
     }
   }

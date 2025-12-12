@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -245,7 +247,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             ),
                             GestureDetector(
                               onTap: () {
-                                setState(() {
+                                safeSetState(() {
                                   _isLogin = !_isLogin;
                                 });
                               },

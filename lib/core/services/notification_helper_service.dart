@@ -35,22 +35,18 @@
  */
 
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class NotificationHelperService {
-  // Get API base URL from environment or use default
-  static String get _apiBaseUrl {
-    // In Flutter, we'll use the web API URL
-    // You can also use flutter_dotenv to load from .env
-    return const String.fromEnvironment(
-      'API_BASE_URL',
-      defaultValue: 'https://app.prepskul.com/api'
-          );
-  }
+  // Get API base URL from AppConfig
+  static String get _apiBaseUrl => AppConfig.apiBaseUrl;
 
   /// Send notification via API (handles in-app, push, and email)
   /// 
@@ -124,15 +120,15 @@ class NotificationHelperService {
         // ✅ In-app (Supabase)
         // ✅ Push (Firebase via API)
         // ✅ Email (Resend via API, if sendEmail=true)
-        print('✅ Notification sent via API: $type to user $userId');
+        LogService.success('Notification sent via API: $type to user $userId');
       } else {
         // API returned error status code
-        print('⚠️ Notification API returned status ${response.statusCode}: ${response.body}');
+        LogService.warning('Notification API returned status ${response.statusCode}: ${response.body}');
         // Log error but don't throw - in-app notification already created
         if (response.statusCode == 429) {
-          print('⚠️ Rate limit detected for notification API. Email may not have been sent.');
+          LogService.warning('Rate limit detected for notification API. Email may not have been sent.');
         } else if (response.statusCode >= 500) {
-          print('⚠️ Server error in notification API. Email may not have been sent.');
+          LogService.warning('Server error in notification API. Email may not have been sent.');
         }
       }
       // If API returns error, in-app notification is still created (silent fail)
@@ -141,9 +137,9 @@ class NotificationHelperService {
       // This is expected if API is not deployed - in-app notification already created above
       // Log error for debugging but don't throw
       if (e is TimeoutException) {
-        print('⚠️ Notification API request timed out. In-app notification still created.');
+        LogService.warning('Notification API request timed out. In-app notification still created.');
       } else {
-        print('⚠️ Notification API call failed: $e. In-app notification still created.');
+        LogService.warning('Notification API call failed: $e. In-app notification still created.');
       }
       // Silent fail - notification still works via in-app
       // User will see notification when they open the app
@@ -318,7 +314,7 @@ class NotificationHelperService {
       userId: studentId,
       type: 'trial_accepted',
       title: '✅ Trial Session Confirmed!',
-      message: '$tutorName has accepted your trial session for $subject on ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime. Please proceed to payment.',
+      message: 'Your trial request with $tutorName has been approved. Tap to view details and pay.',
       priority: 'high',
       actionUrl: '/trials/$trialId/payment',
       actionText: 'Pay Now',
@@ -429,7 +425,7 @@ class NotificationHelperService {
       userId: tutorId,
       type: 'payment_received',
       title: '💰 Payment Received',
-      message: 'You received $amount $currency from $studentName for ${sessionType ?? 'session'}.',
+      message: 'Payment received from $studentName. Tap to view details.',
       priority: 'normal',
       actionUrl: '/payments/$paymentId',
       actionText: 'View Payment',
@@ -536,12 +532,12 @@ class NotificationHelperService {
           );
 
       if (response.statusCode == 200) {
-        print('✅ Payment reminders scheduled for session: $sessionId');
+        LogService.success('Payment reminders scheduled for session: $sessionId');
       } else {
-        print('⚠️ Failed to schedule payment reminders: ${response.statusCode}');
+        LogService.warning('Failed to schedule payment reminders: ${response.statusCode}');
       }
     } catch (e) {
-      print('❌ Error scheduling payment reminders: $e');
+      LogService.error('Error scheduling payment reminders: $e');
       // Don't throw - scheduling reminders shouldn't fail session creation
       // Fallback: create in-app notifications directly
       try {
@@ -612,7 +608,7 @@ class NotificationHelperService {
           );
         }
       } catch (e2) {
-        print('⚠️ Could not create fallback payment reminder notifications: $e2');
+        LogService.warning('Could not create fallback payment reminder notifications: $e2');
       }
     }
   }
@@ -748,9 +744,12 @@ class NotificationHelperService {
   // SESSION NOTIFICATIONS
   // ============================================
 
-  /// Schedule session reminder (30 minutes before and 24 hours before)
+  /// Schedule session reminders (24 hours, 1 hour, and 15 minutes before)
   /// 
-  /// Schedules reminders for both tutor and student
+  /// Schedules multiple reminders for both tutor and student
+  /// - 24 hours before: "Session reminder"
+  /// - 1 hour before: "Session starting soon"
+  /// - 15 minutes before: "Join now"
   static Future<void> scheduleSessionReminders({
     required String tutorId,
     required String studentId,
@@ -781,13 +780,187 @@ class NotificationHelperService {
           );
 
       if (response.statusCode == 200) {
-        print('✅ Session reminders scheduled for session: $sessionId');
+        LogService.success('Session reminders scheduled for session: $sessionId (24h, 1h, 15min)');
       } else {
-        print('⚠️ Failed to schedule session reminders: ${response.statusCode}');
+        LogService.warning('Failed to schedule session reminders: ${response.statusCode}');
+        // Fallback: Create in-app notifications directly
+        await _createFallbackSessionReminders(
+          tutorId: tutorId,
+          studentId: studentId,
+          sessionId: sessionId,
+          sessionType: sessionType,
+          tutorName: tutorName,
+          studentName: studentName,
+          sessionStart: sessionStart,
+          subject: subject,
+        );
       }
     } catch (e) {
-      print('❌ Error scheduling session reminders: $e');
-      // Don't throw - scheduling reminders shouldn't fail session creation
+      LogService.error('Error scheduling session reminders: $e');
+      // Fallback: Create in-app notifications directly
+      await _createFallbackSessionReminders(
+        tutorId: tutorId,
+        studentId: studentId,
+        sessionId: sessionId,
+        sessionType: sessionType,
+        tutorName: tutorName,
+        studentName: studentName,
+        sessionStart: sessionStart,
+        subject: subject,
+      );
+    }
+  }
+
+  /// Create fallback session reminders (in-app notifications)
+  /// Used when API scheduling fails
+  static Future<void> _createFallbackSessionReminders({
+    required String tutorId,
+    required String studentId,
+    required String sessionId,
+    required String sessionType,
+    required String tutorName,
+    required String studentName,
+    required DateTime sessionStart,
+    required String subject,
+  }) async {
+    try {
+      final now = DateTime.now();
+      
+      // 24 hours before (only if session is more than 24h away)
+      final twentyFourHoursBefore = sessionStart.subtract(const Duration(hours: 24));
+      if (twentyFourHoursBefore.isAfter(now)) {
+        final message24h = sessionType == 'trial'
+            ? 'Your trial session with $tutorName is tomorrow!'
+            : 'Your session with $tutorName is tomorrow!';
+        
+        // Notify tutor
+        await NotificationService.createNotification(
+          userId: tutorId,
+          type: 'session_reminder',
+          title: '📅 Session Reminder',
+          message: message24h.replaceAll('Your', 'Your upcoming'),
+          priority: 'normal',
+          actionUrl: '/sessions/$sessionId',
+          actionText: 'View Session',
+          icon: '📅',
+          metadata: {
+            'session_id': sessionId,
+            'session_type': sessionType,
+            'reminder_type': '24_hours',
+            'session_start': sessionStart.toIso8601String(),
+          },
+        );
+        
+        // Notify student
+        await NotificationService.createNotification(
+          userId: studentId,
+          type: 'session_reminder',
+          title: '📅 Session Reminder',
+          message: message24h,
+          priority: 'normal',
+          actionUrl: '/sessions/$sessionId',
+          actionText: 'View Session',
+          icon: '📅',
+          metadata: {
+            'session_id': sessionId,
+            'session_type': sessionType,
+            'reminder_type': '24_hours',
+            'session_start': sessionStart.toIso8601String(),
+          },
+        );
+      }
+      
+      // 1 hour before (only if session is more than 1h away)
+      final oneHourBefore = sessionStart.subtract(const Duration(hours: 1));
+      if (oneHourBefore.isAfter(now)) {
+        final message1h = sessionType == 'trial'
+            ? 'Your trial session with $tutorName starts in 1 hour!'
+            : 'Your session with $tutorName starts in 1 hour!';
+        
+        // Notify tutor
+        await NotificationService.createNotification(
+          userId: tutorId,
+          type: 'session_reminder',
+          title: '⏰ Session Starting Soon',
+          message: message1h.replaceAll('Your', 'Your upcoming'),
+          priority: 'high',
+          actionUrl: '/sessions/$sessionId',
+          actionText: 'View Session',
+          icon: '⏰',
+          metadata: {
+            'session_id': sessionId,
+            'session_type': sessionType,
+            'reminder_type': '1_hour',
+            'session_start': sessionStart.toIso8601String(),
+          },
+        );
+        
+        // Notify student
+        await NotificationService.createNotification(
+          userId: studentId,
+          type: 'session_reminder',
+          title: '⏰ Session Starting Soon',
+          message: message1h,
+          priority: 'high',
+          actionUrl: '/sessions/$sessionId',
+          actionText: 'View Session',
+          icon: '⏰',
+          metadata: {
+            'session_id': sessionId,
+            'session_type': sessionType,
+            'reminder_type': '1_hour',
+            'session_start': sessionStart.toIso8601String(),
+          },
+        );
+      }
+      
+      // 15 minutes before (only if session is more than 15min away)
+      final fifteenMinutesBefore = sessionStart.subtract(const Duration(minutes: 15));
+      if (fifteenMinutesBefore.isAfter(now)) {
+        final message15m = sessionType == 'trial'
+            ? 'Your trial session with $tutorName starts in 15 minutes! Join now.'
+            : 'Your session with $tutorName starts in 15 minutes! Join now.';
+        
+        // Notify tutor
+        await NotificationService.createNotification(
+          userId: tutorId,
+          type: 'session_reminder',
+          title: '🚀 Join Session Now',
+          message: message15m.replaceAll('Your', 'Your upcoming'),
+          priority: 'urgent',
+          actionUrl: '/sessions/$sessionId',
+          actionText: 'Join Now',
+          icon: '🚀',
+          metadata: {
+            'session_id': sessionId,
+            'session_type': sessionType,
+            'reminder_type': '15_minutes',
+            'session_start': sessionStart.toIso8601String(),
+          },
+        );
+        
+        // Notify student
+        await NotificationService.createNotification(
+          userId: studentId,
+          type: 'session_reminder',
+          title: '🚀 Join Session Now',
+          message: message15m,
+          priority: 'urgent',
+          actionUrl: '/sessions/$sessionId',
+          actionText: 'Join Now',
+          icon: '🚀',
+          metadata: {
+            'session_id': sessionId,
+            'session_type': sessionType,
+            'reminder_type': '15_minutes',
+            'session_start': sessionStart.toIso8601String(),
+          },
+        );
+      }
+      
+      LogService.success('Fallback session reminders created for session: $sessionId');
+    } catch (e) {
+      LogService.warning('Could not create fallback session reminders: $e');
     }
   }
 
@@ -868,9 +1041,9 @@ class NotificationHelperService {
           );
 
       if (response.statusCode == 200) {
-        print('✅ Feedback reminder scheduled for session: $sessionId');
+        LogService.success('Feedback reminder scheduled for session: $sessionId');
       } else {
-        print('⚠️ Failed to schedule feedback reminder: ${response.statusCode}');
+        LogService.warning('Failed to schedule feedback reminder: ${response.statusCode}');
         // Fallback: Create in-app notification immediately (will be shown when user opens app)
         // The app can check if 24h has passed when displaying notifications
         await NotificationService.createNotification(
@@ -889,7 +1062,7 @@ class NotificationHelperService {
           );
       }
     } catch (e) {
-      print('❌ Error scheduling feedback reminder: $e');
+      LogService.error('Error scheduling feedback reminder: $e');
       // Fallback: Create in-app notification
       try {
         await NotificationService.createNotification(
@@ -907,7 +1080,7 @@ class NotificationHelperService {
           }
           );
       } catch (e2) {
-        print('⚠️ Could not create fallback feedback reminder notification: $e2');
+        LogService.warning('Could not create fallback feedback reminder notification: $e2');
       }
     }
   }
@@ -959,10 +1132,10 @@ class NotificationHelperService {
           );
 
       if (response.statusCode == 200) {
-        print('✅ Review reminder scheduled for user: $userId');
+        LogService.success('Review reminder scheduled for user: $userId');
       }
     } catch (e) {
-      print('❌ Error scheduling review reminder: $e');
+      LogService.error('Error scheduling review reminder: $e');
       // Don't throw - review reminder scheduling shouldn't fail session completion
     }
   }
@@ -979,6 +1152,23 @@ class NotificationHelperService {
     double? sessionPrice,
     String? pricingTier,
   }) async {
+    // Verify user is actually a tutor before sending notification
+    try {
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('user_type')
+          .eq('id', tutorId)
+          .maybeSingle();
+      
+      if (profile == null || profile['user_type'] != 'tutor') {
+        LogService.warning('Skipping tutor profile approval notification for non-tutor user: $tutorId (role: ${profile?['user_type']})');
+        return;
+      }
+    } catch (e) {
+      LogService.warning('Could not verify user role for profile approval notification: $e');
+      // Continue anyway - better to send notification than miss it
+    }
+
     // This is already handled in the admin dashboard email sending
     // But we can add in-app notification here
     await NotificationService.createNotification(
@@ -1058,7 +1248,7 @@ class NotificationHelperService {
       userId: studentId,
       type: 'payment_request_paid',
       title: '✅ Payment Confirmed',
-      message: 'Your payment of ${PricingService.formatPrice(amount)} has been confirmed. Your sessions are now active!',
+      message: 'Your payment has been confirmed. Your sessions are now active! Tap to view booking.',
       priority: 'high',
       actionUrl: bookingRequestId != null ? '/bookings/$bookingRequestId' : '/payments',
       actionText: 'View Booking',
@@ -1235,7 +1425,7 @@ class NotificationHelperService {
           .eq('is_admin', true);
 
       if (adminResponse.isEmpty) {
-        print('⚠️ No admin users found to notify about new user signup');
+        LogService.warning('No admin users found to notify about new user signup');
         return;
       }
 
@@ -1270,9 +1460,9 @@ class NotificationHelperService {
           );
       }
 
-      print('✅ Notified ${adminResponse.length} admin(s) about new user signup: $userName');
+      LogService.success('Notified ${adminResponse.length} admin(s) about new user signup: $userName');
     } catch (e) {
-      print('⚠️ Error notifying admins about new user signup: $e');
+      LogService.warning('Error notifying admins about new user signup: $e');
       // Don't throw - notification failure shouldn't block user signup
     }
   }
@@ -1298,7 +1488,7 @@ class NotificationHelperService {
           .eq('is_admin', true);
 
       if (adminResponse.isEmpty) {
-        print('⚠️ No admin users found to notify about survey completion');
+        LogService.warning('No admin users found to notify about survey completion');
         return;
       }
 
@@ -1373,9 +1563,9 @@ class NotificationHelperService {
           );
       }
 
-      print('✅ Notified ${adminResponse.length} admin(s) about survey completion for $userName');
+      LogService.success('Notified ${adminResponse.length} admin(s) about survey completion for $userName');
     } catch (e) {
-      print('⚠️ Error notifying admins about survey completion: $e');
+      LogService.warning('Error notifying admins about survey completion: $e');
       // Don't throw - notification failure shouldn't block survey completion
     }
   }

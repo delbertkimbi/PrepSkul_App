@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Session Location Map Widget
 ///
@@ -58,12 +60,12 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
         userId: widget.currentUserId!,
       );
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _checkInStatus = status;
         });
       }
     } catch (e) {
-      print('⚠️ Error loading check-in status: $e');
+      LogService.warning('Error loading check-in status: $e');
     }
   }
 
@@ -83,7 +85,7 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
       try {
         final position = await LocationCheckInService.getCurrentLocation();
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _currentPosition = position;
             _distance = LocationCheckInService.calculateDistance(
               position.latitude,
@@ -95,10 +97,10 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
         }
       } catch (e) {
         // Location permission denied or unavailable
-        print('⚠️ Could not get current location: $e');
+        LogService.warning('Could not get current location: $e');
       }
     } catch (e) {
-      print('⚠️ Error calculating distance: $e');
+      LogService.warning('Error calculating distance: $e');
     }
   }
 
@@ -179,7 +181,7 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
   Future<void> _handleCheckIn() async {
     if (widget.currentUserId == null || widget.userType == null) return;
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       final result = await LocationCheckInService.checkInToSession(
@@ -191,7 +193,7 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
       );
 
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
         
         if (result['success'] == true) {
           await _loadCheckInStatus();
@@ -215,7 +217,7 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error checking in: $e'),

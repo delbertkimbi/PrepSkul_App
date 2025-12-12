@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 
 /// Pricing Service - Calculates tutor pricing based on multiple factors
@@ -221,7 +222,7 @@ class PricingService {
             .select('duration_minutes, price_xaf, discount_percent, discount_amount')
             .eq('is_active', true);
       } catch (e) {
-        print('⚠️ Could not fetch discount columns, falling back to basic pricing: $e');
+        LogService.warning('Could not fetch discount columns, falling back to basic pricing: $e');
         response = await _supabase
             .from('trial_session_pricing')
             .select('duration_minutes, price_xaf')
@@ -274,7 +275,7 @@ class PricingService {
 
       return pricing;
     } catch (e) {
-      print('⚠️ Error fetching trial session pricing details: $e');
+      LogService.warning('Error fetching trial session pricing details: $e');
       // Return defaults on error
       return {
         30: {'basePrice': 2000.0, 'finalPrice': 2000.0, 'hasDiscount': false},

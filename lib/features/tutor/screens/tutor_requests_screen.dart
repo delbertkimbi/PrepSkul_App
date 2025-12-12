@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
+import '../../../core/services/log_service.dart';
 import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
@@ -30,7 +32,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   Future<void> _loadRequests() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       final requests = await BookingService.getTutorBookingRequests(
         status: _selectedFilter == 'all' ? null : _selectedFilter,
@@ -60,14 +62,14 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         });
       }
 
-      setState(() {
+      safeSetState(() {
         _allRequests = requests; // Store all requests
         _requests = sortedRequests; // Store filtered/sorted requests
         _isLoading = false;
       });
     } catch (e) {
-      print('❌ Error loading requests: $e');
-      setState(() => _isLoading = false);
+      LogService.error('Error loading requests: $e');
+      safeSetState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -124,10 +126,10 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
               request.id,
             );
             if (paymentRequestId != null) {
-              print('✅ Found payment request ID: $paymentRequestId');
+              LogService.success('Found payment request ID: $paymentRequestId');
             }
           } catch (e) {
-            print('⚠️ Failed to get payment request ID: $e');
+            LogService.warning('Failed to get payment request ID: $e');
           }
 
           // Step 3: Create recurring session from approved request
@@ -136,9 +138,9 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
               approvedRequest,
               paymentRequestId: paymentRequestId,
             );
-            print('✅ Recurring session created successfully');
+            LogService.success('Recurring session created successfully');
           } catch (sessionError) {
-            print('⚠️ Error creating recurring session: $sessionError');
+            LogService.warning('Error creating recurring session: $sessionError');
             // Don't fail the approval if session creation fails
             // The request is already approved, session can be created manually later
           }
@@ -155,7 +157,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         }
         _loadRequests(); // Refresh list
       } catch (e) {
-        print('❌ Error approving request: $e');
+        LogService.error('Error approving request: $e');
 
         // Close loading dialog if still open
         if (mounted) {
@@ -196,7 +198,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         }
         _loadRequests(); // Refresh list
       } catch (e) {
-        print('❌ Error rejecting request: $e');
+        LogService.error('Error rejecting request: $e');
         if (mounted) {
           BrandedSnackBar.showError(
             context,
@@ -285,7 +287,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
-        setState(() {
+        safeSetState(() {
           _selectedFilter = filter;
         });
         _loadRequests();
@@ -709,6 +711,18 @@ class _RejectDialog extends StatefulWidget {
 
 class _RejectDialogState extends State<_RejectDialog> {
   final _reasonController = TextEditingController();
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen to text changes to update button state
+    _reasonController.addListener(() {
+      safeSetState(() {
+        _hasText = _reasonController.text.trim().isNotEmpty;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -738,6 +752,7 @@ class _RejectDialogState extends State<_RejectDialog> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
+            autofocus: true, // Auto-focus the text field
           ),
         ],
       ),
@@ -747,10 +762,15 @@ class _RejectDialogState extends State<_RejectDialog> {
           child: Text('Cancel', style: GoogleFonts.poppins()),
         ),
         ElevatedButton(
-          onPressed: _reasonController.text.trim().isEmpty
-              ? null
-              : () => Navigator.pop(context, _reasonController.text.trim()),
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: _hasText
+              ? () => Navigator.pop(context, _reasonController.text.trim())
+              : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+            disabledBackgroundColor: Colors.grey[300],
+            disabledForegroundColor: Colors.grey[600],
+          ),
           child: Text('Reject', style: GoogleFonts.poppins()),
         ),
       ],

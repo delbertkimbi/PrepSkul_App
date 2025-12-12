@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 
@@ -41,7 +42,7 @@ class IndividualSessionService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching individual sessions: $e');
+      LogService.error('Error fetching individual sessions: $e');
       rethrow;
     }
   }
@@ -78,7 +79,7 @@ class IndividualSessionService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching tutor upcoming sessions: $e');
+      LogService.error('Error fetching tutor upcoming sessions: $e');
       rethrow;
     }
   }
@@ -118,7 +119,7 @@ class IndividualSessionService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching tutor past sessions: $e');
+      LogService.error('Error fetching tutor past sessions: $e');
       rethrow;
     }
   }
@@ -155,7 +156,7 @@ class IndividualSessionService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching student upcoming sessions: $e');
+      LogService.error('Error fetching student upcoming sessions: $e');
       rethrow;
     }
   }
@@ -192,7 +193,7 @@ class IndividualSessionService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching student past sessions: $e');
+      LogService.error('Error fetching student past sessions: $e');
       rethrow;
     }
   }
@@ -245,9 +246,9 @@ class IndividualSessionService {
           .update(updateData)
           .eq('id', sessionId);
 
-      print('✅ Session started: $sessionId');
+      LogService.success('Session started: $sessionId');
     } catch (e) {
-      print('❌ Error starting session: $e');
+      LogService.error('Error starting session: $e');
       rethrow;
     }
   }
@@ -307,9 +308,9 @@ class IndividualSessionService {
       // Update recurring session totals
       await _updateRecurringSessionTotals(session['recurring_session_id'] as String);
 
-      print('✅ Session ended: $sessionId');
+      LogService.success('Session ended: $sessionId');
     } catch (e) {
-      print('❌ Error ending session: $e');
+      LogService.error('Error ending session: $e');
       rethrow;
     }
   }
@@ -350,9 +351,9 @@ class IndividualSessionService {
           .update(updateData)
           .eq('id', recurringSessionId);
 
-      print('✅ Updated recurring session totals: $recurringSessionId');
+      LogService.success('Updated recurring session totals: $recurringSessionId');
     } catch (e) {
-      print('❌ Error updating recurring session totals: $e');
+      LogService.error('Error updating recurring session totals: $e');
       // Don't rethrow - this is a background update
     }
   }
@@ -390,7 +391,7 @@ class IndividualSessionService {
         // Check if Google Calendar is authenticated
         final isAuth = await GoogleCalendarAuthService.isAuthenticated();
         if (!isAuth) {
-          print('⚠️ Google Calendar not authenticated. Please sign in first.');
+          LogService.warning('Google Calendar not authenticated. Please sign in first.');
           return null;
         }
 
@@ -423,14 +424,14 @@ class IndividualSessionService {
             subject: subject,
           );
 
-          print('✅ Meet link generated for session: $sessionId');
+          LogService.success('Meet link generated for session: $sessionId');
           return meetLink;
         }
       }
 
       return null;
     } catch (e) {
-      print('❌ Error getting/generating Meet link: $e');
+      LogService.error('Error getting/generating Meet link: $e');
       return null;
     }
   }
@@ -471,9 +472,9 @@ class IndividualSessionService {
           })
           .eq('id', sessionId);
 
-      print('✅ Session cancelled: $sessionId');
+      LogService.success('Session cancelled: $sessionId');
     } catch (e) {
-      print('❌ Error cancelling session: $e');
+      LogService.error('Error cancelling session: $e');
       rethrow;
     }
   }

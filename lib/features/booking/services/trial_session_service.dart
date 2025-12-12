@@ -8,6 +8,8 @@ import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:flutter/foundation.dart';
 
 /// TrialSessionService
 ///
@@ -32,6 +34,7 @@ class TrialSessionService {
     String? trialGoal,
     String? learnerChallenges,
     String? learnerLevel,
+    double? overrideTrialFee, // Optional: Use this fee instead of fetching from DB (for discounts)
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -54,8 +57,8 @@ class TrialSessionService {
       }
       final isOnline = normalizedLocation == 'online';
 
-      // Get trial fee from database (admin-controlled pricing)
-      final trialFee = await PricingService.getTrialSessionPrice(
+      // Get trial fee - use override if provided (for discounts), otherwise fetch from DB
+      final trialFee = overrideTrialFee ?? await PricingService.getTrialSessionPrice(
         durationMinutes,
       );
 
@@ -74,7 +77,7 @@ class TrialSessionService {
       // In production, this will be a real tutor's UUID
       String validTutorId = tutorId;
       if (!_isValidUUID(tutorId)) {
-        print('⚠️ DEMO MODE: Using user ID as tutor ID for testing');
+        LogService.warning('DEMO MODE: Using user ID as tutor ID for testing');
         validTutorId = userId; // Use self as tutor for demo
       }
 
@@ -139,7 +142,14 @@ class TrialSessionService {
           message += '. Please complete this trial before booking another one.';
         }
 
-        throw Exception(message);
+        // In debug mode, allow multiple trials but log a warning
+        if (kDebugMode) {
+          LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
+          // Continue with trial creation in debug mode
+        } else {
+          // In production, enforce the one-trial-per-tutor rule
+          throw Exception(message);
+        }
       }
 
       // Check for schedule conflicts with other tutors at the same time
@@ -169,7 +179,7 @@ class TrialSessionService {
         if (e.toString().contains('Schedule Conflict')) {
           rethrow; // Re-throw conflict errors
         }
-        print('⚠️ Error checking trial schedule conflicts: $e');
+        LogService.warning('Error checking trial schedule conflicts: $e');
         // Continue with trial creation if conflict check fails (non-blocking)
       }
 
@@ -202,7 +212,12 @@ class TrialSessionService {
           .from('trial_sessions')
           .insert(trialData)
           .select()
-          .single();
+          .limit(1)
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('Failed to create trial session - no response from database');
+      }
 
       final trialSession = TrialSession.fromJson(response);
 
@@ -229,13 +244,13 @@ class TrialSessionService {
           senderAvatarUrl: studentAvatarUrl,
         );
       } catch (e) {
-        print('⚠️ Failed to send trial request notification: $e');
+        LogService.warning('Failed to send trial request notification: $e');
         // Don't fail the trial creation if notification fails
       }
 
       return trialSession;
     } catch (e) {
-      print('❌ Trial booking error: $e');
+      LogService.error('Trial booking error: $e');
       throw Exception('Failed to create trial request: $e');
     }
   }
@@ -270,14 +285,14 @@ class TrialSessionService {
       final trials = (response as List)
           .map((json) {
             // Debug: Log payment_status from DB
-            print('🔍 DB payment_status for ${json['id']}: ${json['payment_status']}');
+            LogService.debug('DB payment_status for ${json['id']}: ${json['payment_status']}');
             return TrialSession.fromJson(json);
           })
           .toList();
       
       // Debug: Log after mapping
       for (var trial in trials) {
-        print('🔍 Mapped trial ${trial.id}: paymentStatus=${trial.paymentStatus}');
+        LogService.debug('Mapped trial ${trial.id}: paymentStatus=${trial.paymentStatus}');
       }
       
       return trials;
@@ -368,7 +383,7 @@ class TrialSessionService {
           scheduledTime: scheduledTime,
         );
       } catch (e) {
-        print('⚠️ Failed to send trial acceptance notification: $e');
+        LogService.warning('Failed to send trial acceptance notification: $e');
         // Don't fail the approval if notification fails
       }
 
@@ -387,9 +402,9 @@ class TrialSessionService {
           currency: 'XAF',
         );
         
-        print('✅ Payment reminders scheduled for trial session: $sessionId');
+        LogService.success('Payment reminders scheduled for trial session: $sessionId');
       } catch (e) {
-        print('⚠️ Failed to schedule payment reminders: $e');
+        LogService.warning('Failed to schedule payment reminders: $e');
         // Don't fail approval if reminder scheduling fails
       }
 
@@ -439,7 +454,7 @@ class TrialSessionService {
           rejectionReason: reason,
         );
       } catch (e) {
-        print('⚠️ Failed to send trial rejection notification: $e');
+        LogService.warning('Failed to send trial rejection notification: $e');
         // Don't fail the rejection if notification fails
       }
 
@@ -534,7 +549,7 @@ class TrialSessionService {
           cancelledBy: requesterType,
         );
       } catch (e) {
-        print('⚠️ Failed to send cancellation notification to tutor: $e');
+        LogService.warning('Failed to send cancellation notification to tutor: $e');
         // Don't fail cancellation if notification fails
       }
 
@@ -543,15 +558,15 @@ class TrialSessionService {
       if (calendarEventId != null && calendarEventId.isNotEmpty) {
         try {
           await GoogleCalendarService.cancelEvent(calendarEventId);
-          print('✅ Calendar event cancelled for trial: $sessionId');
+          LogService.success('Calendar event cancelled for trial: $sessionId');
         } catch (e) {
-          print('⚠️ Failed to cancel calendar event for trial $sessionId: $e');
+          LogService.warning('Failed to cancel calendar event for trial $sessionId: $e');
         }
       }
 
-      print('✅ Trial session cancelled: $sessionId');
+      LogService.success('Trial session cancelled: $sessionId');
     } catch (e) {
-      print('❌ Error cancelling trial session: $e');
+      LogService.error('Error cancelling trial session: $e');
       rethrow;
     }
   }
@@ -593,11 +608,11 @@ class TrialSessionService {
               .delete()
               .eq('fapshi_trans_id', fapshiTransId);
 
-          print('✅ Deleted associated payment request: $fapshiTransId');
+          LogService.success('Deleted associated payment request: $fapshiTransId');
         } catch (e) {
           // If payment_requests table doesn't exist or record not found, that's okay
           // Trial payments are primarily stored in trial_sessions table
-          print('ℹ️ No payment_requests record to delete: $e');
+          LogService.info('No payment_requests record to delete: $e');
         }
       }
 
@@ -607,18 +622,18 @@ class TrialSessionService {
           'trial_session_id': sessionId,
         });
 
-        print('✅ Deleted associated notifications');
+        LogService.success('Deleted associated notifications');
       } catch (e) {
         // If notifications table doesn't have this field or query fails, that's okay
-        print('ℹ️ Could not delete notifications (might not exist): $e');
+        LogService.info('Could not delete notifications (might not exist): $e');
       }
 
       // Delete the trial session itself (this also removes all payment info stored in it)
       await _supabase.from('trial_sessions').delete().eq('id', sessionId);
 
-      print('✅ Trial session deleted: $sessionId');
+      LogService.success('Trial session deleted: $sessionId');
     } catch (e) {
-      print('❌ Error deleting trial session: $e');
+      LogService.error('Error deleting trial session: $e');
       // If it's a foreign key constraint or similar, provide a better message
       if (e.toString().contains('foreign key') ||
           e.toString().contains('constraint')) {
@@ -710,7 +725,7 @@ class TrialSessionService {
 
       return paymentResponse.transId;
     } catch (e) {
-      print('❌ Error initiating payment: $e');
+      LogService.error('Error initiating payment: $e');
       rethrow;
     }
   }
@@ -734,10 +749,16 @@ class TrialSessionService {
       // Get trial session
       final trial = await getTrialSessionById(sessionId);
 
-      // Update payment status
+      // Update payment status - ALWAYS set to 'paid' and status to 'scheduled'
       await _supabase
           .from('trial_sessions')
-          .update({'payment_status': 'paid', 'fapshi_trans_id': transactionId})
+          .update({
+            'payment_status': 'paid',
+            'status': 'scheduled',
+            'fapshi_trans_id': transactionId,
+            'payment_confirmed_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
           .eq('id', sessionId);
 
       // Parse scheduled date and time
@@ -762,9 +783,7 @@ class TrialSessionService {
       } catch (e) {
         calendarOk = false;
         meetLink = null;
-        print(
-          '⚠️ Failed to generate Meet link for trial $sessionId (payment already saved): $e',
-        );
+        LogService.warning('Failed to generate Meet link for trial $sessionId (payment already saved)', e);
       }
 
       // Update trial_sessions with meet_link (even if null, so it's accessible)
@@ -793,38 +812,36 @@ class TrialSessionService {
           'location_description': null,
         });
       } catch (e) {
-        print(
-          '⚠️ Error creating individual session for trial (will still keep trial record): $e',
-        );
+        LogService.warning('Error creating individual session for trial (will still keep trial record)', e);
+        // Continue - trial record is still valid even if individual_sessions creation fails
+      }
 
+      // Notify tutor that session is ready and payment received (outside catch block)
+      try {
+        // Get learner name for notification
+        final learnerProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', trial.learnerId)
+            .maybeSingle();
         
-        // Notify tutor that session is ready and payment received
-        try {
-          // Get learner name for notification
-          final learnerProfile = await _supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', trial.learnerId)
-              .maybeSingle();
-          
-          final learnerName = learnerProfile?['full_name'] as String? ?? 'Student';
-          
-          await NotificationHelperService.notifyTutorSessionReady(
-            tutorId: trial.tutorId,
-            sessionId: trial.id,
-            sessionType: 'trial',
-            learnerName: learnerName,
-            subject: trial.subject,
-            scheduledDate: scheduledDate ?? trial.scheduledDate,
-            scheduledTime: scheduledTime,
-            meetLink: meetLink,
-          );
-          
-          print('✅ Notified tutor that session is ready: ${trial.id}');
-        } catch (e) {
-          print('⚠️ Failed to notify tutor: $e');
-          // Don't fail payment completion if notification fails
-        }
+        final learnerName = learnerProfile?['full_name'] as String? ?? 'Student';
+        
+        await NotificationHelperService.notifyTutorSessionReady(
+          tutorId: trial.tutorId,
+          sessionId: trial.id,
+          sessionType: 'trial',
+          learnerName: learnerName,
+          subject: trial.subject,
+          scheduledDate: scheduledDate ?? trial.scheduledDate,
+          scheduledTime: scheduledTime,
+          meetLink: meetLink,
+        );
+        
+        LogService.success('Notified tutor that session is ready: ${trial.id}');
+      } catch (e) {
+        LogService.warning('Failed to notify tutor: $e');
+        // Don't fail payment completion if notification fails
       }
 
       // Send notification to student and tutor
@@ -851,13 +868,11 @@ class TrialSessionService {
         message: tutorMessage,
       );
 
-      print(
-        '✅ Payment completed for trial: $sessionId (calendarOk=$calendarOk)',
-      );
+      LogService.success('Payment completed for trial: $sessionId', 'calendarOk=$calendarOk');
 
       return calendarOk;
     } catch (e) {
-      print('❌ Error completing payment: $e');
+      LogService.error('Error completing payment: $e');
       rethrow;
     }
   }
@@ -885,13 +900,13 @@ class TrialSessionService {
             errorString.contains('connection');
         
         if (isNetworkError && attempt < maxRetries) {
-          print('⚠️ Network error fetching trial session (attempt $attempt/$maxRetries), retrying...');
+          LogService.warning('Network error fetching trial session (attempt $attempt/$maxRetries), retrying...');
           await Future.delayed(Duration(milliseconds: retryDelay * attempt));
           continue;
         }
         
         // If it's the last attempt or not a network error, throw
-        print('❌ Failed to fetch trial session after $attempt attempts: $e');
+        LogService.error('Failed to fetch trial session after $attempt attempts: $e');
         throw Exception('Failed to fetch trial session: ${e.toString()}');
       }
     }
@@ -1002,7 +1017,7 @@ class TrialSessionService {
                   priority: 'high',
                 );
               } catch (e) {
-                print('⚠️ Failed to notify student of expired session: $e');
+                LogService.warning('Failed to notify student of expired session: $e');
               }
             }
             
@@ -1016,26 +1031,148 @@ class TrialSessionService {
                   priority: 'normal',
                 );
               } catch (e) {
-                print('⚠️ Failed to notify tutor of expired session: $e');
+                LogService.warning('Failed to notify tutor of expired session: $e');
               }
             }
             
             cancelledCount++;
-            print('✅ Cancelled expired trial session: $sessionId');
+            LogService.success('Cancelled expired trial session: $sessionId');
           }
         } catch (e) {
-          print('⚠️ Error processing expired session $sessionId: $e');
+          LogService.warning('Error processing expired session $sessionId: $e');
           continue;
         }
       }
       
       if (cancelledCount > 0) {
-        print('✅ Auto-cancelled $cancelledCount expired trial session(s)');
+        LogService.success('Auto-cancelled $cancelledCount expired trial session(s)');
       }
       
       return cancelledCount;
     } catch (e) {
-      print('❌ Error auto-cancelling expired sessions: $e');
+      LogService.error('Error auto-cancelling expired sessions: $e');
+      rethrow;
+    }
+  }
+
+  /// Auto-detect and mark expired trial sessions that were never attended
+  /// 
+  /// Marks sessions as 'expired' where:
+  /// - Status is 'approved' or 'scheduled'
+  /// - Payment status IS 'paid' or 'completed'
+  /// - Scheduled date/time has passed
+  /// - Session was never started (no attendance)
+  static Future<int> autoMarkExpiredAttendedSessions() async {
+    try {
+      final now = DateTime.now();
+      final today = now.toIso8601String().split('T')[0];
+      final currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      
+      // Query expired paid sessions that were never attended
+      final expiredQuery = _supabase
+          .from('trial_sessions')
+          .select()
+          .inFilter('status', ['approved', 'scheduled'])
+          .inFilter('payment_status', ['paid', 'completed'])
+          .or('scheduled_date.lt.$today,scheduled_date.eq.$today.and(scheduled_time.lte.$currentTime)');
+      
+      final expiredSessions = await expiredQuery;
+      
+      if (expiredSessions.isEmpty) {
+        return 0;
+      }
+      
+      int markedCount = 0;
+      
+      for (final sessionData in expiredSessions as List) {
+        final sessionId = sessionData['id'] as String;
+        final scheduledDate = sessionData['scheduled_date'] as String;
+        final scheduledTime = sessionData['scheduled_time'] as String;
+        final status = sessionData['status'] as String;
+        
+        // Skip if already expired
+        if (status == 'expired' || status == 'completed' || status == 'cancelled') {
+          continue;
+        }
+        
+        // Parse and verify the session has actually passed
+        try {
+          final dateParts = scheduledDate.split('T')[0].split('-');
+          final timeParts = scheduledTime.split(':');
+          final year = int.parse(dateParts[0]);
+          final month = int.parse(dateParts[1]);
+          final day = int.parse(dateParts[2]);
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          
+          final sessionDateTime = DateTime(year, month, day, hour, minute);
+          
+          // Check if session expired (at least 15 minutes after scheduled time)
+          final expirationTime = sessionDateTime.add(const Duration(minutes: 15));
+          
+          if (expirationTime.isBefore(now)) {
+            // Mark as expired (session was never attended)
+            await _supabase
+                .from('trial_sessions')
+                .update({
+                  'status': 'expired',
+                  'rejection_reason': 'Session expired - never attended',
+                  'updated_at': now.toIso8601String(),
+                })
+                .eq('id', sessionId);
+            
+            // Notify both parties
+            final learnerId = sessionData['learner_id'] as String?;
+            final requesterId = sessionData['requester_id'] as String?;
+            final tutorId = sessionData['tutor_id'] as String?;
+            final subject = sessionData['subject'] as String? ?? 'Trial Session';
+            
+            final studentId = learnerId ?? requesterId;
+            
+            if (studentId != null) {
+              try {
+                await NotificationService.createNotification(
+                  userId: studentId,
+                  type: 'trial_expired',
+                  title: '⏰ Session Expired',
+                  message: 'Your trial session for $subject has expired. It was never attended.',
+                  priority: 'normal',
+                );
+              } catch (e) {
+                LogService.warning('Failed to notify student of expired session: $e');
+              }
+            }
+            
+            if (tutorId != null) {
+              try {
+                await NotificationService.createNotification(
+                  userId: tutorId,
+                  type: 'trial_expired',
+                  title: '⏰ Session Expired',
+                  message: 'A trial session for $subject has expired. It was never attended.',
+                  priority: 'normal',
+                );
+              } catch (e) {
+                LogService.warning('Failed to notify tutor of expired session: $e');
+              }
+            }
+            
+            markedCount++;
+            LogService.success('Marked expired trial session: $sessionId');
+          }
+        } catch (e) {
+          LogService.warning('Error processing expired session $sessionId: $e');
+          continue;
+        }
+      }
+      
+      if (markedCount > 0) {
+        LogService.success('Auto-marked $markedCount expired trial session(s)');
+      }
+      
+      return markedCount;
+    } catch (e) {
+      LogService.error('Error auto-marking expired sessions: $e');
       rethrow;
     }
   }

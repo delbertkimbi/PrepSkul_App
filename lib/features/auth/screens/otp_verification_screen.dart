@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
@@ -54,7 +56,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   void _startCountdown() {
-    setState(() {
+    safeSetState(() {
       _countdownSeconds = 60;
       _canResend = false;
     });
@@ -62,7 +64,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
     Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 1));
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           if (_countdownSeconds > 0) {
             _countdownSeconds--;
           } else {
@@ -85,7 +87,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       return;
     }
 
-    setState(() => _isVerifying = true);
+    safeSetState(() => _isVerifying = true);
 
     try {
       // Verify OTP with Supabase
@@ -128,31 +130,46 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                 response.user!.email ??
                 widget.phoneNumber, // Use phone if email is null
           ).catchError((e) {
-            print('⚠️ Error notifying admins about new user signup: $e');
+            LogService.warning('Error notifying admins about new user signup: $e');
             // Don't block signup if notification fails
           });
         }
 
-        // Save session using AuthService
+        // For existing users, get actual survey completion status and user role from database
+        bool surveyCompleted = false;
+        String userRole = widget.userRole; // Default to widget value (for new users)
+        
+        if (!isNewUser && userProfile.isNotEmpty) {
+          // Existing user - get actual values from profile in database
+          surveyCompleted = userProfile[0]['survey_completed'] ?? false;
+          userRole = userProfile[0]['user_type'] ?? widget.userRole; // Get actual role from DB
+          LogService.debug('📋 Existing user - survey_completed from DB: $surveyCompleted');
+          LogService.debug('👤 Existing user - user_type from DB: $userRole');
+        }
+
+        // Save session using AuthService with correct survey completion status and user role
         await AuthService.saveSession(
           userId: response.user!.id,
-          userRole: widget.userRole,
+          userRole: userRole, // Use actual role from DB for existing users
           phone: widget.phoneNumber,
           fullName: widget.fullName,
-          surveyCompleted: false,
+          surveyCompleted: surveyCompleted,
           rememberMe: true,
         );
 
-        // Check if survey is completed
-        bool surveyCompleted = await AuthService.isSurveyCompleted();
-        String userRole = await AuthService.getUserRole() ?? widget.userRole;
+        // For existing users, ensure onboarding_completed is set to true
+        // (they've already seen onboarding if they're logging in)
+        final prefs = await SharedPreferences.getInstance();
+        if (!isNewUser) {
+          await prefs.setBool('onboarding_completed', true);
+          LogService.success('Existing user login - set onboarding_completed to true');
+        }
 
         // For new users, ensure survey_intro_seen is cleared so they see the intro screen
-        final prefs = await SharedPreferences.getInstance();
         if (isNewUser) {
           // Clear survey_intro_seen for new users to ensure they see the intro screen
           await prefs.setBool('survey_intro_seen', false);
-          print('🆕 New user signup - cleared survey_intro_seen flag');
+          LogService.debug('🆕 New user signup - cleared survey_intro_seen flag');
         }
 
         // Navigate based on user status
@@ -162,7 +179,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           if (userRole == 'tutor') {
             // For existing users (login), always go to dashboard
             if (!isNewUser) {
-              print('✅ Existing tutor login - navigating to dashboard');
+              LogService.success('Existing tutor login - navigating to dashboard');
               // Send onboarding notification if needed (only once per day)
               _sendOnboardingNotificationIfNeeded(response.user!.id);
               Navigator.pushReplacementNamed(context, '/tutor-nav');
@@ -174,17 +191,17 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               
               // If no progress record exists and not skipped, it's a new tutor - show choice screen
               if (progress == null && !onboardingSkipped) {
-                print('✅ New tutor signup (no progress record) - navigating to onboarding choice screen');
+                LogService.success('New tutor signup (no progress record) - navigating to onboarding choice screen');
                 Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
               } else {
                 // Has some progress or was skipped - go to dashboard (they can continue from there)
-                print('✅ New tutor with existing progress - navigating to dashboard');
+                LogService.success('New tutor with existing progress - navigating to dashboard');
                 Navigator.pushReplacementNamed(context, '/tutor-nav');
               }
             }
           } else if (surveyCompleted) {
             // Other roles with completed survey → go to role-based navigation
-            print('✅ Survey completed - navigating to dashboard for $userRole');
+            LogService.success('Survey completed - navigating to dashboard for $userRole');
             if (userRole == 'parent') {
               Navigator.pushReplacementNamed(context, '/parent-nav');
             } else {
@@ -194,16 +211,16 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             // Other roles: New user or incomplete survey → check for survey intro screen first
             final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
 
-            print('📋 Survey not completed');
-            print('👤 User role: $userRole');
-            print('👀 Survey intro seen: $surveyIntroSeen');
-            print('🆕 Is new user: $isNewUser');
+            LogService.debug('📋 Survey not completed');
+            LogService.debug('👤 User role: $userRole');
+            LogService.debug('👀 Survey intro seen: $surveyIntroSeen');
+            LogService.debug('🆕 Is new user: $isNewUser');
 
             if ((userRole == 'student' ||
                     userRole == 'learner' ||
                     userRole == 'parent') &&
                 !surveyIntroSeen) {
-              print('✅ Navigating to survey intro screen for $userRole');
+              LogService.success('Navigating to survey intro screen for $userRole');
               Navigator.pushReplacementNamed(
                 context,
                 '/survey-intro',
@@ -211,7 +228,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               );
             } else {
               // Survey intro already seen → go to profile setup
-              print('⏭️ Skipping survey intro - navigating to profile setup');
+              LogService.debug('⏭️ Skipping survey intro - navigating to profile setup');
               Navigator.pushReplacementNamed(
                 context,
                 '/profile-setup',
@@ -222,7 +239,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         }
       }
     } catch (e) {
-      print('❌ OTP Verification Error: $e');
+      LogService.error('OTP Verification Error: $e');
       final errorStr = e.toString().toLowerCase();
       
       // Check for specific error types
@@ -260,13 +277,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       _focusNodes[0].requestFocus();
     } finally {
       if (mounted) {
-        setState(() => _isVerifying = false);
+        safeSetState(() => _isVerifying = false);
       }
     }
   }
 
   Future<void> _resendOTP() async {
-    setState(() => _isResending = true);
+    safeSetState(() => _isResending = true);
 
     try {
       await SupabaseService.sendPhoneOTP(widget.phoneNumber);
@@ -287,7 +304,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
       _showError('Failed to resend code. Please try again.');
     } finally {
       if (mounted) {
-        setState(() => _isResending = false);
+        safeSetState(() => _isResending = false);
       }
     }
   }
@@ -537,7 +554,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             } else if (value.isEmpty && index > 0) {
               _focusNodes[index - 1].requestFocus();
             }
-            setState(() {}); // Update border color
+            safeSetState(() {}); // Update border color
 
             // Auto-verify when all digits entered
             if (index == 5 && value.isNotEmpty) {
@@ -583,11 +600,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           
           // Save today's date to avoid sending multiple notifications per day
           await prefs.setString('onboarding_notification_date', today);
-          print('✅ Onboarding notification sent to tutor: $userId');
+          LogService.success('Onboarding notification sent to tutor: $userId');
         }
       }
     } catch (e) {
-      print('⚠️ Error sending onboarding notification: $e');
+      LogService.warning('Error sending onboarding notification: $e');
       // Don't block login if notification fails
     }
   }

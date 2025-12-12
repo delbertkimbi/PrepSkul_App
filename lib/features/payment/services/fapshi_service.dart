@@ -1,71 +1,27 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import '../models/fapshi_transaction_model.dart';
 
 /// Fapshi Payment Service
 /// 
 /// Handles all Fapshi payment API interactions
 /// Documentation: docs/FAPSHI_API_DOCUMENTATION.md
+/// 
+/// Environment is controlled by AppConfig.isProduction
 
 class FapshiService {
-  /// Safely read environment variables without throwing if dotenv is not initialized
-  static String _safeEnv(String key, String fallback) {
-    try {
-      final value = dotenv.env[key];
-      if (value == null || value.isEmpty) return fallback;
-      return value;
-    } catch (_) {
-      // dotenv not initialized or unavailable – fall back to safe default
-      return fallback;
-    }
-  }
-
-  // Base URLs
-  static String get _baseUrl {
-    final environment = _safeEnv('FAPSHI_ENVIRONMENT', 'sandbox');
-    return environment == 'live'
-        ? 'https://live.fapshi.com'
-        : 'https://sandbox.fapshi.com';
-  }
-
-  // Environment detection
-  static bool get _isProduction {
-    final environment = _safeEnv('FAPSHI_ENVIRONMENT', 'sandbox');
-    return environment == 'live';
-  }
+  // Base URLs - Uses AppConfig
+  static String get _baseUrl => AppConfig.fapshiBaseUrl;
 
   /// Public accessor so UI layers can know if we are running against live environment
-  static bool get isProduction => _isProduction;
+  static bool get isProduction => AppConfig.isProd;
 
   // API Credentials - Collection Service (for receiving payments)
-  static String get _apiUser {
-    if (_isProduction) {
-      return _safeEnv(
-        'FAPSHI_COLLECTION_API_USER_LIVE',
-        '54652088-94b9-4642-8d04-fdab02beb71d',
-      );
-    } else {
-      return _safeEnv(
-        'FAPSHI_SANDBOX_API_USER',
-        '4a148e87-e185-437d-a641-b465e2bd8d17',
-      );
-    }
-  }
+  static String get _apiUser => AppConfig.fapshiApiUser;
 
-  static String get _apiKey {
-    if (_isProduction) {
-      return _safeEnv(
-        'FAPSHI_COLLECTION_API_KEY_LIVE',
-        'FAK_9194147b613e1fc4ba03237bb6640241',
-      );
-    } else {
-      return _safeEnv(
-        'FAPSHI_SANDBOX_API_KEY',
-        'FAK_TEST_0293bda0f3ef142be85b',
-      );
-    }
-  }
+  static String get _apiKey => AppConfig.fapshiApiKey;
 
   /// Initiate direct payment request
   /// 
@@ -129,7 +85,7 @@ class FapshiService {
         throw Exception('Fapshi API Error: $errorMessage');
       }
     } catch (e) {
-      print('❌ Error initiating Fapshi payment: $e');
+      LogService.error('Error initiating Fapshi payment: $e');
       rethrow;
     }
   }
@@ -157,7 +113,7 @@ class FapshiService {
         final snippet = response.body.length > 200
             ? response.body.substring(0, 200)
             : response.body;
-        print(
+        LogService.debug(
             '⚠️ Fapshi payment-status returned non-JSON response (status ${response.statusCode}): $snippet');
         throw Exception(
           'Unexpected response from payment provider while checking status. Please try again shortly.',
@@ -170,7 +126,7 @@ class FapshiService {
               jsonDecode(response.body) as Map<String, dynamic>;
           return FapshiPaymentStatus.fromJson(jsonResponse);
         } on FormatException catch (e) {
-          print('❌ JSON parse error for Fapshi payment status: $e');
+          LogService.error('JSON parse error for Fapshi payment status: $e');
           throw Exception(
             'Received an invalid response from the payment provider while checking status.',
           );
@@ -189,7 +145,7 @@ class FapshiService {
         }
       }
     } catch (e) {
-      print('❌ Error getting Fapshi payment status: $e');
+      LogService.error('Error getting Fapshi payment status: $e');
       rethrow;
     }
   }
@@ -222,11 +178,11 @@ class FapshiService {
         await Future.delayed(interval);
         attempts++;
 
-        print('⏳ Polling payment status (attempt $attempts/$maxAttempts)...');
+        LogService.debug('⏳ Polling payment status (attempt $attempts/$maxAttempts)...');
       } catch (e) {
         // For configuration / parsing / provider errors we surface the error
         // immediately so the UI can show feedback instead of spinning forever.
-        print('⚠️ Error polling payment status: $e');
+        LogService.warning('Error polling payment status: $e');
         rethrow;
       }
     }
@@ -260,7 +216,7 @@ class FapshiService {
         throw Exception('Fapshi API Error: $errorMessage');
       }
     } catch (e) {
-      print('❌ Error expiring Fapshi payment: $e');
+      LogService.error('Error expiring Fapshi payment: $e');
       rethrow;
     }
   }

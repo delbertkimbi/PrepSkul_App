@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -73,7 +76,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   /// Pre-fill data from search filters or survey
   Future<void> _prefillFromData() async {
     if (widget.prefillData != null) {
-      setState(() {
+      safeSetState(() {
         _selectedSubjects = List<String>.from(
           widget.prefillData!['subjects'] ?? [],
         );
@@ -173,7 +176,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           if (availableSubjects.isEmpty && userSubjects.isNotEmpty) {
             availableSubjects = List<String>.from(userSubjects);
           }
-setState(() {
+safeSetState(() {
             _userSubjects = userSubjects;
             _selectedSubjects = List<String>.from(
               userSubjects,
@@ -286,7 +289,7 @@ setState(() {
           _loadAvailableSubjects();
         }
       } catch (e) {
-        print('Error prefilling from survey: $e');
+        LogService.debug('Error prefilling from survey: $e');
         _loadAvailableSubjects();
       }
     }
@@ -404,7 +407,7 @@ setState(() {
 
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
-      setState(() => _currentStep++);
+      safeSetState(() => _currentStep++);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -415,7 +418,7 @@ setState(() {
 
   void _previousStep() {
     if (_currentStep > 0) {
-      setState(() => _currentStep--);
+      safeSetState(() => _currentStep--);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -491,7 +494,7 @@ setState(() {
             child: PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
-              onPageChanged: (index) => setState(() => _currentStep = index),
+              onPageChanged: (index) => safeSetState(() => _currentStep = index),
               children: [
                 _buildStep1SubjectLevel(),
                 _buildStep2Preferences(),
@@ -594,8 +597,8 @@ setState(() {
     
     // Debug: Print to verify user's subjects are first
     if (_userSubjects.isNotEmpty) {
-      print('📚 User\'s selected subjects (should appear first): ${_userSubjects}');
-      print('📚 Available subjects list: ${subjects.take(10).toList()}');
+      LogService.debug('📚 User\'s selected subjects (should appear first): ${_userSubjects}');
+      LogService.debug('📚 Available subjects list: ${subjects.take(10).toList()}');
     }
 
     final levels = [
@@ -615,158 +618,334 @@ setState(() {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'What subject do you need help with?',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+          // Header with icon
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.school,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'What subject do you need help with?',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ],
           ),
           if (_userSubjects.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryColor.withOpacity(0.15),
+                    AppTheme.primaryColor.withOpacity(0.08),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: AppTheme.primaryColor.withOpacity(0.3),
-                  width: 1,
+                  width: 1.5,
                 ),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.star,
-                    size: 16,
-                    color: AppTheme.primaryColor,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: Colors.white,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Expanded(
-                    child: Text(
-                      'Your selected subjects are pre-filled below',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.primaryColor,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pre-filled from your profile',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'You can add more subjects if needed',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            _userSubjects.isNotEmpty
-                ? 'Your subjects are pre-selected. You can add more if needed.'
-                : 'Select all subjects you need tutoring for',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: AppTheme.textMedium,
+          if (_userSubjects.isEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Select all subjects you need tutoring for',
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
 
-          // Subjects - Highlight user's subjects
+          // Subjects - Modern colorful chips
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 10,
+            runSpacing: 10,
             children: subjects.map((subject) {
               final isSelected = _selectedSubjects.contains(subject);
               final isUserSubject = _userSubjects.contains(subject);
-              return FilterChip(
-                selected: isSelected,
-                label: Text(subject),
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _selectedSubjects.add(subject);
-                    } else {
+              
+              // Color scheme based on selection
+              final colors = _getSubjectColors(subject, isSelected, isUserSubject);
+              
+              return InkWell(
+                onTap: () {
+                  safeSetState(() {
+                    if (isSelected) {
                       _selectedSubjects.remove(subject);
+                    } else {
+                      _selectedSubjects.add(subject);
                     }
                   });
                 },
-                selectedColor: isUserSubject
-                    ? AppTheme.primaryColor.withOpacity(
-                        0.3,
-                      ) // Highlighted for user's subjects
-                    : AppTheme.primaryColor.withOpacity(0.2),
-                checkmarkColor: AppTheme.primaryColor,
-                side: isUserSubject && isSelected
-                    ? BorderSide(
-                        color: AppTheme.primaryColor,
-                        width: 2,
-                      ) // Highlight border
-                    : null,
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: isUserSubject && isSelected
-                      ? FontWeight
-                            .w600 // Bold for user's subjects
-                      : FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: colors,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? colors[0]
+                          : (isUserSubject
+                              ? AppTheme.primaryColor.withOpacity(0.3)
+                              : Colors.grey[300]!),
+                      width: isSelected ? 0 : 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: colors[0].withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isUserSubject && isSelected)
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      if (isUserSubject && isSelected) const SizedBox(width: 6),
+                      Text(
+                        subject,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected ? Colors.white : AppTheme.textDark,
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                avatar: isUserSubject && isSelected
-                    ? Icon(Icons.star, size: 16, color: AppTheme.primaryColor)
-                    : null,
               );
             }).toList(),
           ),
           const SizedBox(height: 32),
 
-          // Education Level - Pre-selected from survey
-          Text(
-            AppLocalizations.of(context)!.requestTutorEducationLevel,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...levels.map((level) {
-            final isPreSelected = _educationLevel == level;
-            return RadioListTile<String>(
-              value: level,
-              groupValue: _educationLevel,
-              onChanged: (value) => setState(() => _educationLevel = value),
-              title: Row(
-                children: [
-                  Text(
-                    level,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: isPreSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  if (isPreSelected) ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.check_circle,
-                      size: 18,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ],
-                ],
+          // Education Level - Modern card selection
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                Icons.school_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
               ),
-              activeColor: AppTheme.primaryColor,
-              contentPadding: EdgeInsets.zero,
+              const SizedBox(width: 8),
+              Text(
+                AppLocalizations.of(context)!.requestTutorEducationLevel,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...levels.map((level) {
+            final isSelected = _educationLevel == level;
+            final icon = _getEducationLevelIcon(level);
+            
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                onTap: () => safeSetState(() => _educationLevel = level),
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: [
+                              AppTheme.primaryColor,
+                              AppTheme.primaryColor.withOpacity(0.8),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : Colors.grey[300]!,
+                      width: isSelected ? 0 : 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.white.withOpacity(0.2)
+                              : AppTheme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: isSelected ? Colors.white : AppTheme.primaryColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          level,
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      if (isSelected)
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: AppTheme.primaryColor,
+                            size: 18,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             );
           }).toList(),
           const SizedBox(height: 24),
 
-          // Specific Requirements - Now selectable options
-          Text(
-            AppLocalizations.of(context)!.requestTutorSpecificRequirements,
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+          // Specific Requirements - Modern design
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                Icons.tune_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                AppLocalizations.of(context)!.requestTutorSpecificRequirements,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
@@ -774,60 +953,88 @@ setState(() {
             style: GoogleFonts.poppins(
               fontSize: 13,
               color: AppTheme.textMedium,
-              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 10,
+            runSpacing: 10,
             children: requirementOptions.map((req) {
               final isSelected = _selectedRequirements.contains(req['value']);
-              return FilterChip(
-                selected: isSelected,
-                label: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (req['icon'] != null) ...[
-                      Icon(
-                        req['icon'] as IconData,
-                        size: 16,
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : AppTheme.textMedium,
-                      ),
-                      const SizedBox(width: 6),
-                    ],
-                    Flexible(
-                      child: Text(
-                        req['label'] as String,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _selectedRequirements.add(req['value'] as String);
-                    } else {
+              final reqColors = _getRequirementColors(req['value'] as String, isSelected);
+              
+              return InkWell(
+                onTap: () {
+                  safeSetState(() {
+                    if (isSelected) {
                       _selectedRequirements.remove(req['value'] as String);
+                    } else {
+                      _selectedRequirements.add(req['value'] as String);
                     }
                   });
                 },
-                selectedColor: AppTheme.primaryColor.withOpacity(0.15),
-                checkmarkColor: AppTheme.primaryColor,
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: reqColors,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? reqColors[0]
+                          : Colors.grey[300]!,
+                      width: isSelected ? 0 : 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: reqColors[0].withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (req['icon'] != null) ...[
+                        Icon(
+                          req['icon'] as IconData,
+                          size: 18,
+                          color: isSelected ? Colors.white : AppTheme.primaryColor,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          req['label'] as String,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               );
             }).toList(),
@@ -835,6 +1042,65 @@ setState(() {
         ],
       ),
     );
+  }
+
+  /// Get color scheme for subject chips
+  List<Color> _getSubjectColors(String subject, bool isSelected, bool isUserSubject) {
+    if (!isSelected) return [Colors.grey, Colors.grey];
+    
+    // Different color gradients for different subjects
+    final subjectLower = subject.toLowerCase();
+    if (subjectLower.contains('math') || subjectLower.contains('physics')) {
+      return [Colors.blue[600]!, Colors.blue[400]!];
+    } else if (subjectLower.contains('chem') || subjectLower.contains('bio')) {
+      return [Colors.green[600]!, Colors.green[400]!];
+    } else if (subjectLower.contains('english') || subjectLower.contains('french')) {
+      return [Colors.purple[600]!, Colors.purple[400]!];
+    } else if (subjectLower.contains('computer') || subjectLower.contains('science')) {
+      return [Colors.orange[600]!, Colors.orange[400]!];
+    } else {
+      return [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.7)];
+    }
+  }
+
+  /// Get icon for education level
+  IconData _getEducationLevelIcon(String level) {
+    if (level.contains('Primary')) {
+      return Icons.child_care_rounded;
+    } else if (level.contains('Form 1-3')) {
+      return Icons.school_rounded;
+    } else if (level.contains('O-Level')) {
+      return Icons.assignment_rounded;
+    } else if (level.contains('Lower Sixth')) {
+      return Icons.menu_book_rounded;
+    } else if (level.contains('A-Level')) {
+      return Icons.workspace_premium_rounded;
+    } else if (level.contains('University')) {
+      return Icons.school_rounded;
+    }
+    return Icons.school_rounded;
+  }
+
+  /// Get color scheme for requirement chips
+  List<Color> _getRequirementColors(String value, bool isSelected) {
+    if (!isSelected) return [Colors.grey, Colors.grey];
+    
+    switch (value) {
+      case 'exam_preparation':
+        return [Colors.red[600]!, Colors.red[400]!];
+      case 'gce_exams':
+        return [Colors.blue[600]!, Colors.blue[400]!];
+      case 'homework_help':
+        return [Colors.green[600]!, Colors.green[400]!];
+      case 'catch_up':
+        return [Colors.orange[600]!, Colors.orange[400]!];
+      case 'difficult_topic':
+        return [Colors.purple[600]!, Colors.purple[400]!];
+      case 'improve_grades':
+        return [Colors.teal[600]!, Colors.teal[400]!];
+      default:
+        return [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.7)];
+    }
   }
 
   List<Map<String, dynamic>> _getRequirementOptions() {
@@ -916,7 +1182,7 @@ setState(() {
             title: 'Online',
             subtitle: 'Virtual sessions via video call',
             isSelected: _teachingMode == 'online',
-            onTap: () => setState(() => _teachingMode = 'online'),
+            onTap: () => safeSetState(() => _teachingMode = 'online'),
           ),
           const SizedBox(height: 12),
           _buildOptionCard(
@@ -924,7 +1190,7 @@ setState(() {
             title: 'Onsite',
             subtitle: 'In-person at your location',
             isSelected: _teachingMode == 'onsite',
-            onTap: () => setState(() => _teachingMode = 'onsite'),
+            onTap: () => safeSetState(() => _teachingMode = 'onsite'),
           ),
           const SizedBox(height: 12),
           _buildOptionCard(
@@ -932,7 +1198,7 @@ setState(() {
             title: 'Hybrid',
             subtitle: 'Mix of online and onsite',
             isSelected: _teachingMode == 'hybrid',
-            onTap: () => setState(() => _teachingMode = 'hybrid'),
+            onTap: () => safeSetState(() => _teachingMode = 'hybrid'),
           ),
           const SizedBox(height: 32),
 
@@ -974,7 +1240,7 @@ setState(() {
             divisions: 36,
             activeColor: AppTheme.primaryColor,
             onChanged: (values) {
-              setState(() {
+              safeSetState(() {
                 _minBudget = values.start.toInt();
                 _maxBudget = values.end.toInt();
               });
@@ -993,7 +1259,7 @@ setState(() {
                 label: Text(gender),
                 selected: isSelected,
                 onSelected: (selected) {
-                  setState(() => _tutorGender = selected ? gender : null);
+                  safeSetState(() => _tutorGender = selected ? gender : null);
                 },
                 selectedColor: AppTheme.primaryColor.withOpacity(0.2),
                 labelStyle: GoogleFonts.poppins(
@@ -1096,7 +1362,7 @@ setState(() {
                 selected: isSelected,
                 label: Text(day),
                 onSelected: (selected) {
-                  setState(() {
+                  safeSetState(() {
                     if (selected) {
                       _preferredDays.add(day);
                     } else {
@@ -1123,7 +1389,7 @@ setState(() {
             return RadioListTile<String>(
               value: time,
               groupValue: _preferredTime,
-              onChanged: (value) => setState(() => _preferredTime = value),
+              onChanged: (value) => safeSetState(() => _preferredTime = value),
               title: Text(time, style: GoogleFonts.poppins(fontSize: 14)),
               activeColor: AppTheme.primaryColor,
               contentPadding: EdgeInsets.zero,
@@ -1279,7 +1545,7 @@ setState(() {
             return RadioListTile<String>(
               value: urgencyLevel,
               groupValue: _urgency,
-              onChanged: (value) => setState(() => _urgency = value!),
+              onChanged: (value) => safeSetState(() => _urgency = value!),
               title: Text(
                 labels[urgencyLevel]!,
                 style: GoogleFonts.poppins(fontSize: 14),
@@ -1332,7 +1598,7 @@ setState(() {
                 subtitle: reason['subtitle'] as String?,
                 isSelected: isSelected,
                 onTap: () {
-                  setState(() {
+                  safeSetState(() {
                     _requestReason = reason['value'] as String;
                     if (_requestReason != 'other') {
                       _customReasonController.clear();
@@ -1563,7 +1829,7 @@ setState(() {
         ),
       );
       // Navigate back to step 1
-      setState(() => _currentStep = 0);
+      safeSetState(() => _currentStep = 0);
       _pageController.animateToPage(
         0,
         duration: const Duration(milliseconds: 300),
@@ -1583,7 +1849,7 @@ setState(() {
         ),
       );
       // Navigate back to step 2
-      setState(() => _currentStep = 1);
+      safeSetState(() => _currentStep = 1);
       _pageController.animateToPage(
         1,
         duration: const Duration(milliseconds: 300),
@@ -1603,7 +1869,7 @@ setState(() {
         ),
       );
       // Navigate back to step 3
-      setState(() => _currentStep = 2);
+      safeSetState(() => _currentStep = 2);
       _pageController.animateToPage(
         2,
         duration: const Duration(milliseconds: 300),
@@ -1623,7 +1889,7 @@ setState(() {
         ),
       );
       // Navigate back to step 3
-      setState(() => _currentStep = 2);
+      safeSetState(() => _currentStep = 2);
       _pageController.animateToPage(
         2,
         duration: const Duration(milliseconds: 300),
@@ -1643,7 +1909,7 @@ setState(() {
         ),
       );
       // Navigate back to step 3
-      setState(() => _currentStep = 2);
+      safeSetState(() => _currentStep = 2);
       _pageController.animateToPage(
         2,
         duration: const Duration(milliseconds: 300),
@@ -1737,9 +2003,9 @@ setState(() {
       // Show success
       _showSuccessDialog();
     } catch (e) {
-      print('❌ Error submitting request: $e');
-      print('❌ Error details: ${e.toString()}');
-      print('❌ Stack trace: ${StackTrace.current}');
+      LogService.error('Error submitting request: $e');
+      LogService.error('Error details: ${e.toString()}');
+      LogService.error('Stack trace: ${StackTrace.current}');
 
       // Close loading
       if (mounted) Navigator.pop(context);
@@ -1907,7 +2173,7 @@ Please find a tutor for this user as soon as possible.
               }
             }
           } catch (e) {
-            print('Could not launch WhatsApp: \$e');
+            LogService.debug('Could not launch WhatsApp: \$e');
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(

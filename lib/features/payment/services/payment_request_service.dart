@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 
@@ -20,7 +21,7 @@ class PaymentRequestService {
     BookingRequest approvedRequest,
   ) async {
     try {
-      print('💰 Creating payment request(s) for approved booking: ${approvedRequest.id}');
+      LogService.info('Creating payment request(s) for approved booking: ${approvedRequest.id}');
 
       final paymentPlan = approvedRequest.paymentPlan.toLowerCase();
       
@@ -35,9 +36,9 @@ class PaymentRequestService {
         return await _createSinglePaymentRequest(approvedRequest);
       }
     } catch (e) {
-      print('❌ Error creating payment request: $e');
+      LogService.error('Error creating payment request: $e');
       if (e.toString().contains('relation "payment_requests" does not exist')) {
-        print('⚠️ payment_requests table does not exist - need to create migration');
+        LogService.warning('payment_requests table does not exist - need to create migration');
         throw Exception('Payment requests table not found. Please run database migration.');
       }
       rethrow;
@@ -95,7 +96,7 @@ class PaymentRequestService {
         .single();
 
     final paymentRequestId = response['id'] as String;
-    print('✅ Payment request created: $paymentRequestId (Amount: ${PricingService.formatPrice(paymentAmount)})');
+    LogService.success('Payment request created: $paymentRequestId (Amount: ${PricingService.formatPrice(paymentAmount)})');
 
     return paymentRequestId;
   }
@@ -173,7 +174,7 @@ class PaymentRequestService {
 
     if (response.isNotEmpty) {
       final firstPaymentRequestId = (response as List)[0]['id'] as String;
-      print('✅ Created $count payment request(s) for ${approvedRequest.paymentPlan} plan. First ID: $firstPaymentRequestId');
+      LogService.success('Created $count payment request(s) for ${approvedRequest.paymentPlan} plan. First ID: $firstPaymentRequestId');
       return firstPaymentRequestId;
     } else {
       throw Exception('Failed to create payment requests');
@@ -288,7 +289,7 @@ class PaymentRequestService {
 
       return response;
     } catch (e) {
-      print('❌ Error fetching payment request: $e');
+      LogService.error('Error fetching payment request: $e');
       return null;
     }
   }
@@ -305,7 +306,7 @@ class PaymentRequestService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('❌ Error fetching pending payment requests: $e');
+      LogService.error('Error fetching pending payment requests: $e');
       return [];
     }
   }
@@ -340,23 +341,23 @@ class PaymentRequestService {
           if (item is Map<String, dynamic>) {
             paymentRequests.add(item);
           } else {
-            print('⚠️ Skipping invalid payment request format: ${item.runtimeType}');
+            LogService.warning('Skipping invalid payment request format: ${item.runtimeType}');
           }
         } catch (parseError) {
-          print('⚠️ Error parsing payment request: $parseError');
+          LogService.warning('Error parsing payment request: $parseError');
           // Continue processing other items
         }
       }
       
       return paymentRequests;
     } catch (e) {
-      print('❌ Error fetching all payment requests: $e');
-      print('❌ Stack trace: ${StackTrace.current}');
+      LogService.error('Error fetching all payment requests: $e');
+      LogService.error('Stack trace: ${StackTrace.current}');
       // Check if it's a table not found error
       if (e.toString().contains('does not exist') || 
           e.toString().contains('relation') ||
           e.toString().contains('PGRST')) {
-        print('⚠️ Payment requests table might not exist yet');
+        LogService.warning('Payment requests table might not exist yet');
       }
       return [];
     }
@@ -384,9 +385,9 @@ class PaymentRequestService {
           .update(updateData)
           .eq('id', paymentRequestId);
 
-      print('✅ Payment request status updated: $paymentRequestId -> $status');
+      LogService.success('Payment request status updated: $paymentRequestId -> $status');
     } catch (e) {
-      print('❌ Error updating payment request status: $e');
+      LogService.error('Error updating payment request status: $e');
       rethrow;
     }
   }
@@ -406,10 +407,10 @@ class PaymentRequestService {
           })
           .eq('id', paymentRequestId);
 
-      print('✅ Payment request linked to recurring session: '
+      LogService.success('Payment request linked to recurring session: '
           '$paymentRequestId -> $recurringSessionId');
     } catch (e) {
-      print('❌ Error linking payment request to recurring session: $e');
+      LogService.error('Error linking payment request to recurring session: $e');
       rethrow;
     }
   }
@@ -434,7 +435,7 @@ class PaymentRequestService {
       }
       return null;
     } catch (e) {
-      print('❌ Error fetching payment request by booking request ID: $e');
+      LogService.error('Error fetching payment request by booking request ID: $e');
       return null;
     }
   }

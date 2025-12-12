@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 
 /// Location Sharing Service
@@ -31,7 +32,7 @@ class LocationSharingService {
     try {
       // Check if already tracking
       if (_activeTrackers.containsKey(sessionId)) {
-        print('⚠️ Location sharing already active for session: $sessionId');
+        LogService.warning('Location sharing already active for session: $sessionId');
         return true;
       }
 
@@ -105,7 +106,7 @@ class LocationSharingService {
           );
         },
         onError: (error) {
-          print('❌ Error tracking location: $error');
+          LogService.error('Error tracking location: $error');
         },
       );
 
@@ -127,7 +128,7 @@ class LocationSharingService {
             timestamp: position.timestamp,
           );
         } catch (e) {
-          print('⚠️ Error in periodic location update: $e');
+          LogService.warning('Error in periodic location update: $e');
         }
       });
 
@@ -148,13 +149,13 @@ class LocationSharingService {
           timestamp: initialPosition.timestamp,
         );
       } catch (e) {
-        print('⚠️ Error getting initial position: $e');
+        LogService.warning('Error getting initial position: $e');
       }
 
-      print('✅ Location sharing started for session: $sessionId');
+      LogService.success('Location sharing started for session: $sessionId');
       return true;
     } catch (e) {
-      print('❌ Error starting location sharing: $e');
+      LogService.error('Error starting location sharing: $e');
       return false;
     }
   }
@@ -174,9 +175,9 @@ class LocationSharingService {
         timer.cancel();
       }
 
-      print('✅ Location sharing stopped for session: $sessionId');
+      LogService.success('Location sharing stopped for session: $sessionId');
     } catch (e) {
-      print('❌ Error stopping location sharing: $e');
+      LogService.error('Error stopping location sharing: $e');
     }
   }
 
@@ -226,7 +227,7 @@ class LocationSharingService {
         });
       }
     } catch (e) {
-      print('⚠️ Error updating location: $e');
+      LogService.warning('Error updating location: $e');
       // Don't throw - location updates are best effort
     }
   }
@@ -266,7 +267,7 @@ class LocationSharingService {
         'timestamp': DateTime.parse(response['last_updated_at'] as String),
       };
     } catch (e) {
-      print('❌ Error getting session location: $e');
+      LogService.error('Error getting session location: $e');
       return null;
     }
   }
@@ -296,7 +297,7 @@ class LocationSharingService {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error getting location history: $e');
+      LogService.error('Error getting location history: $e');
       return [];
     }
   }

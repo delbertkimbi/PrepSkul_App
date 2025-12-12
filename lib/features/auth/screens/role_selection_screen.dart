@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
@@ -171,7 +173,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
     final isSelected = _selectedRole == value;
     
     return GestureDetector(
-      onTap: () => setState(() => _selectedRole = value),
+      onTap: () => safeSetState(() => _selectedRole = value),
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -243,7 +245,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   Future<void> _handleContinue() async {
     if (_selectedRole == null) return;
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       final user = SupabaseService.currentUser;
@@ -285,7 +287,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         }
       }
     } catch (e) {
-      print('Error updating role: $e');
+      LogService.debug('Error updating role: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -296,7 +298,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }
@@ -327,6 +329,10 @@ class WaveClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(CustomClipper<Path> oldClipper) => false;
 }
+
+
+
+
 
 
 

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/booking/widgets/location_selector.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 
 /// Post-Trial Conversion Screen
 ///
@@ -57,7 +60,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
 
   /// Pre-fill data from trial session
   void _prefillFromTrial() {
-    setState(() {
+    safeSetState(() {
       // Use trial location
       _selectedLocation = widget.trialSession.location;
 
@@ -92,7 +95,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-      setState(() {
+      safeSetState(() {
         _currentStep++;
       });
     }
@@ -105,7 +108,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-      setState(() {
+      safeSetState(() {
         _currentStep--;
       });
     }
@@ -126,7 +129,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _isSubmitting = true;
     });
 
@@ -172,7 +175,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() {
+      safeSetState(() {
         _isSubmitting = false;
       });
 
@@ -281,7 +284,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
             final isSelected = _selectedFrequency == freq;
 
             return GestureDetector(
-              onTap: () => setState(() => _selectedFrequency = freq),
+              onTap: () => safeSetState(() => _selectedFrequency = freq),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 16),
                 padding: const EdgeInsets.all(20),
@@ -393,7 +396,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
 
               return GestureDetector(
                 onTap: () {
-                  setState(() {
+                  safeSetState(() {
                     if (isSelected) {
                       _selectedDays.remove(day);
                       _selectedTimes.remove(day);
@@ -468,7 +471,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
       initialAddress: _onsiteAddress,
       initialLocationDescription: _locationDescription,
       onLocationSelected: (location, address, locationDescription) {
-        setState(() {
+        safeSetState(() {
           _selectedLocation = location;
           _onsiteAddress = address;
           _locationDescription = locationDescription;
@@ -558,7 +561,7 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
                 : monthlyTotal / 4;
 
             return GestureDetector(
-              onTap: () => setState(() => _selectedPaymentPlan = plan),
+              onTap: () => safeSetState(() => _selectedPaymentPlan = plan),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),

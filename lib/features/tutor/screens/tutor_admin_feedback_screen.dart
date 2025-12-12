@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/unblock_request_service.dart';
@@ -32,21 +34,21 @@ class _TutorAdminFeedbackScreenState extends State<TutorAdminFeedbackScreen> {
   }
 
   Future<void> _loadUpdatedProfile() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       final userId = widget.tutorProfile['user_id'] as String?;
       if (userId != null) {
         final profile = await SurveyRepository.getTutorSurvey(userId);
-        setState(() {
+        safeSetState(() {
           _updatedProfile = profile;
           _isLoading = false;
         });
       } else {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     } catch (e) {
-      print('Error loading profile: $e');
-      setState(() => _isLoading = false);
+      LogService.debug('Error loading profile: $e');
+      safeSetState(() => _isLoading = false);
     }
   }
 

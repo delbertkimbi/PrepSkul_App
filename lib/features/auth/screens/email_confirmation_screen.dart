@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
@@ -51,7 +53,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       if (!mounted) return;
       if (state.event == AuthChangeEvent.signedIn &&
           state.session?.user != null) {
-        setState(() => _isProcessingVerification = true);
+        safeSetState(() => _isProcessingVerification = true);
         try {
           await AuthService.completeEmailVerification(state.session!.user);
           if (!mounted) return;
@@ -70,7 +72,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
           }
         } finally {
           if (mounted) {
-            setState(() => _isProcessingVerification = false);
+            safeSetState(() => _isProcessingVerification = false);
           }
         }
       }
@@ -80,30 +82,45 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   Future<void> _navigateAfterVerification() async {
     final prefs = await SharedPreferences.getInstance();
     final userRole = await AuthService.getUserRole() ?? widget.userRole;
-    final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
     final user = SupabaseService.currentUser;
 
     if (!mounted) return;
     if (user == null) return;
 
     try {
+      // Check if this is a first-time signup by checking profile creation time
+      // or if survey_completed is false/null
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('survey_completed, created_at')
+          .eq('id', user.id)
+          .maybeSingle();
+      
+      final surveyCompleted = profile?['survey_completed'] ?? false;
+      final isFirstSignup = profile == null || !surveyCompleted;
+      
+      // For first-time signup (student/parent/learner), always show survey intro
       if ((userRole == 'student' ||
               userRole == 'learner' ||
               userRole == 'parent') &&
-          !surveyIntroSeen) {
+          isFirstSignup) {
+        // Clear survey_intro_seen to ensure intro screen is shown
+        await prefs.setBool('survey_intro_seen', false);
+        LogService.info('First signup detected - showing survey intro for $userRole');
         Navigator.pushNamedAndRemoveUntil(
           context,
           '/survey-intro',
           (route) => false,
           arguments: {'userType': userRole},
         );
+        return;
       } else {
         // Save auth method preference
         await prefs.setString('auth_method', 'email');
 
         // For new users, ensure survey_intro_seen is cleared so they see the intro screen
         await prefs.setBool('survey_intro_seen', false);
-        print('🆕 New email user signup - cleared survey_intro_seen flag');
+        LogService.info('New email user signup - cleared survey_intro_seen flag');
 
         // Clear stored signup data (no longer needed)
         await prefs.remove('signup_user_role');
@@ -119,25 +136,35 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
             
             // For new tutors (signup), always show choice screen if no progress exists
             if (progress == null && !onboardingSkipped) {
-              print('✅ New tutor signup - navigating to onboarding choice screen');
+              LogService.success('New tutor signup - navigating to onboarding choice screen');
               Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
             } else {
               // Has some progress or was skipped - go to dashboard (they can continue from there)
-              print('✅ Tutor with existing progress - navigating to dashboard');
+              LogService.success('Tutor with existing progress - navigating to dashboard');
               Navigator.pushReplacementNamed(context, '/tutor-nav');
             }
           } else if ((userRole == 'student' ||
                   userRole == 'learner' ||
-                  userRole == 'parent') &&
-              !surveyIntroSeen) {
-            print('✅ Navigating to survey intro screen for $userRole');
-            Navigator.pushReplacementNamed(
+                  userRole == 'parent')) {
+            // Show survey intro for students/parents who haven't seen it
+            final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+            if (!surveyIntroSeen) {
+              LogService.success('Navigating to survey intro screen for $userRole');
+              Navigator.pushReplacementNamed(
               context,
               '/survey-intro',
               arguments: {'userType': userRole},
-            );
+              );
+            } else {
+              // Survey intro already seen, go to profile setup
+              Navigator.pushReplacementNamed(
+                context,
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
+            }
           } else {
-            print('⏭️ Skipping survey intro - navigating to profile setup');
+            LogService.info('Skipping survey intro - navigating to profile setup');
             Navigator.pushReplacementNamed(
               context,
               '/profile-setup',
@@ -147,7 +174,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
         }
       }
     } catch (e) {
-      print('Error proceeding to survey: $e');
+      LogService.error('Error proceeding to survey', e);
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -166,7 +193,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   void _startCountdown() {
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted && _resendCountdown > 0) {
-        setState(() => _resendCountdown--);
+        safeSetState(() => _resendCountdown--);
         _startCountdown();
       }
     });
@@ -188,7 +215,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       return;
     }
 
-    setState(() => _isResending = true);
+    safeSetState(() => _isResending = true);
 
     try {
       // Resend confirmation email with proper redirect URL
@@ -208,7 +235,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
           ),
         );
 
-        setState(() {
+        safeSetState(() {
           _resendCountdown = 60;
         });
         _startCountdown();
@@ -228,7 +255,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isResending = false);
+        safeSetState(() => _isResending = false);
       }
     }
   }

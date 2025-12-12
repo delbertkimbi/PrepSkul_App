@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 
 class ForgotPasswordEmailScreen extends StatefulWidget {
@@ -20,7 +22,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
   Future<void> _handleSendResetEmail() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       final email = _emailController.text.trim();
@@ -29,7 +31,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       await AuthService.sendPasswordResetEmail(email);
 
       if (mounted) {
-        setState(() => _emailSent = true);
+        safeSetState(() => _emailSent = true);
       }
     } catch (e) {
       if (mounted) {
@@ -46,7 +48,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }

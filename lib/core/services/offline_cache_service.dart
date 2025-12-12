@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Offline Cache Service
 /// 
@@ -39,9 +40,9 @@ class OfflineCacheService {
       final json = jsonEncode(tutors);
       await prefs.setString(_keyTutors, json);
       await prefs.setInt('${_keyTutors}_timestamp', DateTime.now().millisecondsSinceEpoch);
-      print('✅ Cached ${tutors.length} tutors');
+      LogService.success('Cached ${tutors.length} tutors');
     } catch (e) {
-      print('❌ Error caching tutors: $e');
+      LogService.error('Error caching tutors: $e');
     }
   }
 
@@ -57,7 +58,7 @@ class OfflineCacheService {
       // Check if cache is expired
       final cacheTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
       if (DateTime.now().difference(cacheTime) > _cacheExpiration) {
-        print('⚠️ Tutor cache expired');
+        LogService.warning('Tutor cache expired');
         return null;
       }
 
@@ -65,10 +66,10 @@ class OfflineCacheService {
       final tutors = List<Map<String, dynamic>>.from(
         decoded.map((t) => Map<String, dynamic>.from(t)),
       );
-      print('✅ Retrieved ${tutors.length} tutors from cache');
+      LogService.success('Retrieved ${tutors.length} tutors from cache');
       return tutors;
     } catch (e) {
-      print('❌ Error getting cached tutors: $e');
+      LogService.error('Error getting cached tutors: $e');
       return null;
     }
   }
@@ -81,9 +82,9 @@ class OfflineCacheService {
       await prefs.setString('$_keyTutorDetails$tutorId', json);
       await prefs.setInt('$_keyTutorDetails$tutorId$_keyCacheTimestamp', 
           DateTime.now().millisecondsSinceEpoch);
-      print('✅ Cached tutor details: $tutorId');
+      LogService.success('Cached tutor details: $tutorId');
     } catch (e) {
-      print('❌ Error caching tutor details: $e');
+      LogService.error('Error caching tutor details: $e');
     }
   }
 
@@ -104,7 +105,7 @@ class OfflineCacheService {
 
       return Map<String, dynamic>.from(jsonDecode(json));
     } catch (e) {
-      print('❌ Error getting cached tutor details: $e');
+      LogService.error('Error getting cached tutor details: $e');
       return null;
     }
   }
@@ -120,9 +121,9 @@ class OfflineCacheService {
       await prefs.setString('$_keyBookingRequests$userId', json);
       await prefs.setInt('$_keyBookingRequests$userId$_keyCacheTimestamp',
           DateTime.now().millisecondsSinceEpoch);
-      print('✅ Cached ${requests.length} booking requests for user: $userId');
+      LogService.success('Cached ${requests.length} booking requests for user: $userId');
     } catch (e) {
-      print('❌ Error caching booking requests: $e');
+      LogService.error('Error caching booking requests: $e');
     }
   }
 
@@ -146,7 +147,7 @@ class OfflineCacheService {
         decoded.map((r) => Map<String, dynamic>.from(r)),
       );
     } catch (e) {
-      print('❌ Error getting cached booking requests: $e');
+      LogService.error('Error getting cached booking requests: $e');
       return null;
     }
   }
@@ -162,9 +163,9 @@ class OfflineCacheService {
       await prefs.setString('$_keyRecurringSessions$userId', json);
       await prefs.setInt('$_keyRecurringSessions$userId$_keyCacheTimestamp',
           DateTime.now().millisecondsSinceEpoch);
-      print('✅ Cached ${sessions.length} recurring sessions for user: $userId');
+      LogService.success('Cached ${sessions.length} recurring sessions for user: $userId');
     } catch (e) {
-      print('❌ Error caching recurring sessions: $e');
+      LogService.error('Error caching recurring sessions: $e');
     }
   }
 
@@ -187,7 +188,7 @@ class OfflineCacheService {
         decoded.map((s) => Map<String, dynamic>.from(s)),
       );
     } catch (e) {
-      print('❌ Error getting cached recurring sessions: $e');
+      LogService.error('Error getting cached recurring sessions: $e');
       return null;
     }
   }
@@ -203,9 +204,9 @@ class OfflineCacheService {
       await prefs.setString('$_keyIndividualSessions$userId', json);
       await prefs.setInt('$_keyIndividualSessions$userId$_keyCacheTimestamp',
           DateTime.now().millisecondsSinceEpoch);
-      print('✅ Cached ${sessions.length} individual sessions for user: $userId');
+      LogService.success('Cached ${sessions.length} individual sessions for user: $userId');
     } catch (e) {
-      print('❌ Error caching individual sessions: $e');
+      LogService.error('Error caching individual sessions: $e');
     }
   }
 
@@ -228,7 +229,7 @@ class OfflineCacheService {
         decoded.map((s) => Map<String, dynamic>.from(s)),
       );
     } catch (e) {
-      print('❌ Error getting cached individual sessions: $e');
+      LogService.error('Error getting cached individual sessions: $e');
       return null;
     }
   }
@@ -241,9 +242,9 @@ class OfflineCacheService {
       await prefs.setString('$_keyUserProfile$userId', json);
       await prefs.setInt('$_keyUserProfile$userId$_keyCacheTimestamp',
           DateTime.now().millisecondsSinceEpoch);
-      print('✅ Cached user profile: $userId');
+      LogService.success('Cached user profile: $userId');
     } catch (e) {
-      print('❌ Error caching user profile: $e');
+      LogService.error('Error caching user profile: $e');
     }
   }
 
@@ -263,7 +264,7 @@ class OfflineCacheService {
 
       return Map<String, dynamic>.from(jsonDecode(json));
     } catch (e) {
-      print('❌ Error getting cached user profile: $e');
+      LogService.error('Error getting cached user profile: $e');
       return null;
     }
   }
@@ -291,9 +292,9 @@ class OfflineCacheService {
           await prefs.remove(key);
         }
       }
-      print('✅ Cleared all cache');
+      LogService.success('Cleared all cache');
     } catch (e) {
-      print('❌ Error clearing cache: $e');
+      LogService.error('Error clearing cache: $e');
     }
   }
 
@@ -307,9 +308,9 @@ class OfflineCacheService {
           await prefs.remove(key);
         }
       }
-      print('✅ Cleared cache for user: $userId');
+      LogService.success('Cleared cache for user: $userId');
     } catch (e) {
-      print('❌ Error clearing user cache: $e');
+      LogService.error('Error clearing user cache: $e');
     }
   }
 }

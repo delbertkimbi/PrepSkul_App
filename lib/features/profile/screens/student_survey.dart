@@ -6,6 +6,8 @@ import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -237,7 +239,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       'paymentPolicyAgreed': _paymentPolicyAgreed,
     };
     await prefs.setString('student_survey_data', jsonEncode(data));
-    print('✅ Auto-saved student survey data');
+    LogService.success('Auto-saved student survey data');
   }
 
   Future<void> _loadSavedData() async {
@@ -247,7 +249,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     if (savedDataString != null) {
       try {
         final data = jsonDecode(savedDataString) as Map<String, dynamic>;
-        setState(() {
+        safeSetState(() {
           _currentStep = data['currentStep'] ?? 0;
           _studentName = data['studentName']; // Keep for backward compatibility
           if (data['studentDateOfBirth'] != null) {
@@ -326,7 +328,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           _updateSteps();
         }
 
-        print(
+        LogService.debug(
           '✅ Loaded saved student survey data - resuming at step $_currentStep',
         );
 
@@ -337,7 +339,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           });
         }
       } catch (e) {
-        print('⚠️ Error loading saved data: $e');
+        LogService.warning('Error loading saved data: $e');
       }
     }
   }
@@ -347,7 +349,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     try {
       // Only pre-populate if name is still empty (user hasn't typed anything)
       if (_studentName != null && _studentName!.isNotEmpty) {
-        print('ℹ️ [NAME_LOAD] Name already set, skipping pre-population');
+        LogService.info('[NAME_LOAD] Name already set, skipping pre-population');
         return;
       }
 
@@ -357,7 +359,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
       // Get user ID directly from Supabase auth (more reliable than SharedPreferences)
       final authUser = SupabaseService.currentUser;
       if (authUser == null) {
-        print('⚠️ [NAME_LOAD] No authenticated user found');
+        LogService.warning('[NAME_LOAD] No authenticated user found');
         return;
       }
 
@@ -374,11 +376,11 @@ class _StudentSurveyState extends State<StudentSurvey> {
             .maybeSingle();
 
         userProfile = profileResponse;
-        print(
+        LogService.debug(
           '🔍 [NAME_LOAD] Profile lookup by userId: ${userProfile?['full_name']}',
         );
       } catch (e) {
-        print('⚠️ [NAME_LOAD] Error loading profile by userId: $e');
+        LogService.warning('[NAME_LOAD] Error loading profile by userId: $e');
       }
 
       // If profile doesn't exist, try to create it or find by email
@@ -393,12 +395,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
 
           if (emailProfileResponse != null) {
             userProfile = emailProfileResponse;
-            print(
+            LogService.debug(
               '🔍 [NAME_LOAD] Found profile by email: ${userProfile['full_name']}',
             );
           } else {
             // Profile doesn't exist - try to create it
-            print('⚠️ [NAME_LOAD] Profile not found, attempting to create...');
+            LogService.warning('[NAME_LOAD] Profile not found, attempting to create...');
             try {
               // Get stored signup data as fallback
               final prefs = await SharedPreferences.getInstance();
@@ -434,13 +436,13 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   .maybeSingle();
 
               userProfile = newProfileResponse;
-              print('✅ [NAME_LOAD] Profile created for user: $userId');
+              LogService.success('[NAME_LOAD] Profile created for user: $userId');
             } catch (createError) {
-              print('⚠️ [NAME_LOAD] Error creating profile: $createError');
+              LogService.warning('[NAME_LOAD] Error creating profile: $createError');
             }
           }
         } catch (e) {
-          print('⚠️ [NAME_LOAD] Error in email lookup/profile creation: $e');
+          LogService.warning('[NAME_LOAD] Error in email lookup/profile creation: $e');
         }
       }
 
@@ -452,14 +454,14 @@ class _StudentSurveyState extends State<StudentSurvey> {
         final profileName = userProfile['full_name'].toString().trim();
         // Only set if still empty (check again after async operations)
         if (_studentName == null || _studentName!.isEmpty) {
-        setState(() {
+        safeSetState(() {
             _studentName = profileName;
             // Name loaded from profile
         });
-        print('✅ Pre-populated student name from profile: $_studentName');
+        LogService.success('Pre-populated student name from profile: $_studentName');
           return;
         } else {
-          print(
+          LogService.debug(
             'ℹ️ [NAME_LOAD] Name was set while loading, skipping pre-population',
           );
           return;
@@ -472,12 +474,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
       if (storedName != null && storedName.trim().isNotEmpty) {
         // Only set if still empty
         if (_studentName == null || _studentName!.isEmpty) {
-          setState(() {
+          safeSetState(() {
             _studentName = storedName.trim();
             // Name loaded from stored signup data
             // Mark as pre-populated
           });
-          print(
+          LogService.debug(
             '✅ Pre-populated student name from stored signup data: $_studentName',
           );
         }
@@ -491,12 +493,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
         if (sessionName != null &&
             sessionName.trim().isNotEmpty &&
             sessionName.trim() != 'User') {
-          setState(() {
+          safeSetState(() {
             _studentName = sessionName.trim();
             // Name loaded from session
             // Mark as pre-populated
           });
-          print('✅ Pre-populated student name from session: $_studentName');
+          LogService.success('Pre-populated student name from session: $_studentName');
           return;
         }
       }
@@ -507,12 +509,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
         if (authUser != null && authUser.userMetadata?['full_name'] != null) {
           final metadataName = authUser.userMetadata!['full_name'] as String;
           if (metadataName.trim().isNotEmpty && metadataName.trim() != 'User') {
-            setState(() {
+            safeSetState(() {
               _studentName = metadataName.trim();
               // Name loaded from auth metadata
               // Mark as pre-populated
             });
-            print(
+            LogService.debug(
               '✅ Pre-populated student name from auth metadata: $_studentName',
             );
             return;
@@ -543,12 +545,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   .trim();
               // Only set if still empty (check again after async database call)
               if (_studentName == null || _studentName!.isEmpty) {
-                setState(() {
+                safeSetState(() {
                   _studentName = fetchedName;
                   // Name loaded from email lookup
                   // Mark as pre-populated
                 });
-                print(
+                LogService.debug(
                   '✅ Pre-populated student name from email lookup: $_studentName',
                 );
               }
@@ -557,26 +559,26 @@ class _StudentSurveyState extends State<StudentSurvey> {
           }
         }
       } catch (e) {
-        print('⚠️ Error in email lookup for name: $e');
+        LogService.warning('Error in email lookup for name: $e');
       }
 
       // Debug: Print all attempted sources
-      print('🔍 [NAME_LOAD] Attempted sources:');
-      print('  - Profile: ${userProfile?['full_name']}');
+      LogService.debug('[NAME_LOAD] Attempted sources:');
+      LogService.debug('  - Profile: ${userProfile?['full_name']}');
       final debugPrefs = await SharedPreferences.getInstance();
-      print('  - Stored signup: ${debugPrefs.getString('signup_full_name')}');
+      LogService.debug('  - Stored signup: ${debugPrefs.getString('signup_full_name')}');
       final debugCurrentUser = await AuthService.getCurrentUser();
-      print('  - Session: ${debugCurrentUser['fullName']}');
+      LogService.debug('  - Session: ${debugCurrentUser['fullName']}');
       final debugAuthUserForLogging = SupabaseService.currentUser;
-      print(
+      LogService.debug(
         '  - Auth metadata: ${debugAuthUserForLogging?.userMetadata?['full_name']}',
       );
-      print('  - Auth email: ${debugAuthUserForLogging?.email}');
-      print(
+      LogService.debug('  - Auth email: ${debugAuthUserForLogging?.email}');
+      LogService.debug(
         '⚠️ Could not find student name in profile, stored data, session, or metadata',
       );
     } catch (e) {
-      print('⚠️ Could not load student name from profile: $e');
+      LogService.warning('Could not load student name from profile: $e');
       // Continue without pre-population - user can enter manually
     }
   }
@@ -595,7 +597,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
   }
 
   void _updateSteps() {
-    setState(() {
+    safeSetState(() {
       _steps = [
         const SurveyStep(
           title: 'Tell us about yourself',
@@ -840,7 +842,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 controller: _pageController,
                 physics: const NeverScrollableScrollPhysics(),
                 onPageChanged: (index) {
-                  setState(() {
+                  safeSetState(() {
                     _currentStep = index;
                   });
                   _saveData(); // Auto-save when step changes
@@ -1004,7 +1006,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           label: 'Gender',
           value: _studentGender,
           items: ['Male', 'Female', 'Other'],
-          onChanged: (value) => setState(() => _studentGender = value),
+          onChanged: (value) => safeSetState(() => _studentGender = value),
           isRequired: true,
         ),
       ],
@@ -1042,12 +1044,12 @@ class _StudentSurveyState extends State<StudentSurvey> {
           return;
         }
 
-        setState(() {
+        safeSetState(() {
           _studentDateOfBirth = selectedDate;
         });
         _saveData();
       } catch (e) {
-        print('⚠️ Error parsing date: $e');
+        LogService.warning('Error parsing date: $e');
         _studentDateOfBirth = null;
       }
     } else {
@@ -1186,7 +1188,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   );
                 }).toList(),
                 onChanged: (value) {
-                  setState(() {
+                  safeSetState(() {
                     _selectedDay = value;
                   });
                   _updateDateOfBirth();
@@ -1261,7 +1263,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   );
                 }).toList(),
                 onChanged: (value) {
-                  setState(() {
+                  safeSetState(() {
                     _selectedMonth = value;
                     // Reset day if it's invalid for the new month
                     if (_selectedDay != null) {
@@ -1351,7 +1353,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                     );
                     return;
                   }
-                  setState(() {
+                  safeSetState(() {
                     // Validate day when year changes
                     if (_selectedDay != null) {
                       final availableDays = _getDaysForMonth();
@@ -1407,7 +1409,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           value: _selectedCity,
           items: AppData.cities.keys.toList(),
           onChanged: (value) {
-            setState(() {
+            safeSetState(() {
               _selectedCity = value;
               _selectedQuarter = null;
               _customQuarter = null;
@@ -1425,7 +1427,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           value: _isCustomQuarter ? 'Other' : _selectedQuarter,
           items: [..._availableQuarters, 'Other'],
           onChanged: (value) {
-            setState(() {
+            safeSetState(() {
               if (value == 'Other') {
                 _isCustomQuarter = true;
                 _selectedQuarter = null;
@@ -1444,7 +1446,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             label: 'Enter Quarter/Neighborhood',
             hint: 'Type your quarter or neighborhood',
             value: _customQuarter,
-            onChanged: (value) => setState(() => _customQuarter = value),
+            onChanged: (value) => safeSetState(() => _customQuarter = value),
             isRequired: true,
           ),
         ],
@@ -1460,14 +1462,14 @@ class _StudentSurveyState extends State<StudentSurvey> {
           options: SurveyConfig.learningGoals,
           selectedValues: _learningGoals,
           onSelectionChanged: (values) =>
-              setState(() => _learningGoals = values),
+              safeSetState(() => _learningGoals = values),
         ),
         const SizedBox(height: 16),
         _buildMultiSelectField(
           title: 'What are your biggest learning challenges?',
           options: SurveyConfig.learningChallenges,
           selectedValues: _challenges,
-          onSelectionChanged: (values) => setState(() => _challenges = values),
+          onSelectionChanged: (values) => safeSetState(() => _challenges = values),
         ),
       ],
     );
@@ -1833,7 +1835,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             subtitle: config?.description,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedLearningPath = program;
                 _resetDynamicFields();
                 _updateSteps();
@@ -1856,7 +1858,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: level,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedEducationLevel = level;
                 _selectedClass = null;
                 _selectedStream = null;
@@ -1886,7 +1888,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: cls,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedClass = cls;
                 _selectedStream = null;
                 _updateSteps();
@@ -1918,7 +1920,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             subtitle: SurveyConfig.getStreamDescription(stream),
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedStream = stream;
                 _updateSteps();
               });
@@ -1986,7 +1988,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
               controller: _universityCoursesController,
               maxLines: 8,
               onChanged: (value) {
-                setState(() {
+                safeSetState(() {
                   // Split by newline and filter empty lines
                   _selectedSubjects = value
                       .split('\n')
@@ -2180,7 +2182,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                   title: subject,
                   isSelected: isSelected,
                   onTap: () {
-                    setState(() {
+                    safeSetState(() {
                       if (isSelected) {
                         _selectedSubjects.remove(subject);
                       } else {
@@ -2235,7 +2237,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: subject,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 if (isSelected) {
                   _selectedSubjects.remove(subject);
                 } else {
@@ -2259,7 +2261,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: category,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedSkillCategory = category;
                 _selectedSkills = [];
                 _updateSteps();
@@ -2284,7 +2286,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: skill,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 if (isSelected) {
                   _selectedSkills.remove(skill);
                 } else {
@@ -2310,7 +2312,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             subtitle: config?.description,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedExamType = type;
                 _selectedSpecificExam = null;
                 _examSubjects = [];
@@ -2336,7 +2338,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: exam,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 _selectedSpecificExam = exam;
                 _examSubjects = [];
                 _updateSteps();
@@ -2361,7 +2363,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             title: subject,
             isSelected: isSelected,
             onTap: () {
-              setState(() {
+              safeSetState(() {
                 if (isSelected) {
                   _examSubjects.remove(subject);
                 } else {
@@ -2423,7 +2425,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           activeColor: AppTheme.primaryColor,
           inactiveColor: AppTheme.softBorder,
           onChanged: (RangeValues values) {
-            setState(() {
+            safeSetState(() {
               _minBudget = values.start.round();
               _maxBudget = values.end.round();
             });
@@ -2542,7 +2544,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
               Checkbox(
                 value: _paymentPolicyAgreed,
                 onChanged: (value) {
-                  setState(() {
+                  safeSetState(() {
                     _paymentPolicyAgreed = value ?? false;
                   });
                 },
@@ -2597,7 +2599,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           children: SurveyConfig.tutorGenderPreferences.map((option) {
             bool isSelected = _tutorGenderPreference == option;
             return GestureDetector(
-              onTap: () => setState(() => _tutorGenderPreference = option),
+              onTap: () => safeSetState(() => _tutorGenderPreference = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -2676,7 +2678,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () =>
-                  setState(() => _tutorQualificationPreference = qual['value']),
+                  safeSetState(() => _tutorQualificationPreference = qual['value']),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -2791,7 +2793,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
-              onTap: () => setState(() => _confidenceLevel = level['value']),
+              onTap: () => safeSetState(() => _confidenceLevel = level['value']),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -2885,7 +2887,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           children: SurveyConfig.learningModes.map((option) {
             bool isSelected = _preferredLocation == option;
             return GestureDetector(
-              onTap: () => setState(() => _preferredLocation = option),
+              onTap: () => safeSetState(() => _preferredLocation = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -2942,7 +2944,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           children: SurveyConfig.schedulePreferences.map((option) {
             bool isSelected = _preferredSchedule == option;
             return GestureDetector(
-              onTap: () => setState(() => _preferredSchedule = option),
+              onTap: () => safeSetState(() => _preferredSchedule = option),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -3025,7 +3027,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
             padding: const EdgeInsets.only(bottom: 10),
             child: GestureDetector(
               onTap: () {
-                setState(() {
+                safeSetState(() {
                   if (isSelected) {
                     _learningStyles.remove(style['value']);
                   } else {
@@ -3448,7 +3450,7 @@ No direct payments should be made to tutors outside the platform.''';
 
   Future<void> _completeSurvey() async {
     try {
-      print('📝 Student Survey submission started...');
+      LogService.info('Student Survey submission started...');
 
       // Show loading indicator
       if (!mounted) return;
@@ -3567,7 +3569,7 @@ No direct payments should be made to tutors outside the platform.''';
           },
         );
       } catch (e) {
-        print('⚠️ Error notifying admins about survey: $e');
+        LogService.warning('Error notifying admins about survey: $e');
         // Don't block survey completion if notification fails
       }
 
@@ -3575,9 +3577,9 @@ No direct payments should be made to tutors outside the platform.''';
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('student_survey_data');
       await prefs.setBool('survey_completed', true);
-      print('✅ Cleared saved student survey data after submission');
+      LogService.success('Cleared saved student survey data after submission');
 
-      print('✅ Student survey saved successfully!');
+      LogService.success('Student survey saved successfully!');
 
       // Close loading dialog
       if (!mounted) return;
@@ -3594,7 +3596,7 @@ No direct payments should be made to tutors outside the platform.''';
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/student-nav');
     } catch (e) {
-      print('❌ Error saving student survey: $e');
+      LogService.error('Error saving student survey: $e');
 
       // Close loading dialog if open
       if (mounted) Navigator.of(context).pop();

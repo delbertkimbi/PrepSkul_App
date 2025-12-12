@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/services/individual_session_service.dart';
@@ -134,7 +135,7 @@ class SessionLifecycleService {
         // 2. Auto-join the meeting when it starts
         // 3. Automatically start recording and transcribing
         // 4. Send webhook with summary/transcript when ready
-        print('📹 Fathom will automatically record this session via calendar monitoring');
+        LogService.debug('📹 Fathom will automatically record this session via calendar monitoring');
       }
 
       // Send notifications to both learner and parent if applicable
@@ -178,9 +179,9 @@ class SessionLifecycleService {
         );
       }
 
-      print('✅ Session started: $sessionId');
+      LogService.success('Session started: $sessionId');
     } catch (e) {
-      print('❌ Error starting session: $e');
+      LogService.error('Error starting session: $e');
       rethrow;
     }
   }
@@ -303,14 +304,14 @@ class SessionLifecycleService {
       try {
         await SessionPaymentService.createSessionPayment(sessionId);
       } catch (e) {
-        print('⚠️ Error creating session payment: $e');
+        LogService.warning('Error creating session payment: $e');
         // Don't fail the session end if payment creation fails
       }
 
-      // For online sessions: stop Fathom recording
+      // For online sessions: Fathom recording stops automatically when meeting ends
+      // No manual stop needed - Fathom detects meeting end via Google Calendar event
       if (session['location'] == 'online') {
-        // TODO: Stop Fathom recording (when Fathom integration is ready)
-        // await FathomService.stopRecording(sessionId);
+        LogService.debug('Session ended - Fathom will automatically stop recording when meeting ends');
       }
 
       // Send notifications - handle both learner and parent
@@ -327,7 +328,7 @@ class SessionLifecycleService {
             .maybeSingle();
         paymentId = paymentRecord?['id'] as String?;
       } catch (e) {
-        print('⚠️ Could not fetch payment record for notification: $e');
+        LogService.warning('Could not fetch payment record for notification: $e');
       }
       
       // Send notification to learner (if exists)
@@ -347,7 +348,7 @@ class SessionLifecycleService {
             sessionEndTime: now,
           );
         } catch (e) {
-          print('⚠️ Error scheduling feedback reminder: $e');
+          LogService.warning('Error scheduling feedback reminder: $e');
         }
       }
       
@@ -368,13 +369,13 @@ class SessionLifecycleService {
             sessionEndTime: now,
           );
         } catch (e) {
-          print('⚠️ Error scheduling feedback reminder for parent: $e');
+          LogService.warning('Error scheduling feedback reminder for parent: $e');
         }
       }
 
-      print('✅ Session ended: $sessionId');
+      LogService.success('Session ended: $sessionId');
     } catch (e) {
-      print('❌ Error ending session: $e');
+      LogService.error('Error ending session: $e');
       rethrow;
     }
   }
@@ -471,9 +472,9 @@ class SessionLifecycleService {
         );
       }
 
-      print('✅ Session cancelled: $sessionId');
+      LogService.success('Session cancelled: $sessionId');
     } catch (e) {
-      print('❌ Error cancelling session: $e');
+      LogService.error('Error cancelling session: $e');
       rethrow;
     }
   }
@@ -549,7 +550,7 @@ class SessionLifecycleService {
         }
       }
     } catch (e) {
-      print('❌ Error detecting no-show: $e');
+      LogService.error('Error detecting no-show: $e');
     }
   }
 
@@ -581,16 +582,16 @@ class SessionLifecycleService {
           final connectionQuality = await ConnectionQualityService.assessConnectionQuality();
           attendanceData['connection_quality'] = connectionQuality;
           attendanceData['meet_link_used'] = true;
-          print('📊 Connection quality at join: $connectionQuality');
+          LogService.info('Connection quality at join: $connectionQuality');
         } catch (e) {
-          print('⚠️ Error assessing connection quality: $e');
+          LogService.warning('Error assessing connection quality: $e');
           // Continue without connection quality if assessment fails
         }
       }
 
       await _supabase.from('session_attendance').insert(attendanceData);
     } catch (e) {
-      print('⚠️ Error creating attendance record: $e');
+      LogService.warning('Error creating attendance record: $e');
       // Don't fail the session start if attendance fails
     }
   }
@@ -619,9 +620,9 @@ class SessionLifecycleService {
           // Get best quality from monitoring period
           final bestQuality = await ConnectionQualityService.getBestQuality();
           updateData['connection_quality'] = bestQuality;
-          print('📊 Final connection quality: $bestQuality');
+          LogService.info('Final connection quality: $bestQuality');
         } catch (e) {
-          print('⚠️ Error getting final connection quality: $e');
+          LogService.warning('Error getting final connection quality: $e');
           // Continue without updating quality if assessment fails
         }
       }
@@ -632,7 +633,7 @@ class SessionLifecycleService {
           .eq('session_id', sessionId)
           .eq('user_id', userId);
     } catch (e) {
-      print('⚠️ Error updating attendance record: $e');
+      LogService.warning('Error updating attendance record: $e');
     }
   }
 
@@ -693,7 +694,7 @@ class SessionLifecycleService {
           .update({'feedback_id': feedback['id']})
           .eq('id', sessionId);
     } catch (e) {
-      print('⚠️ Error creating tutor feedback: $e');
+      LogService.warning('Error creating tutor feedback: $e');
       // Don't fail the session end if feedback fails
     }
   }
@@ -742,9 +743,9 @@ class SessionLifecycleService {
 
       await _supabase.from('tutor_earnings').insert(earningsData);
 
-      print('✅ Earnings calculated for session: $sessionId');
+      LogService.success('Earnings calculated for session: $sessionId');
     } catch (e) {
-      print('⚠️ Error calculating earnings: $e');
+      LogService.warning('Error calculating earnings: $e');
       // Don't fail the session end if earnings calculation fails
     }
   }
@@ -794,11 +795,11 @@ class SessionLifecycleService {
           );
         } catch (e) {
           // Silently fail - in-app notification already sent
-          print('⚠️ Could not send email/push notification for session start: $e');
+          LogService.warning('Could not send email/push notification for session start: $e');
         }
       }
     } catch (e) {
-      print('⚠️ Error sending session started notification: $e');
+      LogService.warning('Error sending session started notification: $e');
     }
   }
 
@@ -827,7 +828,7 @@ class SessionLifecycleService {
             paymentStatus = payment['payment_status'] as String?;
           }
         } catch (e) {
-          print('⚠️ Could not fetch payment details: $e');
+          LogService.warning('Could not fetch payment details: $e');
         }
       }
       
@@ -864,7 +865,7 @@ class SessionLifecycleService {
         },
       );
     } catch (e) {
-      print('⚠️ Error sending session completed notification: $e');
+      LogService.warning('Error sending session completed notification: $e');
     }
   }
 
@@ -885,9 +886,9 @@ class SessionLifecycleService {
         reminderTime: reminderTime,
       );
       
-      print('✅ Feedback reminder scheduled for session: $sessionId at $reminderTime');
+      LogService.success('Feedback reminder scheduled for session: $sessionId at $reminderTime');
     } catch (e) {
-      print('⚠️ Error scheduling feedback reminder: $e');
+      LogService.warning('Error scheduling feedback reminder: $e');
       // Don't rethrow - reminder scheduling shouldn't fail session end
     }
   }
@@ -918,7 +919,7 @@ class SessionLifecycleService {
         },
       );
     } catch (e) {
-      print('⚠️ Error sending session cancelled notification: $e');
+      LogService.warning('Error sending session cancelled notification: $e');
     }
   }
 
@@ -958,9 +959,9 @@ class SessionLifecycleService {
           .update(updateData)
           .eq('id', recurringSessionId);
 
-      print('✅ Updated recurring session totals: $recurringSessionId');
+      LogService.success('Updated recurring session totals: $recurringSessionId');
     } catch (e) {
-      print('❌ Error updating recurring session totals: $e');
+      LogService.error('Error updating recurring session totals: $e');
       // Don't rethrow - this is a background update
     }
   }

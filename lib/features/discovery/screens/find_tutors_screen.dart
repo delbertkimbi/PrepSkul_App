@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
@@ -92,7 +95,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final userProfile = await AuthService.getUserProfile();
       if (userProfile == null) {
         // No user profile - use default subjects
-        setState(() {
+        safeSetState(() {
           _subjects = _defaultSubjects;
           _subjectsLoaded = true;
         });
@@ -102,7 +105,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final userType = userProfile['user_type']?.toString();
       if (userType != 'student' && userType != 'parent') {
         // Not a student/parent - use default subjects
-        setState(() {
+        safeSetState(() {
           _subjects = _defaultSubjects;
           _subjectsLoaded = true;
         });
@@ -176,7 +179,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         sortedSubjects.addAll(otherSubjects);
 
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _userPreferredSubjects = userSubjects;
             _subjects = sortedSubjects.isNotEmpty ? sortedSubjects : _defaultSubjects;
             _subjectsLoaded = true;
@@ -185,17 +188,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       } else {
         // No survey data - use default subjects
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _subjects = _defaultSubjects;
             _subjectsLoaded = true;
           });
         }
       }
     } catch (e) {
-      print('⚠️ Error loading user subjects: $e');
+      LogService.warning('Error loading user subjects: $e');
       // Fallback to default subjects
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _subjects = _defaultSubjects;
           _subjectsLoaded = true;
         });
@@ -227,21 +230,23 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Future<void> _loadTutors() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
-      print('🔍 FindTutorsScreen: Starting to load tutors...');
+      LogService.debug('FindTutorsScreen: Starting to load tutors...');
       
       // Get current user info
       final currentUserData = await AuthService.getCurrentUser();
       if (currentUserData == null) {
         // Fallback to regular tutor loading if no user
         final tutors = await TutorService.fetchTutors();
-        setState(() {
-          _tutors = tutors;
-          _filteredTutors = tutors;
-          _isLoading = false;
-        });
+        if (mounted) {
+          safeSetState(() {
+            _tutors = tutors;
+            _filteredTutors = tutors;
+            _isLoading = false;
+          });
+        }
         return;
       }
 
@@ -262,7 +267,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
         if (matchedTutors.isNotEmpty) {
           // Use matched tutors
-          setState(() {
+          safeSetState(() {
             _matchedTutors = matchedTutors;
             _tutors = matchedTutors.map((mt) => mt.tutor).toList();
             _matchScores = {
@@ -272,45 +277,48 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _filteredTutors = _tutors;
             _isLoading = false;
           });
-          print('✅ FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
+          LogService.success('FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
         } else {
           // Fallback to regular loading if no matches
           final tutors = await TutorService.fetchTutors();
-          setState(() {
+          if (mounted) {
+            safeSetState(() {
+              _tutors = tutors;
+              _filteredTutors = tutors;
+              _isLoading = false;
+            });
+          }
+          LogService.warning('FindTutorsScreen: No matches found, using regular tutor list');
+        }
+      } catch (e) {
+        // Fallback to regular loading on error
+        LogService.warning('FindTutorsScreen: Matching error, using regular loading: $e');
+        final tutors = await TutorService.fetchTutors();
+        if (mounted) {
+          safeSetState(() {
             _tutors = tutors;
             _filteredTutors = tutors;
             _isLoading = false;
           });
-          print('⚠️ FindTutorsScreen: No matches found, using regular tutor list');
         }
-      } catch (e) {
-        // Fallback to regular loading on error
-        print('⚠️ FindTutorsScreen: Matching error, using regular loading: $e');
-        final tutors = await TutorService.fetchTutors();
-        setState(() {
-          _tutors = tutors;
-          _filteredTutors = tutors;
-          _isLoading = false;
-        });
       }
     } catch (e, stackTrace) {
-      print('❌ FindTutorsScreen: Error loading tutors: $e');
-      print('❌ Error type: ${e.runtimeType}');
-      print('❌ Stack trace: $stackTrace');
+      LogService.error('FindTutorsScreen: Error loading tutors: $e');
+      LogService.error('Error type: ${e.runtimeType}');
+      LogService.error('Stack trace: $stackTrace');
       
       // Log specific error details for null type errors
       if (e.toString().contains('null') || e.toString().contains('Null')) {
-        print('⚠️ Null type error detected - checking tutor data transformation');
-        print('⚠️ This may indicate a field is null when String is expected');
+        LogService.warning('Null type error detected - checking tutor data transformation');
+        LogService.warning('This may indicate a field is null when String is expected');
       }
       
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading tutors: $e'),
-            duration: const Duration(seconds: 5),
-          ),
+        safeSetState(() => _isLoading = false);
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to load tutors. Please try again.',
         );
       }
     }
@@ -338,7 +346,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       
       return 'student'; // Default
     } catch (e) {
-      print('⚠️ Error determining user type: $e');
+      LogService.warning('Error determining user type: $e');
       return 'student';
     }
   }
@@ -358,7 +366,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
 
   void _filterTutors() {
-    setState(() {
+    safeSetState(() {
       _filteredTutors = _tutors.where((tutor) {
         final searchQuery = _searchController.text.toLowerCase();
         if (searchQuery.isNotEmpty) {
@@ -400,7 +408,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   void _clearFilters() {
-    setState(() {
+    safeSetState(() {
       _searchController.clear();
       _selectedSubject = null;
       _selectedPriceRange = null;
@@ -450,7 +458,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   child: TextField(
                     controller: _searchController,
                     onChanged: (value) {
-                      setState(() {});
+                      safeSetState(() {});
                       _filterTutors();
                     },
                     style: GoogleFonts.poppins(
@@ -477,7 +485,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               ),
                               onPressed: () {
                                 _searchController.clear();
-                                setState(() {});
+                                safeSetState(() {});
                                 _filterTutors();
                               },
                             )
@@ -506,13 +514,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               children: [
                                 if (_selectedSubject != null)
                                   _buildFilterChip(_selectedSubject!, () {
-                                    setState(() => _selectedSubject = null);
+                                    safeSetState(() => _selectedSubject = null);
                                     _filterTutors();
                                   }),
                                 if (_selectedPriceRange != null) ...[
                                   const SizedBox(width: 8),
                                   _buildFilterChip(_selectedPriceRange!, () {
-                                    setState(() => _selectedPriceRange = null);
+                                    safeSetState(() => _selectedPriceRange = null);
                                     _filterTutors();
                                   }),
                                 ],
@@ -521,7 +529,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                   _buildFilterChip(
                                     '${_minRating.toInt()}+ ⭐',
                                     () {
-                                      setState(() => _minRating = 0.0);
+                                      safeSetState(() => _minRating = 0.0);
                                       _filterTutors();
                                     },
                                   ),
@@ -602,7 +610,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     final isSelected = currentRating == rating;
     return GestureDetector(
       onTap: () {
-        setState(() {
+        safeSetState(() {
           _minRating = rating.toDouble();
         });
         _filterTutors(); // Apply filter when rating indicator is tapped
@@ -775,31 +783,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          // Match Score
-                          if (_matchScores.containsKey(tutor['id'] as String?))
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _getMatchScoreColor(_matchScores[tutor['id'] as String]!.percentage),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.auto_awesome, size: 14, color: Colors.white),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${_matchScores[tutor['id'] as String]!.percentage.toStringAsFixed(0)}% Match',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           Row(
                             children: [
                               Icon(
@@ -930,7 +913,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     final isSelected = _sortBy == value;
     return GestureDetector(
       onTap: () {
-        setState(() {
+        safeSetState(() {
           _sortBy = value;
           _applySorting();
         });
@@ -969,7 +952,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
   
   void _applySorting() {
-    setState(() {
+    safeSetState(() {
       _filteredTutors.sort((a, b) {
         switch (_sortBy) {
           case 'match':
@@ -1238,7 +1221,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               final isUserPreferred = _userPreferredSubjects.contains(subject);
                         return GestureDetector(
                           onTap: () {
-                            setState(() {
+                            safeSetState(() {
                               _selectedSubject = isSelected ? null : subject;
                             });
                                   _filterTutors(); // Apply filter when subject changes
@@ -1319,7 +1302,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         final isSelected = _selectedPriceRange == label;
                         return GestureDetector(
                           onTap: () {
-                            setState(() {
+                            safeSetState(() {
                               _selectedPriceRange = isSelected ? null : label;
                             });
                             _filterTutors(); // Apply filter when price range changes
@@ -1380,7 +1363,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             activeColor: AppTheme.primaryColor,
                                 inactiveColor: Colors.grey[300],
                             onChanged: (value) {
-                              setState(() {
+                              safeSetState(() {
                                 // Round to nearest integer for proper snapping
                                 _minRating = value.round().toDouble();
                               });
@@ -1483,7 +1466,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge),
           errorWidget: (context, url, error) {
             // Log error for debugging
-            print('⚠️ Failed to load avatar image: $url, error: $error');
+            LogService.warning('Failed to load avatar image: $url, error: $error');
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
           fadeInDuration: const Duration(milliseconds: 300),

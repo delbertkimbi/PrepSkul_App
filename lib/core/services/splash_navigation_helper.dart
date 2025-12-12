@@ -1,5 +1,6 @@
 // Temporary helper to debug navigation
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -15,7 +16,7 @@ class SplashNavigationHelper {
       final hasCompletedSurvey = await AuthService.isSurveyCompleted();
       final userRole = await AuthService.getUserRole();
 
-      print('📊 [NAV] State: onboarding=$hasCompletedOnboarding, loggedIn=$isLoggedIn, supabase=$hasSupabaseSession, survey=$hasCompletedSurvey, role=$userRole');
+      LogService.info('[NAV] State: onboarding=$hasCompletedOnboarding, loggedIn=$isLoggedIn, supabase=$hasSupabaseSession, survey=$hasCompletedSurvey, role=$userRole');
 
       if (!hasCompletedOnboarding) {
         return '/onboarding';
@@ -35,7 +36,7 @@ class SplashNavigationHelper {
         return '/auth-method-selection';
       }
     } catch (e) {
-      print('❌ [NAV] Error determining route: $e');
+      LogService.error('[NAV] Error determining route: $e');
       return '/auth-method-selection';
     }
   }
@@ -68,7 +69,7 @@ class SplashNavigationHelper {
       }
       return false;
     } catch (e) {
-      print('⚠️ [NAV] Error restoring session: $e');
+      LogService.warning('[NAV] Error restoring session: $e');
       return false;
     }
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Connectivity Service
 ///
@@ -35,7 +36,7 @@ class ConnectivityService {
       _isOnline = _hasConnection(result);
       _isInitialized = true;
 
-      print('🌐 Connectivity initialized: ${_isOnline ? "Online" : "Offline"}');
+      LogService.debug('🌐 Connectivity initialized: ${_isOnline ? "Online" : "Offline"}');
 
       // Listen for connectivity changes
       _subscription = _connectivity.onConnectivityChanged.listen(
@@ -44,14 +45,14 @@ class ConnectivityService {
           _isOnline = _hasConnection(result);
 
           if (wasOnline != _isOnline) {
-            print(
+            LogService.debug(
               '🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}',
             );
             _connectivityController?.add(_isOnline);
           }
         },
         onError: (error) {
-          print('❌ Connectivity monitoring error: $error');
+          LogService.error('Connectivity monitoring error: $error');
           // Assume offline on error
           if (_isOnline) {
             _isOnline = false;
@@ -60,7 +61,7 @@ class ConnectivityService {
         },
       );
     } catch (e) {
-      print('❌ Error initializing connectivity: $e');
+      LogService.error('Error initializing connectivity: $e');
       // Default to offline on error
       _isOnline = false;
       _isInitialized = true;
@@ -80,7 +81,7 @@ class ConnectivityService {
       _isOnline = _hasConnection(result);
       return _isOnline;
     } catch (e) {
-      print('❌ Error checking connectivity: $e');
+      LogService.error('Error checking connectivity: $e');
       return false;
     }
   }

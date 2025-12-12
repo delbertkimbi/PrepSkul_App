@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Service class to handle Supabase operations
 class SupabaseService {
@@ -80,9 +81,9 @@ class SupabaseService {
   static Future<void> sendPhoneOTP(String phoneNumber) async {
     try {
       await client.auth.signInWithOtp(phone: phoneNumber);
-      print('✅ OTP sent successfully to: $phoneNumber');
+      LogService.success('OTP sent successfully to: $phoneNumber');
     } catch (e) {
-      print('❌ Error sending OTP: $e');
+      LogService.error('Error sending OTP: $e');
       rethrow;
     }
   }
@@ -93,16 +94,16 @@ class SupabaseService {
     required String token,
   }) async {
     try {
-      print('🔐 Verifying OTP for: $phone with code: $token');
+      LogService.debug('🔐 Verifying OTP for: $phone with code: $token');
       final response = await client.auth.verifyOTP(
         phone: phone,
         token: token,
         type: OtpType.sms,
       );
-      print('✅ OTP verified successfully!');
+      LogService.success('OTP verified successfully!');
       return response;
     } catch (e) {
-      print('❌ Error verifying OTP: $e');
+      LogService.error('Error verifying OTP: $e');
       final errorStr = e.toString().toLowerCase();
       
       // Provide helpful error messages

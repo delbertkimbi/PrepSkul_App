@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
 import '../../../core/widgets/skeletons/student_home_skeleton.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -98,7 +100,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       }
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
         });
       }
@@ -119,10 +121,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         });
       }
     } catch (e) {
-      print('Error loading user data: $e');
+      LogService.debug('Error loading user data: $e');
       if (!mounted) return;
 
-      setState(() {
+      safeSetState(() {
         _userName = 'Student';
         _isLoading = false;
       });

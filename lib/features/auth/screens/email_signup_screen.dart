@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -257,7 +259,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                           : Icons.visibility_off_outlined,
                                     ),
                                     onPressed: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _obscurePassword = !_obscurePassword;
                                       });
                                     },
@@ -328,7 +330,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                           : Icons.visibility_off_outlined,
                                     ),
                                     onPressed: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _obscureConfirmPassword =
                                             !_obscureConfirmPassword;
                                       });
@@ -545,7 +547,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       final email = _emailController.text.trim();
@@ -623,7 +625,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
         );
       }
     } catch (e) {
-      print('❌ Email signup error: $e');
+      LogService.error('Email signup error: $e');
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -654,7 +656,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }
@@ -663,7 +665,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
     final isSelected = _selectedRole == value;
     return GestureDetector(
       onTap: () {
-        setState(() {
+        safeSetState(() {
           _selectedRole = value;
         });
       },

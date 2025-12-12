@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -79,7 +80,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_completed', true);
-    print('Onboarding completed, navigating to auth method selection...');
+    LogService.debug('Onboarding completed, navigating to auth method selection...');
     Navigator.pushReplacementNamed(context, '/auth-method-selection');
   }
 

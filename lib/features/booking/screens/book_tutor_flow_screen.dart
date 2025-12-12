@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
@@ -10,6 +12,7 @@ import 'package:prepskul/features/booking/widgets/days_selector.dart';
 import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
 import 'package:prepskul/features/booking/widgets/location_selector.dart';
 import 'package:prepskul/features/booking/widgets/booking_review.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
 ///
@@ -75,12 +78,12 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       }
 
       if (surveyData != null && mounted) {
-        setState(() {
+        safeSetState(() {
           _applyPrefillData(surveyData!);
         });
       }
     } catch (e) {
-      print('⚠️ Could not load survey data for prefill: $e');
+      LogService.warning('Could not load survey data for prefill', e);
     }
   }
 
@@ -108,7 +111,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     if (survey['city'] != null && survey['quarter'] != null) {
       final street = survey['street'] != null ? ', ${survey['street']}' : '';
       _onsiteAddress = '${survey['city']}, ${survey['quarter']}$street';
-      print('✅ Pre-filled address: $_onsiteAddress');
+      LogService.success('Pre-filled address', _onsiteAddress);
     }
 
     // Pre-fill location description if available
@@ -142,7 +145,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     }
     
     if (_currentStep < _totalSteps - 1) {
-      setState(() => _currentStep++);
+      safeSetState(() => _currentStep++);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -153,7 +156,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   void _previousStep() {
     if (_currentStep > 0) {
-      setState(() => _currentStep--);
+      safeSetState(() => _currentStep--);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -246,76 +249,18 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       // Show success
       _showSuccessDialog();
     } catch (e) {
-      print('❌ Error creating booking request: $e');
-      print('❌ Error details: ${e.toString()}');
-      print('❌ Stack trace: ${StackTrace.current}');
+      LogService.error('Error creating booking request', e);
+      // Error details logged in LogService.error above
+      // Stack trace logged in LogService.error above
 
       if (!mounted) return;
       Navigator.pop(context);
 
-      // Show error dialog with more details
-      final errorMessage = e.toString().contains('not authenticated')
-          ? 'You are not logged in. Please log in and try again.'
-          : e.toString().contains('network') || e.toString().contains('connection')
-              ? 'Network error. Please check your connection and try again.'
-              : e.toString().contains('student_type') || e.toString().contains('constraint')
-                  ? 'There was an issue with your request. Please try again or contact support.'
-                  : 'Unable to send your booking request. Please check your connection and try again.';
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.red[300], size: 28),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Request Failed',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            errorMessage,
-            style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Try Again',
-                style: GoogleFonts.poppins(
-                  color: AppTheme.primaryColor,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context); // Go back to tutor detail
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-              ),
-              child: Text(
-                'Go Back',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
+      // Use ErrorHandlerService for consistent error handling
+      ErrorHandlerService.showError(
+        context,
+        e,
+        'Failed to send booking request. Please try again.',
       );
     }
   }
@@ -442,7 +387,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             tutor: widget.tutor,
             initialFrequency: _selectedFrequency,
             onFrequencySelected: (frequency) {
-              setState(() {
+              safeSetState(() {
                 _selectedFrequency = frequency;
                 // Reset days/times if frequency changes
                 if (_selectedDays.length > frequency) {
@@ -459,7 +404,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             requiredDays: _selectedFrequency ?? 1,
             initialDays: _selectedDays,
             onDaysSelected: (days) {
-              setState(() {
+              safeSetState(() {
                 _selectedDays = days;
                 // Clear times for days that were removed
                 _selectedTimes.removeWhere((day, time) => !days.contains(day));
@@ -473,7 +418,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             selectedDays: _selectedDays,
             initialTimes: _selectedTimes,
             onTimesSelected: (times) {
-              setState(() => _selectedTimes = times);
+              safeSetState(() => _selectedTimes = times);
             },
           ),
 
@@ -484,7 +429,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             initialAddress: _onsiteAddress,
             initialLocationDescription: _locationDescription,
             onLocationSelected: (location, address, locationDescription) {
-              setState(() {
+              safeSetState(() {
                 _selectedLocation = location;
                 _onsiteAddress = address;
                 _locationDescription = locationDescription;
@@ -503,7 +448,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             locationDescription: _locationDescription,
             initialPaymentPlan: _selectedPaymentPlan,
             onPaymentPlanSelected: (plan) {
-              setState(() => _selectedPaymentPlan = plan);
+              safeSetState(() => _selectedPaymentPlan = plan);
             },
           ),
         ],

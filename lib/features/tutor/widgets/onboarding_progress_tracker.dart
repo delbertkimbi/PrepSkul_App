@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
@@ -127,7 +128,7 @@ class _OnboardingProgressTrackerState
         _isLoading = false;
       });
     } catch (e) {
-      print('⚠️ Error loading progress: $e');
+      LogService.warning('Error loading progress: $e');
       setState(() => _isLoading = false);
     }
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:http/http.dart' as http;
 
 /// Connection Quality Service
@@ -30,7 +31,7 @@ class ConnectionQualityService {
       final service = ConnectionQualityService();
       return await service._assessQuality();
     } catch (e) {
-      print('⚠️ Error assessing connection quality: $e');
+      LogService.warning('Error assessing connection quality: $e');
       return 'fair'; // Default to fair on error
     }
   }
@@ -43,7 +44,7 @@ class ConnectionQualityService {
       final service = ConnectionQualityService();
       await service._startMonitoring(sessionId);
     } catch (e) {
-      print('⚠️ Error starting connection monitoring: $e');
+      LogService.warning('Error starting connection monitoring: $e');
     }
   }
 
@@ -100,7 +101,7 @@ class ConnectionQualityService {
         }
       }
     } catch (e) {
-      print('⚠️ Error in quality assessment: $e');
+      LogService.warning('Error in quality assessment: $e');
       // Default assessment based on connectivity only
       final connectivityResult = await _connectivity.checkConnectivity();
       if (connectivityResult == ConnectivityResult.none) {
@@ -158,19 +159,19 @@ class ConnectionQualityService {
           _connectivityChecks.removeAt(0);
         }
         
-        print('📊 Connection quality check: $quality');
+        LogService.info('Connection quality check: $quality');
       } catch (e) {
-        print('⚠️ Error in periodic quality check: $e');
+        LogService.warning('Error in periodic quality check: $e');
       }
     });
     
-    print('📊 Started connection quality monitoring for session: $sessionId');
+    LogService.info('Started connection quality monitoring for session: $sessionId');
   }
 
   void _stopMonitoring() {
     _monitoringTimer?.cancel();
     _monitoringTimer = null;
-    print('📊 Stopped connection quality monitoring');
+    LogService.info('Stopped connection quality monitoring');
   }
 
   String _getBestQuality() {

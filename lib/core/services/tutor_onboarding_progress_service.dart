@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'dart:convert';
 
 /// Service to manage tutor onboarding progress tracking
@@ -11,7 +12,7 @@ class TutorOnboardingProgressService {
     Map<String, dynamic> stepData,
   ) async {
     try {
-      print('💾 Saving step $stepNumber progress for user: $userId');
+      LogService.info('Saving step $stepNumber progress for user: $userId');
 
       // Get current progress
       final currentProgress = await _getProgressRecord(userId);
@@ -46,9 +47,9 @@ class TutorOnboardingProgressService {
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id');
 
-      print('✅ Step $stepNumber progress saved successfully');
+      LogService.success('Step $stepNumber progress saved successfully');
     } catch (e) {
-      print('❌ Error saving step progress: $e');
+      LogService.error('Error saving step progress: $e');
       rethrow;
     }
   }
@@ -61,7 +62,7 @@ class TutorOnboardingProgressService {
     List<int> completedSteps,
   ) async {
     try {
-      print('💾 Saving all progress for user: $userId');
+      LogService.info('Saving all progress for user: $userId');
 
       await SupabaseService.client
           .from('tutor_onboarding_progress')
@@ -74,9 +75,9 @@ class TutorOnboardingProgressService {
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id');
 
-      print('✅ All progress saved successfully');
+      LogService.success('All progress saved successfully');
     } catch (e) {
-      print('❌ Error saving all progress: $e');
+      LogService.error('Error saving all progress: $e');
       rethrow;
     }
   }
@@ -87,7 +88,7 @@ class TutorOnboardingProgressService {
   /// from existing tutor profiles (for users who signed up before progress tracking).
   static Future<Map<String, dynamic>?> loadProgress(String userId) async {
     try {
-      print('📖 Loading progress for user: $userId');
+      LogService.debug('📖 Loading progress for user: $userId');
 
       // 1. Try loading from progress table
       var progress = await SupabaseService.client
@@ -124,7 +125,7 @@ class TutorOnboardingProgressService {
            if (progress['is_complete'] == true) {
              useExisting = true;
            } else {
-             print('⚠️ Verified user has incomplete progress. Forcing Sync...');
+             LogService.warning('Verified user has incomplete progress. Forcing Sync...');
              useExisting = false;
            }
         } else {
@@ -133,7 +134,7 @@ class TutorOnboardingProgressService {
               final sData = progress['step_data'] as Map;
               // If Step 0 missing, Force Sync to pick up email/phone from baseProfile
               if (sData['0'] == null) {
-                 print('🛠️ Step 0 missing. Forcing Sync...');
+                 LogService.debug('🛠️ Step 0 missing. Forcing Sync...');
                  useExisting = false; 
               } else {
                  useExisting = true;
@@ -143,15 +144,15 @@ class TutorOnboardingProgressService {
       }
 
       if (useExisting) {
-        print('✅ Using existing progress from tracking table');
+        LogService.success('Using existing progress from tracking table');
         return progress;
       }
 
       // 5. Sync / Construct Progress
-      print('🔄 Syncing/Constructing progress from profiles...');
+      LogService.debug('🔄 Syncing/Constructing progress from profiles...');
       
       if (profile == null) {
-        print('ℹ️ No existing tutor profile found. New user.');
+        LogService.info('No existing tutor profile found. New user.');
         return progress; 
       }
 
@@ -291,7 +292,7 @@ class TutorOnboardingProgressService {
       // 6. Finalize Sync
       // Force completion if verified
       if (isVerified) {
-        print('✅ User is verified. Forcing 100% completion.');
+        LogService.success('User is verified. Forcing 100% completion.');
         // Ensure all steps 0-13 are in completedSteps
         for (int i = 0; i <= 13; i++) {
            if (!completedSteps.contains(i)) completedSteps.add(i);
@@ -324,7 +325,7 @@ class TutorOnboardingProgressService {
       };
 
     } catch (e) {
-      print('❌ Error loading progress: $e');
+      LogService.error('Error loading progress: $e');
       return null;
     }
   }
@@ -340,7 +341,7 @@ class TutorOnboardingProgressService {
       final completedSteps = progress['completed_steps'] as List<dynamic>? ?? [];
       return completedSteps.map((e) => e as int).toList();
     } catch (e) {
-      print('❌ Error getting completed steps: $e');
+      LogService.error('Error getting completed steps: $e');
       return [];
     }
   }
@@ -348,7 +349,7 @@ class TutorOnboardingProgressService {
   /// Mark a step as complete
   static Future<void> markStepComplete(String userId, int stepNumber) async {
     try {
-      print('✅ Marking step $stepNumber as complete for user: $userId');
+      LogService.success('Marking step $stepNumber as complete for user: $userId');
 
       final currentProgress = await _getProgressRecord(userId);
       List<int> completedSteps = [];
@@ -373,9 +374,9 @@ class TutorOnboardingProgressService {
         'updated_at': DateTime.now().toIso8601String(),
       }, onConflict: 'user_id');
 
-      print('✅ Step $stepNumber marked as complete');
+      LogService.success('Step $stepNumber marked as complete');
     } catch (e) {
-      print('❌ Error marking step complete: $e');
+      LogService.error('Error marking step complete: $e');
       rethrow;
     }
   }
@@ -389,7 +390,7 @@ class TutorOnboardingProgressService {
       }
       return progress['is_complete'] as bool? ?? false;
     } catch (e) {
-      print('❌ Error checking onboarding completion: $e');
+      LogService.error('Error checking onboarding completion: $e');
       return false;
     }
   }
@@ -397,7 +398,7 @@ class TutorOnboardingProgressService {
   /// Mark onboarding as complete
   static Future<void> markOnboardingComplete(String userId) async {
     try {
-      print('🎉 Marking onboarding as complete for user: $userId');
+      LogService.debug('🎉 Marking onboarding as complete for user: $userId');
 
       await SupabaseService.client
           .from('tutor_onboarding_progress')
@@ -414,9 +415,9 @@ class TutorOnboardingProgressService {
           .update({'onboarding_skipped': false})
           .eq('id', userId);
 
-      print('✅ Onboarding marked as complete');
+      LogService.success('Onboarding marked as complete');
     } catch (e) {
-      print('❌ Error marking onboarding complete: $e');
+      LogService.error('Error marking onboarding complete: $e');
       rethrow;
     }
   }
@@ -424,7 +425,7 @@ class TutorOnboardingProgressService {
   /// Skip onboarding (called when tutor chooses "Skip for Later")
   static Future<void> skipOnboarding(String userId) async {
     try {
-      print('⏭️ Skipping onboarding for user: $userId');
+      LogService.debug('⏭️ Skipping onboarding for user: $userId');
 
       // Create progress record with skipped flag
       await SupabaseService.client
@@ -445,9 +446,9 @@ class TutorOnboardingProgressService {
           .update({'onboarding_skipped': true})
           .eq('id', userId);
 
-      print('✅ Onboarding skipped');
+      LogService.success('Onboarding skipped');
     } catch (e) {
-      print('❌ Error skipping onboarding: $e');
+      LogService.error('Error skipping onboarding: $e');
       rethrow;
     }
   }
@@ -455,7 +456,7 @@ class TutorOnboardingProgressService {
   /// Resume onboarding (clear skip flag when they start onboarding)
   static Future<void> resumeOnboarding(String userId) async {
     try {
-      print('▶️ Resuming onboarding for user: $userId');
+      LogService.debug('▶️ Resuming onboarding for user: $userId');
 
       await SupabaseService.client
           .from('tutor_onboarding_progress')
@@ -471,9 +472,9 @@ class TutorOnboardingProgressService {
           .update({'onboarding_skipped': false})
           .eq('id', userId);
 
-      print('✅ Onboarding resumed');
+      LogService.success('Onboarding resumed');
     } catch (e) {
-      print('❌ Error resuming onboarding: $e');
+      LogService.error('Error resuming onboarding: $e');
       rethrow;
     }
   }
@@ -487,7 +488,7 @@ class TutorOnboardingProgressService {
       }
       return progress['skipped_onboarding'] as bool? ?? false;
     } catch (e) {
-      print('❌ Error checking if onboarding skipped: $e');
+      LogService.error('Error checking if onboarding skipped: $e');
       return false;
     }
   }
@@ -501,7 +502,7 @@ class TutorOnboardingProgressService {
       }
       return progress['current_step'] as int? ?? 0;
     } catch (e) {
-      print('❌ Error getting current step: $e');
+      LogService.error('Error getting current step: $e');
       return 0;
     }
   }
@@ -520,7 +521,7 @@ class TutorOnboardingProgressService {
       final stepData = progress['step_data'] as Map<String, dynamic>? ?? {};
       return stepData[stepNumber.toString()] as Map<String, dynamic>?;
     } catch (e) {
-      print('❌ Error getting step data: $e');
+      LogService.error('Error getting step data: $e');
       return null;
     }
   }
@@ -537,7 +538,7 @@ class TutorOnboardingProgressService {
           .maybeSingle();
       return response;
     } catch (e) {
-      print('❌ Error getting progress record: $e');
+      LogService.error('Error getting progress record: $e');
       return null;
     }
   }
@@ -549,9 +550,9 @@ class TutorOnboardingProgressService {
           .from('tutor_onboarding_progress')
           .delete()
           .eq('user_id', userId);
-      print('✅ Progress deleted');
+      LogService.success('Progress deleted');
     } catch (e) {
-      print('❌ Error deleting progress: $e');
+      LogService.error('Error deleting progress: $e');
       rethrow;
     }
   }

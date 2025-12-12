@@ -2,6 +2,7 @@
 /// 
 /// Tracks navigation events, errors, and provides analytics insights
 import 'dart:async';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Navigation event types
 enum NavigationEventType {
@@ -69,7 +70,7 @@ class NavigationAnalytics {
       '/',
       metadata: {'action': 'app_start'},
     );
-    print('📊 [NAV_ANALYTICS] Analytics initialized');
+    LogService.info('[NAV_ANALYTICS] Analytics initialized');
   }
 
   /// Track route determination
@@ -79,7 +80,7 @@ class NavigationAnalytics {
       route,
       metadata: metadata,
     );
-    print('📊 [NAV_ANALYTICS] Route determined: $route');
+    LogService.info('[NAV_ANALYTICS] Route determined: $route');
   }
 
   /// Track route navigation
@@ -101,7 +102,7 @@ class NavigationAnalytics {
       _routeLoadTimes[route] = loadTime;
     }
     
-    print('📊 [NAV_ANALYTICS] Navigated to: $route (visit #${_routeVisitCounts[route]})');
+    LogService.info('[NAV_ANALYTICS] Navigated to: $route (visit #${_routeVisitCounts[route]})');
   }
 
   /// Track route guard blocking
@@ -118,7 +119,7 @@ class NavigationAnalytics {
         'redirect_route': redirectRoute,
       },
     );
-    print('📊 [NAV_ANALYTICS] Route guard blocked: $route → $redirectRoute');
+    LogService.info('[NAV_ANALYTICS] Route guard blocked: $route → $redirectRoute');
   }
 
   /// Track deep link queued
@@ -128,7 +129,7 @@ class NavigationAnalytics {
       path,
       metadata: metadata,
     );
-    print('📊 [NAV_ANALYTICS] Deep link queued: $path');
+    LogService.info('[NAV_ANALYTICS] Deep link queued: $path');
   }
 
   /// Track deep link processed
@@ -138,7 +139,7 @@ class NavigationAnalytics {
       path,
       metadata: metadata,
     );
-    print('📊 [NAV_ANALYTICS] Deep link processed: $path');
+    LogService.info('[NAV_ANALYTICS] Deep link processed: $path');
   }
 
   /// Track navigation error
@@ -159,7 +160,7 @@ class NavigationAnalytics {
     // Track error count
     _errorCounts[route] = (_errorCounts[route] ?? 0) + 1;
     
-    print('❌ [NAV_ANALYTICS] Navigation error on $route: $errorMessage');
+    LogService.error('[NAV_ANALYTICS] Navigation error on $route: $errorMessage');
     
     // Optionally send to error tracking service
     _sendErrorToTracking(route, errorMessage, stackTrace);
@@ -172,7 +173,7 @@ class NavigationAnalytics {
       route,
       metadata: metadata,
     );
-    print('⏰ [NAV_ANALYTICS] Navigation timeout on: $route');
+    LogService.debug('⏰ [NAV_ANALYTICS] Navigation timeout on: $route');
   }
 
   /// Track back navigation
@@ -182,7 +183,7 @@ class NavigationAnalytics {
       fromRoute,
       metadata: {'to_route': toRoute},
     );
-    print('📊 [NAV_ANALYTICS] Back navigation: $fromRoute → ${toRoute ?? "unknown"}');
+    LogService.info('[NAV_ANALYTICS] Back navigation: $fromRoute → ${toRoute ?? "unknown"}');
   }
 
   /// Get analytics summary
@@ -265,7 +266,7 @@ class NavigationAnalytics {
     _routeLoadTimes.clear();
     _appStartTime = null;
     _currentRoute = null;
-    print('🔄 [NAV_ANALYTICS] Analytics data cleared');
+    LogService.debug('🔄 [NAV_ANALYTICS] Analytics data cleared');
   }
 
   /// Export analytics data
@@ -320,9 +321,9 @@ class NavigationAnalytics {
       // });
       
       // For now, just print (can be extended to send to Sentry, Firebase, etc.)
-      print('📤 [NAV_ANALYTICS] Error logged for tracking');
+      LogService.debug('📤 [NAV_ANALYTICS] Error logged for tracking');
     } catch (e) {
-      print('❌ [NAV_ANALYTICS] Failed to send error to tracking: $e');
+      LogService.error('[NAV_ANALYTICS] Failed to send error to tracking: $e');
     }
   }
 }

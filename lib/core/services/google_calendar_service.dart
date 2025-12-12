@@ -1,6 +1,7 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:googleapis/calendar/v3.dart' as cal;
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 
 /// Calendar Event Model
 class CalendarEvent {
@@ -47,9 +48,9 @@ class GoogleCalendarService {
       // Initialize Calendar API with authenticated client
       _calendarApi = cal.CalendarApi(client);
 
-      print('✅ Google Calendar API initialized successfully');
+      LogService.success('Google Calendar API initialized successfully');
     } catch (e) {
-      print('❌ Error initializing Google Calendar API: $e');
+      LogService.error('Error initializing Google Calendar API: $e');
       rethrow;
     }
   }
@@ -78,9 +79,8 @@ class GoogleCalendarService {
         throw Exception('Calendar API not initialized');
       }
 
-      // Get PrepSkul VA email from env
-      final prepskulVAEmail =
-          dotenv.env['PREPSKUL_VA_EMAIL'] ?? 'deltechhub237@gmail.com';
+      // Get PrepSkul VA email from AppConfig
+      final prepskulVAEmail = AppConfig.prepskulVAEmail;
 
       // Ensure PrepSkul VA is in attendees
       final allAttendees = <String>[...attendeeEmails];
@@ -149,13 +149,13 @@ class GoogleCalendarService {
           '';
 
       if (meetLink.isEmpty) {
-        print(
+        LogService.debug(
           '⚠️ Warning: Meet link not generated for event ${createdEvent.id}',
         );
       }
 
-      print('✅ Calendar event created: ${createdEvent.id}');
-      print('✅ Meet link: $meetLink');
+      LogService.success('Calendar event created: ${createdEvent.id}');
+      LogService.success('Meet link: $meetLink');
 
       return CalendarEvent(
         id: createdEvent.id ?? '',
@@ -163,7 +163,7 @@ class GoogleCalendarService {
         htmlLink: createdEvent.htmlLink ?? '',
       );
     } catch (e) {
-      print('❌ Error creating calendar event: $e');
+      LogService.error('Error creating calendar event: $e');
       rethrow;
     }
   }
@@ -182,9 +182,9 @@ class GoogleCalendarService {
       }
 
       await _calendarApi!.events.delete('primary', eventId);
-      print('✅ Calendar event cancelled: $eventId');
+      LogService.success('Calendar event cancelled: $eventId');
     } catch (e) {
-      print('❌ Error cancelling calendar event: $e');
+      LogService.error('Error cancelling calendar event: $e');
       rethrow;
     }
   }
@@ -205,7 +205,7 @@ class GoogleCalendarService {
       final event = await _calendarApi!.events.get('primary', eventId);
       return event;
     } catch (e) {
-      print('❌ Error getting calendar event: $e');
+      LogService.error('Error getting calendar event: $e');
       return null;
     }
   }

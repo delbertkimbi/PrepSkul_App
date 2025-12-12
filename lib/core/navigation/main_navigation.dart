@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../features/tutor/screens/tutor_home_screen.dart';
@@ -191,7 +193,7 @@ class _MainNavigationState extends State<MainNavigation> {
             try {
               await AuthService.logout();
             } catch (e) {
-              print('⚠️ Error logging out: $e');
+              LogService.warning('Error logging out: $e');
             }
             // Allow navigation after logout
             return;
@@ -220,7 +222,7 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) {
-          setState(() {
+          safeSetState(() {
             _selectedIndex = index;
           });
         },

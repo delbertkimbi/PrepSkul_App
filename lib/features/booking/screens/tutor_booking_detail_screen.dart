@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
@@ -41,7 +43,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   Future<void> _approveRequest() async {
     if (_isLoading) return;
 
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
     });
 
@@ -61,10 +63,10 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
           widget.request.id,
         );
         if (paymentRequestId != null) {
-          print('✅ Found payment request ID: $paymentRequestId');
+          LogService.success('Found payment request ID: $paymentRequestId');
         }
       } catch (e) {
-        print('⚠️ Failed to get payment request ID: $e');
+        LogService.warning('Failed to get payment request ID: $e');
       }
 
       // Create recurring session from approved booking
@@ -100,7 +102,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
         });
       }
@@ -120,7 +122,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
       _showRejectDialog = false;
     });
@@ -161,7 +163,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
         });
       }
@@ -423,7 +425,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             onPressed: _isLoading
                 ? null
                 : () {
-                    setState(() {
+                    safeSetState(() {
                       _showRejectDialog = true;
                     });
                   },
@@ -668,7 +670,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
         actions: [
           TextButton(
             onPressed: () {
-              setState(() {
+              safeSetState(() {
                 _showRejectDialog = false;
                 _rejectionReasonController.clear();
               });

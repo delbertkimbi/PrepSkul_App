@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 
 
 /// Trial Payment Screen
@@ -53,13 +56,13 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       if (userProfile != null && mounted) {
         final phone = userProfile['phone_number'] as String?;
         if (phone != null && phone.isNotEmpty) {
-          setState(() {
+          safeSetState(() {
             _phoneController.text = phone;
           });
         }
       }
     } catch (e) {
-      print('⚠️ Could not load user phone: $e');
+      LogService.warning('Could not load user phone: $e');
     }
       return;
   }
@@ -67,13 +70,13 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   /// Initiate payment
   Future<void> _initiatePayment() async {
     if (_phoneController.text.trim().isEmpty) {
-      setState(() {
+      safeSetState(() {
         _errorMessage = 'Please enter your phone number';
       });
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _isProcessing = true;
       _errorMessage = null;
       _paymentStatus = 'idle';
@@ -88,7 +91,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         trialSession: widget.trialSession,
       );
 
-      setState(() {
+      safeSetState(() {
         _paymentStatus = 'pending';
         _isProcessing = false;
         _isPolling = true;
@@ -117,12 +120,12 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       } else {
         userMessage = 'Failed to initiate payment. Please try again.';
       }
-      setState(() {
+      safeSetState(() {
         _errorMessage = userMessage;
         _isProcessing = false;
         _paymentStatus = 'failed';
       });
-      print('❌ Payment initiation error: $e');
+      LogService.error('Payment initiation error: $e');
     }
   }
 
@@ -136,7 +139,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       );
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isPolling = false;
           if (status.isSuccessful) {
             _paymentStatus = 'successful';
@@ -150,6 +153,9 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         // Complete payment outside setState (async operation)
         if (status.isSuccessful) {
           final success = await _completePayment(transId);
+          if (success && mounted) {
+            Navigator.pop(context, true);
+          }
           // Don't navigate here - let _completePayment handle it based on calendar status
           // If calendar is not connected, the button will be shown
           // If calendar is connected, navigation happens in _connectCalendarAndRetry
@@ -157,7 +163,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isPolling = false;
           _paymentStatus = 'failed';
           _errorMessage = 'Error checking payment status: $e';
@@ -170,7 +176,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   /// is not available, so we can still test the rest of the flow (calendar,
   /// Meet link, notifications, sessions list).
   Future<void> _forceCompleteSandbox() async {
-    setState(() {
+    safeSetState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
@@ -181,12 +187,12 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       await _completePayment(fakeTransId); // Returns bool but we ignore it for sandbox
     } catch (e) {
       if (!mounted) // void function, no return needed
-      setState(() {
+      safeSetState(() {
         _errorMessage = 'Sandbox completion failed: $e';
       });
     } finally {
       if (!mounted) // void function, no return needed
-      setState(() {
+      safeSetState(() {
         _isProcessing = false;
       });
     }
@@ -204,7 +210,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       if (!mounted) return false;
 
       // Update message if Calendar is not connected
-      setState(() {
+      safeSetState(() {
         if (!calendarOk) {
           _errorMessage =
               'Your payment is done and your lesson is booked.\n'
@@ -228,14 +234,25 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         ),
       );
 
+      // Set payment status to successful
+      safeSetState(() {
+        _paymentStatus = 'successful';
+      });
+
       // Always return true to indicate payment success, regardless of Calendar status
-      // This ensures the parent screen reloads the requests list
-      // Add a small delay to ensure database update is complete
-      // Auto-navigation removed - user can manually navigate back
+      // Pop with true so parent screen refreshes and hides Pay Now buttons
+      if (mounted) {
+        // Small delay to ensure database update is complete
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.pop(context, true);
+          }
+        });
+      }
       return true;
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _errorMessage =
               'We saved your payment but could not finish saving the lesson. Please pull to refresh on the My Sessions page. If it is still empty, contact support.';
         });
@@ -248,7 +265,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   Future<void> _connectCalendarAndRetry() async {
     if (_lastTransactionId == null) return;
 
-    setState(() {
+    safeSetState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
@@ -256,7 +273,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     final ok = await GoogleCalendarAuthService.signIn();
     if (!ok) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isProcessing = false;
           _errorMessage =
               'We couldn’t finish connecting to Google Calendar. Your payment and booking are safe — '
@@ -281,7 +298,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isProcessing = false;
         });
       }

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 import 'supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'push_notification_service.dart';
 import 'email_rate_limit_service.dart';
 import 'notification_helper_service.dart';
@@ -89,7 +90,7 @@ class AuthService {
     await prefs.setBool(_keySurveyCompleted, surveyCompleted);
     await prefs.setBool(_keyRememberMe, rememberMe);
 
-    print('✅ Session saved for user: $fullName ($userRole)');
+    LogService.success('Session saved for user: $fullName ($userRole)');
 
     // Initialize push notifications after login
     try {
@@ -98,13 +99,13 @@ class AuthService {
           // Handle notification tap navigation
           final data = message?.data;
           if (data != null) {
-            print('📱 Notification tapped after login: ${data.toString()}');
+            LogService.info('📱 Notification tapped after login: ${data.toString()}');
           } else {
-            print('📱 Notification tapped after login (no data)');
+            LogService.info('📱 Notification tapped after login (no data)');
           }
         },
       );
-      print('✅ Push notifications initialized after login');
+      LogService.success('Push notifications initialized after login');
 
       // Request permission after login if onboarding is completed
       // Delay the request slightly to ensure user sees the app first
@@ -115,14 +116,14 @@ class AuthService {
           try {
             await PushNotificationService().requestPermission();
           } catch (e) {
-            print(
+            LogService.debug(
               '⚠️ Error requesting notification permission after login: $e',
             );
           }
         });
       }
     } catch (e) {
-      print('⚠️ Error initializing push notifications after login: $e');
+      LogService.warning('Error initializing push notifications after login: $e');
       // Don't fail login if push notifications fail
     }
   }
@@ -131,7 +132,7 @@ class AuthService {
   static Future<void> markSurveyComplete() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySurveyCompleted, true);
-    print('✅ Survey marked as completed');
+    LogService.success('Survey marked as completed');
   }
 
   /// Logout user (clear session and Supabase auth)
@@ -141,7 +142,7 @@ class AuthService {
       try {
         await PushNotificationService().deactivateAllTokens();
       } catch (e) {
-        print('⚠️ Error deactivating push notification tokens: $e');
+        LogService.warning('Error deactivating push notification tokens: $e');
       }
 
       // Sign out from Supabase
@@ -157,9 +158,9 @@ class AuthService {
       await prefs.remove(_keySurveyCompleted);
       // Keep remember_me for convenience
 
-      print('✅ User logged out successfully');
+      LogService.success('User logged out successfully');
     } catch (e) {
-      print('❌ Error during logout: $e');
+      LogService.error('Error during logout: $e');
       rethrow;
     }
   }
@@ -194,7 +195,7 @@ class AuthService {
       if (profiles.isEmpty) return null;
       return profiles.first;
     } catch (e) {
-      print('❌ Error fetching user profile: $e');
+      LogService.error('Error fetching user profile: $e');
       return null;
     }
   }
@@ -227,9 +228,9 @@ class AuthService {
 
       // Send OTP
       await SupabaseService.sendPhoneOTP(formattedPhone);
-      print('✅ Password reset OTP sent to: $formattedPhone');
+      LogService.success('Password reset OTP sent to: $formattedPhone');
     } catch (e) {
-      print('❌ Error sending password reset OTP: $e');
+      LogService.error('Error sending password reset OTP: $e');
       rethrow;
     }
   }
@@ -247,7 +248,7 @@ class AuthService {
       );
       final friendlyMessage =
           EmailRateLimitService.friendlyRateLimitMessage(remaining);
-      print(
+      LogService.debug(
         'ℹ️ Password reset email already sent recently. Remaining cooldown: ${remaining ?? Duration.zero}',
       );
       throw Exception(friendlyMessage);
@@ -259,13 +260,13 @@ class AuthService {
 
     while (retryCount < 3) {
       try {
-        print(
+        LogService.debug(
           '🔍 [DEBUG] Sending password reset email to: $email (attempt ${retryCount + 1})',
         );
 
         // Get platform-appropriate redirect URL
         final redirectUrl = getRedirectUrl();
-        print('🔍 [DEBUG] Using redirect URL: $redirectUrl');
+        LogService.debug('[DEBUG] Using redirect URL: $redirectUrl');
 
         // Send password reset email (returns void, just checks for exceptions)
         await SupabaseService.client.auth.resetPasswordForEmail(
@@ -276,12 +277,12 @@ class AuthService {
         // Success - record email sent and clear retry count
         await EmailRateLimitService.recordEmailSent(normalizedEmail);
 
-        print('✅ Password reset email sent successfully to: $email');
-        print('📧 [INFO] Email sent! Check inbox and spam folder.');
+        LogService.success('Password reset email sent successfully to: $email');
+        LogService.info('📧 [INFO] Email sent! Check inbox and spam folder.');
         return;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        print(
+        LogService.debug(
           '❌ Error sending password reset email (attempt ${retryCount + 1}): $e',
         );
 
@@ -355,9 +356,9 @@ class AuthService {
         UserAttributes(password: newPassword),
       );
 
-      print('✅ Password reset successful');
+      LogService.success('Password reset successful');
     } catch (e) {
-      print('❌ Error resetting password: $e');
+      LogService.error('Error resetting password: $e');
       rethrow;
     }
   }
@@ -375,15 +376,15 @@ class AuthService {
       if (event == AuthChangeEvent.signedOut) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_keyIsLoggedIn, false);
-        print('🔒 Session expired - user signed out');
+        LogService.auth('Session expired - user signed out');
       } else if (event == AuthChangeEvent.signedIn) {
         final user = state.session?.user;
-        print('✅ User signed in');
+        LogService.success('User signed in');
         if (user != null) {
           await _handleSupabaseSignedIn(user);
         }
       } else if (event == AuthChangeEvent.tokenRefreshed) {
-        print('🔄 Auth token refreshed');
+        LogService.info('🔄 Auth token refreshed');
       }
     });
   }
@@ -401,7 +402,7 @@ class AuthService {
 
       await completeEmailVerification(user);
     } catch (e) {
-      print('⚠️ Error handling Supabase signed-in event: $e');
+      LogService.warning('Error handling Supabase signed-in event: $e');
     }
   }
 
@@ -413,7 +414,7 @@ class AuthService {
       final pendingEmail = prefs.getString('signup_email');
 
       if (pendingRole == null && pendingName == null && pendingEmail == null) {
-        print('ℹ️ No pending signup data found, skipping verification handler');
+        LogService.info('No pending signup data found, skipping verification handler');
         return;
       }
 
@@ -457,7 +458,7 @@ class AuthService {
         userType: role,
       );
     } catch (e) {
-      print('⚠️ Error completing email verification: $e');
+      LogService.warning('Error completing email verification: $e');
       rethrow;
     }
   }
@@ -469,12 +470,12 @@ class AuthService {
 
       // Allow local development redirects so OAuth can round-trip on localhost.
       if (origin.contains('localhost') || origin.contains('127.0.0.1')) {
-        print('🔍 [DEBUG] getRedirectUrl (web) - using local origin $origin');
+        LogService.debug('[DEBUG] getRedirectUrl (web) - using local origin $origin');
         return origin;
       }
 
       // Web: always use the deployed app URL. Supabase must be configured with this.
-      print('🔍 [DEBUG] getRedirectUrl (web) - returning https://app.prepskul.com');
+      LogService.debug('[DEBUG] getRedirectUrl (web) - returning https://app.prepskul.com');
       return 'https://app.prepskul.com';
     } else {
       // Mobile/Desktop: use deep link scheme to email login route.
@@ -489,7 +490,7 @@ class AuthService {
       // For web, we want to come back to the current page (or specific callback)
       // For mobile, we want the deep link
       final redirectUrl = getRedirectUrl();
-      print('🔍 [DEBUG] Starting Google Sign In with redirect: $redirectUrl');
+      LogService.debug('[DEBUG] Starting Google Sign In with redirect: $redirectUrl');
 
       final response = await SupabaseService.client.auth.signInWithOAuth(
         OAuthProvider.google,
@@ -500,10 +501,10 @@ class AuthService {
             : LaunchMode.externalApplication,
       );
       
-      print('✅ Google Sign In initiated: $response');
+      LogService.success('Google Sign In initiated: $response');
       return true;
     } catch (e) {
-      print('❌ Error signing in with Google: $e');
+      LogService.error('Error signing in with Google: $e');
       throw Exception(parseAuthError(e));
     }
   }
@@ -523,11 +524,11 @@ class AuthService {
             .maybeSingle();
         
         if (profileResponse != null) {
-          print('⚠️ Email already exists in profiles table: \$normalizedEmail');
+          LogService.warning('Email already exists in profiles table: \$normalizedEmail');
           return true;
         }
       } catch (e) {
-        print('⚠️ Error checking profiles table: \$e');
+        LogService.warning('Error checking profiles table: \$e');
         // Continue to check auth.users
       }
       
@@ -548,7 +549,7 @@ class AuthService {
             errorString.contains('email not confirmed') ||
             errorString.contains('invalid_credentials') ||
             errorString.contains('invalid_grant')) {
-          print('⚠️ Email exists in auth.users: \$normalizedEmail');
+          LogService.warning('Email exists in auth.users: \$normalizedEmail');
           return true;
         }
         // These errors indicate user doesn't exist
@@ -561,7 +562,7 @@ class AuthService {
         return false;
       }
     } catch (e) {
-      print('⚠️ Error checking if email exists: \$e');
+      LogService.warning('Error checking if email exists: \$e');
       // On error, return false and let signUp handle validation
       // Supabase will throw an error if email already exists during signup
       return false;
@@ -572,12 +573,12 @@ class AuthService {
   static String parseAuthError(dynamic error) {
     if (error == null) return 'An unexpected error occurred';
 
-    print('🔍 [DEBUG] parseAuthError called with: ${error.runtimeType}');
-    print('🔍 [DEBUG] Error toString: ${error.toString()}');
+    LogService.debug('[DEBUG] parseAuthError called with: ${error.runtimeType}');
+    LogService.debug('[DEBUG] Error toString: ${error.toString()}');
 
     // If error is already a friendly Exception we created, extract the message
     final errorStr = error.toString();
-    print('🔍 [DEBUG] Checking if friendly exception: $errorStr');
+    LogService.debug('[DEBUG] Checking if friendly exception: $errorStr');
 
     // Check for friendly messages we created (Exception: message format)
     // When we throw Exception('message'), toString() becomes "Exception: message"
@@ -585,7 +586,7 @@ class AuthService {
       final friendlyMessage = errorStr.substring(
         11,
       ); // Remove "Exception: " prefix
-      print('🔍 [DEBUG] Extracted from Exception: $friendlyMessage');
+      LogService.debug('[DEBUG] Extracted from Exception: $friendlyMessage');
 
       // Check if it's a friendly user-facing message (not a technical error)
       // Friendly messages usually have these characteristics:
@@ -614,12 +615,12 @@ class AuthService {
       if (!isTechnical &&
           (hasFriendlyKeywords || friendlyMessage.length > 20)) {
         // This looks like a friendly message - return it
-        print(
+        LogService.debug(
           '🔍 [DEBUG] ✅ Returning friendly exception message: $friendlyMessage',
         );
         return friendlyMessage;
       } else {
-        print('🔍 [DEBUG] ⚠️ Exception looks technical, will parse further');
+        LogService.debug('[DEBUG] ⚠️ Exception looks technical, will parse further');
       }
     }
 
@@ -633,10 +634,10 @@ class AuthService {
 
     // Handle AuthApiException format: AuthApiException(message: ..., statusCode: ..., code: ...)
     final originalErrorString = error.toString();
-    print('🔍 [DEBUG] Original error string: $originalErrorString');
+    LogService.debug('[DEBUG] Original error string: $originalErrorString');
 
     if (originalErrorString.contains('AuthApiException')) {
-      print('🔍 [DEBUG] Detected AuthApiException format');
+      LogService.debug('[DEBUG] Detected AuthApiException format');
 
       // Extract message from the original error string
       final messageMatch = RegExp(
@@ -644,9 +645,9 @@ class AuthService {
       ).firstMatch(originalErrorString);
       if (messageMatch != null) {
         errorMessage = messageMatch.group(1)?.trim() ?? errorMessage;
-        print('🔍 [DEBUG] Extracted message: $errorMessage');
+        LogService.debug('[DEBUG] Extracted message: $errorMessage');
       } else {
-        print('🔍 [DEBUG] No message match found');
+        LogService.debug('[DEBUG] No message match found');
       }
 
       // Extract code from the original error string
@@ -655,9 +656,9 @@ class AuthService {
       ).firstMatch(originalErrorString);
       if (codeMatch != null) {
         errorCode = codeMatch.group(1)?.trim() ?? '';
-        print('🔍 [DEBUG] Extracted code: $errorCode');
+        LogService.debug('[DEBUG] Extracted code: $errorCode');
       } else {
-        print('🔍 [DEBUG] No code match found');
+        LogService.debug('[DEBUG] No code match found');
       }
 
       // Extract statusCode from the original error string
@@ -666,9 +667,9 @@ class AuthService {
       ).firstMatch(originalErrorString);
       if (statusMatch != null) {
         statusCode = statusMatch.group(1)?.trim() ?? '';
-        print('🔍 [DEBUG] Extracted statusCode: $statusCode');
+        LogService.debug('[DEBUG] Extracted statusCode: $statusCode');
       } else {
-        print('🔍 [DEBUG] No statusCode match found');
+        LogService.debug('[DEBUG] No statusCode match found');
       }
     }
     // Handle AuthException format (legacy)
@@ -689,11 +690,11 @@ class AuthService {
     errorCode = errorCode.toLowerCase();
     statusCode = statusCode.toLowerCase();
 
-    print('🔍 [DEBUG] Final values:');
-    print('🔍 [DEBUG]   errorMessage: $errorMessage');
-    print('🔍 [DEBUG]   errorString: $errorString');
-    print('🔍 [DEBUG]   errorCode: $errorCode');
-    print('🔍 [DEBUG]   statusCode: $statusCode');
+    LogService.debug('[DEBUG] Final values:');
+    LogService.debug('[DEBUG]   errorMessage: $errorMessage');
+    LogService.debug('[DEBUG]   errorString: $errorString');
+    LogService.debug('[DEBUG]   errorCode: $errorCode');
+    LogService.debug('[DEBUG]   statusCode: $statusCode');
 
     // Email-related errors - ONLY match Supabase's official error code
     // Rely on errorCode only - error messages can be misleading and cause false positives
@@ -729,7 +730,7 @@ class AuthService {
       }
       // For invalid_credentials, it could be either wrong password or non-existent user
       // Provide a message that covers both cases
-      return 'The email or password you entered is incorrect. Please check and try again, or sign up if you don\'t have an account.';
+      return 'The email or password is incorrect. If you don\'t have an account, please sign up first.';
     }
 
     if (errorString.contains('password') && errorString.contains('weak')) {
@@ -737,7 +738,7 @@ class AuthService {
     }
 
     // Rate limiting - check BEFORE other generic errors
-    print('🔍 [DEBUG] Checking rate limit conditions...');
+    LogService.debug('[DEBUG] Checking rate limit conditions...');
     final isRateLimit =
         errorString.contains('rate limit') ||
         errorString.contains('over_email_send_rate_limit') ||
@@ -745,10 +746,10 @@ class AuthService {
         errorString.contains('email rate limit exceeded') ||
         statusCode == '429' ||
         errorString.contains('429');
-    print('🔍 [DEBUG] Rate limit check result: $isRateLimit');
+    LogService.debug('[DEBUG] Rate limit check result: $isRateLimit');
 
     if (isRateLimit) {
-      print('🔍 [DEBUG] ✅ Returning rate limit message');
+      LogService.debug('[DEBUG] ✅ Returning rate limit message');
       return 'Too many attempts. Please try again later.';
     }
 
@@ -782,10 +783,10 @@ class AuthService {
     }
 
     // Default fallback - always return a friendly, generic message
-    print(
+    LogService.debug(
       '🔍 [DEBUG] ⚠️ No matching error pattern found, using friendly fallback message',
     );
-    print('🔍 [DEBUG] Original error was: ${error.toString()}');
+    LogService.debug('[DEBUG] Original error was: ${error.toString()}');
 
     return 'Something went wrong. Please try again in a moment.';
   }
@@ -802,7 +803,7 @@ class AuthService {
       );
       final friendlyMessage =
           EmailRateLimitService.friendlyRateLimitMessage(remaining);
-      print(
+      LogService.debug(
         'ℹ️ Verification email already sent recently. Remaining cooldown: ${remaining ?? Duration.zero}',
       );
       throw Exception(friendlyMessage);
@@ -814,7 +815,7 @@ class AuthService {
 
     while (retryCount < 3) {
       try {
-        print(
+        LogService.debug(
           '🔍 [DEBUG] Resending verification email to: $email (attempt ${retryCount + 1})',
         );
 
@@ -827,11 +828,11 @@ class AuthService {
         // Success - record email sent and clear retry count
         await EmailRateLimitService.recordEmailSent(normalizedEmail);
 
-        print('✅ Verification email resent to: $email');
+        LogService.success('Verification email resent to: $email');
         return;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
-        print(
+        LogService.debug(
           '❌ Error resending verification email (attempt ${retryCount + 1}): $e',
         );
 

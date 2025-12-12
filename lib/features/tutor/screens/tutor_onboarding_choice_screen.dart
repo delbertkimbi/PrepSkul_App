@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart';
@@ -37,7 +38,7 @@ class _TutorOnboardingChoiceScreenState
         );
       }
     } catch (e) {
-      print('❌ Error proceeding with onboarding: $e');
+      LogService.error('Error proceeding with onboarding: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -103,7 +104,7 @@ class _TutorOnboardingChoiceScreenState
         );
       }
     } catch (e) {
-      print('❌ Error skipping onboarding: $e');
+      LogService.error('Error skipping onboarding: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
