@@ -16,6 +16,7 @@ import '../../discovery/screens/tutor_detail_screen.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import '../../notifications/screens/notification_preferences_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -636,9 +637,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: t.profileNotifications,
                             subtitle: t.profileNotificationsSubtitle,
                             onTap: () {
-                              Navigator.of(
+                              Navigator.push(
                                 context,
-                              ).pushNamed('/notifications/preferences');
+                                MaterialPageRoute(
+                                  builder: (context) => const NotificationPreferencesScreen(),
+                                ),
+                              );
                             },
                           ),
                           const SizedBox(height: 12),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -18,20 +19,30 @@ import 'session_feedback_screen.dart';
 // import 'package:prepskul/features/sessions/screens/session_summary_screen.dart';
 import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
 import 'package:prepskul/core/services/auth_service.dart';
-import 'package:prepskul/core/services/error_handler_service.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// My Sessions Screen
 ///
 /// Allows students/parents to view their upcoming and completed sessions
 /// Shows feedback prompts for completed sessions
 class MySessionsScreen extends StatefulWidget {
-  const MySessionsScreen({Key? key}) : super(key: key);
+  final int? initialTab; // 0 = Upcoming, 1 = Past
+  final String? sessionId; // Session ID to scroll to
+  
+  const MySessionsScreen({
+    Key? key,
+    this.initialTab,
+    this.sessionId,
+  }) : super(key: key);
 
   @override
   State<MySessionsScreen> createState() => _MySessionsScreenState();
@@ -40,19 +51,76 @@ class MySessionsScreen extends StatefulWidget {
 class _MySessionsScreenState extends State<MySessionsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ScrollController _upcomingScrollController = ScrollController();
+  final ScrollController _pastScrollController = ScrollController();
   List<Map<String, dynamic>> _upcomingSessions = [];
   List<Map<String, dynamic>> _pastSessions = [];
   bool _isLoading = true;
   final Map<String, bool> _feedbackSubmitted = {}; // Cache feedback status
   final Map<String, bool> _hasTranscript = {}; // Cache transcript availability
   bool? _isCalendarConnected; // Cache calendar connection status (null = not checked yet)
+  bool _isOffline = false;
+  DateTime? _cacheTimestamp;
+  final ConnectivityService _connectivity = ConnectivityService();
+  // Cache tutor info for trial sessions (tutorId -> {full_name, avatar_url})
+  final Map<String, Map<String, dynamic>> _tutorInfoCache = {};
+  
+  // Timer for countdown updates
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    // Use initialTab from arguments if provided, otherwise default to 0
+    final initialTabIndex = widget.initialTab ?? 0;
+    _tabController = TabController(
+      length: 2, 
+      vsync: this,
+      initialIndex: initialTabIndex.clamp(0, 1), // Ensure valid index
+    );
+    _initializeConnectivity();
     _loadSessions();
     _checkCalendarConnection();
+    _startCountdownTimer();
+  }
+
+  /// Initialize connectivity monitoring
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    
+    // Listen to connectivity changes
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        final wasOffline = _isOffline;
+        setState(() {
+          _isOffline = !isOnline;
+        });
+        
+        // If came back online, reload sessions
+        if (isOnline && wasOffline) {
+          LogService.info('🌐 Connection restored - reloading sessions');
+          _loadSessions();
+        }
+      }
+    });
+  }
+
+  /// Check current connectivity status
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      final wasOffline = _isOffline;
+      setState(() {
+        _isOffline = !isOnline;
+      });
+      
+      // If we just came back online, reload data
+      if (isOnline && wasOffline) {
+        LogService.info('🌐 Connection detected - reloading sessions');
+        _loadSessions();
+      }
+    }
   }
 
   /// Check if Google Calendar is connected (cache the result)
@@ -78,12 +146,115 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _upcomingScrollController.dispose();
+    _pastScrollController.dispose();
+    _connectivity.dispose();
+    _countdownTimer?.cancel();
     super.dispose();
+  }
+  
+  /// Start countdown timer to update session countdowns every minute
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) {
+        safeSetState(() {
+          // Trigger rebuild to update countdowns
+        });
+      }
+    });
+  }
+  
+  /// Scroll to a specific session after sessions are loaded
+  void _scrollToSession(String sessionId) {
+    if (!mounted) return;
+    
+    // Wait for the next frame to ensure list is rendered
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      // Determine which list contains the session
+      final upcomingIndex = _upcomingSessions.indexWhere((s) => s['id'] == sessionId);
+      final pastIndex = _pastSessions.indexWhere((s) => s['id'] == sessionId);
+      
+      if (upcomingIndex >= 0) {
+        // Switch to upcoming tab if not already there
+        if (_tabController.index != 0) {
+          _tabController.animateTo(0);
+        }
+        // Scroll to the session (each card is approximately 200px tall)
+        final scrollPosition = upcomingIndex * 220.0; // Approximate card height + margin
+        _upcomingScrollController.animateTo(
+          scrollPosition,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      } else if (pastIndex >= 0) {
+        // Switch to past tab if not already there
+        if (_tabController.index != 1) {
+          _tabController.animateTo(1);
+        }
+        // Scroll to the session
+        final scrollPosition = pastIndex * 220.0; // Approximate card height + margin
+        _pastScrollController.animateTo(
+          scrollPosition,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   Future<void> _loadSessions() async {
     safeSetState(() => _isLoading = true);
     try {
+      // Check connectivity first
+      final isOnline = await _connectivity.checkConnectivity();
+      safeSetState(() => _isOffline = !isOnline);
+      
+      final userId = SupabaseService.currentUser?.id;
+      
+      // If offline, try to load from cache
+      if (_isOffline && userId != null) {
+        LogService.info('MySessionsScreen: Offline - loading from cache...');
+        
+        // Try to load cached individual sessions
+        final cachedUpcoming = await OfflineCacheService.getCachedIndividualSessions('${userId}_upcoming');
+        final cachedPast = await OfflineCacheService.getCachedIndividualSessions('${userId}_past');
+        
+        if ((cachedUpcoming != null && cachedUpcoming.isNotEmpty) || 
+            (cachedPast != null && cachedPast.isNotEmpty)) {
+          final timestamp = await SharedPreferences.getInstance().then(
+            (prefs) => prefs.getInt('cached_individual_sessions_${userId}_upcoming_cache_timestamp') ?? 0,
+          );
+          
+          if (mounted) {
+            safeSetState(() {
+              _upcomingSessions = cachedUpcoming ?? [];
+              _pastSessions = cachedPast ?? [];
+              _isLoading = false;
+              _cacheTimestamp = timestamp > 0 
+                  ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+                  : null;
+            });
+          }
+          LogService.success('MySessionsScreen: Loaded ${_upcomingSessions.length} upcoming and ${_pastSessions.length} past sessions from cache');
+          return;
+        } else {
+          // No cache available
+          if (mounted) {
+            safeSetState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('No internet connection. Showing cached data when available.'),
+                backgroundColor: Colors.orange[700],
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+          return;
+        }
+      }
+      
       List<Map<String, dynamic>> upcoming = [];
       List<Map<String, dynamic>> past = [];
 
@@ -93,6 +264,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         final indPast = await IndividualSessionService.getStudentPastSessions(limit: 50);
         upcoming.addAll(indUpcoming);
         past.addAll(indPast);
+        
+        // Cache individual sessions
+        if (userId != null) {
+          await OfflineCacheService.cacheIndividualSessions('${userId}_upcoming', indUpcoming);
+          await OfflineCacheService.cacheIndividualSessions('${userId}_past', indPast);
+        }
       } catch (e) {
         // Gracefully handle missing table or other errors
         LogService.info('Could not load individual sessions (table might not exist yet): $e');
@@ -100,7 +277,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
       // 2. Auto-detect and mark expired sessions before loading
       try {
-        await TrialSessionService.autoMarkExpiredAttendedSessions();
+        // Only auto-mark expired sessions once per app session, not every time screen loads
+        // This prevents aggressive auto-cancelling of sessions
+        // await TrialSessionService.autoMarkExpiredAttendedSessions(); // Disabled - too aggressive
       } catch (e) {
         LogService.warning('Error auto-marking expired sessions: $e');
       }
@@ -108,6 +287,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       // 3. Fetch Trial Sessions (only those not yet converted to full sessions)
       try {
         final trialSessions = await TrialSessionService.getStudentTrialSessions();
+        
+        // Load tutor info for all trial sessions
+        await _loadTutorInfoForTrials(trialSessions);
 
         for (final trial in trialSessions) {
           final sessionMap = _convertTrialToSessionMap(trial);
@@ -185,6 +367,11 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         _pastSessions = past;
         _isLoading = false;
       });
+      
+      // Scroll to session if sessionId was provided
+      if (widget.sessionId != null) {
+        _scrollToSession(widget.sessionId!);
+      }
     } catch (e) {
       LogService.error('Error loading sessions: $e');
       safeSetState(() => _isLoading = false);
@@ -202,13 +389,122 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
+  /// Load tutor information for trial sessions
+  Future<void> _loadTutorInfoForTrials(List<TrialSession> trials) async {
+    try {
+      final supabase = SupabaseService.client;
+      final tutorIds = trials.map((t) => t.tutorId).toSet().toList();
+
+      if (tutorIds.isEmpty) return;
+
+      // Fetch tutor profiles with profile data using relationship join
+      try {
+        final tutorProfiles = await supabase
+            .from('tutor_profiles')
+            .select(
+              'user_id, profile_photo_url, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
+            )
+            .inFilter('user_id', tutorIds);
+
+        LogService.debug('Loaded ${tutorProfiles.length} tutor profiles for trial sessions');
+
+        // Cache tutor info
+        for (var tutor in tutorProfiles) {
+          final userId = tutor['user_id'] as String;
+
+          // Safely extract profile data - handle both Map and List responses
+          Map<String, dynamic>? profile;
+          final profilesData = tutor['profiles'];
+          if (profilesData is Map) {
+            profile = Map<String, dynamic>.from(profilesData);
+          } else if (profilesData is List && profilesData.isNotEmpty) {
+            profile = Map<String, dynamic>.from(profilesData[0]);
+          }
+
+          // Get avatar URL - prioritize profile_photo_url from tutor_profiles, then avatar_url from profiles
+          final profilePhotoUrl = tutor['profile_photo_url'] as String?;
+          final avatarUrl = profile?['avatar_url'] as String?;
+          final effectiveAvatarUrl =
+              (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+              ? profilePhotoUrl
+              : (avatarUrl != null && avatarUrl.isNotEmpty)
+              ? avatarUrl
+              : null;
+
+          final tutorName = profile?['full_name'] as String?;
+          _tutorInfoCache[userId] = {
+            'full_name':
+                (tutorName != null &&
+                    tutorName.isNotEmpty &&
+                    tutorName != 'User' &&
+                    tutorName != 'Tutor')
+                ? tutorName
+                : 'Tutor',
+            'avatar_url': effectiveAvatarUrl,
+          };
+        }
+      } catch (e) {
+        LogService.warning('Error loading tutor profiles with join, trying fallback: $e');
+        
+        // Fallback: fetch separately
+        for (final tutorId in tutorIds) {
+          try {
+            // Fetch tutor profile
+            final tutorProfile = await supabase
+                .from('tutor_profiles')
+                .select('user_id, profile_photo_url')
+                .eq('user_id', tutorId)
+                .maybeSingle();
+
+            if (tutorProfile == null) continue;
+
+            // Fetch profile separately
+            final profile = await supabase
+                .from('profiles')
+                .select('full_name, avatar_url')
+                .eq('id', tutorId)
+                .maybeSingle();
+
+            final profilePhotoUrl =
+                tutorProfile['profile_photo_url'] as String?;
+            final avatarUrl = profile?['avatar_url'] as String?;
+            final effectiveAvatarUrl =
+                (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+                ? profilePhotoUrl
+                : (avatarUrl != null && avatarUrl.isNotEmpty)
+                ? avatarUrl
+                : null;
+
+            final tutorName = profile?['full_name'] as String?;
+            _tutorInfoCache[tutorId] = {
+              'full_name':
+                  (tutorName != null &&
+                      tutorName.isNotEmpty &&
+                      tutorName != 'User' &&
+                      tutorName != 'Tutor')
+                  ? tutorName
+                  : 'Tutor',
+              'avatar_url': effectiveAvatarUrl,
+            };
+          } catch (e) {
+            LogService.warning('Error loading tutor info for $tutorId: $e');
+          }
+        }
+      }
+    } catch (e) {
+      LogService.error('Error loading tutor info for trials: $e');
+    }
+  }
+
   Map<String, dynamic>? _convertTrialToSessionMap(TrialSession trial) {
     // Convert TrialSession object to the Map format used by _buildSessionCard
     // Returns null if the trial shouldn't be shown (e.g., rejected/cancelled might be hidden if old?)
     // For now, we show everything.
     
-    // Skip pending/rejected trials if we want to keep the list clean? 
-    // Usually users want to see pending requests too.
+    // Get tutor info from cache
+    final tutorInfo = _tutorInfoCache[trial.tutorId];
+    final tutorName = tutorInfo?['full_name'] as String? ?? 'Tutor';
+    final tutorAvatarUrl = tutorInfo?['avatar_url'] as String?;
     
     return {
       'id': trial.id,
@@ -218,18 +514,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       'location': trial.location,
       'duration_minutes': trial.durationMinutes,
       'type': 'trial', // Mark as trial
+      'subject': trial.subject, // Add subject at top level too
       // Simulate the nested structure expected by UI
       'recurring_sessions': {
-        'tutor_name': 'Tutor', // We might need to fetch tutor name if not in TrialSession model
-        // Note: TrialSession model might not have tutor name directly if it's just ID.
-        // TrialSessionService.getStudentTrialSessions returns TrialSession objects.
-        // The TrialSession model has tutorId but maybe not name?
-        // We might need to fetch profiles or rely on what's available.
-        // Let's check TrialSession model properties.
-        // Assuming we can't easily get the name without a join, we'll use a placeholder or fetch it.
-        // For now, let's try to use what we have.
+        'tutor_name': tutorName,
+        'tutor_avatar_url': tutorAvatarUrl,
         'subject': trial.subject,
-        'tutor_avatar_url': null, // Placeholder
       },
       // Add meeting link if available (generated after payment)
       'meeting_link': trial.meetLink,
@@ -605,15 +895,62 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
+  /// Build countdown text widget
+  Widget _buildCountdownText(String scheduledDate, String scheduledTime) {
+    try {
+      final dateParts = scheduledDate.split('T')[0].split('-');
+      final timeParts = scheduledTime.split(':');
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = timeParts.length > 1 
+          ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
+          : 0;
+      
+      final sessionDateTime = DateTime(year, month, day, hour, minute);
+      final now = DateTime.now();
+      final difference = sessionDateTime.difference(now);
+      
+      String countdownText;
+      if (difference.isNegative) {
+        countdownText = 'Session starting now';
+      } else if (difference.inDays > 0) {
+        countdownText = 'Starts in ${difference.inDays} day${difference.inDays > 1 ? 's' : ''}';
+      } else if (difference.inHours > 0) {
+        countdownText = 'Starts in ${difference.inHours} hour${difference.inHours > 1 ? 's' : ''}';
+      } else if (difference.inMinutes > 0) {
+        countdownText = 'Starts in ${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''}';
+      } else {
+        countdownText = 'Starting soon';
+      }
+      
+      return Text(
+        countdownText,
+        style: GoogleFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.primaryColor,
+        ),
+      );
+    } catch (e) {
+      return const SizedBox.shrink();
+    }
+  }
+
   Widget _buildSessionCard(Map<String, dynamic> session, bool isUpcoming) {
     final isTrial = session['type'] == 'trial';
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-    // For trial sessions, we might not have tutor name immediately if not joined.
-    // But TrialSessionService.getStudentTrialSessions does a simple select.
-    // We should ideally do a join there too.
-    final tutorName = recurringData?['tutor_name'] as String? ?? (isTrial ? 'Trial Tutor' : 'Tutor');
-    final tutorAvatar = recurringData?['tutor_avatar_url'] as String?;
-    final subject = recurringData?['subject'] as String? ?? session['subject'] as String? ?? 'Session';
+    
+    // Get tutor name and avatar - prioritize recurring_sessions data, fallback to session data
+    final tutorName = recurringData?['tutor_name'] as String? 
+        ?? session['tutor_name'] as String? 
+        ?? (isTrial ? 'Tutor' : 'Tutor');
+    final tutorAvatar = recurringData?['tutor_avatar_url'] as String? 
+        ?? session['tutor_avatar_url'] as String?;
+    final subject = recurringData?['subject'] as String? 
+        ?? session['subject'] as String? 
+        ?? 'Session';
     final status = session['status'] as String;
     final scheduledDate = session['scheduled_date'] as String;
     final scheduledTime = session['scheduled_time'] as String;
@@ -622,50 +959,88 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final sessionId = session['id'] as String;
     final isCompleted = status == 'completed';
     final hasFeedback = _feedbackSubmitted[sessionId] ?? false;
+    final isExpired = status == 'expired';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      elevation: 2,
+      elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: isExpired 
+              ? Colors.red.withOpacity(0.2)
+              : Colors.grey.withOpacity(0.1),
+          width: 1,
+        ),
       ),
       child: InkWell(
         onTap: () {
           // Show session details
           _showSessionDetails(session);
         },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: isExpired 
+                ? Colors.red.withOpacity(0.02)
+                : Colors.white,
+          ),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Trial Badge
+              // Header row: Trial badge and status
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Trial Badge (smaller, more subtle)
               if (isTrial)
                 Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        color: Colors.orange.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.2),
+                          width: 1,
+                        ),
                   ),
                   child: Text(
-                    'TRIAL SESSION',
+                        'TRIAL',
                     style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange[800],
-                      letterSpacing: 1,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange[700],
+                          letterSpacing: 0.5,
                     ),
                   ),
                 ),
-              // Header: Tutor info and status
+                  // Status badge (more compact)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _getStatusLabel(status),
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Tutor info row
               Row(
                 children: [
-                  // Tutor avatar
+                  // Tutor avatar (slightly larger)
                   CircleAvatar(
-                    radius: 24,
+                    radius: 28,
                     backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                     backgroundImage: tutorAvatar != null && tutorAvatar.isNotEmpty
                         ? CachedNetworkImageProvider(tutorAvatar)
@@ -674,14 +1049,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ? Text(
                             tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
                             style: GoogleFonts.poppins(
-                              fontSize: 18,
+                              fontSize: 20,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
                             ),
                           )
                         : null,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   // Tutor name and subject
                   Expanded(
                     child: Column(
@@ -690,119 +1065,84 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         Text(
                           tutorName,
                           style: GoogleFonts.poppins(
-                            fontSize: 16,
+                            fontSize: 17,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
+                            height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 3),
                         Text(
                           subject,
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 13,
                             color: Colors.grey[600],
+                            height: 1.2,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  // Status badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _getStatusLabel(status),
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
-                      ),
-                    ),
-                  ),
                 ],
               ),
-              // Session in Progress indicator
+              // Session in Progress indicator (moved after details for consistency)
               if (status == 'in_progress') ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentGreen.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.accentGreen.withOpacity(0.3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.play_circle_filled,
-                        color: AppTheme.accentGreen,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Session is currently in progress',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.accentGreen,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
                 const SizedBox(height: 12),
-              ],
-              // Expired session indicator
-              if (status == 'expired') ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: AppTheme.accentGreen.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: Colors.red.withOpacity(0.3),
+                      color: AppTheme.accentGreen.withOpacity(0.2),
                       width: 1,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        Icons.access_time,
-                        color: Colors.red[700],
-                        size: 20,
+                        Icons.play_circle_filled_rounded,
+                        color: AppTheme.accentGreen,
+                        size: 18,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'This session expired and was never attended',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.red[700],
+                        'Session is currently in progress',
+                        style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          color: AppTheme.accentGreen,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+              // Session details (date, time, location) - more compact
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  children: [
               // Date and time
               Row(
                 children: [
                   Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
-                  Text(
+                        Expanded(
+                          child: Text(
                     _formatDateTime(scheduledDate, scheduledTime),
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                              fontSize: 13,
                       color: Colors.grey[700],
+                              fontWeight: FontWeight.w500,
+                            ),
                     ),
                   ),
                 ],
@@ -817,15 +1157,84 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     color: Colors.grey[600],
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    location == 'online' ? 'Online' : 'On-site',
+                        Expanded(
+                          child: Text(
+                            location == 'online' ? 'Online Session' : 'On-site Session',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                              fontSize: 13,
                       color: Colors.grey[700],
+                              fontWeight: FontWeight.w500,
+                            ),
                     ),
                   ),
                 ],
               ),
+                    // Countdown timer for upcoming sessions
+                    if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.primaryColor.withOpacity(0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.timer_outlined,
+                              size: 18,
+                              color: AppTheme.primaryColor,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCountdownText(scheduledDate, scheduledTime),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // Expired session indicator (more subtle, below details)
+              if (isExpired) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.red.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        color: Colors.red[600],
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'This session expired and was never attended',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.red[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               // Action buttons
               if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
                 const SizedBox(height: 16),
@@ -865,7 +1274,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       Padding(
                         padding: const EdgeInsets.only(left: 8),
                         child: OutlinedButton.icon(
-                          onPressed: () => _addSessionToCalendar(session),
+                          onPressed: _isOffline
+                              ? () => OfflineDialog.show(
+                                    context,
+                                    message: 'Adding to calendar requires an internet connection. Please check your connection and try again.',
+                                  )
+                              : () => _addSessionToCalendar(session),
                           icon: Icon(
                             _isCalendarConnected == true 
                                 ? Icons.calendar_today 
@@ -940,7 +1354,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       ),
                       if (!hasFeedback)
                         TextButton(
-                          onPressed: () => _openFeedbackScreen(sessionId),
+                          onPressed: _isOffline
+                              ? () => OfflineDialog.show(
+                                    context,
+                                    message: 'Submitting feedback requires an internet connection. Please check your connection and try again.',
+                                  )
+                              : () => _openFeedbackScreen(sessionId),
                           child: Text(
                             'Submit',
                             style: GoogleFonts.poppins(
@@ -1053,18 +1472,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   runSpacing: 8,
                   children: [
                     if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _joinMeeting(meetLink);
-                        },
-                        icon: const Icon(Icons.video_call, size: 18),
-                        label: Text('Join Meeting', style: GoogleFonts.poppins()),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                        ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _joinMeeting(meetLink);
+                  },
+                  icon: const Icon(Icons.video_call, size: 18),
+                  label: Text('Join Meeting', style: GoogleFonts.poppins()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  ),
                       ),
                     // Add to Calendar button (if no calendar event exists)
                     if (session['calendar_event_id'] == null || 
@@ -1212,6 +1631,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     : RefreshIndicator(
                         onRefresh: _loadSessions,
                         child: ListView.builder(
+                          controller: _upcomingScrollController,
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           itemCount: _upcomingSessions.length,
                           itemBuilder: (context, index) {
@@ -1256,6 +1676,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     : RefreshIndicator(
                         onRefresh: _loadSessions,
                         child: ListView.builder(
+                          controller: _pastScrollController,
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           itemCount: _pastSessions.length,
                           itemBuilder: (context, index) {

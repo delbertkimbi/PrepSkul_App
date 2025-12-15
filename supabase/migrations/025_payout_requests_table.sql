@@ -78,3 +78,11 @@ COMMENT ON COLUMN public.payout_requests.amount IS 'Minimum payout: 5,000 XAF';
 COMMENT ON COLUMN public.payout_requests.status IS 'pending = awaiting admin approval, processing = being processed, completed = paid out, failed = payment failed, cancelled = cancelled by tutor or admin';
 
 
+
+
+
+
+
+
+
+

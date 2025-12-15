@@ -174,30 +174,35 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
         // Navigate based on user status
         if (mounted) {
-          // For tutors: Always go to dashboard (they can complete onboarding from there)
-          // This applies to both new and existing tutors
+          // For tutors: Check tutor-specific onboarding status
           if (userRole == 'tutor') {
-            // For existing users (login), always go to dashboard
-            if (!isNewUser) {
-              LogService.success('Existing tutor login - navigating to dashboard');
-              // Send onboarding notification if needed (only once per day)
-              _sendOnboardingNotificationIfNeeded(response.user!.id);
-              Navigator.pushReplacementNamed(context, '/tutor-nav');
-            } else {
-              // For new tutors (signup), check onboarding status
-              final userId = response.user!.id;
-              final progress = await TutorOnboardingProgressService.loadProgress(userId);
+            final userId = response.user!.id;
+            try {
+              final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
               final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
               
-              // If no progress record exists and not skipped, it's a new tutor - show choice screen
-              if (progress == null && !onboardingSkipped) {
-                LogService.success('New tutor signup (no progress record) - navigating to onboarding choice screen');
-                Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
-              } else {
-                // Has some progress or was skipped - go to dashboard (they can continue from there)
-                LogService.success('New tutor with existing progress - navigating to dashboard');
+              if (onboardingComplete || onboardingSkipped) {
+                // Tutor onboarding complete or skipped - go directly to dashboard
+                LogService.success('Tutor onboarding complete - navigating to dashboard');
+                _sendOnboardingNotificationIfNeeded(userId);
                 Navigator.pushReplacementNamed(context, '/tutor-nav');
+              } else {
+                // Check if it's a new tutor (no progress at all)
+                final progress = await TutorOnboardingProgressService.loadProgress(userId);
+                if (progress == null && !onboardingSkipped) {
+                  // New tutor - show choice screen
+                  LogService.success('New tutor signup - navigating to onboarding choice screen');
+                  Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+                } else {
+                  // Has some progress - go to dashboard (they can continue from there)
+                  LogService.success('Tutor with existing progress - navigating to dashboard');
+                  Navigator.pushReplacementNamed(context, '/tutor-nav');
+                }
               }
+            } catch (e) {
+              LogService.warning('Error checking tutor onboarding: $e - navigating to dashboard');
+              // On error, go to dashboard (better than blocking user)
+              Navigator.pushReplacementNamed(context, '/tutor-nav');
             }
           } else if (surveyCompleted) {
             // Other roles with completed survey → go to role-based navigation

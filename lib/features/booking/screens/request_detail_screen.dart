@@ -5,11 +5,13 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
+import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
 
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
-
 import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// RequestDetailScreen
@@ -35,6 +37,7 @@ class RequestDetailScreen extends StatefulWidget {
 
 class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _isCanceling = false;
+  bool _hasCheckedExpired = false; // Prevent infinite loop
 
   Future<void> _cancelRequest() async {
     final confirm = await showDialog<bool>(
@@ -105,6 +108,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   Widget _buildTrialSessionDetail(BuildContext context, TrialSession session) {
     final statusColor = _getStatusColor(session.status);
     
+    // Reset the expired check flag when building a new session
+    _hasCheckedExpired = false;
+    
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -132,26 +138,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _buildTrialStatusBanner(session, statusColor),
             const SizedBox(height: 24),
             
-            // Tutor Info Card (will be loaded asynchronously)
-            FutureBuilder<Map<String, dynamic>?>(
-              future: _loadTutorInfo(session.tutorId),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(16),
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
-                  );
-                }
-                if (snapshot.hasData && snapshot.data != null) {
-                  return _buildTrialTutorCard(snapshot.data!);
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            const SizedBox(height: 24),
-            
             // Session Details Card
             _buildTrialSessionDetailsCard(session),
             const SizedBox(height: 24),
@@ -171,7 +157,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               const SizedBox(height: 24),
             
             // Action buttons at bottom
-            _buildTrialActions(context, session),
+              _buildTrialActions(context, session),
           ],
         ),
       ),
@@ -179,34 +165,65 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
   
   Widget _buildTrialStatusBanner(TrialSession session, Color statusColor) {
+    // Determine if this is an expired session (not user-initiated cancellation)
+    final isExpired = session.status == 'cancelled' && 
+                     session.rejectionReason != null &&
+                     (session.rejectionReason!.toLowerCase().contains('expired') || 
+                      session.rejectionReason!.toLowerCase().contains('time passed'));
+    
+    // For pending sessions, make it VERY clear
+    final isPending = session.status == 'pending';
+    
+    final displayStatus = isExpired 
+        ? 'EXPIRED' 
+        : isPending 
+            ? 'PENDING TUTOR APPROVAL' 
+            : session.status.toUpperCase();
+    final statusMessage = _getTrialStatusMessage(session.status, rejectionReason: session.rejectionReason);
+    final displayColor = isExpired 
+        ? Colors.orange 
+        : isPending 
+            ? Colors.orange 
+            : statusColor;
+    
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
+        color: displayColor.withOpacity(isPending ? 0.15 : 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: statusColor.withOpacity(0.3)),
+        border: Border.all(
+          color: displayColor.withOpacity(isPending ? 0.5 : 0.3),
+          width: isPending ? 2 : 1,
+        ),
       ),
       child: Row(
         children: [
-          Icon(_getStatusIcon(session.status), color: statusColor, size: 28),
+          Icon(
+            _getStatusIcon(session.status), 
+            color: displayColor, 
+            size: isPending ? 32 : 28,
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  session.status.toUpperCase(),
+                  displayStatus,
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: isPending ? 18 : 16,
                     fontWeight: FontWeight.w800,
-                    color: statusColor,
+                    color: displayColor,
+                    letterSpacing: isPending ? 0.5 : 0,
                   ),
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  _getTrialStatusMessage(session.status),
+                  statusMessage,
                   style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: statusColor,
+                    fontSize: isPending ? 14 : 13,
+                    fontWeight: isPending ? FontWeight.w600 : FontWeight.normal,
+                    color: displayColor,
                   ),
                 ),
               ],
@@ -419,30 +436,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             const SizedBox(height: 12),
             _buildInfoRow('Trial Fee', '${session.trialFee.toStringAsFixed(0)} XAF'),
             _buildInfoRow('Payment Status', session.paymentStatus.toUpperCase()),
-            if (SessionDateUtils.shouldShowPayNowButton(session))
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => TrialPaymentScreen(trialSession: session),
-                      ),
-                    ).then((success) {
-                      if (success == true) {
-                        // Refresh the screen
-                        safeSetState(() {});
-                      }
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: Text('Pay Now', style: GoogleFonts.poppins()),
-                ),
-              ),
           ],
         ),
       ),
@@ -478,7 +471,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                session.trialGoal!,
+                _cleanTrialGoal(session.trialGoal!),
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   color: AppTheme.textDark,
@@ -510,69 +503,379 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
   
+  /// Clean trial goal text by removing internal reschedule request notes
+  String _cleanTrialGoal(String goal) {
+    // Remove reschedule request notes that were accidentally added to trial goals
+    // Pattern: [RESCHEDULE REQUEST: ...]
+    final reschedulePattern = RegExp(r'\n?\n?\[RESCHEDULE REQUEST:.*?\]', dotAll: true);
+    return goal.replaceAll(reschedulePattern, '').trim();
+  }
+
   Widget _buildTrialActions(BuildContext context, TrialSession session) {
-    // If not approved, show no action button
-    if (session.status != 'approved' && session.status != 'scheduled') {
-      return const SizedBox.shrink();
-    }
+    final paymentStatus = session.paymentStatus.toLowerCase();
+    final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+    final isApproved = session.status == 'approved' || session.status == 'scheduled';
+    final isPending = session.status == 'pending';
     
-    // If approved but not paid, show Pay Now button
-    if (session.status == 'approved' && session.paymentStatus == 'unpaid') {
-      if (SessionDateUtils.shouldShowPayNowButton(session)) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 20),
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TrialPaymentScreen(trialSession: session),
-                ),
-              ).then((success) {
-                if (success == true) {
-                  // Refresh the screen
-                  safeSetState(() {});
+    // PENDING SESSIONS: Show Modify and Delete buttons
+    if (isPending) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Column(
+          children: [
+            // Modify button (no reason required)
+            ElevatedButton.icon(
+              onPressed: () async {
+                try {
+                  final tutorData = await _loadTutorInfo(session.tutorId);
+                  if (tutorData != null && mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => BookTrialSessionScreen(
+                          tutor: tutorData,
+                          rescheduleSessionId: session.id,
+                          isReschedule: true,
+                        ),
+                      ),
+                    ).then((_) {
+                      if (mounted) {
+                        safeSetState(() {});
+                        Navigator.pop(context, true); // Refresh parent screen
+                      }
+                    });
+                  }
+                } catch (e) {
+                  LogService.error('Error loading tutor for modification: $e');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error loading tutor information'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
-              });
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              },
+              icon: const Icon(Icons.edit, size: 20),
+              label: Text(
+                'Modify Request',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
-            child: Text(
-              'Pay Now',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
+            const SizedBox(height: 12),
+            // Delete button (optional reason)
+            OutlinedButton.icon(
+              onPressed: () => _showDeleteDialog(context, session, requireReason: false),
+              icon: const Icon(Icons.delete_outline, size: 20),
+              label: Text(
+                'Delete Request',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: BorderSide(color: Colors.red, width: 1.5),
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
             ),
-          ),
-        );
-      }
-      return const SizedBox.shrink();
+          ],
+        ),
+      );
     }
     
-    // If paid, show View Session button
-    if (session.paymentStatus == 'paid' || session.status == 'scheduled') {
+    // Check if session should be marked as missed/expired (only once, and only for unpaid sessions)
+    if (!_hasCheckedExpired) {
+      _hasCheckedExpired = true;
+      if (!isPaid) {
+        _checkAndMarkMissedSession(session);
+      }
+    }
+    
+    // Check if session is expired
+    final isExpired = SessionDateUtils.isSessionExpired(session) || 
+                     (session.status == 'cancelled' && 
+                      (session.rejectionReason?.contains('expired') == true ||
+                       session.rejectionReason?.contains('not completed') == true));
+    
+    // PAID SESSIONS: Show Modify only (with reason), NO delete
+    if (isPaid && isApproved && !isExpired) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Column(
+          children: [
+            // Request Date Change button (modify with reason)
+            ElevatedButton.icon(
+              onPressed: () async {
+                final reasonController = TextEditingController();
+                final confirmed = await showDialog<String>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: Text(
+                      'Request Date Change',
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                    ),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Please provide a reason for requesting a date change:',
+                          style: GoogleFonts.poppins(fontSize: 14),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: reasonController,
+                          decoration: InputDecoration(
+                            hintText: 'e.g., Schedule conflict, personal emergency...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          maxLines: 3,
+                          autofocus: true,
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text('Cancel', style: GoogleFonts.poppins()),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          if (reasonController.text.trim().isNotEmpty) {
+                            Navigator.pop(context, reasonController.text.trim());
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                        ),
+                        child: Text('Request', style: GoogleFonts.poppins()),
+                      ),
+                    ],
+                  ),
+                );
+                
+                if (confirmed != null && confirmed.isNotEmpty) {
+                  try {
+                    final tutorData = await _loadTutorInfo(session.tutorId);
+                    if (tutorData != null && mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BookTrialSessionScreen(
+                            tutor: tutorData,
+                            rescheduleSessionId: session.id,
+                            isReschedule: true,
+                            rescheduleReason: confirmed,
+                          ),
+                        ),
+                      ).then((_) {
+                        if (mounted) {
+                          safeSetState(() {});
+                        }
+                      });
+                    }
+                  } catch (e) {
+                    LogService.error('Error loading tutor for date change: $e');
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error loading tutor information'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  }
+                }
+              },
+              icon: const Icon(Icons.edit_calendar, size: 20),
+              label: Text(
+                'Request Date Change',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // View Session button
+            ElevatedButton.icon(
+              onPressed: () => _navigateToSession(context, session),
+              icon: const Icon(Icons.calendar_today, size: 20),
+              label: Text(
+                'View Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // APPROVED (UNPAID) SESSIONS: Show Pay Now button (primary), then Modify/Delete as secondary options
+    if (isApproved && !isPaid && !isExpired) {
+      // Check if session is upcoming (not expired) - only show Pay Now if upcoming
+      final isUpcoming = SessionDateUtils.isSessionUpcoming(session);
+      
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Column(
+          children: [
+            // Pay Now button (primary action for approved unpaid sessions) - ALWAYS show for approved unpaid
+            ElevatedButton(
+              onPressed: isUpcoming ? () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TrialPaymentScreen(trialSession: session),
+                  ),
+                ).then((success) {
+                  if (success == true && mounted) {
+                    safeSetState(() {});
+                  }
+                });
+              } : null, // Disable if expired
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                disabledBackgroundColor: Colors.grey[300],
+                disabledForegroundColor: Colors.grey[600],
+              ),
+              child: Text(
+                'Pay Now',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Modify button (requires reason) - secondary action
+            ElevatedButton.icon(
+              onPressed: () => _showModifyDialog(context, session, requireReason: true),
+              icon: const Icon(Icons.edit, size: 20),
+              label: Text(
+                'Modify Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey[200],
+                foregroundColor: Colors.grey[700],
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Delete button (requires reason) - secondary action
+            OutlinedButton.icon(
+              onPressed: () => _showDeleteDialog(context, session, requireReason: true),
+              icon: const Icon(Icons.delete_outline, size: 20),
+              label: Text(
+                'Delete Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: BorderSide(color: Colors.red, width: 1.5),
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // EXPIRED SESSIONS: Show Edit Date button
+    if (isExpired) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 20),
         child: ElevatedButton.icon(
-          onPressed: () {
-            // Navigate to My Sessions screen (tab 1 in student nav)
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/student-nav',
-              (route) => false,
-              arguments: {'initialTab': 1}, // Sessions tab (0=Home, 1=Sessions, 2=Requests, 3=Profile)
-            );
+          onPressed: () async {
+            try {
+              final tutorData = await _loadTutorInfo(session.tutorId);
+              if (tutorData != null && mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookTrialSessionScreen(
+                      tutor: tutorData,
+                      rescheduleSessionId: session.id,
+                      isReschedule: true,
+                    ),
+                  ),
+                ).then((_) {
+                  if (mounted) {
+                    safeSetState(() {});
+                  }
+                });
+              }
+            } catch (e) {
+              LogService.error('Error loading tutor for reschedule: $e');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error loading tutor information'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
           },
-          icon: const Icon(Icons.calendar_today, size: 20),
+          icon: const Icon(Icons.edit_calendar, size: 20),
           label: Text(
-            'View Session',
+            'Edit Date',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w600,
               fontSize: 16,
@@ -593,20 +896,372 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     return const SizedBox.shrink();
   }
   
-        Future<Map<String, dynamic>?> _loadTutorInfo(String tutorId) async {
+  /// Show modify dialog
+  Future<void> _showModifyDialog(BuildContext context, TrialSession session, {required bool requireReason}) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Modify Session',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (requireReason) ...[
+              Text(
+                'Please provide a reason for modifying this session:',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: InputDecoration(
+                  hintText: 'e.g., Schedule conflict, need different time...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                maxLines: 3,
+                autofocus: true,
+              ),
+            ] else ...[
+              Text(
+                'You can modify the session details. The tutor will be notified of the changes.',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (!requireReason || reasonController.text.trim().isNotEmpty) {
+                Navigator.pop(context, reasonController.text.trim());
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
+            child: Text('Continue', style: GoogleFonts.poppins()),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != null) {
+      try {
+        final tutorData = await _loadTutorInfo(session.tutorId);
+        if (tutorData != null && mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BookTrialSessionScreen(
+                tutor: tutorData,
+                rescheduleSessionId: session.id,
+                isReschedule: true,
+                rescheduleReason: requireReason ? confirmed : null,
+              ),
+            ),
+          ).then((_) {
+            if (mounted) {
+              safeSetState(() {});
+              Navigator.pop(context, true); // Refresh parent screen
+            }
+          });
+        }
+      } catch (e) {
+        LogService.error('Error loading tutor for modification: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error loading tutor information'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+  
+  /// Show delete dialog
+  Future<void> _showDeleteDialog(BuildContext context, TrialSession session, {required bool requireReason}) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.delete_outline, color: Colors.red[300], size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                requireReason ? 'Delete Session' : 'Delete Request',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              requireReason
+                  ? 'Please provide a reason for deleting this session. The tutor will be notified.'
+                  : 'You can optionally provide a reason for deleting this request. The tutor will be notified.',
+              style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: requireReason
+                    ? 'e.g., Schedule conflict, found another tutor, etc.'
+                    : 'Optional: Reason for deletion...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                labelText: requireReason ? 'Deletion Reason (Required)' : 'Deletion Reason (Optional)',
+                labelStyle: GoogleFonts.poppins(fontSize: 12),
+              ),
+              style: GoogleFonts.poppins(fontSize: 14),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Keep ${requireReason ? 'Session' : 'Request'}', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (!requireReason || reasonController.text.trim().isNotEmpty) {
+                Navigator.pop(context, reasonController.text.trim().isEmpty ? null : reasonController.text.trim());
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Delete', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != null) {
+      try {
+        await TrialSessionService.deleteTrialSession(
+          sessionId: session.id,
+          reason: confirmed.isEmpty ? null : confirmed,
+        );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${requireReason ? 'Session' : 'Request'} deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true); // Return to previous screen
+        }
+      } catch (e) {
+        LogService.error('Error deleting session: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+  
+  /// Navigate to session in My Sessions screen
+  void _navigateToSession(BuildContext context, TrialSession session) {
+    final now = DateTime.now();
+    final sessionDateTime = DateTime(
+      session.scheduledDate.year,
+      session.scheduledDate.month,
+      session.scheduledDate.day,
+      int.tryParse(session.scheduledTime.split(':')[0]) ?? 0,
+      int.tryParse(session.scheduledTime.split(':').length > 1 ? session.scheduledTime.split(':')[1] : '0') ?? 0,
+    );
+    
+    final sessionEndTime = sessionDateTime.add(Duration(minutes: session.durationMinutes));
+    final isPast = sessionEndTime.isBefore(now) || 
+                   session.status == 'completed' || 
+                   session.status == 'cancelled';
+    
+    Navigator.pushNamed(
+      context,
+      '/my-sessions',
+      arguments: {
+        'initialTab': isPast ? 1 : 0,
+        'sessionId': session.id,
+      },
+    );
+  }
+  
+  /// Check and mark session as missed if time has passed
+  Future<void> _checkAndMarkMissedSession(TrialSession session) async {
     try {
-      // Use TutorService to fetch tutor by ID
-      return await TutorService.fetchTutorById(tutorId);
+      // Only check if session is pending, approved, or scheduled
+      // Don't update if already completed, cancelled, or rejected
+      if (session.status == 'completed' || 
+          session.status == 'cancelled' || 
+          session.status == 'rejected') {
+        return;
+      }
+      
+      // Check if session time has passed
+      if (!SessionDateUtils.isSessionExpired(session)) {
+        return; // Session hasn't expired yet
+      }
+      
+      // Session has expired - but be conservative about auto-cancelling
+      final sessionDateTime = SessionDateUtils.getSessionDateTime(session);
+      final now = DateTime.now();
+      final timeSinceSession = now.difference(sessionDateTime);
+      
+      // Only auto-cancel if:
+      // 1. At least 24 hours have passed since the session time (grace period)
+      // 2. AND the session is unpaid (we don't auto-cancel paid sessions - those need manual review)
+      final paymentStatus = session.paymentStatus.toLowerCase();
+      final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+      
+      // For unpaid sessions: auto-cancel after 24 hours
+      // For paid sessions: NEVER auto-cancel - they should be marked as "no_show" or "missed" manually
+      if (!isPaid && timeSinceSession.inHours >= 24) {
+        // Only auto-cancel unpaid sessions that expired more than 24 hours ago
+        try {
+          await SupabaseService.client
+              .from('trial_sessions')
+              .update({
+                'status': 'cancelled',
+                'rejection_reason': 'Session expired - time passed',
+                'updated_at': now.toIso8601String(),
+              })
+              .eq('id', session.id);
+          
+          LogService.info('Auto-cancelled unpaid expired trial session: ${session.id} (expired ${timeSinceSession.inHours} hours ago)');
+          
+          // Refresh the screen to show updated status
+          if (mounted) {
+            safeSetState(() {});
+          }
+        } catch (e) {
+          LogService.warning('Error marking unpaid session as cancelled: $e');
+        }
+      } else if (isPaid && timeSinceSession.inHours >= 24) {
+        // For paid sessions that expired, we should mark as "no_show" instead of cancelled
+        // But only if it's been more than 24 hours and still not completed
+        // Actually, let's not auto-update paid sessions at all - they need manual review
+        LogService.debug('Paid session ${session.id} expired ${timeSinceSession.inHours} hours ago - requires manual review');
+      }
+      // If less than 24 hours have passed, don't do anything - give users time
     } catch (e) {
-      LogService.debug('Error loading tutor info: $e');
+      LogService.warning('Error checking missed session: $e');
+    }
+  }
+  
+  Future<Map<String, dynamic>?> _loadTutorInfo(String tutorId) async {
+    try {
+      // Fetch tutor profile with profile data
+      final supabase = SupabaseService.client;
+      
+      // Try to fetch tutor profile with joined profile data
+      try {
+        final tutorProfile = await supabase
+            .from('tutor_profiles')
+            .select(
+              'user_id, rating, admin_approved_rating, total_reviews, profile_photo_url, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
+            )
+            .eq('user_id', tutorId)
+            .maybeSingle();
+
+        if (tutorProfile == null) return null;
+
+        // Extract profile data
+        Map<String, dynamic>? profile;
+        final profilesData = tutorProfile['profiles'];
+        if (profilesData is Map) {
+          profile = Map<String, dynamic>.from(profilesData);
+        } else if (profilesData is List && profilesData.isNotEmpty) {
+          profile = Map<String, dynamic>.from(profilesData[0]);
+        }
+
+        // Build tutor data map for BookTrialSessionScreen
+        final tutorName = profile?['full_name'] as String? ?? 'Tutor';
+        final avatarUrl = tutorProfile['profile_photo_url'] as String? ?? 
+                         profile?['avatar_url'] as String?;
+        
+        return {
+          'id': tutorId,
+          'user_id': tutorId,
+          'full_name': tutorName,
+          'avatar_url': avatarUrl,
+          'rating': tutorProfile['rating'] ?? 0.0,
+          'admin_approved_rating': tutorProfile['admin_approved_rating'],
+          'total_reviews': tutorProfile['total_reviews'] ?? 0,
+        };
+      } catch (e) {
+        LogService.warning('Error loading tutor with join, trying fallback: $e');
+        
+        // Fallback: fetch separately
+        final tutorProfile = await supabase
+            .from('tutor_profiles')
+            .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url')
+            .eq('user_id', tutorId)
+            .maybeSingle();
+
+        if (tutorProfile == null) return null;
+
+        final profile = await supabase
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', tutorId)
+            .maybeSingle();
+
+        return {
+          'id': tutorId,
+          'user_id': tutorId,
+          'full_name': profile?['full_name'] as String? ?? 'Tutor',
+          'avatar_url': tutorProfile['profile_photo_url'] as String? ?? 
+                       profile?['avatar_url'] as String?,
+          'rating': tutorProfile['rating'] ?? 0.0,
+          'admin_approved_rating': tutorProfile['admin_approved_rating'],
+          'total_reviews': tutorProfile['total_reviews'] ?? 0,
+        };
+      }
+    } catch (e) {
+      LogService.error('Error loading tutor info: $e');
       return null;
     }
   }
   
-  String _getTrialStatusMessage(String status) {
+  String _getTrialStatusMessage(String status, {String? rejectionReason}) {
     switch (status) {
       case 'pending':
-        return 'Waiting for tutor approval';
+        return 'Your tutor needs to approve this trial before you can pay.';
       case 'approved':
         return 'Tutor has approved your trial session';
       case 'rejected':
@@ -616,7 +1271,14 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       case 'completed':
         return 'Trial session completed';
       case 'cancelled':
-        return 'Trial session cancelled';
+        // Check if it was cancelled due to expiration
+        if (rejectionReason != null && 
+            (rejectionReason.toLowerCase().contains('expired') || 
+             rejectionReason.toLowerCase().contains('time passed') ||
+             rejectionReason.toLowerCase().contains('session expired'))) {
+          return 'Session expired - you can reschedule';
+        }
+        return 'Trial session cancelled by user';
       case 'no_show':
         return 'No show detected';
       default:
@@ -1149,13 +1811,20 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'pending':
         return Colors.orange;
       case 'approved':
         return Colors.green;
       case 'rejected':
         return Colors.red;
+      // 'expired' is not a valid status - use 'cancelled' instead
+      case 'scheduled':
+        return Colors.blue;
+      case 'completed':
+        return Colors.green.shade700;
+      case 'cancelled':
+        return Colors.grey;
       default:
         return Colors.grey;
     }

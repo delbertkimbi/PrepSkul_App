@@ -309,40 +309,98 @@ class PricingService {
     Map<String, dynamic> tutorData, {
     int? overrideSessionsPerWeek,
   }) {
+    final tutorName = tutorData['full_name'] ?? 'Unknown';
+    
+    // Use pre-calculated effective rate from tutor_service if available (no duplicate calculation)
+    // tutor_service already validates and calculates effectiveRate, so use it directly
+    final effectiveRateFromService = (tutorData['effective_rate'] as num?)?.toDouble() 
+        ?? (tutorData['hourly_rate'] as num?)?.toDouble(); // Fallback to hourly_rate if effective_rate not set
+    
     // Extract pricing data with priority: discounted_price > base_session_price > admin_price_override > hourly_rate
     final discountedPrice = tutorData['discounted_price']?.toDouble();
     final baseSessionPrice = tutorData['base_session_price']?.toDouble();
     final adminPriceOverride = tutorData['admin_price_override']?.toDouble();
-    final hourlyRate = (tutorData['hourly_rate'] ?? 3000).toDouble();
+    final hourlyRateRaw = tutorData['hourly_rate'];
     final perSessionRate = tutorData['per_session_rate']?.toDouble();
     
-    // Check if tutor has discount
+    // DEBUG: Print raw pricing data
+    print('💰 [PRICING_SERVICE] Tutor: $tutorName');
+    print('   - effectiveRateFromService: $effectiveRateFromService');
+    print('   - discounted_price: $discountedPrice');
+    print('   - base_session_price: $baseSessionPrice');
+    print('   - admin_price_override: $adminPriceOverride');
+    print('   - hourly_rate (raw): $hourlyRateRaw');
+    print('   - per_session_rate: $perSessionRate');
+    
+    // Check if tutor has discount (needed for both paths)
     final discountPercent = (tutorData['discount_percent'] ?? 0.0).toDouble();
     final discountAmount = (tutorData['discount_amount_xaf'] ?? 0).toInt();
     final hasDiscount = discountPercent > 0 || discountAmount > 0;
     
-    // Determine effective base rate (priority order)
+    // If tutor_service already calculated effective rate, use it (prevent duplicate calculation)
     double effectiveBaseRate;
-    if (discountedPrice != null && discountedPrice > 0 && hasDiscount) {
-      // Use discounted price if available
-      effectiveBaseRate = discountedPrice;
-    } else if (baseSessionPrice != null && baseSessionPrice > 0) {
-      effectiveBaseRate = baseSessionPrice;
-    } else if (adminPriceOverride != null && adminPriceOverride > 0) {
-      effectiveBaseRate = adminPriceOverride;
-    } else if (perSessionRate != null && perSessionRate > 0) {
-      effectiveBaseRate = perSessionRate;
+    if (effectiveRateFromService != null && effectiveRateFromService > 0 && effectiveRateFromService <= 50000) {
+      effectiveBaseRate = effectiveRateFromService;
+      print('   ✅ Using effectiveRateFromService: $effectiveBaseRate');
     } else {
-      effectiveBaseRate = hourlyRate;
+      // Validate and sanitize hourly_rate (prevent very large numbers)
+      double hourlyRate = 3000.0; // Default fallback
+      if (hourlyRateRaw != null) {
+        final hourlyRateValue = hourlyRateRaw is num ? hourlyRateRaw.toDouble() : double.tryParse(hourlyRateRaw.toString());
+        // Only use if it's a reasonable value (between 1000 and 50000 XAF)
+        if (hourlyRateValue != null && hourlyRateValue >= 1000 && hourlyRateValue <= 50000) {
+          hourlyRate = hourlyRateValue;
+        } else {
+          print('   ⚠️ hourly_rate invalid: $hourlyRateValue (using default 3000)');
+        }
+      }
+      print('   - hourly_rate (validated): $hourlyRate');
+      
+      // Determine effective base rate (priority order)
+      // Validate each rate to prevent very large numbers (max 50000 XAF per session)
+      if (discountedPrice != null && discountedPrice > 0 && discountedPrice <= 50000 && hasDiscount) {
+        // Use discounted price if available and valid
+        effectiveBaseRate = discountedPrice;
+        print('   ✅ Using discounted_price: $effectiveBaseRate');
+      } else if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
+        effectiveBaseRate = baseSessionPrice;
+        print('   ✅ Using base_session_price: $effectiveBaseRate');
+      } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
+        effectiveBaseRate = adminPriceOverride;
+        print('   ✅ Using admin_price_override: $effectiveBaseRate');
+      } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
+        effectiveBaseRate = perSessionRate;
+        print('   ✅ Using per_session_rate: $effectiveBaseRate');
+      } else {
+        effectiveBaseRate = hourlyRate;
+        print('   ✅ Using hourly_rate (fallback): $effectiveBaseRate');
+      }
     }
     
-    final rating = (tutorData['rating'] ?? 4.0).toDouble();
+    // Use effective rating: admin_approved_rating if total_reviews < 3, otherwise calculated rating
+    final totalReviews = (tutorData['total_reviews'] as num?)?.toInt() ?? 0;
+    final adminApprovedRating = (tutorData['admin_approved_rating'] as num?)?.toDouble();
+    final calculatedRating = (tutorData['rating'] as num?)?.toDouble() ?? 0.0;
+    
+    print('   - total_reviews: $totalReviews');
+    print('   - admin_approved_rating: $adminApprovedRating');
+    print('   - calculated_rating: $calculatedRating');
+    
+    final rating = (totalReviews < 3 && adminApprovedRating != null)
+        ? adminApprovedRating
+        : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 4.0));
+    
+    print('   - Final rating used: $rating');
+    
     final qualification = tutorData['tutor_qualification'] ?? 'Professional';
     
     // If admin has set base_session_price or admin_price_override, use it directly
-    final adminOverride = (baseSessionPrice != null && baseSessionPrice > 0)
+    // But only if it's a valid value (not too large)
+    final adminOverride = (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000)
         ? baseSessionPrice
-        : adminPriceOverride;
+        : (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000)
+        ? adminPriceOverride
+        : null;
 
     // Default sessions per week
     final sessionsPerWeek = overrideSessionsPerWeek ?? 2;
@@ -358,6 +416,9 @@ class PricingService {
       hasVisibilitySubscription: tutorData['visibility_subscription'] ?? false,
       hasPrepSkulCertification: tutorData['prepskul_certified'] ?? false,
     );
+    
+    print('   - Final perMonth: ${pricing['perMonth']} (${formatPrice(pricing['perMonth'] as double)})');
+    print('   - Final perSession: ${pricing['perSession']}');
 
     // Add discount information if available
     if (hasDiscount) {

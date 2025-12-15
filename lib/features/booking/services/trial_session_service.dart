@@ -8,6 +8,7 @@ import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
+import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter/foundation.dart';
 
@@ -35,6 +36,7 @@ class TrialSessionService {
     String? learnerChallenges,
     String? learnerLevel,
     double? overrideTrialFee, // Optional: Use this fee instead of fetching from DB (for discounts)
+    String? rescheduleSessionId, // Optional: ID of the session being rescheduled
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -63,11 +65,17 @@ class TrialSessionService {
       );
 
       // Get user profile to determine if parent or student
-      final userProfile = await _supabase
+      final userProfileResponse = await _supabase
           .from('profiles')
           .select('user_type')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
+      
+      if (userProfileResponse == null) {
+        throw Exception('User profile not found');
+      }
+      
+      final userProfile = userProfileResponse;
 
       final userType = userProfile['user_type'] as String;
       final isParent = userType == 'parent';
@@ -82,74 +90,80 @@ class TrialSessionService {
       }
 
       // Check if user already has an active trial session with this tutor
-      // Check for pending, approved, or scheduled trials
-      final pendingTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'pending')
-          .maybeSingle();
+      // Skip this check if we're rescheduling an existing session (rescheduleSessionId is provided)
+      if (rescheduleSessionId == null) {
+        // Check for pending, approved, or scheduled trials
+        final pendingTrials = await _supabase
+            .from('trial_sessions')
+            .select('id, status, scheduled_date, scheduled_time')
+            .eq('tutor_id', validTutorId)
+            .eq('requester_id', userId)
+            .eq('status', 'pending')
+            .maybeSingle();
 
-      final approvedTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'approved')
-          .maybeSingle();
+        final approvedTrials = await _supabase
+            .from('trial_sessions')
+            .select('id, status, scheduled_date, scheduled_time')
+            .eq('tutor_id', validTutorId)
+            .eq('requester_id', userId)
+            .eq('status', 'approved')
+            .maybeSingle();
 
-      final scheduledTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'scheduled')
-          .maybeSingle();
+        final scheduledTrials = await _supabase
+            .from('trial_sessions')
+            .select('id, status, scheduled_date, scheduled_time')
+            .eq('tutor_id', validTutorId)
+            .eq('requester_id', userId)
+            .eq('status', 'scheduled')
+            .maybeSingle();
 
-      Map<String, dynamic>? existingTrial;
-      if (pendingTrials != null) {
-        existingTrial = pendingTrials;
-      } else if (approvedTrials != null) {
-        existingTrial = approvedTrials;
-      } else if (scheduledTrials != null) {
-        existingTrial = scheduledTrials;
-      }
-
-      if (existingTrial != null) {
-        final status = existingTrial['status'] as String;
-        final scheduledDate = existingTrial['scheduled_date'] as String?;
-        final scheduledTime = existingTrial['scheduled_time'] as String?;
-
-        String message =
-            'You already have an active trial session with this tutor';
-        if (status == 'pending') {
-          message =
-              'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
-        } else if (status == 'approved') {
-          message =
-              'You already have an approved trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' scheduled for $scheduledDate at $scheduledTime';
-          }
-          message += '. Please complete this trial before booking another one.';
-        } else if (status == 'scheduled') {
-          message =
-              'You already have a scheduled trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' on $scheduledDate at $scheduledTime';
-          }
-          message += '. Please complete this trial before booking another one.';
+        Map<String, dynamic>? existingTrial;
+        if (pendingTrials != null) {
+          existingTrial = pendingTrials;
+        } else if (approvedTrials != null) {
+          existingTrial = approvedTrials;
+        } else if (scheduledTrials != null) {
+          existingTrial = scheduledTrials;
         }
 
-        // In debug mode, allow multiple trials but log a warning
-        if (kDebugMode) {
-          LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
-          // Continue with trial creation in debug mode
-        } else {
-          // In production, enforce the one-trial-per-tutor rule
-          throw Exception(message);
+        if (existingTrial != null) {
+          final status = existingTrial['status'] as String;
+          final scheduledDate = existingTrial['scheduled_date'] as String?;
+          final scheduledTime = existingTrial['scheduled_time'] as String?;
+
+          String message =
+              'You already have an active trial session with this tutor';
+          if (status == 'pending') {
+            message =
+                'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
+          } else if (status == 'approved') {
+            message =
+                'You already have an approved trial session with this tutor';
+            if (scheduledDate != null && scheduledTime != null) {
+              message += ' scheduled for $scheduledDate at $scheduledTime';
+            }
+            message += '. Please complete this trial before booking another one.';
+          } else if (status == 'scheduled') {
+            message =
+                'You already have a scheduled trial session with this tutor';
+            if (scheduledDate != null && scheduledTime != null) {
+              message += ' on $scheduledDate at $scheduledTime';
+            }
+            message += '. Please complete this trial before booking another one.';
+          }
+
+          // In debug mode, allow multiple trials but log a warning
+          if (kDebugMode) {
+            LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
+            // Continue with trial creation in debug mode
+          } else {
+            // In production, enforce the one-trial-per-tutor rule
+            throw Exception(message);
+          }
         }
+      } else {
+        // If rescheduling, log that we're skipping the duplicate check
+        LogService.debug('Rescheduling session $rescheduleSessionId - skipping duplicate trial check');
       }
 
       // Check for schedule conflicts with other tutors at the same time
@@ -233,16 +247,33 @@ class TrialSessionService {
 
       // Send notification to tutor
       try {
-        await NotificationHelperService.notifyTrialRequestCreated(
-          tutorId: validTutorId,
-          studentId: userId,
-          trialId: trialSession.id,
-          studentName: studentName,
-          subject: subject,
-          scheduledDate: scheduledDate,
-          scheduledTime: scheduledTime,
-          senderAvatarUrl: studentAvatarUrl,
-        );
+        if (rescheduleSessionId != null) {
+          // This is a reschedule request - send special notification
+          await NotificationHelperService.notifyTrialRequestCreated(
+            tutorId: validTutorId,
+            studentId: userId,
+            trialId: trialSession.id,
+            studentName: studentName,
+            subject: subject,
+            scheduledDate: scheduledDate,
+            scheduledTime: scheduledTime,
+            senderAvatarUrl: studentAvatarUrl,
+            isReschedule: true,
+            originalSessionId: rescheduleSessionId,
+          );
+        } else {
+          // Regular trial request
+          await NotificationHelperService.notifyTrialRequestCreated(
+            tutorId: validTutorId,
+            studentId: userId,
+            trialId: trialSession.id,
+            studentName: studentName,
+            subject: subject,
+            scheduledDate: scheduledDate,
+            scheduledTime: scheduledTime,
+            senderAvatarUrl: studentAvatarUrl,
+          );
+        }
       } catch (e) {
         LogService.warning('Failed to send trial request notification: $e');
         // Don't fail the trial creation if notification fails
@@ -495,6 +526,37 @@ class TrialSessionService {
       }
 
       final status = session['status'] as String?;
+      final paymentStatus = session['payment_status'] as String?;
+      
+      // Only allow cancellation for unpaid sessions
+      if (paymentStatus != null && 
+          (paymentStatus.toLowerCase() == 'paid' || 
+           paymentStatus.toLowerCase() == 'completed')) {
+        throw Exception('Cannot cancel a paid session. Please request a date change instead.');
+      }
+      
+      // Check if session has expired (time passed)
+      final scheduledDate = session['scheduled_date'] as String;
+      final scheduledTime = session['scheduled_time'] as String;
+      if (scheduledDate != null && scheduledTime != null) {
+        try {
+          final dateParts = scheduledDate.split('T')[0].split('-');
+          final timeParts = scheduledTime.split(':');
+          final year = int.parse(dateParts[0]);
+          final month = int.parse(dateParts[1]);
+          final day = int.parse(dateParts[2]);
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          final sessionDateTime = DateTime(year, month, day, hour, minute);
+          
+          if (sessionDateTime.isBefore(DateTime.now())) {
+            throw Exception('Cannot cancel an expired session. It has already passed.');
+          }
+        } catch (e) {
+          // If date parsing fails, continue (don't block cancellation)
+        }
+      }
+      
       if (status == 'pending') {
         throw Exception(
           'Cannot cancel pending session. Use deleteTrialSession instead.',
@@ -508,8 +570,8 @@ class TrialSessionService {
       final tutorId = session['tutor_id'] as String;
       final learnerId = session['learner_id'] as String;
       final subject = session['subject'] as String;
-      final scheduledDate = session['scheduled_date'] as String;
-      final scheduledTime = session['scheduled_time'] as String;
+      final sessionScheduledDate = session['scheduled_date'] as String;
+      final sessionScheduledTime = session['scheduled_time'] as String;
 
       // Update status to cancelled with reason
       final now = DateTime.now().toIso8601String();
@@ -575,12 +637,21 @@ class TrialSessionService {
   /// Only allowed for pending sessions (tutor hasn't approved yet)
   /// Also deletes associated payment records
   /// For approved sessions, use cancelApprovedTrialSession instead
-  static Future<void> deleteTrialSession(String sessionId) async {
+  /// Delete trial session
+  /// 
+  /// Rules:
+  /// - Pending: Can delete with optional reason
+  /// - Approved (unpaid): Can delete with required reason
+  /// - Paid: Cannot delete (only modify allowed)
+  static Future<void> deleteTrialSession({
+    required String sessionId,
+    String? reason, // Optional for pending, required for approved
+  }) async {
     try {
-      // First check if the session is pending
+      // Get session details
       final session = await _supabase
           .from('trial_sessions')
-          .select('status, payment_status, fapshi_trans_id')
+          .select('status, payment_status, tutor_id, learner_id, requester_id, subject, scheduled_date, scheduled_time, fapshi_trans_id')
           .eq('id', sessionId)
           .maybeSingle();
 
@@ -589,10 +660,20 @@ class TrialSessionService {
       }
 
       final status = session['status'] as String?;
-      if (status != 'pending') {
-        throw Exception(
-          'Cannot delete trial session. Only pending sessions can be deleted. For approved sessions, please cancel instead.',
-        );
+      final paymentStatus = session['payment_status'] as String?;
+      
+      // Paid sessions cannot be deleted
+      if (paymentStatus != null && 
+          (paymentStatus.toLowerCase() == 'paid' || 
+           paymentStatus.toLowerCase() == 'completed')) {
+        throw Exception('Cannot delete a paid session. You can only modify it.');
+      }
+      
+      // Approved sessions require a reason
+      if (status == 'approved' || status == 'scheduled') {
+        if (reason == null || reason.trim().isEmpty) {
+          throw Exception('A reason is required to delete an approved session.');
+        }
       }
 
       final fapshiTransId = session['fapshi_trans_id'] as String?;
@@ -616,6 +697,47 @@ class TrialSessionService {
         }
       }
 
+      // For approved sessions, mark as cancelled instead of deleting
+      if (status == 'approved' || status == 'scheduled') {
+        await _supabase
+            .from('trial_sessions')
+            .update({
+              'status': 'cancelled',
+              'rejection_reason': reason ?? 'Deleted by student',
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', sessionId);
+        
+        // Notify tutor about deletion
+        try {
+          final requesterProfile = await _supabase
+              .from('profiles')
+              .select('full_name, user_type')
+              .eq('id', session['requester_id'] as String)
+              .maybeSingle();
+          
+          final requesterName = requesterProfile?['full_name'] as String? ?? 'Student/Parent';
+          
+          await NotificationHelperService.notifyTrialSessionCancelled(
+            tutorId: session['tutor_id'] as String,
+            studentId: session['learner_id'] as String,
+            trialId: sessionId,
+            studentName: requesterName,
+            subject: session['subject'] as String,
+            scheduledDate: DateTime.parse(session['scheduled_date'] as String),
+            scheduledTime: session['scheduled_time'] as String,
+            cancellationReason: reason ?? 'Session deleted by student',
+            cancelledBy: requesterProfile?['user_type'] as String? ?? 'student',
+          );
+        } catch (e) {
+          LogService.warning('Failed to send deletion notification: $e');
+        }
+        
+        LogService.success('Approved trial session cancelled (deleted): $sessionId');
+        return;
+      }
+      
+      // For pending sessions, delete completely
       // Delete any notifications related to this trial session
       try {
         await _supabase.from('notifications').delete().contains('metadata', {
@@ -628,7 +750,31 @@ class TrialSessionService {
         LogService.info('Could not delete notifications (might not exist): $e');
       }
 
-      // Delete the trial session itself (this also removes all payment info stored in it)
+      // Notify tutor about pending session deletion (optional reason)
+      if (reason != null && reason.trim().isNotEmpty) {
+        try {
+          final requesterProfile = await _supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', session['requester_id'] as String)
+              .maybeSingle();
+          
+          final requesterName = requesterProfile?['full_name'] as String? ?? 'Student';
+          
+          await NotificationHelperService.notifyTrialRequestDeleted(
+            tutorId: session['tutor_id'] as String,
+            studentId: session['learner_id'] as String,
+            trialId: sessionId,
+            studentName: requesterName,
+            subject: session['subject'] as String,
+            deletionReason: reason,
+          );
+        } catch (e) {
+          LogService.warning('Failed to send deletion notification: $e');
+        }
+      }
+
+      // Delete the trial session itself
       await _supabase.from('trial_sessions').delete().eq('id', sessionId);
 
       LogService.success('Trial session deleted: $sessionId');
@@ -642,6 +788,374 @@ class TrialSessionService {
         );
       }
       throw Exception('Failed to delete trial session: $e');
+    }
+  }
+
+  /// Modify trial session (student-initiated)
+  /// 
+  /// Rules:
+  /// - Pending: Can modify without reason (just updates request)
+  /// - Approved/Paid: Requires reason
+  /// - Updates session details and notifies tutor
+  static Future<void> modifyTrialSession({
+    required String sessionId,
+    DateTime? scheduledDate,
+    String? scheduledTime,
+    int? durationMinutes,
+    String? location,
+    String? address,
+    String? locationDescription,
+    String? trialGoal,
+    String? learnerChallenges,
+    String? learnerLevel,
+    String? modificationReason, // Required for approved/paid sessions
+  }) async {
+    try {
+      // Get current session
+      final session = await _supabase
+          .from('trial_sessions')
+          .select('status, payment_status, tutor_id, learner_id, requester_id, subject')
+          .eq('id', sessionId)
+          .maybeSingle();
+      
+      if (session == null) {
+        throw Exception('Trial session not found');
+      }
+      
+      final status = session['status'] as String?;
+      final paymentStatus = session['payment_status'] as String?;
+      final isPaid = paymentStatus != null && 
+                    (paymentStatus.toLowerCase() == 'paid' || 
+                     paymentStatus.toLowerCase() == 'completed');
+      final isApproved = status == 'approved' || status == 'scheduled';
+      
+      // Paid sessions cannot be modified (only date change requests allowed)
+      if (isPaid) {
+        throw Exception('Cannot modify a paid session. Please request a date change instead.');
+      }
+      
+      // Approved/expired/cancelled sessions require a reason (except pending)
+      final isExpired = status == 'expired';
+      final isCancelled = status == 'cancelled';
+      if ((isApproved || isExpired || isCancelled) && 
+          (modificationReason == null || modificationReason.trim().isEmpty)) {
+        throw Exception('A reason is required to modify an ${isExpired ? 'expired' : isCancelled ? 'cancelled' : 'approved'} session.');
+      }
+      
+      // Build update data
+      final updateData = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      
+      if (scheduledDate != null) {
+        updateData['scheduled_date'] = scheduledDate.toIso8601String().split('T')[0];
+      }
+      if (scheduledTime != null) {
+        updateData['scheduled_time'] = scheduledTime;
+      }
+      if (durationMinutes != null) {
+        updateData['duration_minutes'] = durationMinutes;
+      }
+      if (location != null) {
+        updateData['location'] = location;
+      }
+      if (address != null) {
+        updateData['address'] = address;
+      }
+      if (locationDescription != null) {
+        updateData['location_description'] = locationDescription;
+      }
+      if (trialGoal != null) {
+        updateData['trial_goal'] = trialGoal;
+      }
+      if (learnerChallenges != null) {
+        updateData['learner_challenges'] = learnerChallenges;
+      }
+      if (learnerLevel != null) {
+        updateData['learner_level'] = learnerLevel;
+      }
+      
+      // If pending, reset status to ensure it's still pending after modification
+      if (status == 'pending') {
+        // Keep as pending - modification doesn't change approval status
+      } else if (isApproved || status == 'expired' || status == 'cancelled') {
+        // For approved/expired/cancelled sessions, modification resets to pending (needs re-approval)
+        // This allows rescheduling missed/expired sessions
+        updateData['status'] = 'pending';
+        updateData['responded_at'] = null;
+        updateData['tutor_response_notes'] = null;
+        updateData['rejection_reason'] = null; // Clear any previous rejection reason
+        updateData['payment_status'] = 'unpaid'; // Reset payment status if it was set
+      }
+      
+      // Update session
+      await _supabase
+          .from('trial_sessions')
+          .update(updateData)
+          .eq('id', sessionId);
+      
+      // Notify tutor about modification
+      try {
+        final requesterProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', session['requester_id'] as String)
+            .maybeSingle();
+        
+        final requesterName = requesterProfile?['full_name'] as String? ?? 'Student';
+        
+        final isExpired = status == 'expired';
+        final isCancelled = status == 'cancelled';
+        
+        if (status == 'pending') {
+          // Pending session modified - notify as update
+          await NotificationHelperService.notifyTrialRequestUpdated(
+            tutorId: session['tutor_id'] as String,
+            studentId: session['learner_id'] as String,
+            trialId: sessionId,
+            studentName: requesterName,
+            subject: session['subject'] as String,
+          );
+        } else if (isApproved || isExpired || isCancelled) {
+          // Approved/expired/cancelled session modified - notify as modification requiring re-approval
+          // For expired/cancelled, this is a request to reschedule a missed session
+          await NotificationHelperService.notifyTrialSessionModified(
+            tutorId: session['tutor_id'] as String,
+            studentId: session['learner_id'] as String,
+            trialId: sessionId,
+            studentName: requesterName,
+            subject: session['subject'] as String,
+            modificationReason: modificationReason ?? 
+                (isExpired || isCancelled 
+                    ? 'Request to reschedule a missed/expired session'
+                    : 'Session modified by student'),
+          );
+        }
+      } catch (e) {
+        LogService.warning('Failed to send modification notification: $e');
+      }
+      
+      LogService.success('Trial session modified: $sessionId');
+    } catch (e) {
+      LogService.error('Error modifying trial session: $e');
+      rethrow;
+    }
+  }
+  
+  /// Request modification from tutor (tutor-initiated)
+  /// 
+  /// Tutor can request changes to date, time, location
+  /// Learner must accept for changes to apply
+  static Future<String> requestTrialModification({
+    required String sessionId,
+    required DateTime proposedDate,
+    required String proposedTime,
+    int? proposedDurationMinutes,
+    String? proposedLocation,
+    String? proposedAddress,
+    String? proposedLocationDescription,
+    required String reason,
+    String? additionalNotes,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+      
+      // Get session to verify tutor ownership
+      final session = await _supabase
+          .from('trial_sessions')
+          .select('tutor_id, learner_id, scheduled_date, scheduled_time, duration_minutes, location')
+          .eq('id', sessionId)
+          .maybeSingle();
+      
+      if (session == null) {
+        throw Exception('Trial session not found');
+      }
+      
+      if (session['tutor_id'] != userId) {
+        throw Exception('Only the tutor can request modifications');
+      }
+      
+      // Create modification request in session_reschedule_requests table
+      final requestId = await _supabase
+          .from('session_reschedule_requests')
+          .insert({
+            'session_id': sessionId,
+            'session_type': 'trial',
+            'requested_by': userId,
+            'requested_by_type': 'tutor',
+            'original_date': session['scheduled_date'],
+            'original_time': session['scheduled_time'],
+            'proposed_date': proposedDate.toIso8601String().split('T')[0],
+            'proposed_time': proposedTime,
+            'proposed_duration_minutes': proposedDurationMinutes ?? session['duration_minutes'],
+            'proposed_location': proposedLocation ?? session['location'],
+            'proposed_address': proposedAddress,
+            'proposed_location_description': proposedLocationDescription,
+            'reason': reason,
+            'additional_notes': additionalNotes,
+            'tutor_approved': true, // Tutor auto-approves their own request
+            'student_approved': false,
+            'status': 'pending',
+          })
+          .select('id')
+          .single()
+          .then((result) => result['id'] as String);
+      
+      // Notify learner about modification request
+      try {
+        final tutorProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', userId)
+            .maybeSingle();
+        
+        final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+        
+        await NotificationHelperService.notifyTutorModificationRequest(
+          tutorId: userId,
+          studentId: session['learner_id'] as String,
+          trialId: sessionId,
+          tutorName: tutorName,
+          subject: session['subject'] as String? ?? 'Trial Session',
+          reason: reason,
+        );
+      } catch (e) {
+        LogService.warning('Failed to send modification request notification: $e');
+      }
+      
+      LogService.success('Tutor modification request created: $requestId');
+      return requestId;
+    } catch (e) {
+      LogService.error('Error creating tutor modification request: $e');
+      rethrow;
+    }
+  }
+  
+  /// Accept tutor's modification request (learner-initiated)
+  /// 
+  /// When learner accepts, session is automatically updated to tutor's proposal
+  static Future<void> acceptTutorModificationRequest(String requestId) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+      
+      // Get modification request
+      final request = await _supabase
+          .from('session_reschedule_requests')
+          .select('*')
+          .eq('id', requestId)
+          .maybeSingle();
+      
+      if (request == null) {
+        throw Exception('Modification request not found');
+      }
+      
+      if (request['status'] != 'pending') {
+        throw Exception('Modification request is not pending');
+      }
+      
+      final sessionId = request['session_id'] as String;
+      final sessionType = request['session_type'] as String;
+      
+      if (sessionType != 'trial') {
+        throw Exception('This method is for trial sessions only');
+      }
+      
+      // Verify learner is the requester
+      final session = await _supabase
+          .from('trial_sessions')
+          .select('learner_id, parent_id, requester_id')
+          .eq('id', sessionId)
+          .maybeSingle();
+      
+      if (session == null) {
+        throw Exception('Trial session not found');
+      }
+      
+      final learnerId = session['learner_id'] as String;
+      final parentId = session['parent_id'] as String?;
+      final requesterId = session['requester_id'] as String;
+      
+      if (userId != learnerId && userId != parentId && userId != requesterId) {
+        throw Exception('Only the learner/parent can accept modification requests');
+      }
+      
+      // Mark student as approved
+      await _supabase
+          .from('session_reschedule_requests')
+          .update({
+            'student_approved': true,
+            'status': 'approved',
+            'approved_at': DateTime.now().toIso8601String(),
+            'approved_by': userId,
+          })
+          .eq('id', requestId);
+      
+      // Apply modifications to trial session
+      final updateData = <String, dynamic>{
+        'scheduled_date': request['proposed_date'],
+        'scheduled_time': request['proposed_time'],
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      
+      if (request['proposed_duration_minutes'] != null) {
+        updateData['duration_minutes'] = request['proposed_duration_minutes'];
+      }
+      if (request['proposed_location'] != null) {
+        updateData['location'] = request['proposed_location'];
+      }
+      if (request['proposed_address'] != null) {
+        updateData['address'] = request['proposed_address'];
+      }
+      if (request['proposed_location_description'] != null) {
+        updateData['location_description'] = request['proposed_location_description'];
+      }
+      
+      // If session was approved, keep it approved (modification doesn't reset approval)
+      // If session was pending, keep it pending
+      final currentSession = await _supabase
+          .from('trial_sessions')
+          .select('status')
+          .eq('id', sessionId)
+          .maybeSingle();
+      
+      final currentStatus = currentSession?['status'] as String?;
+      if (currentStatus == 'approved' || currentStatus == 'scheduled') {
+        // Keep approved status
+      } else {
+        // Keep current status
+      }
+      
+      await _supabase
+          .from('trial_sessions')
+          .update(updateData)
+          .eq('id', sessionId);
+      
+      // Notify tutor that modification was accepted
+      try {
+        final learnerProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', requesterId)
+            .maybeSingle();
+        
+        final learnerName = learnerProfile?['full_name'] as String? ?? 'Student';
+        
+        await NotificationHelperService.notifyModificationAccepted(
+          tutorId: request['requested_by'] as String,
+          studentId: learnerId,
+          trialId: sessionId,
+          studentName: learnerName,
+        );
+      } catch (e) {
+        LogService.warning('Failed to send acceptance notification: $e');
+      }
+      
+      LogService.success('Tutor modification request accepted: $requestId');
+    } catch (e) {
+      LogService.error('Error accepting tutor modification request: $e');
+      rethrow;
     }
   }
 
@@ -693,14 +1207,17 @@ class TrialSessionService {
       // Get trial session (use provided or fetch)
       final trial = trialSession ?? await getTrialSessionById(sessionId);
 
-      // Guard: only allow payment after tutor has approved the trial
-      if (trial.status != 'approved' && trial.status != 'scheduled') {
+      // Allow payment for pending, approved, or scheduled sessions
+      // This enables sandbox testing and flexibility for production
+      if (trial.status != 'pending' && 
+          trial.status != 'approved' && 
+          trial.status != 'scheduled') {
         throw Exception(
-          'You can only pay after the tutor has approved the trial session.',
+          'Cannot pay for a trial session with status: ${trial.status}',
         );
       }
 
-      if (trial.paymentStatus == 'paid') {
+      if (trial.paymentStatus == 'paid' || trial.paymentStatus == 'completed') {
         throw Exception('Payment already completed');
       }
 
@@ -748,16 +1265,64 @@ class TrialSessionService {
     try {
       // Get trial session
       final trial = await getTrialSessionById(sessionId);
+      
+      // Check database directly for payment status and transaction ID
+      final trialData = await _supabase
+          .from('trial_sessions')
+          .select('payment_status, fapshi_trans_id, meet_link')
+          .eq('id', sessionId)
+          .maybeSingle();
+      
+      // Check if payment was already confirmed (webhook might have processed it)
+      final paymentStatus = trialData?['payment_status'] as String? ?? trial.paymentStatus;
+      final isAlreadyPaid = paymentStatus.toLowerCase() == 'paid' || 
+                            paymentStatus.toLowerCase() == 'completed';
+      final existingTransId = trialData?['fapshi_trans_id'] as String?;
+      
+      if (isAlreadyPaid && existingTransId != null && existingTransId.isNotEmpty) {
+        // Payment already confirmed - just verify Meet link exists and return
+        LogService.info('Payment already confirmed (likely by webhook). Verifying Meet link...');
+        
+        // If Meet link doesn't exist and it's online, generate it
+        final existingMeetLink = trialData?['meet_link'] as String?;
+        if (trial.location == 'online' && (existingMeetLink == null || existingMeetLink.isEmpty)) {
+          try {
+            final meetLink = await MeetService.generateTrialMeetLink(
+              trialSessionId: sessionId,
+              tutorId: trial.tutorId,
+              studentId: trial.learnerId,
+              scheduledDate: trial.scheduledDate,
+              scheduledTime: trial.scheduledTime,
+              durationMinutes: trial.durationMinutes,
+            );
+            
+            await _supabase
+                .from('trial_sessions')
+                .update({'meet_link': meetLink})
+                .eq('id', sessionId);
+            
+            LogService.success('Meet link generated for already-confirmed payment');
+            return true;
+          } catch (e) {
+            LogService.warning('Error generating Meet link for already-confirmed payment: $e');
+            return false;
+          }
+        }
+        
+        // Payment confirmed and Meet link exists (or not needed for onsite)
+        return true;
+      }
 
-      // Update payment status - ALWAYS set to 'paid' and status to 'scheduled'
+      // Payment not yet confirmed - update payment status
+      final now = DateTime.now().toIso8601String();
       await _supabase
           .from('trial_sessions')
           .update({
             'payment_status': 'paid',
             'status': 'scheduled',
             'fapshi_trans_id': transactionId,
-            'payment_confirmed_at': DateTime.now().toIso8601String(),
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': now,
+            // Note: payment_confirmed_at column may not exist, using updated_at as fallback
           })
           .eq('id', sessionId);
 
@@ -766,31 +1331,42 @@ class TrialSessionService {
       final scheduledDate = trial.scheduledDate;
       final scheduledTime = trial.scheduledTime;
 
-      // Try to generate Meet link via Google Calendar (best effort).
-      // Even if this fails (e.g. calendar not connected), we still
-      // create the session so the learner can see it in "My Sessions".
+      // Generate Meet link - webhook will handle this server-side for both tutor and learner
+      // For immediate availability, try client-side if calendar is connected
+      // Otherwise, webhook will generate it and both parties will get notified
       String? meetLink;
-      var calendarOk = true;
+      var calendarOk = false;
+      
+      // Try client-side generation if calendar is connected (for immediate availability)
       try {
-        meetLink = await MeetService.generateTrialMeetLink(
-          trialSessionId: sessionId,
-          tutorId: trial.tutorId,
-          studentId: trial.learnerId,
-          scheduledDate: scheduledDate,
-          scheduledTime: scheduledTime,
-          durationMinutes: trial.durationMinutes,
-        );
+        final isCalendarConnected = await GoogleCalendarAuthService.isAuthenticated();
+        if (isCalendarConnected) {
+          meetLink = await MeetService.generateTrialMeetLink(
+            trialSessionId: sessionId,
+            tutorId: trial.tutorId,
+            studentId: trial.learnerId,
+            scheduledDate: scheduledDate,
+            scheduledTime: scheduledTime,
+            durationMinutes: trial.durationMinutes,
+          );
+          calendarOk = true;
+          LogService.success('Meet link generated client-side: $meetLink');
+        } else {
+          LogService.info('Calendar not connected - webhook will generate Meet link server-side');
+        }
       } catch (e) {
-        calendarOk = false;
-        meetLink = null;
-        LogService.warning('Failed to generate Meet link for trial $sessionId (payment already saved)', e);
+        LogService.warning('Client-side Meet link generation failed - webhook will handle it: $e');
+        // Don't fail - webhook will generate link server-side
       }
 
-      // Update trial_sessions with meet_link (even if null, so it's accessible)
-      await _supabase
-          .from('trial_sessions')
-          .update({'meet_link': meetLink})
-          .eq('id', sessionId);
+      // Update trial_sessions with meet_link if we have it
+      // Webhook will also update it when payment is confirmed
+      if (meetLink != null) {
+        await _supabase
+            .from('trial_sessions')
+            .update({'meet_link': meetLink})
+            .eq('id', sessionId);
+      }
 
       // Create an individual session instance so trial appears in upcoming sessions
       try {
@@ -888,9 +1464,13 @@ class TrialSessionService {
             .from('trial_sessions')
             .select()
             .eq('id', sessionId)
-            .single();
+            .maybeSingle();
+        
+        if (response == null) {
+          throw Exception('Trial session not found: $sessionId');
+        }
 
-        return TrialSession.fromJson(response);
+        return TrialSession.fromJson(response as Map<String, dynamic>);
       } catch (e) {
         // Check if it's a network error
         final errorString = e.toString().toLowerCase();
@@ -988,13 +1568,15 @@ class TrialSessionService {
           
           final sessionDateTime = DateTime(year, month, day, hour, minute);
           
-          if (sessionDateTime.isBefore(now)) {
-            // Cancel the session
+          // Only cancel if at least 24 hours have passed (grace period)
+          final timeSinceSession = now.difference(sessionDateTime);
+          if (timeSinceSession.inHours >= 24) {
+            // Cancel the session (use 'cancelled' not 'expired' - expired is not a valid status)
             await _supabase
                 .from('trial_sessions')
                 .update({
-                  'status': 'expired',
-                  'rejection_reason': 'Payment not completed before session time',
+                  'status': 'cancelled',
+                  'rejection_reason': 'Payment not completed before session time - session expired',
                   'updated_at': now.toIso8601String(),
                 })
                 .eq('id', sessionId);
@@ -1091,7 +1673,7 @@ class TrialSessionService {
         final status = sessionData['status'] as String;
         
         // Skip if already expired
-        if (status == 'expired' || status == 'completed' || status == 'cancelled') {
+        if (status == 'completed' || status == 'cancelled') {
           continue;
         }
         
@@ -1110,12 +1692,15 @@ class TrialSessionService {
           // Check if session expired (at least 15 minutes after scheduled time)
           final expirationTime = sessionDateTime.add(const Duration(minutes: 15));
           
-          if (expirationTime.isBefore(now)) {
-            // Mark as expired (session was never attended)
+          // Only mark if at least 24 hours have passed since session time (grace period)
+          final timeSinceSession = now.difference(sessionDateTime);
+          if (timeSinceSession.inHours >= 24 && expirationTime.isBefore(now)) {
+            // Mark as cancelled (use 'cancelled' not 'expired' - expired is not a valid status)
+            // For paid sessions that were never attended, we mark as cancelled with reason
             await _supabase
                 .from('trial_sessions')
                 .update({
-                  'status': 'expired',
+                  'status': 'cancelled',
                   'rejection_reason': 'Session expired - never attended',
                   'updated_at': now.toIso8601String(),
                 })

@@ -13,11 +13,17 @@ import 'package:prepskul/features/booking/widgets/post_trial_dialog.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/booking/screens/post_trial_conversion_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
+import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../utils/session_date_utils.dart';
 
@@ -38,12 +44,63 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   String _selectedFilter = 'all'; // all, pending, custom, trial, booking
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  bool _isOffline = false;
+  DateTime? _cacheTimestamp;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _initializeConnectivity();
     _loadRequests();
+  }
+
+  /// Initialize connectivity monitoring
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    
+    // Listen to connectivity changes
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        final wasOffline = _isOffline;
+        safeSetState(() {
+          _isOffline = !isOnline;
+        });
+        
+        // If came back online, reload requests
+        if (isOnline && wasOffline) {
+          LogService.info('🌐 Connection restored - reloading requests');
+          _loadRequests();
+        }
+      }
+    });
+  }
+
+  /// Check current connectivity status
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      final wasOffline = _isOffline;
+      safeSetState(() {
+        _isOffline = !isOnline;
+      });
+      
+      // If we just came back online, reload data
+      if (isOnline && wasOffline) {
+        LogService.info('🌐 Connection detected - reloading requests');
+        _loadRequests();
+      }
+    }
+  }
+
+  /// Clean trial goal text by removing internal reschedule request notes
+  String _cleanTrialGoal(String goal) {
+    // Remove reschedule request notes that were accidentally added to trial goals
+    // Pattern: [RESCHEDULE REQUEST: ...]
+    final reschedulePattern = RegExp(r'\n?\n?\[RESCHEDULE REQUEST:.*?\]', dotAll: true);
+    return goal.replaceAll(reschedulePattern, '').trim();
   }
 
   @override
@@ -64,13 +121,93 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     try {
-      // Load booking requests
+      // Check connectivity first
+      final isOnline = await _connectivity.checkConnectivity();
+      safeSetState(() => _isOffline = !isOnline);
+      
       final userId = SupabaseService.currentUser?.id;
+      
+      // If offline, try to load from cache
+      if (_isOffline && userId != null) {
+        LogService.info('MyRequestsScreen: Offline - loading from cache...');
+        
+        // Try to load cached booking requests
+        final cachedRequests = await OfflineCacheService.getCachedBookingRequests(userId);
+        if (cachedRequests != null && cachedRequests.isNotEmpty) {
+          try {
+            final bookingRequests = <BookingRequest>[];
+            for (var r in cachedRequests) {
+              try {
+                bookingRequests.add(BookingRequest.fromJson(r));
+              } catch (e) {
+                LogService.warning('Error parsing cached booking request: $e');
+              }
+            }
+            
+            final timestamp = await SharedPreferences.getInstance().then(
+              (prefs) => prefs.getInt('cached_booking_requests_${userId}_cache_timestamp') ?? 0,
+            );
+            
+            if (mounted) {
+              safeSetState(() {
+                _bookingRequests = bookingRequests;
+                _cacheTimestamp = timestamp > 0 
+                    ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+                    : null;
+              });
+            }
+            LogService.success('MyRequestsScreen: Loaded ${bookingRequests.length} booking requests from cache');
+          } catch (e) {
+            LogService.warning('Error parsing cached booking requests: $e');
+          }
+        }
+        
+        // Try to load cached trial sessions
+        final cachedTrials = await OfflineCacheService.getCachedTrialSessions(userId);
+        if (cachedTrials != null && cachedTrials.isNotEmpty) {
+          try {
+            final trials = <TrialSession>[];
+            for (var t in cachedTrials) {
+              try {
+                trials.add(TrialSession.fromJson(t));
+              } catch (e) {
+                LogService.warning('Error parsing cached trial session: $e');
+              }
+            }
+            
+            await _loadTutorInfoForTrials(trials);
+            
+            if (mounted) {
+              safeSetState(() {
+                _trialSessions = trials;
+                _isLoading = false;
+              });
+            }
+            LogService.success('MyRequestsScreen: Loaded ${trials.length} trial sessions from cache');
+          } catch (e) {
+            LogService.warning('Error parsing cached trial sessions: $e');
+          }
+        }
+        
+        if (mounted) {
+          safeSetState(() => _isLoading = false);
+        }
+        return;
+      }
+      
+      // Online - fetch fresh data
+      // Load booking requests
       List<BookingRequest> bookingRequests = [];
       if (userId != null) {
         try {
           bookingRequests = await BookingService.getStudentBookingRequests(userId);
           LogService.success('Loaded ${bookingRequests.length} booking requests');
+          
+          // Cache booking requests
+          if (bookingRequests.isNotEmpty) {
+            final requestsJson = bookingRequests.map((r) => r.toJson()).toList();
+            await OfflineCacheService.cacheBookingRequests(userId, requestsJson);
+          }
         } catch (e) {
           LogService.error('Error loading booking requests: $e');
         }
@@ -85,10 +222,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         LogService.error('Error loading custom requests: $e');
       }
 
-      // Load trial sessions - force fresh fetch
-      // Add timestamp to cache bust and ensure fresh data
+      // Load trial sessions
       final trials = await TrialSessionService.getStudentTrialSessions();
       LogService.success('Loaded ${trials.length} trial sessions');
+      
+      // Cache trial sessions
+      if (trials.isNotEmpty && userId != null) {
+        final trialsJson = trials.map((t) => t.toJson()).toList();
+        await OfflineCacheService.cacheTrialSessions(userId, trialsJson);
+      }
+      
       // Debug: Log payment statuses
       for (var trial in trials) {
         LogService.debug('Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}');
@@ -104,6 +247,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _bookingRequests = bookingRequests;
         _customRequests = customRequests;
         _isLoading = false;
+        _cacheTimestamp = DateTime.now();
       });
 
       // Check for completed trials that haven't been converted
@@ -419,11 +563,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: ShimmerLoading.requestList(count: 5),
+            )
           : _buildSelectedTabContent(context, _selectedFilter),
       floatingActionButton: showFAB
           ? FloatingActionButton.extended(
-              onPressed: () {
+              onPressed: _isOffline
+                  ? () => OfflineDialog.show(
+                        context,
+                        message: 'Creating a request requires an internet connection. Please check your connection and try again.',
+                      )
+                  : () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -431,8 +583,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                 ).then((_) => _loadRequests()); // Refresh after returning
               },
-              backgroundColor: AppTheme.primaryColor,
-              icon: const Icon(Icons.add, color: Colors.white),
+              backgroundColor: _isOffline 
+                  ? Colors.grey[400] 
+                  : AppTheme.primaryColor,
+              icon: Icon(
+                Icons.add, 
+                color: Colors.white,
+              ),
               label: Text(
                 'Request Another Tutor',
                 style: GoogleFonts.poppins(
@@ -448,10 +605,33 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildAllRequestsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
+    // Filter out only cancelled unpaid sessions (keep cancelled paid sessions)
+    final activeTrialSessions = _trialSessions.where((session) {
+      // Exclude deleted sessions
+      if (session.status == 'deleted') {
+        return false;
+      }
+      // Exclude cancelled sessions ONLY if they are unpaid
+      if (session.status == 'cancelled') {
+        final paymentStatus = session.paymentStatus.toLowerCase();
+        // Only exclude if unpaid - keep cancelled paid sessions
+        if (paymentStatus != 'paid' && paymentStatus != 'completed') {
+          return false;
+        }
+      }
+      // Also exclude rejected sessions that were deleted
+      if (session.status == 'rejected' && 
+          (session.rejectionReason?.toLowerCase().contains('deleted') == true ||
+           session.rejectionReason?.toLowerCase().contains('cancelled by user') == true)) {
+        return false;
+      }
+      return true;
+    }).toList();
+    
     final allRequests = [
       ..._bookingRequests.map((r) => _RequestItem(type: 'booking', booking: r)),
       ..._customRequests.map((r) => _RequestItem(type: 'custom', custom: r)),
-      ..._trialSessions.map((r) => _RequestItem(type: 'trial', trial: r)),
+      ...activeTrialSessions.map((r) => _RequestItem(type: 'trial', trial: r)),
     ];
 
     // Filter by search query
@@ -476,36 +656,48 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     return Column(
       children: [
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search by tutor name or subject...',
-              prefixIcon: const Icon(Icons.search, color: Colors.grey),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.grey),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() => _searchQuery = '');
-                      },
-                    )
-                  : null,
-              filled: true,
-              fillColor: Colors.grey[100],
+        // Search bar (disabled for "all" section)
+        if (_selectedFilter != 'all')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  enabled: !_isOffline, // Disable search when offline
+                decoration: InputDecoration(
+                  hintText: _isOffline 
+                      ? 'Search unavailable offline' 
+                      : 'Search by tutor name or subject...',
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, color: Colors.grey),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: _isOffline 
+                      ? Colors.grey[200] 
+                      : Colors.grey[100],
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+                  onChanged: _isOffline 
+                    ? null 
+                    : (value) {
+                        setState(() => _searchQuery = value);
+                      },
+                ),
+              ],
             ),
-            onChanged: (value) {
-              setState(() => _searchQuery = value);
-            },
           ),
-        ),
         // Results count
         if (_searchQuery.isNotEmpty)
           Padding(
@@ -550,24 +742,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       ),
                     )
                   : _buildRequestTutorCard(context, 
-                      title: t.myRequestsEmptyTitle,
-                      subtitle:
-                          'Tell us what you\'re looking for and we\'ll find the perfect match for you',
-                      showButton: true,
+        title: t.myRequestsEmptyTitle,
+        subtitle:
+            'Tell us what you\'re looking for and we\'ll find the perfect match for you',
+        showButton: true,
                     )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                   itemCount: filteredRequests.length,
-                  itemBuilder: (ctx, index) {
+      itemBuilder: (ctx, index) {
                     final item = filteredRequests[index];
-                    if (item.type == 'booking') {
-                      return _buildBookingRequestCard(context, item.booking!);
-                    } else if (item.type == 'custom') {
-                      return _buildCustomRequestCard(context, item.custom!);
-                    } else {
-                      return _buildTrialSessionCard(context, item.trial!);
-                    }
-                  },
+        if (item.type == 'booking') {
+          return _buildBookingRequestCard(context, item.booking!);
+        } else if (item.type == 'custom') {
+          return _buildCustomRequestCard(context, item.custom!);
+        } else {
+          return _buildTrialSessionCard(context, item.trial!);
+        }
+      },
                 ),
         ),
       ],
@@ -984,6 +1176,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     } else if (session.paymentStatus == 'paid') {
       displayStatus = 'paid';
     }
+    
+    // Get rejection reason for expired/cancelled distinction
+    final rejectionReason = session.rejectionReason;
 
     return _buildNeomorphicCard(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1016,85 +1211,85 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   )
                 : null,
           ),
-          child: Padding(
+        child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
                 // Modern header: Tutor info with integrated status
-                Row(
-                  children: [
+              Row(
+                children: [
                     // Avatar with status indicator
                     Stack(
-                      children: [
-                        ClipOval(
-                          child: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: tutorAvatarUrl,
-                                  width: 48,
-                                  height: 48,
-                                  fit: BoxFit.cover,
-                                  placeholder: (context, url) => Container(
-                                    width: 48,
-                                    height: 48,
+                children: [
+                  ClipOval(
+                    child: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: tutorAvatarUrl,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              width: 48,
+                              height: 48,
                                     decoration: BoxDecoration(
-                                      color: AppTheme.primaryColor,
+                              color: AppTheme.primaryColor,
                                       shape: BoxShape.circle,
                                     ),
-                                    child: Center(
-                                      child: Text(
-                                        tutorName.isNotEmpty
-                                            ? tutorName[0].toUpperCase()
-                                            : 'T',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  errorWidget: (context, url, error) => Container(
-                                    width: 48,
-                                    height: 48,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Center(
-                                      child: Text(
-                                        tutorName.isNotEmpty
-                                            ? tutorName[0].toUpperCase()
-                                            : 'T',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              : Container(
-                                  width: 48,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      tutorName.isNotEmpty
-                                          ? tutorName[0].toUpperCase()
-                                          : 'T',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.white,
-                                      ),
-                                    ),
+                              child: Center(
+                                child: Text(
+                                  tutorName.isNotEmpty
+                                      ? tutorName[0].toUpperCase()
+                                      : 'T',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
                                   ),
                                 ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              width: 48,
+                              height: 48,
+                                    decoration: BoxDecoration(
+                              color: AppTheme.primaryColor,
+                                      shape: BoxShape.circle,
+                                    ),
+                              child: Center(
+                                child: Text(
+                                  tutorName.isNotEmpty
+                                      ? tutorName[0].toUpperCase()
+                                      : 'T',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            width: 48,
+                            height: 48,
+                                  decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                            child: Center(
+                              child: Text(
+                                tutorName.isNotEmpty
+                                    ? tutorName[0].toUpperCase()
+                                    : 'T',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                         // Status indicator dot
                         Positioned(
@@ -1104,30 +1299,30 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             width: 14,
                             height: 14,
                             decoration: BoxDecoration(
-                              color: _getStatusColor(displayStatus),
+                              color: _getStatusColor(displayStatus, rejectionReason: rejectionReason),
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                             ),
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(width: 12),
+                  ),
+                  const SizedBox(width: 12),
                     // Tutor name and rating
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                           Row(
                             children: [
                               Expanded(
                                 child: Text(
-                                  tutorName,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16,
+                          tutorName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: AppTheme.textDark,
-                                  ),
+                            color: AppTheme.textDark,
+                          ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1135,44 +1330,44 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               // Single status badge (compact, modern)
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: _getStatusColor(displayStatus).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: _getStatusColor(displayStatus).withOpacity(0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Text(
-                                  _getStatusLabel(displayStatus),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: _getStatusColor(displayStatus),
-                                  ),
-                                ),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(displayStatus, rejectionReason: rejectionReason).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _getStatusColor(displayStatus, rejectionReason: rejectionReason).withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              _getStatusLabel(displayStatus, rejectionReason: rejectionReason),
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: _getStatusColor(displayStatus, rejectionReason: rejectionReason),
+                              ),
+                            ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
                                 Icons.star_rounded,
                                 size: 14,
                                 color: Colors.amber[600],
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                tutorRating > 0
-                                    ? tutorRating.toStringAsFixed(1)
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              tutorRating > 0
+                                  ? tutorRating.toStringAsFixed(1)
                                     : 'New',
-                                style: GoogleFonts.poppins(
+                              style: GoogleFonts.poppins(
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[700],
-                                ),
+                                fontWeight: FontWeight.w600,
+                                color: Colors.grey[700],
                               ),
+                            ),
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1189,14 +1384,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              
+                  ),
+                ],
+              ),
+
                 const SizedBox(height: 16),
               
                 // Session details - modern horizontal layout
@@ -1209,11 +1404,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
+                children: [
                       _buildModernInfoItem(
                         Icons.calendar_today_outlined,
-                        session.formattedDate,
-                      ),
+                    session.formattedDate,
+                  ),
                       Container(
                         width: 1,
                         height: 20,
@@ -1221,8 +1416,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       ),
                       _buildModernInfoItem(
                         Icons.access_time_outlined,
-                        session.formattedTime,
-                      ),
+                    session.formattedTime,
+                  ),
                       Container(
                         width: 1,
                         height: 20,
@@ -1232,131 +1427,276 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         session.location == 'online' 
                             ? Icons.video_call_outlined 
                             : Icons.location_on_outlined,
-                        session.location == 'online' ? 'Online' : 'On-site',
-                      ),
-                    ],
+                    session.location == 'online' ? 'Online' : 'On-site',
+                  ),
+                ],
                   ),
                 ),
 
-                // Trial goal/reason - full width text above price
+                // Trial goal/reason - full width text above price (no icon)
                 if (session.trialGoal != null && session.trialGoal!.isNotEmpty) ...[
                   const SizedBox(height: 14),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.lightbulb_outline,
-                        size: 16,
-                        color: Colors.blue[700],
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          session.trialGoal!,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[800],
-                            height: 1.4,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    _cleanTrialGoal(session.trialGoal!),
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[800],
+                      height: 1.4,
+                    ),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
 
-                // Price section - modern design
+                // Price and Action button in a row
                 const SizedBox(height: 14),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(
-                      'Trial Fee',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
-                        letterSpacing: 0.5,
+                    // Price section (left side, 40% of row)
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Trial Fee',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[600],
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${session.trialFee.toStringAsFixed(0)} XAF',
+                            style: GoogleFonts.poppins(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primaryColor,
+                              letterSpacing: -0.5,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${session.trialFee.toStringAsFixed(0)} XAF',
-                      style: GoogleFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primaryColor,
-                        letterSpacing: -0.5,
+                    const SizedBox(width: 12),
+                    // Action button (right side, 60% of row)
+                    Expanded(
+                      flex: 3,
+                      child: Builder(
+                        builder: (context) {
+                          // Check if session time has passed
+                          final hasPassed = SessionDateUtils.isSessionExpired(session);
+                          
+                          // Check if session is cancelled with expiration reason
+                          final isCancelledExpired = session.status == 'cancelled' && 
+                                                     (session.rejectionReason?.contains('expired') == true ||
+                                                      session.rejectionReason?.contains('not completed') == true);
+                          
+                          // Show Edit Date for:
+                          // 1. Sessions that have passed (expired) - includes paid sessions that passed
+                          // 2. Cancelled sessions with expiration reason
+                          if (hasPassed || isCancelledExpired) {
+                            return OutlinedButton.icon(
+                              onPressed: () async {
+                                // Navigate to reschedule screen
+                                final tutorData = await _loadTutorInfoForReschedule(session.tutorId);
+                                if (tutorData != null && mounted) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => BookTrialSessionScreen(
+                                        tutor: tutorData,
+                                        rescheduleSessionId: session.id,
+                                        isReschedule: true,
+                                      ),
+                                    ),
+                                  ).then((_) {
+                                    if (mounted) _loadRequests();
+                                  });
+                                }
+                              },
+                              icon: const Icon(Icons.edit_calendar, size: 18),
+                              label: Text(
+                                'Edit Date',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primaryColor,
+                                side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            );
+                          }
+                          
+                          // For pending trial sessions: Show "View Details" (NOT Pay Now)
+                          // Payment is only allowed after tutor approval
+                          // Use "View Details" instead of "View Session" to avoid confusion
+                          // with paid sessions that also have "View Session" button
+                          if (session.status == 'pending') {
+                            return OutlinedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => RequestDetailScreen(
+                                      trialSession: session,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.info_outline, size: 18),
+                              label: Text(
+                                'View Details',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primaryColor,
+                                side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            );
+                          }
+                          
+                          // Show Pay Now for approved/scheduled, unpaid, non-expired sessions
+                          if (SessionDateUtils.shouldShowPayNowButton(session)) {
+                            return ElevatedButton(
+                              onPressed: () async {
+                                final result = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) =>
+                                        TrialPaymentScreen(trialSession: session),
+                                  ),
+                                );
+
+                                if (result == true) {
+                                  await Future.delayed(const Duration(milliseconds: 2000));
+                                  if (!mounted) return;
+                                  await _refreshTrialSession(session.id);
+                                  await _loadRequests();
+                                  if (mounted) {
+                                    safeSetState(() {});
+                                  }
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryColor,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 2,
+                              ),
+                              child: Text(
+                                t.myRequestsPayNow,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            );
+                          }
+                          
+                          // Show View Session for paid, non-expired sessions
+                          if (session.paymentStatus.toLowerCase() == 'paid' || 
+                              session.paymentStatus.toLowerCase() == 'completed') {
+                            return ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => RequestDetailScreen(
+                                      trialSession: session,
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.calendar_today, size: 18),
+                              label: Text(
+                                'View Session',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryColor,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 2,
+                              ),
+                            );
+                          }
+                          
+                          return const SizedBox.shrink();
+                        },
                       ),
                     ),
                   ],
                 ),
-
-                // Pay Now button - modern design
-                if (SessionDateUtils.shouldShowPayNowButton(session)) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                TrialPaymentScreen(trialSession: session),
-                          ),
-                        );
-
-                        // Always refresh after returning from payment screen
-                        // Only refresh if payment was successful
-                        if (result == true) {
-                          // Wait a moment for database update to propagate
-                          await Future.delayed(
-                            const Duration(milliseconds: 2000),
-                          );
-
-                          if (!mounted) return;
-                          
-                          // Force refresh the specific session first
-                          await _refreshTrialSession(session.id);
-                          
-                          // Then reload all requests to ensure consistency
-                          await _loadRequests();
-                          
-                          // Force UI rebuild
-                          if (mounted) {
-                            safeSetState(() {});
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        elevation: 2,
-                      ),
-                      child: Text(
-                        t.myRequestsPayNow,
-                        style: GoogleFonts.poppins(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+            ],
             ),
           ),
         ),
       ),
     );
+  }
+  
+  /// Load tutor info for reschedule (simplified version without join)
+  Future<Map<String, dynamic>?> _loadTutorInfoForReschedule(String tutorId) async {
+    try {
+      final supabase = SupabaseService.client;
+      
+      // Fetch tutor profile and profile separately to avoid relationship ambiguity
+      final tutorProfile = await supabase
+          .from('tutor_profiles')
+          .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url')
+          .eq('user_id', tutorId)
+          .maybeSingle();
+
+      if (tutorProfile == null) return null;
+
+      final profile = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', tutorId)
+          .maybeSingle();
+
+      return {
+        'id': tutorId,
+        'user_id': tutorId,
+        'full_name': profile?['full_name'] as String? ?? 'Tutor',
+        'avatar_url': tutorProfile['profile_photo_url'] as String? ?? 
+                     profile?['avatar_url'] as String?,
+        'rating': tutorProfile['rating'] ?? 0.0,
+        'admin_approved_rating': tutorProfile['admin_approved_rating'],
+        'total_reviews': tutorProfile['total_reviews'] ?? 0,
+      };
+    } catch (e) {
+      LogService.error('Error loading tutor for reschedule: $e');
+      return null;
+    }
   }
 
 
@@ -1458,7 +1798,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         }
 
         // Actually delete the session (not just cancel)
-        await TrialSessionService.deleteTrialSession(sessionId);
+        // For pending sessions, reason is optional
+        await TrialSessionService.deleteTrialSession(
+          sessionId: sessionId,
+          reason: null, // Optional for pending sessions
+        );
 
         if (!mounted) return;
 
@@ -2127,7 +2471,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
-  Color _getStatusColor(String status) {
+  Color _getStatusColor(String status, {String? rejectionReason}) {
     switch (status.toLowerCase()) {
       case 'pending':
         return Colors.orange;
@@ -2139,8 +2483,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       case 'paid':
         return Colors.green;
       case 'rejected':
-      case 'cancelled':
         return Colors.red;
+      case 'cancelled':
+        // Use orange for expired sessions, red for user-initiated cancellations
+        if (rejectionReason != null && 
+            (rejectionReason.toLowerCase().contains('expired') || 
+             rejectionReason.toLowerCase().contains('session expired') ||
+             rejectionReason.toLowerCase().contains('time passed'))) {
+          return Colors.orange; // Orange for expired
+        }
+        return Colors.red; // Red for cancelled
       case 'completed':
         return Colors.blue;
       default:
@@ -2148,7 +2500,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
   }
 
-  String _getStatusLabel(String status) {
+  String _getStatusLabel(String status, {String? rejectionReason}) {
     switch (status.toLowerCase()) {
       case 'pending':
         return 'Pending';
@@ -2163,6 +2515,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       case 'rejected':
         return 'Rejected';
       case 'cancelled':
+        // Show "Expired" if it's an expired session, "Cancelled" if user-initiated
+        if (rejectionReason != null && 
+            (rejectionReason.toLowerCase().contains('expired') || 
+             rejectionReason.toLowerCase().contains('session expired') ||
+             rejectionReason.toLowerCase().contains('time passed'))) {
+          return 'Expired';
+        }
         return 'Cancelled';
       case 'completed':
         return 'Completed';
@@ -2308,6 +2667,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         return _buildBookingsTab(context);
       default:
         return _buildAllRequestsTab(context);
+    }
+  }
+
+  /// Get human-readable cache age text
+  String _getCacheAgeText(DateTime cacheTime) {
+    final now = DateTime.now();
+    final difference = now.difference(cacheTime);
+    
+    if (difference.inMinutes < 1) {
+      return 'just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${(difference.inDays / 7).floor()}w ago';
     }
   }
 

@@ -579,8 +579,12 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         }
         // My Sessions route
         if (settings.name == '/my-sessions') {
+          final args = settings.arguments as Map<String, dynamic>?;
           return MaterialPageRoute(
-            builder: (context) => const MySessionsScreen(),
+            builder: (context) => MySessionsScreen(
+              initialTab: args?['initialTab'] as int?,
+              sessionId: args?['sessionId'] as String?,
+            ),
           );
         }
         // Session Feedback route: /sessions/{sessionId}/feedback
@@ -672,8 +676,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             LogService.success('[INIT_LOAD] Determined route: ${result.route}');
             // Navigate to determined route (could be onboarding, survey, or dashboard)
             if (mounted) {
-              WebSplashService.removeSplash();
               _navigateInstant(result.route, result.arguments);
+              // Remove splash after navigation to ensure it's hidden
+              Future.delayed(const Duration(milliseconds: 100), () {
+                WebSplashService.removeSplash();
+              });
             }
             if (mounted) {
               setState(() {
@@ -692,8 +699,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               if (mounted) {
                 final navService = NavigationService();
                 if (navService.isReady) {
-                  WebSplashService.removeSplash();
                   _navigateInstant('/onboarding', null);
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    if (mounted) {
+                      WebSplashService.removeSplash();
+                    }
+                  });
                   return;
                 }
               }
@@ -705,8 +716,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               try {
                 final result = await navService.determineInitialRoute();
                 if (mounted) {
-                  WebSplashService.removeSplash();
                   _navigateInstant(result.route, result.arguments);
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    if (mounted) {
+                      WebSplashService.removeSplash();
+                    }
+                  });
                 }
                 return;
               } catch (e2) {
@@ -753,8 +768,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           // Navigate instantly without animation to prevent white flash
           // This ensures the loading screen persists until the new screen is fully rendered
           if (mounted) {
-            WebSplashService.removeSplash();
             _navigateInstant(result.route, result.arguments);
+            // Remove splash after navigation to ensure it's hidden
+            Future.delayed(const Duration(milliseconds: 100), () {
+              WebSplashService.removeSplash();
+            });
           }
           
           if (mounted) {
@@ -779,8 +797,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         if (mounted && !SupabaseService.isAuthenticated) {
           final navService = NavigationService();
           if (navService.isReady) {
-            WebSplashService.removeSplash();
             _navigateInstant('/auth-method-selection', null);
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (mounted) {
+                WebSplashService.removeSplash();
+              }
+            });
           }
         }
       }

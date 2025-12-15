@@ -102,8 +102,15 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     } catch (e) {
       String userMessage = 'Failed to initiate payment';
       final errorString = e.toString().toLowerCase();
-      // Provide user-friendly error messages
-      if (errorString.contains('failed to fetch') || 
+      
+      // Extract user-friendly message if already provided by FapshiService
+      if (e.toString().contains('Please enter') || 
+          e.toString().contains('valid phone') ||
+          e.toString().contains('check your phone number')) {
+        userMessage = e.toString().replaceFirst('Exception: ', '');
+      } else if (errorString.contains('phone') && (errorString.contains('valid') || errorString.contains('mtn') || errorString.contains('orange'))) {
+        userMessage = 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
+      } else if (errorString.contains('failed to fetch') || 
           errorString.contains('clientexception') ||
           errorString.contains('network') ||
           errorString.contains('connection')) {
@@ -117,9 +124,15 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       } else if (errorString.contains('approved') || 
                  errorString.contains('tutor')) {
         userMessage = 'Please wait for the tutor to approve this trial session before paying.';
+      } else if (errorString.contains('amount') && errorString.contains('minimum')) {
+        userMessage = 'Payment amount must be at least 100 XAF.';
+      } else if (errorString.contains('unable to process') || 
+                 errorString.contains('check your phone')) {
+        userMessage = e.toString().replaceFirst('Exception: ', '');
       } else {
-        userMessage = 'Failed to initiate payment. Please try again.';
+        userMessage = 'Unable to process payment. Please check your phone number and try again.\n\nIf the problem persists, contact support.';
       }
+      
       safeSetState(() {
         _errorMessage = userMessage;
         _isProcessing = false;
@@ -129,46 +142,172 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     }
   }
 
-  /// Poll payment status
+  /// Poll payment status with database verification
+  /// 
+  /// This method:
+  /// 1. Polls Fapshi API for payment status
+  /// 2. Also checks database periodically to see if webhook already processed payment
+  /// 3. Handles both polling success and webhook success scenarios
   Future<void> _pollPaymentStatus(String transId) async {
     try {
-      final status = await FapshiService.pollPaymentStatus(
-        transId,
-        maxAttempts: 40, // 2 minutes max
-        interval: const Duration(seconds: 3),
-      );
-
+      int attempts = 0;
+      const maxAttempts = 40; // 2 minutes max
+      const interval = Duration(seconds: 3);
+      
+      while (attempts < maxAttempts && mounted) {
+        // Check database first (webhook might have already processed payment)
+        try {
+          final trial = await TrialSessionService.getTrialSessionById(widget.trialSession.id);
+          if (trial.paymentStatus.toLowerCase() == 'paid') {
+            // Webhook already processed payment - complete the flow
+            LogService.success('Payment confirmed via webhook (database check)');
+            if (mounted) {
+              safeSetState(() {
+                _isPolling = false;
+                _paymentStatus = 'successful';
+              });
+              // Payment already confirmed, just verify Meet link and navigate
+              final success = await _verifyPaymentComplete(transId);
+              if (success && mounted) {
+                Navigator.pop(context, true);
+              }
+            }
+            return;
+          }
+        } catch (e) {
+          LogService.warning('Error checking database for payment status: $e');
+          // Continue with polling
+        }
+        
+        // Poll Fapshi API
+        try {
+          final status = await FapshiService.getPaymentStatus(transId);
+          
+          if (!status.isPending) {
+            // Payment is no longer pending
+            if (mounted) {
+              safeSetState(() {
+                _isPolling = false;
+                if (status.isSuccessful) {
+                  _paymentStatus = 'successful';
+                } else if (status.isFailed) {
+                  _paymentStatus = 'failed';
+                  _errorMessage = 'Payment failed. Please try again.';
+                } else if (status.status.toUpperCase() == 'EXPIRED') {
+                  _paymentStatus = 'failed';
+                  _errorMessage = 'Payment link expired. Please initiate a new payment.';
+                }
+              });
+              
+              // Complete payment if successful
+              if (status.isSuccessful) {
+                final success = await _completePayment(transId);
+                if (success && mounted) {
+                  Navigator.pop(context, true);
+                }
+              }
+            }
+            return;
+          }
+        } catch (e) {
+          LogService.warning('Error polling payment status (attempt ${attempts + 1}): $e');
+          // Continue polling - might be temporary network issue
+        }
+        
+        // Wait before next attempt
+        await Future.delayed(interval);
+        attempts++;
+        
+        if (mounted && attempts % 5 == 0) {
+          // Log progress every 15 seconds
+          LogService.debug('⏳ Still polling payment status (attempt $attempts/$maxAttempts)...');
+        }
+      }
+      
+      // Max attempts reached - check database one final time
       if (mounted) {
+        try {
+          final trial = await TrialSessionService.getTrialSessionById(widget.trialSession.id);
+          if (trial.paymentStatus.toLowerCase() == 'paid') {
+            // Webhook processed it while we were polling
+            LogService.success('Payment confirmed via webhook (final check)');
+            safeSetState(() {
+              _isPolling = false;
+              _paymentStatus = 'successful';
+            });
+            final success = await _verifyPaymentComplete(transId);
+            if (success && mounted) {
+              Navigator.pop(context, true);
+            }
+            return;
+          }
+        } catch (e) {
+          LogService.warning('Error in final database check: $e');
+        }
+        
+        // Still pending after max attempts
         safeSetState(() {
           _isPolling = false;
-          if (status.isSuccessful) {
-            _paymentStatus = 'successful';
-            // Complete payment and generate Meet link
-            // Payment completion moved outside setState
-          } else if (status.isFailed) {
-            _paymentStatus = 'failed';
-            _errorMessage = 'Payment failed. Please try again.';
-          }
+          _paymentStatus = 'pending';
+          _errorMessage = 'Payment is still being processed. Please check back in a few moments. The payment will be confirmed automatically once processed.';
         });
-        // Complete payment outside setState (async operation)
-        if (status.isSuccessful) {
-          final success = await _completePayment(transId);
-          if (success && mounted) {
-            Navigator.pop(context, true);
-          }
-          // Don't navigate here - let _completePayment handle it based on calendar status
-          // If calendar is not connected, the button will be shown
-          // If calendar is connected, navigation happens in _connectCalendarAndRetry
-        }
       }
     } catch (e) {
       if (mounted) {
         safeSetState(() {
           _isPolling = false;
           _paymentStatus = 'failed';
-          _errorMessage = 'Error checking payment status: $e';
+          _errorMessage = 'Error checking payment status. Please check your payment history or contact support if payment was successful.';
         });
       }
+      LogService.error('Error in payment polling: $e');
+    }
+  }
+  
+  /// Verify payment is complete and handle navigation
+  /// 
+  /// Used when webhook has already processed payment
+  /// Just verifies Meet link exists and navigates
+  Future<bool> _verifyPaymentComplete(String transId) async {
+    try {
+      // Refresh trial session to get latest data
+      final trial = await TrialSessionService.getTrialSessionById(widget.trialSession.id);
+      
+      if (trial.paymentStatus.toLowerCase() != 'paid') {
+        LogService.warning('Payment verification failed: status is not paid');
+        return false;
+      }
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Payment confirmed!',
+            style: GoogleFonts.poppins(),
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      
+      // Navigate to sessions screen
+      if (mounted) {
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/my-sessions',
+            (route) => route.settings.name == '/student-nav' || route.isFirst,
+            arguments: {
+              'initialTab': 0, // Upcoming tab
+              'sessionId': widget.trialSession.id,
+            },
+          );
+        }
+      }
+      return true;
+    } catch (e) {
+      LogService.error('Error verifying payment completion: $e');
+      return false;
     }
   }
 
@@ -239,15 +378,22 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         _paymentStatus = 'successful';
       });
 
-      // Always return true to indicate payment success, regardless of Calendar status
-      // Pop with true so parent screen refreshes and hides Pay Now buttons
+      // Navigate to sessions screen after successful payment
       if (mounted) {
         // Small delay to ensure database update is complete
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            Navigator.pop(context, true);
-          }
-        });
+        await Future.delayed(const Duration(milliseconds: 1000));
+        
+        if (mounted) {
+          // Navigate directly to sessions screen with the paid session
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/my-sessions',
+            (route) => route.settings.name == '/student-nav' || route.isFirst,
+            arguments: {
+              'initialTab': 0, // Upcoming tab
+              'sessionId': widget.trialSession.id, // Scroll to this session
+            },
+          );
+        }
       }
       return true;
     } catch (e) {
@@ -545,6 +691,15 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
             color: Colors.grey[600],
           ),
         ),
+        const SizedBox(height: 4),
+        Text(
+          'Format: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            color: Colors.grey[500],
+            fontStyle: FontStyle.italic,
+          ),
+        ),
       ],
     );
   }
@@ -690,25 +845,73 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                   ),
           ),
         ),
-        if (isSandbox && _paymentStatus == 'failed') ...[
+        // Only show "Mark as paid" in sandbox as absolute last resort
+        // This should only appear if:
+        // 1. We're in sandbox
+        // 2. Payment failed due to phone number validation (not network/polling issues)
+        // 3. User explicitly needs to test the flow
+        if (isSandbox && _paymentStatus == 'failed' && _errorMessage != null && 
+            (_errorMessage!.contains('phone') || _errorMessage!.contains('valid'))) ...[
           const SizedBox(height: 12),
-          TextButton(
-            onPressed: _isProcessing ? null : _forceCompleteSandbox,
-            child: Text(
-              'Mark as paid (sandbox test)',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.primaryColor,
-              ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange[200]!),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Sandbox only: this will simulate a successful payment so you can test calendar events and Meet links.',
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: Colors.grey[600],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.orange[900]),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Sandbox Testing Only',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'If you\'re testing and the phone number validation is blocking you, you can simulate a successful payment to test the rest of the flow.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: Colors.orange[800],
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _isProcessing ? null : _forceCompleteSandbox,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    backgroundColor: Colors.orange[100],
+                  ),
+                  child: Text(
+                    'Simulate Payment Success (Testing Only)',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange[900],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '⚠️ This bypasses actual payment. In production, use valid phone numbers (67XXXXXXX or 69XXXXXXX).',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    color: Colors.orange[800],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

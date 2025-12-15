@@ -52,8 +52,19 @@ class SessionDateUtils {
   }
 
   /// Comprehensive check for whether to show "Pay Now" button
+  /// 
+  /// For trial sessions: Payment is ONLY allowed after tutor approval
+  /// - Status must be 'approved' or 'scheduled' (NOT 'pending')
+  /// - Payment status must be 'unpaid' or 'pending'
+  /// - Session must be upcoming (not expired)
   static bool shouldShowPayNowButton(TrialSession session) {
-    // Don't show if session is not approved/scheduled
+    // CRITICAL: Do NOT show Pay Now for pending trial sessions
+    // Trial sessions require tutor approval before payment
+    if (session.status == 'pending') {
+      return false;
+    }
+    
+    // Only allow payment for approved or scheduled sessions
     if (session.status != 'approved' && session.status != 'scheduled') {
       return false;
     }

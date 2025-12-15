@@ -275,16 +275,26 @@ class NotificationHelperService {
     required DateTime scheduledDate,
     required String scheduledTime,
     String? senderAvatarUrl,
+    bool isReschedule = false,
+    String? originalSessionId,
   }) async {
+    final title = isReschedule 
+        ? '🔄 Reschedule Request for Missed Trial Session'
+        : '🎯 New Trial Session Request';
+    
+    final message = isReschedule
+        ? '$studentName wants to reschedule a missed trial session for $subject. They are requesting a new time: ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime. Please review and approve or suggest an alternative time.'
+        : '$studentName wants to book a trial session for $subject on ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime.';
+    
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'trial_request',
-      title: '🎯 New Trial Session Request',
-      message: '$studentName wants to book a trial session for $subject on ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime.',
+      title: title,
+      message: message,
       priority: 'high',
       actionUrl: '/trials/$trialId',
-      actionText: 'Review Request',
-      icon: '🎯',
+      actionText: isReschedule ? 'Review Reschedule Request' : 'Review Request',
+      icon: isReschedule ? '🔄' : '🎯',
       metadata: {
         'trial_id': trialId,
         'student_id': studentId,
@@ -294,6 +304,8 @@ class NotificationHelperService {
         'scheduled_time': scheduledTime,
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
+        if (isReschedule) 'is_reschedule': true,
+        if (originalSessionId != null) 'original_session_id': originalSessionId,
       },
       sendEmail: true
           );
@@ -1568,6 +1580,149 @@ class NotificationHelperService {
       LogService.warning('Error notifying admins about survey completion: $e');
       // Don't throw - notification failure shouldn't block survey completion
     }
+  }
+
+  /// Notify tutor when pending trial request is updated/modified
+  static Future<void> notifyTrialRequestUpdated({
+    required String tutorId,
+    required String studentId,
+    required String trialId,
+    required String studentName,
+    required String subject,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'trial_request_updated',
+      title: '🔄 Trial Request Updated',
+      message: '$studentName has updated their trial request for $subject. Please review the changes.',
+      priority: 'normal',
+      actionUrl: '/trials/$trialId',
+      actionText: 'Review Request',
+      icon: '🔄',
+      metadata: {
+        'trial_id': trialId,
+        'student_id': studentId,
+        'student_name': studentName,
+        'subject': subject,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify tutor when approved trial session is modified (requires re-approval)
+  static Future<void> notifyTrialSessionModified({
+    required String tutorId,
+    required String studentId,
+    required String trialId,
+    required String studentName,
+    required String subject,
+    required String modificationReason,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'trial_session_modified',
+      title: '🔄 Trial Session Modified',
+      message: '$studentName has modified the approved trial session for $subject. Reason: $modificationReason. Please review and approve again.',
+      priority: 'high',
+      actionUrl: '/trials/$trialId',
+      actionText: 'Review Changes',
+      icon: '🔄',
+      metadata: {
+        'trial_id': trialId,
+        'student_id': studentId,
+        'student_name': studentName,
+        'subject': subject,
+        'modification_reason': modificationReason,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify tutor when pending trial request is deleted
+  static Future<void> notifyTrialRequestDeleted({
+    required String tutorId,
+    required String studentId,
+    required String trialId,
+    required String studentName,
+    required String subject,
+    String? deletionReason,
+  }) async {
+    final message = deletionReason != null && deletionReason.isNotEmpty
+        ? '$studentName has deleted their trial request for $subject. Reason: $deletionReason'
+        : '$studentName has deleted their trial request for $subject.';
+    
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'trial_request_deleted',
+      title: '🗑️ Trial Request Deleted',
+      message: message,
+      priority: 'normal',
+      actionUrl: '/trials',
+      actionText: 'View Other Requests',
+      icon: '🗑️',
+      metadata: {
+        'trial_id': trialId,
+        'student_id': studentId,
+        'student_name': studentName,
+        'subject': subject,
+        if (deletionReason != null) 'deletion_reason': deletionReason,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify learner when tutor requests modification
+  static Future<void> notifyTutorModificationRequest({
+    required String tutorId,
+    required String studentId,
+    required String trialId,
+    required String tutorName,
+    required String subject,
+    required String reason,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: studentId,
+      type: 'tutor_modification_request',
+      title: '🔄 Modification Request from $tutorName',
+      message: '$tutorName has requested to modify the trial session for $subject. Reason: $reason. Please review and accept or decline.',
+      priority: 'high',
+      actionUrl: '/trials/$trialId',
+      actionText: 'Review Request',
+      icon: '🔄',
+      metadata: {
+        'trial_id': trialId,
+        'tutor_id': tutorId,
+        'tutor_name': tutorName,
+        'subject': subject,
+        'reason': reason,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify tutor when learner accepts modification request
+  static Future<void> notifyModificationAccepted({
+    required String tutorId,
+    required String studentId,
+    required String trialId,
+    required String studentName,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'modification_accepted',
+      title: '✅ Modification Accepted',
+      message: '$studentName has accepted your modification request. The session has been updated.',
+      priority: 'normal',
+      actionUrl: '/trials/$trialId',
+      actionText: 'View Session',
+      icon: '✅',
+      metadata: {
+        'trial_id': trialId,
+        'student_id': studentId,
+        'student_name': studentName,
+      },
+      sendEmail: true,
+    );
   }
 }
 

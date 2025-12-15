@@ -251,10 +251,15 @@ class BookingService {
       try {
         var trialQuery = SupabaseService.client
             .from('trial_sessions')
-            // Use learner_id for the join relation as there is no student_id column
-            // Also fetch email so we always have a meaningful identifier
+            // Fetch learner, requester (who made the request), and parent profiles
+            // The requester is the one who made the request (could be parent or learner)
             .select(
-              '*, student:profiles!learner_id(full_name, avatar_url, user_type, email)',
+              '''
+              *,
+              learner:profiles!learner_id(full_name, avatar_url, user_type, email),
+              requester:profiles!requester_id(full_name, avatar_url, user_type, email),
+              parent:profiles!parent_id(full_name, avatar_url, user_type, email)
+              ''',
             )
             .eq('tutor_id', userId);
 
@@ -267,10 +272,51 @@ class BookingService {
         final trialResponse = await trialQuery.order('created_at', ascending: false);
         trialList = (trialResponse as List).map((json) {
           try {
-            final studentProfile = json['student'] as Map<String, dynamic>? ?? {};
+            // Prefer requester profile (the one who made the request - most accurate)
+            // Then fall back to learner, then parent
+            final requesterProfileRaw = json['requester'];
+            final learnerProfileRaw = json['learner'];
+            final parentProfileRaw = json['parent'];
+            
+            // Convert to Map, handling null and empty cases
+            Map<String, dynamic>? requesterProfile;
+            Map<String, dynamic>? learnerProfile;
+            Map<String, dynamic>? parentProfile;
+            
+            if (requesterProfileRaw != null && requesterProfileRaw is Map) {
+              requesterProfile = Map<String, dynamic>.from(requesterProfileRaw);
+              // Check if it has meaningful data (not just empty/null values)
+              if (requesterProfile.isEmpty || 
+                  (requesterProfile['full_name'] == null && requesterProfile['email'] == null)) {
+                requesterProfile = null;
+              }
+            }
+            
+            if (learnerProfileRaw != null && learnerProfileRaw is Map) {
+              learnerProfile = Map<String, dynamic>.from(learnerProfileRaw);
+              if (learnerProfile.isEmpty || 
+                  (learnerProfile['full_name'] == null && learnerProfile['email'] == null)) {
+                learnerProfile = null;
+              }
+            }
+            
+            if (parentProfileRaw != null && parentProfileRaw is Map) {
+              parentProfile = Map<String, dynamic>.from(parentProfileRaw);
+              if (parentProfile.isEmpty || 
+                  (parentProfile['full_name'] == null && parentProfile['email'] == null)) {
+                parentProfile = null;
+              }
+            }
+            
+            // Use requester profile if available (shows who actually made the request)
+            // Otherwise fall back to learner profile, then parent
+            final studentProfile = requesterProfile ?? learnerProfile ?? parentProfile ?? {
+              'user_type': json['requester_id'] != null ? 'parent' : 'learner',
+            };
+            
             return BookingRequest.fromTrialSession(json, studentProfile, null);
           } catch (e) {
-            LogService.error('Error parsing trial session', e);
+            LogService.error('Error parsing trial session: $e');
             return null;
           }
         }).whereType<BookingRequest>().toList();

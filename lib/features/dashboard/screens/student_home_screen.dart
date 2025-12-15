@@ -7,6 +7,9 @@ import '../../../core/widgets/skeletons/student_home_skeleton.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_cache_service.dart';
+import '../../../core/widgets/offline_indicator.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,11 +32,53 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _userType = 'student';
   bool _surveyCompleted = false;
   bool _showReminderCard = false;
+  bool _isOffline = false;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
+    _initializeConnectivity();
     _loadUserData();
+  }
+
+  /// Initialize connectivity monitoring
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    
+    // Listen to connectivity changes
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        final wasOffline = _isOffline;
+        setState(() {
+          _isOffline = !isOnline;
+        });
+        
+        // If came back online, refresh data
+        if (isOnline && wasOffline) {
+          LogService.info('🌐 Connection restored - refreshing home screen');
+          _loadUserData();
+        }
+      }
+    });
+  }
+
+  /// Check current connectivity status
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      final wasOffline = _isOffline;
+      setState(() {
+        _isOffline = !isOnline;
+      });
+      
+      // If we just came back online, refresh data
+      if (isOnline && wasOffline) {
+        LogService.info('🌐 Connection detected - refreshing home screen');
+        _loadUserData();
+      }
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -42,41 +87,93 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
 
-      // Get user name with priority: profile > stored signup data > session > auth metadata > default
-      var userName = userProfile?['full_name'] != null
-          ? userProfile!['full_name'].toString()
-          : null;
-      if (userName == null || userName.isEmpty || userName == 'User') {
-        // Try stored signup data
-        final storedName = prefs.getString('signup_full_name');
-        if (storedName != null && storedName.isNotEmpty) {
-          userName = storedName;
+      // Get user name with priority: profile > direct Supabase query > stored signup data > session > auth metadata > default
+      // Extract first name from full_name if available
+      String? extractFirstName(String? fullName) {
+        if (fullName == null || fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+          return null;
+        }
+        // Split by space and take first part
+        final parts = fullName.trim().split(' ');
+        final firstName = parts.isNotEmpty ? parts[0] : fullName;
+        // Return null if it's still "Student" or empty
+        if (firstName.isEmpty || firstName == 'Student' || firstName == 'User') {
+          return null;
+        }
+        return firstName;
+      }
+
+      var userName = extractFirstName(userProfile?['full_name']?.toString());
+      LogService.debug('[HOME] Name from getUserProfile: ${userProfile?['full_name']} -> $userName');
+      
+      // If still no name, try direct Supabase query as fallback
+      if (userName == null || userName.isEmpty) {
+        try {
+          final authUser = SupabaseService.currentUser;
+          if (authUser != null) {
+            final directProfile = await SupabaseService.client
+                .from('profiles')
+                .select('full_name')
+                .eq('id', authUser.id)
+                .maybeSingle();
+            
+            final directName = directProfile?['full_name']?.toString();
+            LogService.debug('[HOME] Name from direct Supabase query: $directName');
+            userName = extractFirstName(directName);
+          }
+        } catch (e) {
+          LogService.debug('[HOME] Error querying Supabase directly: $e');
         }
       }
-      if (userName == null || userName.isEmpty || userName == 'User') {
+      
+      if (userName == null || userName.isEmpty) {
+        // Try stored signup data
+        final storedName = prefs.getString('signup_full_name');
+        LogService.debug('[HOME] Name from SharedPreferences: $storedName');
+        if (storedName != null && storedName.isNotEmpty) {
+          userName = extractFirstName(storedName);
+        }
+      }
+      if (userName == null || userName.isEmpty) {
         // Try session data
         final currentUser = await AuthService.getCurrentUser();
         final sessionName = currentUser['fullName']?.toString();
-        if (sessionName != null &&
-            sessionName.isNotEmpty &&
-            sessionName != 'User') {
-          userName = sessionName;
+        LogService.debug('[HOME] Name from session: $sessionName');
+        if (sessionName != null && sessionName.isNotEmpty && sessionName != 'User') {
+          userName = extractFirstName(sessionName);
         }
       }
-      if (userName == null || userName.isEmpty || userName == 'User') {
+      if (userName == null || userName.isEmpty) {
         // Try auth user metadata
         final authUser = SupabaseService.currentUser;
         if (authUser != null && authUser.userMetadata?['full_name'] != null) {
           final metadataName = authUser.userMetadata!['full_name']?.toString();
+          LogService.debug('[HOME] Name from auth metadata: $metadataName');
           if (metadataName != null && metadataName.isNotEmpty) {
-            userName = metadataName;
+            userName = extractFirstName(metadataName);
           }
         }
       }
-      if (userName == null || userName.isEmpty || userName == 'User') {
+      if (userName == null || userName.isEmpty) {
+        // Last resort: try email username
+        final authUser = SupabaseService.currentUser;
+        if (authUser?.email != null) {
+          final email = authUser!.email!;
+          final emailName = email.split('@')[0];
+          // Capitalize first letter
+          if (emailName.isNotEmpty && emailName.length > 1) {
+            userName = emailName[0].toUpperCase() + emailName.substring(1);
+            LogService.debug('[HOME] Using email username: $userName');
+          }
+        }
+      }
+      if (userName == null || userName.isEmpty) {
         // Default fallback
         userName = 'Student';
+        LogService.warning('[HOME] All name sources failed, using default: Student');
       }
+      
+      LogService.success('[HOME] Final userName: $userName');
 
       _userName = userName;
       _userType = userProfile?['user_type'] ?? 'student';

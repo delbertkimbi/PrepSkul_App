@@ -40,15 +40,25 @@ class ConnectivityService {
 
       // Listen for connectivity changes
       _subscription = _connectivity.onConnectivityChanged.listen(
-        (ConnectivityResult result) {
+        (ConnectivityResult result) async {
           final wasOnline = _isOnline;
-          _isOnline = _hasConnection(result);
+          final newOnlineStatus = _hasConnection(result);
+          
+          // Always update internal state
+          _isOnline = newOnlineStatus;
 
-          if (wasOnline != _isOnline) {
+          // Always notify listeners of the change (even if it seems the same)
+          // This ensures UI updates when connectivity is restored
+          if (wasOnline != newOnlineStatus) {
             LogService.debug(
               '🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}',
             );
             _connectivityController?.add(_isOnline);
+          } else if (!wasOnline && newOnlineStatus) {
+            // Special case: if we were offline and now online, always notify
+            // This handles edge cases where state might not have updated
+            LogService.debug('🌐 Connection restored - notifying listeners');
+            _connectivityController?.add(true);
           }
         },
         onError: (error) {

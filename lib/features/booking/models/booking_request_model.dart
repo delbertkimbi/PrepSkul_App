@@ -152,13 +152,8 @@ class BookingRequest {
       learnerChallenges: json['learner_challenges'] as String?,
       scheduledDate: date,
       // Student info from joined profile - prefer full_name, then email, then generic fallback
-      studentName: (studentProfile['full_name'] as String?)
-              ?.trim()
-              .isNotEmpty == true
-          ? (studentProfile['full_name'] as String).trim()
-          : ((studentProfile['email'] as String?)?.trim().isNotEmpty == true
-              ? (studentProfile['email'] as String).trim()
-              : 'Student'),
+      // Never use "User" - always show meaningful name or email
+      studentName: _extractStudentNameFromProfile(studentProfile),
       studentAvatarUrl: studentProfile['avatar_url'] ?? studentProfile['profile_photo_url'],
       studentType: studentProfile['user_type'] ?? 'learner',
       // Tutor info
@@ -240,6 +235,49 @@ class BookingRequest {
       learnerChallenges: learnerChallenges,
       scheduledDate: scheduledDate,
     );
+  }
+
+  /// Extract student name from profile, with proper fallbacks
+  /// Never returns "User" - always returns meaningful identifier
+  static String _extractStudentNameFromProfile(Map<String, dynamic> studentProfile) {
+    // Handle null or empty profile
+    if (studentProfile.isEmpty) {
+      final userType = studentProfile['user_type'] as String? ?? 'learner';
+      return userType == 'parent' ? 'Parent' : 'Student';
+    }
+    
+    // Try full_name first
+    final fullName = studentProfile['full_name'] as String?;
+    if (fullName != null && 
+        fullName.trim().isNotEmpty && 
+        fullName.trim().toLowerCase() != 'user' &&
+        fullName.trim().toLowerCase() != 'null') {
+      return fullName.trim();
+    }
+    
+    // Try email as fallback
+    final email = studentProfile['email'] as String?;
+    if (email != null && email.trim().isNotEmpty && email.trim().toLowerCase() != 'null') {
+      // Extract name from email if possible (before @)
+      final emailName = email.split('@').first.trim();
+      if (emailName.isNotEmpty && 
+          emailName.toLowerCase() != 'user' &&
+          emailName.toLowerCase() != 'null') {
+        // Capitalize first letter for better display
+        if (emailName.length > 1) {
+          return emailName[0].toUpperCase() + emailName.substring(1);
+        }
+        return emailName;
+      }
+    }
+    
+    // Determine type and return appropriate default
+    final userType = studentProfile['user_type'] as String? ?? 'learner';
+    if (userType == 'parent') {
+      return 'Parent';
+    } else {
+      return 'Student';
+    }
   }
 
   /// Check if request is pending

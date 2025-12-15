@@ -25,6 +25,7 @@ class OfflineCacheService {
   static const String _keyTutors = 'cached_tutors';
   static const String _keyTutorDetails = 'cached_tutor_details_';
   static const String _keyBookingRequests = 'cached_booking_requests_';
+  static const String _keyTrialSessions = 'cached_trial_sessions_';
   static const String _keyRecurringSessions = 'cached_recurring_sessions_';
   static const String _keyIndividualSessions = 'cached_individual_sessions_';
   static const String _keyUserProfile = 'cached_user_profile_';
@@ -230,6 +231,47 @@ class OfflineCacheService {
       );
     } catch (e) {
       LogService.error('Error getting cached individual sessions: $e');
+      return null;
+    }
+  }
+
+  /// Cache trial sessions
+  static Future<void> cacheTrialSessions(
+    String userId,
+    List<Map<String, dynamic>> sessions,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = jsonEncode(sessions);
+      await prefs.setString('$_keyTrialSessions$userId', json);
+      await prefs.setInt('$_keyTrialSessions$userId$_keyCacheTimestamp',
+          DateTime.now().millisecondsSinceEpoch);
+      LogService.success('Cached ${sessions.length} trial sessions for user: $userId');
+    } catch (e) {
+      LogService.error('Error caching trial sessions: $e');
+    }
+  }
+
+  /// Get cached trial sessions
+  static Future<List<Map<String, dynamic>>?> getCachedTrialSessions(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString('$_keyTrialSessions$userId');
+      final timestamp = prefs.getInt('$_keyTrialSessions$userId$_keyCacheTimestamp') ?? 0;
+      
+      if (json == null) return null;
+      
+      final cacheTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      if (DateTime.now().difference(cacheTime) > _cacheExpiration) {
+        return null;
+      }
+
+      final List<dynamic> decoded = jsonDecode(json);
+      return List<Map<String, dynamic>>.from(
+        decoded.map((s) => Map<String, dynamic>.from(s)),
+      );
+    } catch (e) {
+      LogService.error('Error getting cached trial sessions: $e');
       return null;
     }
   }

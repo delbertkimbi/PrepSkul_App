@@ -20,9 +20,17 @@ import 'package:confetti/confetti.dart';
 /// 3. Goals & Review
 class BookTrialSessionScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
+  final String? rescheduleSessionId; // ID of the session being rescheduled
+  final bool isReschedule; // Flag to indicate this is a reschedule request
+  final String? rescheduleReason; // Reason for rescheduling (for date change requests)
 
-  const BookTrialSessionScreen({Key? key, required this.tutor})
-    : super(key: key);
+  const BookTrialSessionScreen({
+    Key? key, 
+    required this.tutor,
+    this.rescheduleSessionId,
+    this.isReschedule = false,
+    this.rescheduleReason,
+  }) : super(key: key);
 
   @override
   State<BookTrialSessionScreen> createState() => _BookTrialSessionScreenState();
@@ -83,9 +91,36 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   void initState() {
     super.initState();
     _confettiController = ConfettiController(duration: const Duration(seconds: 3));
-    _prefillFromSurvey();
+    if (widget.isReschedule && widget.rescheduleSessionId != null) {
+      _loadOriginalSessionData();
+    } else {
+      _prefillFromSurvey();
+    }
     _loadTrialPricing();
     _loadTutorSchedule();
+  }
+  
+  /// Load original session data when rescheduling
+  Future<void> _loadOriginalSessionData() async {
+    try {
+      if (widget.rescheduleSessionId == null) return;
+      
+      final session = await TrialSessionService.getTrialSessionById(widget.rescheduleSessionId!);
+      if (session != null && mounted) {
+        safeSetState(() {
+          // Pre-fill form with original session data
+          _selectedSubject = session.subject;
+          _selectedDuration = session.durationMinutes;
+          _selectedDate = session.scheduledDate;
+          _selectedTime = session.scheduledTime;
+          _selectedLocation = session.location;
+          _goalController.text = session.trialGoal ?? '';
+          _challengesController.text = session.learnerChallenges ?? '';
+        });
+      }
+    } catch (e) {
+      LogService.warning('Error loading original session data: $e');
+    }
   }
 
   @override
@@ -296,7 +331,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
               Text(
-                'Sending trial request...',
+                widget.isReschedule && widget.rescheduleSessionId != null
+                    ? 'Updating trial request...'
+                    : 'Sending trial request...',
                 style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
@@ -310,6 +347,59 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     );
 
     try {
+      // If rescheduling, check if session is pending, expired, or cancelled (modify existing)
+      // Only create new request for paid sessions (which can't be modified)
+      if (widget.isReschedule && widget.rescheduleSessionId != null) {
+        try {
+          final existingSession = await TrialSessionService.getTrialSessionById(widget.rescheduleSessionId!);
+          final paymentStatus = existingSession.paymentStatus.toLowerCase();
+          final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+          
+          // If paid, cannot modify - must create new request
+          if (isPaid) {
+            // Fall through to createTrialRequest below to create a new reschedule request
+            LogService.debug('Rescheduling paid session - creating new request');
+          } else {
+            // For pending, expired, cancelled, or approved unpaid sessions - UPDATE the existing session
+            // This sets it back to pending and notifies tutor as a request to update a missed session
+            await TrialSessionService.modifyTrialSession(
+              sessionId: widget.rescheduleSessionId!,
+              scheduledDate: _selectedDate,
+              scheduledTime: _selectedTime!,
+              durationMinutes: _selectedDuration,
+              location: _selectedLocation,
+              address: _onsiteAddress,
+              locationDescription: _locationDescription,
+              trialGoal: _goalController.text.trim().isNotEmpty ? _goalController.text.trim() : null,
+              learnerChallenges: _challengesController.text.trim().isNotEmpty ? _challengesController.text.trim() : null,
+              modificationReason: existingSession.status == 'pending' 
+                  ? null 
+                  : 'Request to reschedule a missed/expired session', // Reason for expired/cancelled/approved
+            );
+            
+            if (!mounted) return;
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Trial session updated successfully. Waiting for tutor approval.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context, true); // Return to previous screen
+            return;
+          }
+        } catch (e) {
+          LogService.warning('Could not check existing session status, creating new request: $e');
+          // Fall through to createTrialRequest
+        }
+      }
+      
+      // Use the trial goal as-is (don't append reschedule notes to user-facing fields)
+      // Reschedule information is handled separately via rescheduleSessionId parameter
+      final trialGoal = _goalController.text.trim().isNotEmpty 
+          ? _goalController.text.trim() 
+          : null;
+      
       await TrialSessionService.createTrialRequest(
         tutorId: widget.tutor['user_id'] ?? widget.tutor['id'],
         subject: _selectedSubject!,
@@ -319,11 +409,12 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         location: _selectedLocation,
         address: _onsiteAddress,
         locationDescription: _locationDescription,
-        trialGoal: _goalController.text.trim(),
+        trialGoal: trialGoal,
         learnerChallenges: _challengesController.text.trim().isNotEmpty
             ? _challengesController.text.trim()
             : null,
         overrideTrialFee: _trialFee, // Use the current fee (may include discount if applied)
+        rescheduleSessionId: widget.rescheduleSessionId, // Pass reschedule session ID
       );
 
       if (!mounted) return;
@@ -620,7 +711,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Book Trial Session',
+              widget.isReschedule ? 'Reschedule Trial Session' : 'Book Trial Session',
               style: GoogleFonts.poppins(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -642,6 +733,42 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         children: [
           Column(
             children: [
+              // Reschedule banner
+              if (widget.isReschedule)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.orange.shade50,
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange.shade700, size: 24),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Rescheduling Missed Session',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange.shade900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'You are requesting to reschedule a missed trial session. The tutor will be notified and can approve or suggest an alternative time.',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: Colors.orange.shade800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // Progress indicator
               Container(
                 color: Colors.white,
@@ -1449,10 +1576,20 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     final finalPrice = details != null ? (details['finalPrice'] as double) : null;
     final hasDiscount = details != null ? (details['hasDiscount'] as bool) : false;
     
-    // Determine display price
+    // Determine display price - always use basePrice if available, otherwise fallback
     String displayPrice = fallbackPrice;
+    double? actualBasePrice;
     if (basePrice != null) {
+      actualBasePrice = basePrice;
       displayPrice = PricingService.formatPrice(basePrice);
+    } else {
+      // Try to parse fallback price to get numeric value
+      try {
+        final cleanPrice = fallbackPrice.replaceAll(RegExp(r'[^\d.]'), '');
+        actualBasePrice = double.tryParse(cleanPrice);
+      } catch (e) {
+        // Ignore parsing errors
+      }
     }
     
     // Calculate savings if discount exists
@@ -1497,9 +1634,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
             ),
             const SizedBox(height: 6),
-            // Show discount pricing if available
-            if (hasDiscount && basePrice != null && finalPrice != null) ...[
-              // Original price (strikethrough)
+            // Always show original price (strikethrough) if discount exists, then discounted price
+            // Check if there's actually a discount (basePrice > finalPrice) even if flag might be wrong
+            if (basePrice != null && finalPrice != null && basePrice > finalPrice) ...[
+              // Original price (strikethrough) - always show when discount exists
               Text(
                 PricingService.formatPrice(basePrice),
                 style: GoogleFonts.poppins(
@@ -1507,10 +1645,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   fontWeight: FontWeight.w500,
                   color: Colors.grey[500],
                   decoration: TextDecoration.lineThrough,
+                  decorationThickness: 2,
                 ),
               ),
-              const SizedBox(height: 2),
-              // Discounted price (green)
+              const SizedBox(height: 4),
+              // Discounted price (green, larger)
               Text(
                 PricingService.formatPrice(finalPrice),
                 style: GoogleFonts.poppins(
@@ -1530,14 +1669,24 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   ),
                 ),
               ],
-            ] else ...[
+            ] else if (basePrice != null) ...[
               // No discount - show regular price
+              Text(
+                PricingService.formatPrice(basePrice),
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
+                ),
+              ),
+            ] else ...[
+              // Fallback to displayPrice if basePrice is null
               Text(
                 displayPrice,
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : Colors.grey[600],
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? AppTheme.primaryColor : Colors.grey[700],
                 ),
               ),
             ],

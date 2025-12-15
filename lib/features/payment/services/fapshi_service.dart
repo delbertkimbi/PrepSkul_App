@@ -47,15 +47,27 @@ class FapshiService {
     String? message,
   }) async {
     try {
+      // Validate API credentials
+      if (_apiUser.isEmpty || _apiKey.isEmpty) {
+        LogService.error('Fapshi API credentials are missing. Check your .env file.');
+        throw Exception('Payment service is not configured. Please contact support.');
+      }
+
       // Validate amount
       if (amount < 100) {
         throw Exception('Amount must be at least 100 XAF');
       }
 
+      // Validate and normalize phone number
+      final normalizedPhone = _normalizePhoneNumber(phone);
+      if (normalizedPhone == null) {
+        throw Exception('Please enter a valid phone number. Use format: 67XXXXXXX or 69XXXXXXX (MTN or Orange Cameroon)');
+      }
+
       // Prepare request body
       final requestBody = <String, dynamic>{
         'amount': amount,
-        'phone': phone,
+        'phone': normalizedPhone,
         if (medium != null) 'medium': medium,
         if (name != null) 'name': name,
         if (email != null) 'email': email,
@@ -63,6 +75,10 @@ class FapshiService {
         'externalId': externalId,
         if (message != null) 'message': message,
       };
+
+      LogService.debug('📤 Fapshi payment request: ${jsonEncode(requestBody)}');
+      LogService.debug('🌐 Fapshi API URL: $_baseUrl/direct-pay');
+      LogService.debug('🔑 API User: ${_apiUser.isNotEmpty ? "${_apiUser.substring(0, 3)}..." : "EMPTY"}');
 
       // Make API request
       final response = await http.post(
@@ -73,21 +89,150 @@ class FapshiService {
           'apikey': _apiKey,
         },
         body: jsonEncode(requestBody),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Payment request timed out. Please check your internet connection and try again.');
+        },
       );
+
+      LogService.debug('📥 Fapshi response status: ${response.statusCode}');
+      LogService.debug('📥 Fapshi response body: ${response.body}');
 
       // Handle response
       if (response.statusCode == 200) {
-        final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
-        return FapshiPaymentResponse.fromJson(jsonResponse);
+        try {
+          final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
+          return FapshiPaymentResponse.fromJson(jsonResponse);
+        } on FormatException catch (e) {
+          LogService.error('Failed to parse Fapshi success response: $e');
+          LogService.error('Response body: ${response.body}');
+          throw Exception('Received an invalid response from the payment provider. Please try again.');
+        }
       } else {
-        final errorResponse = jsonDecode(response.body) as Map<String, dynamic>;
-        final errorMessage = errorResponse['message'] as String? ?? 'Payment request failed';
-        throw Exception('Fapshi API Error: $errorMessage');
+        // Try to parse error response
+        String errorMessage = 'Payment request failed';
+        try {
+          final errorResponse = jsonDecode(response.body) as Map<String, dynamic>;
+          errorMessage = errorResponse['message'] as String? ?? 
+                        errorResponse['error'] as String? ?? 
+                        'Payment request failed';
+          LogService.error('Fapshi API error: $errorMessage (Status: ${response.statusCode})');
+        } on FormatException {
+          // Response is not valid JSON
+          LogService.error('Fapshi API returned non-JSON error response (Status: ${response.statusCode})');
+          LogService.error('Response body: ${response.body}');
+          
+          // Try to extract meaningful error from HTML or plain text
+          if (response.body.toLowerCase().contains('unauthorized') || 
+              response.body.toLowerCase().contains('forbidden') ||
+              response.statusCode == 401 || 
+              response.statusCode == 403) {
+            errorMessage = 'Payment service authentication failed. Please contact support.';
+          } else if (response.statusCode == 400) {
+            errorMessage = 'Invalid payment request. Please check your phone number and try again.';
+          } else if (response.statusCode >= 500) {
+            errorMessage = 'Payment service is temporarily unavailable. Please try again later.';
+          } else {
+            errorMessage = 'Payment request failed. Please try again.';
+          }
+        }
+        
+        // Convert Fapshi error messages to user-friendly messages
+        final userFriendlyMessage = _convertToUserFriendlyError(errorMessage);
+        throw Exception(userFriendlyMessage);
       }
+    } on http.ClientException catch (e) {
+      LogService.error('Network error initiating Fapshi payment: $e');
+      throw Exception('Network error. Please check your internet connection and try again.');
+    } on FormatException catch (e) {
+      LogService.error('JSON parsing error: $e');
+      throw Exception('Invalid response from payment provider. Please try again.');
     } catch (e) {
       LogService.error('Error initiating Fapshi payment: $e');
-      rethrow;
+      // If it's already a user-friendly message, rethrow as-is
+      if (e.toString().contains('Please enter') || 
+          e.toString().contains('valid phone') ||
+          e.toString().contains('contact support') ||
+          e.toString().contains('check your internet') ||
+          e.toString().contains('timed out')) {
+        rethrow;
+      }
+      // Otherwise, convert to user-friendly message
+      final userFriendlyMessage = _convertToUserFriendlyError(e.toString());
+      throw Exception(userFriendlyMessage);
     }
+  }
+  
+  /// Normalize phone number to Fapshi format
+  /// 
+  /// Accepts formats:
+  /// - 67XXXXXXX (MTN)
+  /// - 69XXXXXXX (Orange)
+  /// - +23767XXXXXXX
+  /// - 23767XXXXXXX
+  /// 
+  /// Returns normalized phone (9 digits starting with 6) or null if invalid
+  static String? _normalizePhoneNumber(String phone) {
+    // Remove all non-digit characters
+    final digitsOnly = phone.replaceAll(RegExp(r'[^\d]'), '');
+    
+    // Handle different formats
+    String normalized;
+    if (digitsOnly.startsWith('237')) {
+      // International format: 23767XXXXXXX -> 67XXXXXXX
+      normalized = digitsOnly.substring(3);
+    } else if (digitsOnly.startsWith('67') || digitsOnly.startsWith('69') || digitsOnly.startsWith('65') || digitsOnly.startsWith('66')) {
+      // Already in correct format: 67XXXXXXX or 69XXXXXXX
+      normalized = digitsOnly;
+    } else {
+      return null; // Invalid format
+    }
+    
+    // Validate length (should be 9 digits for Cameroon)
+    if (normalized.length != 9) {
+      return null;
+    }
+    
+    // Validate it starts with valid Cameroon mobile prefix
+    final validPrefixes = ['67', '69', '65', '66', '68'];
+    if (!validPrefixes.any((prefix) => normalized.startsWith(prefix))) {
+      return null;
+    }
+    
+    return normalized;
+  }
+  
+  /// Convert Fapshi API error messages to user-friendly messages
+  static String _convertToUserFriendlyError(String errorMessage) {
+    final lowerError = errorMessage.toLowerCase();
+    
+    if (lowerError.contains('phone') && (lowerError.contains('valid') || lowerError.contains('mtn') || lowerError.contains('orange'))) {
+      return 'Please enter a valid phone number. Use format: 67XXXXXXX (MTN) or 69XXXXXXX (Orange).';
+    }
+    
+    if (lowerError.contains('amount') && lowerError.contains('minimum')) {
+      return 'Payment amount must be at least 100 XAF.';
+    }
+    
+    if (lowerError.contains('credentials') || lowerError.contains('authentication') || lowerError.contains('forbidden')) {
+      return 'Payment service configuration error. Please contact support.';
+    }
+    
+    if (lowerError.contains('network') || lowerError.contains('connection') || lowerError.contains('timeout')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
+    
+    if (lowerError.contains('expired')) {
+      return 'Payment link has expired. Please initiate a new payment.';
+    }
+    
+    if (lowerError.contains('failed') || lowerError.contains('error')) {
+      return 'Payment request failed. Please check your phone number and try again.';
+    }
+    
+    // Default user-friendly message
+    return 'Unable to process payment. Please check your phone number and try again. If the problem persists, contact support.';
   }
 
   /// Get payment transaction status

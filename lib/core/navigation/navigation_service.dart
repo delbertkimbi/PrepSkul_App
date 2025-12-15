@@ -85,6 +85,7 @@ class NavigationService {
             }
 
             final userRole = profile['user_type'] ?? 'student';
+            final userTypeRaw = profile['user_type'];
             LogService.debug('[NAV_SERVICE] User role from profile: $userRole');
             LogService.debug('[NAV_SERVICE] User email: ${user.email ?? "unknown"}');
             if (userRole == 'tutor' && user.email?.contains('student') == true) {
@@ -93,11 +94,15 @@ class NavigationService {
             final hasCompletedSurvey = profile['survey_completed'] ?? false;
             
             // Check if user_type is missing/empty (e.g., fresh Google signup)
-            // This takes priority over onboarding check for authenticated users
-            if (userRole == 'student' && (profile['user_type'] == null || profile['user_type'] == '')) {
-               // user_type is missing/invalid in DB, redirect to role selection
-               return NavigationResult('/role-selection');
+            // Only redirect to role selection if user_type is actually null/empty
+            // For email signups, user_type should already be set, so don't redirect
+            if (userTypeRaw == null || userTypeRaw == '' || userTypeRaw.toString().trim().isEmpty) {
+              LogService.debug('[NAV_SERVICE] user_type is missing/invalid in DB - redirecting to role selection');
+              return NavigationResult('/role-selection');
             }
+            
+            // If user_type exists and is valid (student, parent, or tutor), continue with normal flow
+            // Don't redirect to role selection for email signups who already selected their role
 
             if (!hasCompletedSurvey) {
               // For authenticated users, we prioritize survey/profile completion over onboarding screens
@@ -145,7 +150,60 @@ class NavigationService {
       );
 
       NavigationResult result;
-      if (!hasCompletedOnboarding) {
+      
+      // For tutors, check tutor-specific onboarding first (not general onboarding)
+      // Tutors should go directly to dashboard if they've completed tutor onboarding
+      if (userRole == 'tutor' && (isLoggedIn || hasSupabaseSession)) {
+        try {
+          final userId = await AuthService.getCurrentUser();
+          final userIdStr = userId['userId'] as String?;
+          if (userIdStr != null && userIdStr.isNotEmpty) {
+            final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userIdStr);
+            final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userIdStr);
+            
+            if (onboardingComplete || onboardingSkipped) {
+              // Tutor onboarding complete or skipped - go directly to dashboard
+              LogService.success('Tutor onboarding complete - navigating to dashboard');
+              result = _getDashboardRoute('tutor');
+            } else {
+              // Check if it's a new tutor (no progress at all)
+              final progress = await TutorOnboardingProgressService.loadProgress(userIdStr);
+              if (progress == null && !onboardingSkipped) {
+                // New tutor - show choice screen
+                result = NavigationResult('/tutor-onboarding-choice');
+              } else {
+                // Resume onboarding
+                result = NavigationResult(
+                  '/profile-setup',
+                  arguments: {'userRole': userRole},
+                );
+              }
+            }
+          } else {
+            // No user ID - check general onboarding
+            if (!hasCompletedOnboarding) {
+              result = NavigationResult('/onboarding');
+            } else {
+              result = NavigationResult(
+                '/profile-setup',
+                arguments: {'userRole': userRole},
+              );
+            }
+          }
+        } catch (e) {
+          LogService.warning('Error checking tutor onboarding status: $e');
+          // If error, check general onboarding as fallback
+          if (!hasCompletedOnboarding) {
+            result = NavigationResult('/onboarding');
+          } else {
+            result = NavigationResult(
+              '/profile-setup',
+              arguments: {'userRole': userRole},
+            );
+          }
+        }
+      } else if (!hasCompletedOnboarding) {
+        // For non-tutors or unauthenticated users, check general onboarding
         result = NavigationResult('/onboarding');
       } else if (!isLoggedIn && !hasSupabaseSession) {
         result = NavigationResult('/auth-method-selection');
@@ -154,49 +212,7 @@ class NavigationService {
         final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
         
         // For students and parents, show intro screen first (if not seen)
-        // For tutors, check onboarding status
-        if (userRole == 'tutor') {
-          // Check if onboarding was skipped or is incomplete
-          try {
-            final userId = await AuthService.getCurrentUser();
-            final userIdStr = userId['userId'] as String?;
-            if (userIdStr != null) {
-              final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userIdStr);
-              final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userIdStr);
-              
-              if (onboardingSkipped || !onboardingComplete) {
-                // Check if it's a new tutor (no progress at all)
-                final progress = await TutorOnboardingProgressService.loadProgress(userIdStr);
-                if (progress == null && !onboardingSkipped) {
-                  // New tutor - show choice screen
-                  result = NavigationResult('/tutor-onboarding-choice');
-                } else {
-                  // Resume onboarding
-                  result = NavigationResult(
-                    '/profile-setup',
-                    arguments: {'userRole': userRole},
-                  );
-                }
-              } else {
-                // Onboarding complete, go to dashboard
-                result = _getDashboardRoute(userRole);
-              }
-            } else {
-              // Fallback to profile setup
-              result = NavigationResult(
-                '/profile-setup',
-                arguments: {'userRole': userRole},
-              );
-            }
-          } catch (e) {
-            LogService.warning('Error checking onboarding status: $e');
-            // Fallback to profile setup
-            result = NavigationResult(
-              '/profile-setup',
-              arguments: {'userRole': userRole},
-            );
-          }
-        } else if ((userRole == 'student' || userRole == 'learner' || userRole == 'parent') && !surveyIntroSeen) {
+        if ((userRole == 'student' || userRole == 'learner' || userRole == 'parent') && !surveyIntroSeen) {
           result = NavigationResult(
             '/survey-intro',
             arguments: {'userType': userRole},

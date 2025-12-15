@@ -19,23 +19,16 @@ class TutorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = tutor['full_name'] ?? 'Unknown';
     
-    // Calculate effective rating logic
-    // Use admin_approved_rating if total_reviews < 3 (displayed as 10 reviews)
-    final totalReviewsVal = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    // Use pre-calculated values from tutor_service (no duplicate calculation)
+    final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
+    final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     final adminApprovedRating = (tutor['admin_approved_rating'] as num?)?.toDouble();
-    final calculatedRating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
-
-    final rating =
-        (totalReviewsVal < 3 && adminApprovedRating != null)
-        ? adminApprovedRating
-        : (calculatedRating > 0
-              ? calculatedRating
-              : (adminApprovedRating ?? 0.0));
-
-    final totalReviews =
-        (totalReviewsVal < 3 && adminApprovedRating != null)
-        ? 10
-        : totalReviewsVal;
+    
+    // DEBUG: Print values being used
+    print('📊 [TUTOR_CARD] Name: $name');
+    print('   - rating (from service): $rating');
+    print('   - total_reviews (from service): $totalReviews');
+    print('   - admin_approved_rating (raw): $adminApprovedRating');
 
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
@@ -271,9 +264,18 @@ class TutorCard extends StatelessWidget {
 
   Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
     // Calculate monthly pricing but display it subtly
+    final name = tutor['full_name'] ?? 'Unknown';
     final pricing = PricingService.calculateFromTutorData(tutor);
     final monthlyAmount = pricing['perMonth'] as double;
     final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
+    
+    // DEBUG: Print pricing values
+    print('💰 [TUTOR_CARD] Name: $name');
+    print('   - base_session_price: ${tutor['base_session_price']}');
+    print('   - admin_price_override: ${tutor['admin_price_override']}');
+    print('   - hourly_rate: ${tutor['hourly_rate']}');
+    print('   - per_session_rate: ${tutor['per_session_rate']}');
+    print('   - Final monthlyAmount: $monthlyAmount (${PricingService.formatPrice(monthlyAmount)})');
 
     // On cards, show only discount price if available
     if (hasDiscount) {

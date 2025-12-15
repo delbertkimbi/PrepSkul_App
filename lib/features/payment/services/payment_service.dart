@@ -3,6 +3,7 @@ import '../models/fapshi_transaction_model.dart';
 import '../../booking/models/trial_session_model.dart';
 import '../../booking/services/trial_session_service.dart';
 import '../../payment/services/payment_request_service.dart';
+import '../../../core/services/log_service.dart';
 
 
 /// High-Level Payment Service

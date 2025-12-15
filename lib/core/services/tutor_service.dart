@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
 
 // Helper function to safely cast dynamic values
 T? _safeCast<T>(dynamic value) {
@@ -27,6 +29,7 @@ class TutorService {
 
   /// Fetch all tutors
   /// Returns list of tutor profiles with all details
+  /// Automatically uses cache when offline
   static Future<List<Map<String, dynamic>>> fetchTutors({
     String? subject,
     int? minRate,
@@ -34,8 +37,36 @@ class TutorService {
     double? minRating,
     bool? isVerified,
   }) async {
+    // Check connectivity first
+    final connectivity = ConnectivityService();
+    await connectivity.initialize();
+    final isOnline = await connectivity.checkConnectivity();
+    
+    // If offline, try to return cached data
+    if (!isOnline) {
+      LogService.info('TutorService: Offline - checking cache...');
+      final cachedTutors = await OfflineCacheService.getCachedTutors();
+      if (cachedTutors != null && cachedTutors.isNotEmpty) {
+        LogService.success('TutorService: Returning ${cachedTutors.length} tutors from cache');
+        // Apply filters to cached data if needed
+        return _applyFiltersToTutors(
+          cachedTutors,
+          subject: subject,
+          minRate: minRate,
+          maxRate: maxRate,
+          minRating: minRating,
+          isVerified: isVerified,
+        );
+      } else {
+        LogService.warning('TutorService: No cached tutors available');
+        return []; // Return empty list when offline and no cache
+      }
+    }
+    
+    // Online - fetch from source
+    List<Map<String, dynamic>> tutors;
     if (USE_DEMO_DATA) {
-      return _fetchDemoTutors(
+      tutors = await _fetchDemoTutors(
         subject: subject,
         minRate: minRate,
         maxRate: maxRate,
@@ -43,7 +74,7 @@ class TutorService {
         isVerified: isVerified,
       );
     } else {
-      return _fetchSupabaseTutors(
+      tutors = await _fetchSupabaseTutors(
         subject: subject,
         minRate: minRate,
         maxRate: maxRate,
@@ -51,6 +82,67 @@ class TutorService {
         isVerified: isVerified,
       );
     }
+    
+    // Cache the fetched tutors for offline use
+    if (tutors.isNotEmpty) {
+      await OfflineCacheService.cacheTutors(tutors);
+    }
+    
+    return tutors;
+  }
+  
+  /// Apply filters to a list of tutors (for offline cached data)
+  static List<Map<String, dynamic>> _applyFiltersToTutors(
+    List<Map<String, dynamic>> tutors, {
+    String? subject,
+    int? minRate,
+    int? maxRate,
+    double? minRating,
+    bool? isVerified,
+  }) {
+    var filtered = tutors;
+    
+    if (subject != null && subject.isNotEmpty) {
+      filtered = filtered.where((tutor) {
+        final subjects = tutor['subjects'] as List?;
+        final specializations = tutor['specializations'] as List?;
+        final allSubjects = [
+          ...?subjects?.map((s) => s.toString().toLowerCase()),
+          ...?specializations?.map((s) => s.toString().toLowerCase()),
+        ];
+        return allSubjects.contains(subject.toLowerCase());
+      }).toList();
+    }
+    
+    if (minRate != null) {
+      filtered = filtered.where((tutor) {
+        final rate = _safeCast<num>(tutor['hourly_rate']) ?? 0;
+        return rate >= minRate;
+      }).toList();
+    }
+    
+    if (maxRate != null) {
+      filtered = filtered.where((tutor) {
+        final rate = _safeCast<num>(tutor['hourly_rate']) ?? 0;
+        return rate <= maxRate;
+      }).toList();
+    }
+    
+    if (minRating != null) {
+      filtered = filtered.where((tutor) {
+        final rating = _safeCast<num>(tutor['rating']) ?? 0.0;
+        return rating >= minRating;
+      }).toList();
+    }
+    
+    if (isVerified != null) {
+      filtered = filtered.where((tutor) {
+        final verified = _safeCast<bool>(tutor['is_verified']) ?? false;
+        return verified == isVerified;
+      }).toList();
+    }
+    
+    return filtered;
   }
 
   /// Fetch single tutor by ID
@@ -509,36 +601,83 @@ class TutorService {
         final adminApprovedRating = _safeCast<double>(tutor['admin_approved_rating']);
         final calculatedRating = _safeCast<double>(tutor['rating']) ?? 0.0;
 
+        // DEBUG: Print rating values
+        final tutorName = profile?['full_name'] ?? 'Unknown';
+        print('📊 [TUTOR_SERVICE] Name: $tutorName');
+        print('   - total_reviews (raw): $totalReviews');
+        print('   - admin_approved_rating (raw): $adminApprovedRating');
+        print('   - calculated_rating (raw): $calculatedRating');
+
         // Use admin rating until we have at least 3 real reviews
-        final effectiveRating =
-            (totalReviews < 3 && adminApprovedRating != null)
-            ? adminApprovedRating
-            : (calculatedRating > 0
-                  ? calculatedRating
-                  : (adminApprovedRating ?? 0.0));
+        // If admin_approved_rating is null but tutor is approved, use calculated rating or default 3.5
+        // This handles the case where new tutors don't have admin_approved_rating set yet
+        double effectiveRating;
+        if (totalReviews < 3 && adminApprovedRating != null) {
+          // Use admin rating if available and reviews < 3
+          effectiveRating = adminApprovedRating;
+        } else if (calculatedRating > 0) {
+          // Use calculated rating if available
+          effectiveRating = calculatedRating;
+        } else if (adminApprovedRating != null) {
+          // Use admin rating even if calculated is 0
+          effectiveRating = adminApprovedRating;
+        } else {
+          // Default to 3.5 for approved tutors without any rating set
+          effectiveRating = 3.5;
+        }
 
         // Use effective total_reviews (show 10 if using admin rating and reviews < 3)
+        // Also show 10 if tutor is approved but has no reviews yet (new tutor)
         final effectiveTotalReviews =
-            (totalReviews < 3 && adminApprovedRating != null)
+            (totalReviews < 3 && (adminApprovedRating != null || totalReviews == 0))
             ? 10 // Temporary count until real reviews come in
             : totalReviews;
+
+        print('   - Final effectiveRating: $effectiveRating');
+        print('   - Final effectiveTotalReviews: $effectiveTotalReviews');
 
         // Get pricing: Prioritize base_session_price > admin_price_override > hourly_rate
         final baseSessionPrice = _safeCast<num>(tutor['base_session_price']);
         final adminPriceOverride = _safeCast<num>(tutor['admin_price_override']);
-        final hourlyRate = _safeCast<num>(tutor['hourly_rate']);
+        final hourlyRateRaw = tutor['hourly_rate'];
         final perSessionRate = _safeCast<num>(tutor['per_session_rate']);
 
-        // Determine the effective rate
-        final effectiveRate = (baseSessionPrice != null && baseSessionPrice > 0)
-            ? baseSessionPrice.toDouble()
-            : (adminPriceOverride != null && adminPriceOverride > 0)
-            ? adminPriceOverride.toDouble()
-            : (perSessionRate != null && perSessionRate > 0)
-            ? perSessionRate.toDouble()
-            : (hourlyRate != null && hourlyRate > 0)
-            ? hourlyRate.toDouble()
-            : 0.0;
+        // DEBUG: Print pricing values
+        print('💰 [TUTOR_SERVICE] Name: $tutorName');
+        print('   - base_session_price: $baseSessionPrice');
+        print('   - admin_price_override: $adminPriceOverride');
+        print('   - hourly_rate (raw): $hourlyRateRaw');
+        print('   - per_session_rate: $perSessionRate');
+
+        // Validate and sanitize hourly_rate (prevent very large numbers)
+        double hourlyRate = 3000.0; // Default fallback
+        if (hourlyRateRaw != null) {
+          final hourlyRateValue = hourlyRateRaw is num 
+              ? hourlyRateRaw.toDouble() 
+              : double.tryParse(hourlyRateRaw.toString());
+          // Only use if it's a reasonable value (between 1000 and 50000 XAF)
+          if (hourlyRateValue != null && hourlyRateValue >= 1000 && hourlyRateValue <= 50000) {
+            hourlyRate = hourlyRateValue;
+          } else {
+            print('   ⚠️ hourly_rate invalid: $hourlyRateValue (using default 3000)');
+          }
+        }
+
+        // Determine the effective rate (validate each to prevent very large numbers)
+        double effectiveRate;
+        if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
+          effectiveRate = baseSessionPrice.toDouble();
+          print('   ✅ Using base_session_price: $effectiveRate');
+        } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
+          effectiveRate = adminPriceOverride.toDouble();
+          print('   ✅ Using admin_price_override: $effectiveRate');
+        } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
+          effectiveRate = perSessionRate.toDouble();
+          print('   ✅ Using per_session_rate: $effectiveRate');
+        } else {
+          effectiveRate = hourlyRate;
+          print('   ✅ Using hourly_rate (fallback): $effectiveRate');
+        }
 
         // Bio mapping:
         // - 'bio': Dynamic bio for cards (starts with subjects, no "Hello!")
@@ -728,9 +867,11 @@ class TutorService {
           'experience': formattedExperience.isNotEmpty ? formattedExperience : (tutor['experience']?.toString() ?? ''),
           'teaching_duration': teachingDuration?.toString(),
           'subjects': subjects ?? [],
-          'hourly_rate': effectiveRate, // Use effective rate
+          'hourly_rate': effectiveRate, // Use validated effective rate (already sanitized)
+          'effective_rate': effectiveRate, // Also store as effective_rate for clarity
           'base_session_price': baseSessionPrice?.toDouble(),
           'admin_price_override': adminPriceOverride?.toDouble(),
+          'per_session_rate': perSessionRate?.toDouble(),
           'availability': effectiveAvailability, // Use effective availability
           'tutoring_availability': tutoringAvailability,
           'test_session_availability': testSessionAvailability,
@@ -743,9 +884,10 @@ class TutorService {
               ...testSessionAvailability,
           },
           'is_verified': tutor['is_verified'] ?? false,
-          'rating': effectiveRating, // Use effective rating
-          'total_reviews': effectiveTotalReviews, // Use effective review count
-          'admin_approved_rating': adminApprovedRating,
+          'rating': effectiveRating, // Use effective rating (already calculated above)
+          'total_reviews': effectiveTotalReviews, // Use effective review count (already calculated above)
+          'admin_approved_rating': adminApprovedRating, // Keep raw value for reference
+          'calculated_rating': calculatedRating, // Keep raw calculated rating for reference
           'total_students': totalStudents,
           'total_hours_taught': totalHoursTaught,
           'completed_sessions': completedSessions,

@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
@@ -175,23 +176,36 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   Future<void> _handleReject(BookingRequest request) async {
-    final result = await showDialog<String>(
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => _RejectDialog(),
+      builder: (context) => _RejectDialog(request: request),
     );
 
-    if (result != null && result.isNotEmpty) {
+    if (result != null && result['reason'] != null && (result['reason'] as String).isNotEmpty) {
       try {
+        final reason = result['reason'] as String;
+        final suggestedDate = result['suggestedDate'] as DateTime?;
+        final suggestedTime = result['suggestedTime'] as String?;
+        
+        // Build rejection reason with suggested time if provided
+        String rejectionReason = reason;
+        if (suggestedDate != null && suggestedTime != null) {
+          final dateStr = '${suggestedDate.day}/${suggestedDate.month}/${suggestedDate.year}';
+          rejectionReason = '$reason\n\nSuggested alternative time: $dateStr at $suggestedTime';
+        }
+        
         if (request.isTrial) {
-          await BookingService.rejectTrialRequest(request.id, reason: result);
+          await BookingService.rejectTrialRequest(request.id, reason: rejectionReason);
         } else {
-          await BookingService.rejectBookingRequest(request.id, reason: result);
+          await BookingService.rejectBookingRequest(request.id, reason: rejectionReason);
         }
 
         if (mounted) {
           BrandedSnackBar.show(
             context,
-            message: 'Request rejected',
+            message: suggestedDate != null 
+                ? 'Request rejected with alternative time suggestion'
+                : 'Request rejected',
             backgroundColor: Colors.orange,
             icon: Icons.info_outline,
           );
@@ -537,7 +551,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                           ),
                         ),
                         child: Text(
-                          'Reject',
+                          request.isTrial ? 'Suggest Better Time' : 'Reject',
                           style: GoogleFonts.poppins(
                             color: Colors.red,
                             fontWeight: FontWeight.w600,
@@ -705,13 +719,26 @@ class _ApproveDialogState extends State<_ApproveDialog> {
 
 // Reject Dialog
 class _RejectDialog extends StatefulWidget {
+  final BookingRequest request;
+  
+  const _RejectDialog({required this.request});
+
   @override
   State<_RejectDialog> createState() => _RejectDialogState();
 }
 
 class _RejectDialogState extends State<_RejectDialog> {
   final _reasonController = TextEditingController();
+  final _pageController = PageController();
+  int _currentPage = 0;
   bool _hasText = false;
+  bool _wantsToSuggestTime = false;
+  DateTime? _suggestedDate;
+  String? _suggestedTime;
+  final List<String> _timeSlots = [
+    '08:00', '09:00', '10:00', '11:00', '12:00',
+    '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
+  ];
 
   @override
   void initState() {
@@ -727,62 +754,256 @@ class _RejectDialogState extends State<_RejectDialog> {
   @override
   void dispose() {
     _reasonController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Reject Request', style: GoogleFonts.poppins()),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Please provide a reason for rejection (required):',
-            style: GoogleFonts.poppins(fontSize: 14),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _reasonController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'E.g., "Schedule conflict with existing sessions"',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(
+        _currentPage == 0 ? 'Reject Request' : 'Suggest Better Time',
+        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: PageView(
+          controller: _pageController,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            // Page 1: Reason and suggest time option
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Please provide a reason for rejection (required):',
+                  style: GoogleFonts.poppins(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _reasonController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: 'E.g., "Schedule conflict with existing sessions"',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  autofocus: true,
+                ),
+                const SizedBox(height: 16),
+                // Option to suggest better time
+                CheckboxListTile(
+                  value: _wantsToSuggestTime,
+                  onChanged: (value) {
+                    safeSetState(() {
+                      _wantsToSuggestTime = value ?? false;
+                    });
+                  },
+                  title: Text(
+                    'Suggest a better time',
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+              ],
             ),
-            autofocus: true, // Auto-focus the text field
-          ),
-        ],
+            // Page 2: Date and time selection
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Select a better date and time:',
+                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                // Date picker
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _suggestedDate ?? DateTime.now().add(const Duration(days: 1)),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 90)),
+                    );
+                    if (picked != null) {
+                      safeSetState(() {
+                        _suggestedDate = picked;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[300]!),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 20, color: AppTheme.primaryColor),
+                        const SizedBox(width: 12),
+                        Text(
+                          _suggestedDate != null
+                              ? '${_suggestedDate!.day}/${_suggestedDate!.month}/${_suggestedDate!.year}'
+                              : 'Select date',
+                          style: GoogleFonts.poppins(fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Time picker
+                Text(
+                  'Time:',
+                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _timeSlots.map((time) {
+                    final isSelected = _suggestedTime == time;
+                    return ChoiceChip(
+                      label: Text(time),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        safeSetState(() {
+                          _suggestedTime = selected ? time : null;
+                        });
+                      },
+                      selectedColor: AppTheme.primaryColor,
+                      labelStyle: GoogleFonts.poppins(
+                        color: isSelected ? Colors.white : AppTheme.textDark,
+                        fontSize: 12,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (_currentPage == 0) {
+              Navigator.pop(context);
+            } else {
+              _pageController.previousPage(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+              );
+              safeSetState(() {
+                _currentPage = 0;
+              });
+            }
+          },
           child: Text('Cancel', style: GoogleFonts.poppins()),
         ),
-        ElevatedButton(
-          onPressed: _hasText
-              ? () => Navigator.pop(context, _reasonController.text.trim())
-              : null,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red,
-            foregroundColor: Colors.white,
-            disabledBackgroundColor: Colors.grey[300],
-            disabledForegroundColor: Colors.grey[600],
+        if (_currentPage == 0)
+          ElevatedButton(
+            onPressed: _hasText
+                ? () {
+                    if (_wantsToSuggestTime) {
+                      // Go to page 2
+                      _pageController.nextPage(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                      safeSetState(() {
+                        _currentPage = 1;
+                      });
+                    } else {
+                      // Reject without suggesting time
+                      Navigator.pop(context, {
+                        'reason': _reasonController.text.trim(),
+                        'suggestedDate': null,
+                        'suggestedTime': null,
+                      });
+                    }
+                  }
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.grey[300],
+              disabledForegroundColor: Colors.grey[600],
+            ),
+            child: Text('Reject', style: GoogleFonts.poppins()),
+          )
+        else
+          ElevatedButton(
+            onPressed: _suggestedDate != null && _suggestedTime != null
+                ? () {
+                    Navigator.pop(context, {
+                      'reason': _reasonController.text.trim(),
+                      'suggestedDate': _suggestedDate,
+                      'suggestedTime': _suggestedTime,
+                    });
+                  }
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: Colors.grey[300],
+              disabledForegroundColor: Colors.grey[600],
+            ),
+            child: Text('Reject & Suggest', style: GoogleFonts.poppins()),
           ),
-          child: Text('Reject', style: GoogleFonts.poppins()),
-        ),
       ],
     );
   }
 }
 
 // Request Details Sheet
-class _RequestDetailsSheet extends StatelessWidget {
+class _RequestDetailsSheet extends StatefulWidget {
   final BookingRequest request;
 
   const _RequestDetailsSheet({required this.request});
+
+  @override
+  State<_RequestDetailsSheet> createState() => _RequestDetailsSheetState();
+}
+
+class _RequestDetailsSheetState extends State<_RequestDetailsSheet> {
+  Map<String, dynamic>? _learnerProfile;
+  bool _isLoadingProfile = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLearnerProfile();
+  }
+
+  Future<void> _loadLearnerProfile() async {
+    try {
+      final profile = await SupabaseService.client
+          .from('learner_profiles')
+          .select('*')
+          .eq('user_id', widget.request.studentId)
+          .maybeSingle();
+      
+      if (mounted) {
+        setState(() {
+          _learnerProfile = profile as Map<String, dynamic>?;
+          _isLoadingProfile = false;
+        });
+      }
+    } catch (e) {
+      LogService.warning('Error loading learner profile: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingProfile = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -820,70 +1041,192 @@ class _RequestDetailsSheet extends StatelessWidget {
               ),
               const SizedBox(height: 24),
               // Student Info
-              _buildInfoRow(Icons.person, request.studentName),
+              _buildInfoRow(Icons.person, widget.request.studentName),
               const SizedBox(height: 12),
               
               // Schedule Info (Trial vs Recurring)
-              if (request.isTrial) ...[
+              if (widget.request.isTrial) ...[
                 _buildInfoRow(
                   Icons.calendar_today,
-                  'Trial Session • ${request.scheduledDate != null ? '${request.scheduledDate!.day}/${request.scheduledDate!.month}/${request.scheduledDate!.year}' : request.getDaysSummary()}',
+                  'Trial Session • ${widget.request.scheduledDate != null ? '${widget.request.scheduledDate!.day}/${widget.request.scheduledDate!.month}/${widget.request.scheduledDate!.year}' : widget.request.getDaysSummary()}',
                 ),
-                if (request.subject != null) ...[
+                if (widget.request.subject != null) ...[
                   const SizedBox(height: 12),
-                  _buildInfoRow(Icons.menu_book, 'Subject: ${request.subject}'),
+                  _buildInfoRow(Icons.menu_book, 'Subject: ${widget.request.subject}'),
                 ],
-                if (request.durationMinutes != null) ...[
+                if (widget.request.durationMinutes != null) ...[
                   const SizedBox(height: 12),
                   _buildInfoRow(
                     Icons.timer,
-                    'Duration: ${request.durationMinutes} minutes',
+                    'Duration: ${widget.request.durationMinutes} minutes',
                   ),
                 ],
-                if (request.trialGoal != null) ...[
+                if (widget.request.trialGoal != null) ...[
                   const SizedBox(height: 12),
-                  _buildInfoRow(Icons.flag, 'Goal: ${request.trialGoal}'),
+                  _buildInfoRow(Icons.flag, 'Goal: ${_cleanTrialGoal(widget.request.trialGoal!)}'),
+                ],
+                if (widget.request.learnerChallenges != null && widget.request.learnerChallenges!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildInfoRow(Icons.help_outline, 'Challenges: ${widget.request.learnerChallenges}'),
                 ],
               ] else ...[
                 _buildInfoRow(
                   Icons.calendar_today,
-                  '${request.frequency}x per week • ${request.getDaysSummary()}',
+                  '${widget.request.frequency}x per week • ${widget.request.getDaysSummary()}',
                 ),
               ],
               
               const SizedBox(height: 12),
-              _buildInfoRow(Icons.access_time, request.getTimeRange()),
+              _buildInfoRow(Icons.access_time, widget.request.getTimeRange()),
               const SizedBox(height: 12),
               _buildInfoRow(
                 Icons.location_on,
-                _formatLocation(request.location, request.address),
+                _formatLocation(widget.request.location, widget.request.address),
               ),
               const SizedBox(height: 12),
               _buildInfoRow(
                 Icons.payment,
-                '${_formatPaymentPlan(request.paymentPlan)} • ${_formatCurrency(request.monthlyTotal)}',
+                '${_formatPaymentPlan(widget.request.paymentPlan)} • ${_formatCurrency(widget.request.monthlyTotal)}',
               ),
+              // Student Onboarding Details (if available)
+              if (_learnerProfile != null) ...[
+                const SizedBox(height: 24),
+                Divider(),
+                const SizedBox(height: 16),
+                Text(
+                  'Student Information',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Location
+                if (_learnerProfile!['location'] != null && 
+                    (_learnerProfile!['location'] as String).isNotEmpty) ...[
+                  _buildInfoRow(
+                    Icons.location_city,
+                    'Location: ${_learnerProfile!['location']}',
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                
+                // Subjects of Interest
+                if (_learnerProfile!['subjects_of_interest'] != null) ...[
+                  Builder(
+                    builder: (context) {
+                      final subjects = _learnerProfile!['subjects_of_interest'];
+                      if (subjects is List && subjects.isNotEmpty) {
+                        return Column(
+                          children: [
+                            _buildInfoRow(
+                              Icons.menu_book,
+                              'Subjects of Interest: ${subjects.join(', ')}',
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        );
+                      } else if (subjects is String && subjects.isNotEmpty) {
+                        return Column(
+                          children: [
+                            _buildInfoRow(
+                              Icons.menu_book,
+                              'Subjects of Interest: $subjects',
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ],
+                
+                // Learning Goals
+                if (_learnerProfile!['learning_goals'] != null && 
+                    (_learnerProfile!['learning_goals'] as String).isNotEmpty) ...[
+                  _buildInfoRow(
+                    Icons.flag,
+                    'Learning Goals: ${_learnerProfile!['learning_goals']}',
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                
+                // Challenges
+                if (_learnerProfile!['challenges'] != null && 
+                    (_learnerProfile!['challenges'] as String).isNotEmpty) ...[
+                  _buildInfoRow(
+                    Icons.help_outline,
+                    'Challenges: ${_learnerProfile!['challenges']}',
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                
+                // Education Level
+                if (_learnerProfile!['education_level'] != null && 
+                    (_learnerProfile!['education_level'] as String).isNotEmpty) ...[
+                  _buildInfoRow(
+                    Icons.school,
+                    'Education Level: ${_learnerProfile!['education_level']}',
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                
+                // Learning Path
+                if (_learnerProfile!['learning_path'] != null && 
+                    (_learnerProfile!['learning_path'] as String).isNotEmpty) ...[
+                  _buildInfoRow(
+                    Icons.trending_up,
+                    'Learning Path: ${_learnerProfile!['learning_path']}',
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ] else if (!_isLoadingProfile) ...[
+                const SizedBox(height: 24),
+                Divider(),
+                const SizedBox(height: 16),
+                Text(
+                  'Student Information',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No additional student information available',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textMedium,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+              
               // Status
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _getStatusColor(request.status).withOpacity(0.1),
+                  color: _getStatusColor(widget.request.status).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.info_outline,
-                      color: _getStatusColor(request.status),
+                      color: _getStatusColor(widget.request.status),
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      'Status: ${request.status.toUpperCase()}',
+                      'Status: ${widget.request.status.toUpperCase()}',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: _getStatusColor(request.status),
+                        color: _getStatusColor(widget.request.status),
                       ),
                     ),
                   ],
@@ -894,6 +1237,14 @@ class _RequestDetailsSheet extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Clean trial goal text by removing internal reschedule request notes
+  String _cleanTrialGoal(String goal) {
+    // Remove reschedule request notes that were accidentally added to trial goals
+    // Pattern: [RESCHEDULE REQUEST: ...]
+    final reschedulePattern = RegExp(r'\n?\n?\[RESCHEDULE REQUEST:.*?\]', dotAll: true);
+    return goal.replaceAll(reschedulePattern, '').trim();
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
