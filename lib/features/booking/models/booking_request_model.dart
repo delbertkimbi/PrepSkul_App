@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 /// BookingRequest Model
 ///
 /// Represents a booking request from student/parent to tutor
@@ -21,6 +23,14 @@ class BookingRequest {
   final String? rejectionReason;
   final bool hasConflict;
   final String? conflictDetails;
+
+  // Trial Session specific fields
+  final bool isTrial;
+  final String? subject;
+  final int? durationMinutes;
+  final String? trialGoal;
+  final String? learnerChallenges;
+  final DateTime? scheduledDate;
 
   // Student/Parent info (denormalized for easy display)
   final String studentName;
@@ -52,6 +62,12 @@ class BookingRequest {
     this.rejectionReason,
     this.hasConflict = false,
     this.conflictDetails,
+    this.isTrial = false,
+    this.subject,
+    this.durationMinutes,
+    this.trialGoal,
+    this.learnerChallenges,
+    this.scheduledDate,
     required this.studentName,
     this.studentAvatarUrl,
     required this.studentType,
@@ -61,7 +77,7 @@ class BookingRequest {
     required this.tutorIsVerified,
   });
 
-  /// Create from Supabase JSON
+  /// Create from Supabase JSON (Booking Requests table)
   factory BookingRequest.fromJson(Map<String, dynamic> json) {
     return BookingRequest(
       id: json['id'] as String,
@@ -84,6 +100,7 @@ class BookingRequest {
       rejectionReason: json['rejection_reason'] as String?,
       hasConflict: json['has_conflict'] as bool? ?? false,
       conflictDetails: json['conflict_details'] as String?,
+      isTrial: false,
       studentName: json['student_name'] as String,
       studentAvatarUrl: json['student_avatar_url'] as String?,
       studentType: json['student_type'] as String,
@@ -91,6 +108,59 @@ class BookingRequest {
       tutorAvatarUrl: json['tutor_avatar_url'] as String?,
       tutorRating: (json['tutor_rating'] as num).toDouble(),
       tutorIsVerified: json['tutor_is_verified'] as bool,
+    );
+  }
+
+  /// Create from Supabase JSON (Trial Sessions table)
+  factory BookingRequest.fromTrialSession(
+    Map<String, dynamic> json,
+    Map<String, dynamic> studentProfile,
+    Map<String, dynamic>? tutorProfile,
+  ) {
+    DateTime date;
+    try {
+      date = DateTime.parse(json['scheduled_date'] as String);
+    } catch (e) {
+      date = DateTime.now(); // Fallback
+    }
+    
+    final dayName = DateFormat('EEEE').format(date);
+    final time = json['scheduled_time'] as String? ?? 'Time pending';
+    
+    return BookingRequest(
+      id: json['id'] as String,
+      studentId: json['learner_id'] as String, // Mapped from learner_id
+      tutorId: json['tutor_id'] as String,
+      frequency: 1,
+      days: [dayName],
+      times: {dayName: time},
+      location: json['location'] as String? ?? 'online',
+      address: json['address'] as String?,
+      locationDescription: json['location_description'] as String?,
+      paymentPlan: 'Trial Session',
+      monthlyTotal: (json['price'] as num?)?.toDouble() ?? 0.0,
+      status: json['status'] as String,
+      createdAt: DateTime.tryParse(json['created_at'] as String) ?? DateTime.now(),
+      respondedAt: json['responded_at'] != null
+          ? DateTime.tryParse(json['responded_at'] as String)
+          : null,
+      // Trial specific mappings
+      isTrial: true,
+      subject: json['subject'] as String?,
+      durationMinutes: json['duration_minutes'] as int?,
+      trialGoal: json['trial_goal'] as String?,
+      learnerChallenges: json['learner_challenges'] as String?,
+      scheduledDate: date,
+      // Student info from joined profile - prefer full_name, then email, then generic fallback
+      // Never use "User" - always show meaningful name or email
+      studentName: _extractStudentNameFromProfile(studentProfile),
+      studentAvatarUrl: studentProfile['avatar_url'] ?? studentProfile['profile_photo_url'],
+      studentType: studentProfile['user_type'] ?? 'learner',
+      // Tutor info
+      tutorName: tutorProfile?['full_name'] ?? 'Tutor',
+      tutorAvatarUrl: tutorProfile?['avatar_url'] ?? tutorProfile?['profile_photo_url'],
+      tutorRating: 0.0, 
+      tutorIsVerified: false,
     );
   }
 
@@ -122,6 +192,7 @@ class BookingRequest {
       'tutor_avatar_url': tutorAvatarUrl,
       'tutor_rating': tutorRating,
       'tutor_is_verified': tutorIsVerified,
+      // Note: Trial fields are not saved to booking_requests table usually
     };
   }
 
@@ -157,7 +228,56 @@ class BookingRequest {
       tutorAvatarUrl: tutorAvatarUrl,
       tutorRating: tutorRating,
       tutorIsVerified: tutorIsVerified,
+      isTrial: isTrial,
+      subject: subject,
+      durationMinutes: durationMinutes,
+      trialGoal: trialGoal,
+      learnerChallenges: learnerChallenges,
+      scheduledDate: scheduledDate,
     );
+  }
+
+  /// Extract student name from profile, with proper fallbacks
+  /// Never returns "User" - always returns meaningful identifier
+  static String _extractStudentNameFromProfile(Map<String, dynamic> studentProfile) {
+    // Handle null or empty profile
+    if (studentProfile.isEmpty) {
+      final userType = studentProfile['user_type'] as String? ?? 'learner';
+      return userType == 'parent' ? 'Parent' : 'Student';
+    }
+    
+    // Try full_name first
+    final fullName = studentProfile['full_name'] as String?;
+    if (fullName != null && 
+        fullName.trim().isNotEmpty && 
+        fullName.trim().toLowerCase() != 'user' &&
+        fullName.trim().toLowerCase() != 'null') {
+      return fullName.trim();
+    }
+    
+    // Try email as fallback
+    final email = studentProfile['email'] as String?;
+    if (email != null && email.trim().isNotEmpty && email.trim().toLowerCase() != 'null') {
+      // Extract name from email if possible (before @)
+      final emailName = email.split('@').first.trim();
+      if (emailName.isNotEmpty && 
+          emailName.toLowerCase() != 'user' &&
+          emailName.toLowerCase() != 'null') {
+        // Capitalize first letter for better display
+        if (emailName.length > 1) {
+          return emailName[0].toUpperCase() + emailName.substring(1);
+        }
+        return emailName;
+      }
+    }
+    
+    // Determine type and return appropriate default
+    final userType = studentProfile['user_type'] as String? ?? 'learner';
+    if (userType == 'parent') {
+      return 'Parent';
+    } else {
+      return 'Student';
+    }
   }
 
   /// Check if request is pending
@@ -172,12 +292,37 @@ class BookingRequest {
   /// Get formatted time range for display
   String getTimeRange() {
     if (times.isEmpty) return 'Not set';
-    final timeValues = times.values.toList();
-    return timeValues.join(', ');
+
+    List<String> formatted = [];
+    for (final raw in times.values) {
+      formatted.add(_formatTimeString(raw));
+    }
+    return formatted.join(', ');
   }
 
   /// Get days summary
   String getDaysSummary() {
     return days.join(', ');
+  }
+
+  /// Try to format raw time strings (e.g. "09:00:00") into user-friendly "9:00 AM"
+  String _formatTimeString(String raw) {
+    try {
+      final trimmed = raw.trim();
+      DateTime parsed;
+
+      if (RegExp(r'^\d{2}:\d{2}:\d{2}$').hasMatch(trimmed)) {
+        parsed = DateFormat('HH:mm:ss').parse(trimmed);
+      } else if (RegExp(r'^\d{2}:\d{2}$').hasMatch(trimmed)) {
+        parsed = DateFormat('HH:mm').parse(trimmed);
+      } else {
+        // Already formatted like "4:00 PM" or some custom text
+        return trimmed;
+      }
+
+      return DateFormat.jm().format(parsed); // e.g. "9:00 AM"
+    } catch (_) {
+      return raw;
+    }
   }
 }

@@ -111,7 +111,11 @@ Already integrated! The `MeetService` calls `GoogleCalendarService.createSession
 4. Add authorized redirect URIs:
    - iOS: `io.supabase.prepskul://`
    - Android: Custom scheme (configured in AndroidManifest)
-   - Web: `https://app.prepskul.com/auth/google/callback`
+   - Web (for `google_sign_in_web`): 
+     * `https://app.prepskul.com/` (production)
+     * `http://localhost/` (local development - may need specific ports)
+     * For localhost testing, you may need to add: `http://localhost:62569/`, `http://localhost:53790/`, etc.
+     * **Note:** `google_sign_in_web` uses a popup flow, so the redirect URI is just the origin (no path)
 
 ### **2. Environment Variables**
 Add to `.env`:
@@ -321,7 +325,11 @@ Already integrated! The `MeetService` calls `GoogleCalendarService.createSession
 4. Add authorized redirect URIs:
    - iOS: `io.supabase.prepskul://`
    - Android: Custom scheme (configured in AndroidManifest)
-   - Web: `https://app.prepskul.com/auth/google/callback`
+   - Web (for `google_sign_in_web`): 
+     * `https://app.prepskul.com/` (production)
+     * `http://localhost/` (local development - may need specific ports)
+     * For localhost testing, you may need to add: `http://localhost:62569/`, `http://localhost:53790/`, etc.
+     * **Note:** `google_sign_in_web` uses a popup flow, so the redirect URI is just the origin (no path)
 
 ### **2. Environment Variables**
 Add to `.env`:
@@ -531,7 +539,11 @@ Already integrated! The `MeetService` calls `GoogleCalendarService.createSession
 4. Add authorized redirect URIs:
    - iOS: `io.supabase.prepskul://`
    - Android: Custom scheme (configured in AndroidManifest)
-   - Web: `https://app.prepskul.com/auth/google/callback`
+   - Web (for `google_sign_in_web`): 
+     * `https://app.prepskul.com/` (production)
+     * `http://localhost/` (local development - may need specific ports)
+     * For localhost testing, you may need to add: `http://localhost:62569/`, `http://localhost:53790/`, etc.
+     * **Note:** `google_sign_in_web` uses a popup flow, so the redirect URI is just the origin (no path)
 
 ### **2. Environment Variables**
 Add to `.env`:

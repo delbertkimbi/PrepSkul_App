@@ -2,6 +2,9 @@ import '../services/fapshi_service.dart';
 import '../models/fapshi_transaction_model.dart';
 import '../../booking/models/trial_session_model.dart';
 import '../../booking/services/trial_session_service.dart';
+import '../../payment/services/payment_request_service.dart';
+import '../../../core/services/log_service.dart';
+
 
 /// High-Level Payment Service
 /// 
@@ -41,7 +44,7 @@ class PaymentService {
 
       return status;
     } catch (e) {
-      print('❌ Error processing trial payment: $e');
+      LogService.error('Error processing trial payment: $e');
       rethrow;
     }
   }
@@ -75,7 +78,7 @@ class PaymentService {
 
       return status;
     } catch (e) {
-      print('❌ Error processing booking payment: $e');
+      LogService.error('Error processing booking payment: $e');
       rethrow;
     }
   }
@@ -90,14 +93,53 @@ class PaymentService {
       final status = await FapshiService.getPaymentStatus(transactionId);
       return status.isSuccessful;
     } catch (e) {
-      print('❌ Error verifying payment: $e');
+      LogService.error('Error verifying payment: $e');
       return false;
     }
   }
+  /// Process payment request payment
+  /// 
+  /// Initiates payment for a payment request (regular booking payment)
+  /// and polls for status
+  /// 
+  /// Returns the final payment status
+  static Future<FapshiPaymentStatus> processPaymentRequestPayment({
+    required String paymentRequestId,
+    required String phoneNumber,
+    required double amount,
+  }) async {
+    try {
+      // Get payment request for user ID
+      final paymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
+      if (paymentRequest == null) {
+        throw Exception('Payment request not found: $paymentRequestId');
+      }
+      
+      final userId = paymentRequest['student_id'] as String;
+      final description = paymentRequest['description'] as String? ?? 'Booking payment';
+      
+      // Initiate payment
+      final paymentResponse = await FapshiService.initiateDirectPayment(
+        amount: amount.toInt(),
+        phone: phoneNumber,
+        externalId: 'payment_request_$paymentRequestId',
+        userId: userId,
+        message: description,
+      );
+
+      // Poll for payment status (max 2 minutes = 40 attempts × 3 seconds)
+      final status = await FapshiService.pollPaymentStatus(
+        paymentResponse.transId,
+        maxAttempts: 40,
+        interval: const Duration(seconds: 3),
+      );
+
+      return status;
+    } catch (e) {
+      LogService.error('Error processing payment request payment: $e');
+      rethrow;
+    }
+  }
+
+
 }
-
-
-
-
-
-

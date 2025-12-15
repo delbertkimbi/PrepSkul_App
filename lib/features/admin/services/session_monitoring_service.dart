@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 
 /// Session Monitoring Service
@@ -131,12 +132,12 @@ class SessionMonitoringService {
           await _notifyAdmins(sessionId, criticalFlags);
         }
 
-        print('✅ Created ${flags.length} admin flags for session: $sessionId');
+        LogService.success('Created ${flags.length} admin flags for session: $sessionId');
       }
 
       return flags;
     } catch (e) {
-      print('❌ Error analyzing session for flags: $e');
+      LogService.error('Error analyzing session for flags: $e');
       return [];
     }
   }
@@ -306,9 +307,9 @@ class SessionMonitoringService {
         );
       }
 
-      print('✅ Notified admins about critical flags');
+      LogService.success('Notified admins about critical flags');
     } catch (e) {
-      print('❌ Error notifying admins: $e');
+      LogService.error('Error notifying admins: $e');
     }
   }
 
@@ -337,7 +338,7 @@ class SessionMonitoringService {
       final response = await query.order('created_at', ascending: false);
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error getting admin flags: $e');
+      LogService.error('Error getting admin flags: $e');
       return [];
     }
   }
@@ -363,9 +364,9 @@ class SessionMonitoringService {
           })
           .eq('id', flagId);
 
-      print('✅ Flag resolved: $flagId');
+      LogService.success('Flag resolved: $flagId');
     } catch (e) {
-      print('❌ Error resolving flag: $e');
+      LogService.error('Error resolving flag: $e');
       rethrow;
     }
   }

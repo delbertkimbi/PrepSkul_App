@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/widgets/notification_item.dart';
 import 'package:prepskul/features/notifications/screens/notification_preferences_screen.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:async';
 
 /// Notification List Screen
@@ -38,22 +40,22 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   Future<void> _loadNotifications() async {
-    setState(() {
+    safeSetState(() {
       _isLoading = true;
     });
 
     try {
       final notifications = await NotificationService.getUserNotifications();
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _notifications = notifications;
           _isLoading = false;
         });
       }
     } catch (e) {
-      print('Error loading notifications: $e');
+      LogService.debug('Error loading notifications: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
         });
       }
@@ -65,7 +67,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       notifications,
     ) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _notifications = notifications;
         });
       }
@@ -265,7 +267,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
-        setState(() {
+        safeSetState(() {
           _filter = filter;
         });
       },

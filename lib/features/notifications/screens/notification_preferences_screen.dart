@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -51,7 +52,7 @@ class _NotificationPreferencesScreenState
         }
       }
     } catch (e) {
-      print('Error loading preferences: $e');
+      LogService.debug('Error loading preferences: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -76,7 +77,7 @@ class _NotificationPreferencesScreenState
         BrandedSnackBar.showSuccess(context, 'Preferences saved successfully');
       }
     } catch (e) {
-      print('Error saving preferences: $e');
+      LogService.debug('Error saving preferences: $e');
       if (mounted) {
         BrandedSnackBar.showError(context, 'Failed to save preferences: $e');
       }

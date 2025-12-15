@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:intl/intl.dart';
 
 /// Beautiful session booking screen with time slot selection
@@ -88,7 +91,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
       return;
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       // TODO: Implement actual booking logic
@@ -116,7 +119,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) safeSetState(() => _isLoading = false);
     }
   }
 
@@ -206,7 +209,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
     return GestureDetector(
       onTap: () {
-        setState(() {
+        safeSetState(() {
           _selectedDuration = duration;
           _selectedTimeSlot = null; // Reset time slot
         });
@@ -254,7 +257,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
               ),
               TextButton(
                 onPressed: () {
-                  setState(() => _selectedDate = DateTime.now());
+                  safeSetState(() => _selectedDate = DateTime.now());
                 },
                 child: Text(
                   'Today',
@@ -284,7 +287,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
                 return GestureDetector(
                   onTap: () {
-                    setState(() {
+                    safeSetState(() {
                       _selectedDate = date;
                       _selectedTimeSlot = null; // Reset time slot
                     });
@@ -412,7 +415,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
         return GestureDetector(
           onTap: () {
-            setState(() => _selectedTimeSlot = slot);
+            safeSetState(() => _selectedTimeSlot = slot);
           },
           child: Container(
             width: (MediaQuery.of(context).size.width - 64) / 2,

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,6 +9,15 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
+import 'package:prepskul/features/booking/services/session_feedback_service.dart';
+// TODO: Fix import path
+// import 'package:prepskul/features/sessions/widgets/tutor_response_dialog.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'dart:convert';
 // Conditional import for web-specific video helper
 import 'web_video_helper_stub.dart'
     if (dart.library.html) 'web_video_helper.dart'
@@ -14,8 +25,13 @@ import 'web_video_helper_stub.dart'
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
+  final bool isPreview;
 
-  const TutorDetailScreen({Key? key, required this.tutor}) : super(key: key);
+  const TutorDetailScreen({
+    Key? key, 
+    required this.tutor,
+    this.isPreview = false,
+  }) : super(key: key);
 
   @override
   State<TutorDetailScreen> createState() => _TutorDetailScreenState();
@@ -26,12 +42,74 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   bool _isVideoInitialized = false;
   bool _isVideoLoading = false;
   String? _videoId; // For web iframe embed
+  List<Map<String, dynamic>> _reviews = [];
+  Map<String, dynamic>? _ratingStats;
+  bool _isLoadingReviews = false;
   String? _videoUrl; // Store original URL for thumbnail
+  String? _currentUserId; // Current user ID to check if viewing own profile
+  bool _isOffline = false;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
+    _currentUserId = SupabaseService.client.auth.currentUser?.id;
+    _initializeConnectivity();
+    _loadReviews(); // Load tutor reviews
     _extractVideoId(); // Only extract ID, don't initialize player yet
+    
+    // Cache tutor details when loaded
+    _cacheTutorDetails();
+  }
+
+  /// Initialize connectivity monitoring
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    
+    // Listen to connectivity changes
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        final wasOffline = _isOffline;
+        safeSetState(() {
+          _isOffline = !isOnline;
+        });
+        
+        // If came back online, refresh tutor details
+        if (isOnline && wasOffline) {
+          LogService.info('🌐 Connection restored - refreshing tutor details');
+          // Optionally reload tutor data if needed
+        }
+      }
+    });
+  }
+
+  /// Check current connectivity status
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      final wasOffline = _isOffline;
+      safeSetState(() {
+        _isOffline = !isOnline;
+      });
+      
+      // If we just came back online, refresh data if needed
+      if (isOnline && wasOffline) {
+        LogService.info('🌐 Connection detected - tutor details screen');
+      }
+    }
+  }
+
+  /// Cache tutor details for offline access
+  Future<void> _cacheTutorDetails() async {
+    try {
+      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      if (tutorId != null) {
+        await OfflineCacheService.cacheTutorDetails(tutorId, widget.tutor);
+      }
+    } catch (e) {
+      LogService.warning('Error caching tutor details: $e');
+    }
   }
 
   void _extractVideoId() {
@@ -45,24 +123,24 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       if (_videoUrl!.isNotEmpty) {
         final videoId = YoutubePlayer.convertUrlToId(_videoUrl!);
         if (videoId != null && videoId.isNotEmpty) {
-          setState(() {
+          safeSetState(() {
             _videoId = videoId;
           });
         } else {
-          print('⚠️ Could not extract video ID from URL: $_videoUrl');
+          LogService.warning('Could not extract video ID from URL: $_videoUrl');
         }
       } else {
-        print('ℹ️ No video URL provided for tutor');
+        LogService.info('No video URL provided for tutor');
       }
     } catch (e) {
-      print('❌ Error extracting video ID: $e');
+      LogService.error('Error extracting video ID: $e');
     }
   }
 
   void _initializeVideo() {
     if (_isVideoInitialized || _isVideoLoading || _videoId == null) return;
 
-    setState(() {
+    safeSetState(() {
       _isVideoLoading = true;
     });
 
@@ -70,30 +148,44 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       // Check if running on web - use iframe embed instead
       if (kIsWeb) {
         // For web, we'll use an iframe embed (handled in build method)
-        setState(() {
+        safeSetState(() {
           _isVideoInitialized = true;
           _isVideoLoading = false;
         });
       } else {
-        // For mobile, use YoutubePlayerController
-          _youtubeController = YoutubePlayerController(
+        // For mobile, use YoutubePlayerController with modern settings
+        _youtubeController = YoutubePlayerController(
           initialVideoId: _videoId!,
-            flags: const YoutubePlayerFlags(
-              autoPlay: false,
-              mute: false,
-              enableCaption: true,
-              controlsVisibleAtStart: true,
-            hideControls: false,
+          flags: const YoutubePlayerFlags(
+            autoPlay: true, // Auto-play when initialized
+            mute: false,
+            enableCaption: true,
+            controlsVisibleAtStart: false, // Hide controls initially for cleaner look
+            hideControls: true, // Auto-hide controls after a few seconds
+            hideThumbnail: false,
+            loop: false,
+            forceHD: true, // Force HD for better quality
+            startAt: 0,
+            showLiveFullscreenButton: true,
+            useHybridComposition: true, // Better performance on Android
           ),
         );
-        setState(() {
+        
+        safeSetState(() {
           _isVideoInitialized = true;
           _isVideoLoading = false;
         });
+        
+        // Ensure video plays after a short delay to allow UI to update
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (_youtubeController?.value.isReady == true) {
+            _youtubeController?.play();
+          }
+        });
       }
     } catch (e) {
-      print('❌ Error initializing video: $e');
-      setState(() {
+      LogService.error('Error initializing video: $e');
+      safeSetState(() {
         _isVideoLoading = false;
       });
     }
@@ -102,12 +194,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// Get YouTube thumbnail URL
   String? _getThumbnailUrl() {
     if (_videoId == null) return null;
-    // Use maxresdefault for best quality, fallback to hqdefault
-    return 'https://img.youtube.com/vi/$_videoId/maxresdefault.jpg';
+    // Use hqdefault for better reliability (maxresdefault often missing)
+    return 'https://img.youtube.com/vi/$_videoId/hqdefault.jpg';
+  }
+
+  @override
+  void deactivate() {
+    // Pause video when navigating away from this screen
+    _youtubeController?.pause();
+    super.deactivate();
   }
 
   @override
   void dispose() {
+    _youtubeController?.pause(); // Ensure video is paused before disposing
     _youtubeController?.dispose();
     super.dispose();
   }
@@ -118,11 +218,49 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     // Use personal_statement (with "Hello!") for detail page "About" section
     // Fallback to bio (dynamic) if personal_statement not available
     final bio = widget.tutor['personal_statement'] ?? widget.tutor['bio'] ?? '';
-    final education =
-        widget.tutor['education'] ?? ''; // Formatted education string
+    // Parse education if it's JSON
+    String education = '';
+    final eduRaw = widget.tutor['education'];
+    if (eduRaw is String) {
+      if (eduRaw.trim().startsWith('{')) {
+        try {
+          final eduMap = json.decode(eduRaw);
+          final degree = eduMap['highest_education']?.toString() ?? '';
+          final field = eduMap['field_of_study']?.toString() ?? '';
+          final uni = eduMap['institution']?.toString() ?? '';
+          
+          final parts = <String>[];
+          if (degree.isNotEmpty) parts.add(degree);
+          if (field.isNotEmpty) parts.add('in $field');
+          final mainPart = parts.join(' ');
+          
+          education = mainPart.isNotEmpty 
+              ? (uni.isNotEmpty ? '$mainPart at $uni' : mainPart)
+              : uni;
+        } catch (_) {
+          education = eduRaw;
+        }
+      } else {
+        education = eduRaw;
+      }
+    }
     final experience = widget.tutor['experience'] ?? '';
-    final rating = (widget.tutor['rating'] ?? 0.0).toDouble();
-    final totalReviews = widget.tutor['total_reviews'] ?? 0;
+    // Calculate effective rating logic
+    final totalReviewsVal = (widget.tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    final adminApprovedRating = (widget.tutor['admin_approved_rating'] as num?)?.toDouble();
+    final calculatedRating = (widget.tutor['rating'] as num?)?.toDouble() ?? 0.0;
+
+    final rating =
+        (totalReviewsVal < 3 && adminApprovedRating != null)
+        ? adminApprovedRating!
+        : (calculatedRating > 0
+              ? calculatedRating
+              : (adminApprovedRating ?? 0.0));
+
+    final totalReviews =
+        (totalReviewsVal < 3 && adminApprovedRating != null)
+        ? 10
+        : totalReviewsVal;
     final totalStudents = widget.tutor['total_students'] ?? 0;
     final totalHoursTaught = widget.tutor['total_hours_taught'] ?? 0;
     final completedSessions =
@@ -157,9 +295,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
-        slivers: [
-          // Modern App Bar with Video
-          SliverAppBar(
+              slivers: [
+                // Modern App Bar with Video
+                SliverAppBar(
             expandedHeight: 280,
             pinned: true,
             elevation: 0,
@@ -494,7 +632,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                      _buildCertificationsSection(),
+                        _buildCertificationsSection(),
+                        const SizedBox(height: 20),
+                        // Reviews Section
+                        _buildReviewsSection(),
+                        const SizedBox(height: 20),
                       ],
                     ),
                   ),
@@ -513,8 +655,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ],
             ),
           ),
-        ],
-      ),
+                ],
+              ),
     );
   }
 
@@ -709,6 +851,30 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
   // Action Buttons (AT THE VERY BOTTOM)
   Widget _buildActionButtons(BuildContext context) {
+    if (widget.isPreview) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Text(
+              'Preview Mode - Booking Disabled',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -717,15 +883,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        BookTrialSessionScreen(tutor: widget.tutor),
-                  ),
-                );
-              },
+              onPressed: _isOffline
+                  ? () => OfflineDialog.show(
+                        context,
+                        message: 'Booking a session requires an internet connection. Please check your connection and try again.',
+                      )
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              BookTrialSessionScreen(tutor: widget.tutor),
+                        ),
+                      );
+                    },
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: AppTheme.primaryColor, width: 2),
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -748,20 +919,27 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => BookTutorFlowScreen(
-                      tutor: widget.tutor,
-                      // TODO: Pass actual survey data
-                      surveyData: null,
-                    ),
-                  ),
-                );
-              },
+              onPressed: _isOffline
+                  ? () => OfflineDialog.show(
+                        context,
+                        message: 'Booking a tutor requires an internet connection. Please check your connection and try again.',
+                      )
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => BookTutorFlowScreen(
+                            tutor: widget.tutor,
+                            // TODO: Pass actual survey data
+                            surveyData: null,
+                          ),
+                        ),
+                      );
+                    },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
+                backgroundColor: _isOffline 
+                    ? Colors.grey[400] 
+                    : AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
@@ -1166,63 +1344,138 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       return kIsWeb && _videoId != null
           ? _buildWebVideoPlayer(_videoId!)
           : (_youtubeController != null
-                ? YoutubePlayerBuilder(
-                    onExitFullScreen: () {},
-                    player: YoutubePlayer(
-                      controller: _youtubeController!,
-                      showVideoProgressIndicator: false,
-                      progressIndicatorColor: AppTheme.primaryColor,
-                      progressColors: ProgressBarColors(
-                        playedColor: AppTheme.primaryColor,
-                        handleColor: AppTheme.primaryColor,
-                        bufferedColor: Colors.grey[300]!,
-                        backgroundColor: Colors.grey[200]!,
+                ? Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 20,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: YoutubePlayerBuilder(
+                        onExitFullScreen: () {},
+                        player: YoutubePlayer(
+                          controller: _youtubeController!,
+                          showVideoProgressIndicator: true,
+                          progressIndicatorColor: AppTheme.primaryColor,
+                          progressColors: ProgressBarColors(
+                            playedColor: AppTheme.primaryColor,
+                            handleColor: AppTheme.primaryColor,
+                            bufferedColor: Colors.white.withOpacity(0.3),
+                            backgroundColor: Colors.white.withOpacity(0.1),
+                          ),
+                          thumbnail: _getThumbnailUrl() != null
+                              ? CachedNetworkImage(
+                                  imageUrl: _getThumbnailUrl()!,
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                          onReady: () {
+                            // Video is ready, ensure it plays smoothly
+                            Future.delayed(const Duration(milliseconds: 200), () {
+                              if (_youtubeController?.value.isReady == true) {
+                                _youtubeController?.play();
+                              }
+                            });
+                          },
+                          onEnded: (metadata) {
+                            // Handle video end - could show replay option
+                            LogService.info('Video ended');
+                          },
+                        ),
+                        builder: (context, player) => Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: player,
+                        ),
                       ),
                     ),
-                    builder: (context, player) => player,
                   )
                 : _buildThumbnailPreview());
     }
 
-    // Show loading state
+    // Show loading state with better UX
     if (_isVideoLoading) {
       return Container(
-        color: Colors.black,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.black,
+        ),
         child: Stack(
           children: [
             // Show thumbnail while loading
             if (_getThumbnailUrl() != null)
-              CachedNetworkImage(
-                imageUrl: _getThumbnailUrl()!,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey[900],
-                  child: const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: _getThumbnailUrl()!,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey[900],
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    ),
                   ),
+                  errorWidget: (context, url, error) =>
+                      Container(color: Colors.grey[900]),
                 ),
-                errorWidget: (context, url, error) =>
-                    Container(color: Colors.grey[900]),
               ),
-            // Loading overlay
+            // Modern loading overlay with pulse animation
             Container(
-              color: Colors.black.withOpacity(0.5),
-              child: const Center(
-                child: CircularProgressIndicator(color: Colors.white),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.black.withOpacity(0.6),
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 3,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Loading video...',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
       );
     }
-
-    // Show thumbnail preview with play button (lazy load)
+    
+    // Default: Show thumbnail preview with play button (lazy load)
     return _buildThumbnailPreview();
   }
 
-  /// Build thumbnail preview with play button overlay
+  /// Build thumbnail preview with modern play button overlay
   Widget _buildThumbnailPreview() {
     final thumbnailUrl = _getThumbnailUrl();
 
@@ -1231,24 +1484,52 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         // Initialize video when user taps
         _initializeVideo();
       },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Thumbnail image with caching
-          thumbnailUrl != null
-              ? CachedNetworkImage(
-                  imageUrl: thumbnailUrl,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder: (context, url) => Container(
-                    color: Colors.grey[900],
-                    child: const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) {
-                    return Container(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Thumbnail image with caching
+              thumbnailUrl != null
+                  ? CachedNetworkImage(
+                      imageUrl: thumbnailUrl,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      placeholder: (context, url) => Container(
+                        color: Colors.grey[900],
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) {
+                        return Container(
+                          color: Colors.grey[900],
+                          child: const Center(
+                            child: Icon(
+                              Icons.video_library_outlined,
+                              size: 80,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        );
+                      },
+                    )
+                  : Container(
                       color: Colors.grey[900],
                       child: const Center(
                         child: Icon(
@@ -1257,45 +1538,49 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           color: Colors.white54,
                         ),
                       ),
-                    );
-                  },
-                )
-              : Container(
-                  color: Colors.grey[900],
-                  child: const Center(
-                    child: Icon(
-                      Icons.video_library_outlined,
-                      size: 80,
-                      color: Colors.white54,
+                    ),
+              // Modern play button overlay (smaller, more elegant)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.4),
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.95),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.5),
+                          blurRadius: 20,
+                          spreadRadius: 4,
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow,
+                      color: Colors.white,
+                      size: 32,
                     ),
                   ),
                 ),
-          // Play button overlay (smaller)
-          Container(
-            color: Colors.black.withOpacity(0.3),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.9),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 15,
-                      spreadRadius: 3,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 40,
-                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1311,7 +1596,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         web_video.registerYouTubeIframe(viewType, videoId);
       } catch (e) {
         // View factory might already be registered, that's okay
-        print('ℹ️ View factory registration: $e');
+        LogService.info('View factory registration: $e');
       }
 
       return Container(
@@ -1388,5 +1673,473 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         ),
       ),
     );
+  }
+
+  /// Load reviews for this tutor
+  Future<void> _loadReviews() async {
+    try {
+      safeSetState(() => _isLoadingReviews = true);
+      
+      final tutorId = widget.tutor['user_id'] ?? widget.tutor['id'];
+      if (tutorId == null) {
+        safeSetState(() => _isLoadingReviews = false);
+        return;
+      }
+      
+      final reviews = await SessionFeedbackService.getTutorReviews(tutorId.toString());
+      final ratingStats = await SessionFeedbackService.getTutorRatingStats(tutorId.toString());
+      
+      if (mounted) {
+        safeSetState(() {
+          _reviews = reviews;
+          _ratingStats = ratingStats;
+          _isLoadingReviews = false;
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading reviews: $e');
+      if (mounted) {
+        safeSetState(() => _isLoadingReviews = false);
+      }
+    }
+  }
+
+  /// Build reviews section
+  Widget _buildReviewsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.star_outline,
+                size: 24,
+                color: AppTheme.primaryColor,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Reviews',
+                style: GoogleFonts.poppins(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (_isLoadingReviews)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (_reviews.isEmpty)
+            Text(
+              'No reviews yet. Be the first to review this tutor!',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            )
+          else ...[
+            // Rating Summary
+            if (_ratingStats != null) ...[
+              _buildRatingSummary(_ratingStats!),
+              const SizedBox(height: 20),
+            ],
+            // Reviews List
+            ..._reviews.take(5).map((review) => _buildReviewCard(review)),
+            if (_reviews.length > 5)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'Showing 5 of ${_reviews.length} reviews',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Build rating summary
+  Widget _buildRatingSummary(Map<String, dynamic> stats) {
+    final averageRating = (stats['average_rating'] as num?)?.toDouble() ?? 0.0;
+    final totalReviews = (stats['total_reviews'] as num?)?.toInt() ?? 0;
+    final ratingDistribution = stats['rating_distribution'] as Map<int, int>? ?? {};
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                averageRating.toStringAsFixed(1),
+                style: GoogleFonts.poppins(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: List.generate(5, (index) {
+                      return Icon(
+                        index < averageRating.round()
+                            ? Icons.star
+                            : Icons.star_border,
+                        size: 20,
+                        color: Colors.amber[700],
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$totalReviews ${totalReviews == 1 ? 'review' : 'reviews'}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (ratingDistribution.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            ...ratingDistribution.entries.map((entry) {
+              final rating = entry.key;
+              final count = entry.value;
+              final percentage = totalReviews > 0 ? (count / totalReviews * 100) : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      '$rating',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(Icons.star, size: 14, color: Colors.amber[700]),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: LinearProgressIndicator(
+                        value: percentage / 100,
+                        backgroundColor: Colors.grey[200],
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber[700]!),
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$count',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Build individual review card
+  Widget _buildReviewCard(Map<String, dynamic> review) {
+    final rating = review['student_rating'] as int? ?? 0;
+    final reviewText = review['student_review'] as String?;
+    final submittedAt = review['student_feedback_submitted_at'] as String?;
+    final wouldRecommend = review['student_would_recommend'] as bool?;
+    final whatWentWell = review['student_what_went_well'] as String?;
+    final whatCouldImprove = review['student_what_could_improve'] as String?;
+    
+    // Format date
+    String dateText = 'Recently';
+    if (submittedAt != null) {
+      try {
+        final date = DateTime.parse(submittedAt);
+        final now = DateTime.now();
+        final difference = now.difference(date);
+        
+        if (difference.inDays == 0) {
+          dateText = 'Today';
+        } else if (difference.inDays == 1) {
+          dateText = 'Yesterday';
+        } else if (difference.inDays < 7) {
+          dateText = '${difference.inDays} days ago';
+        } else if (difference.inDays < 30) {
+          dateText = '${(difference.inDays / 7).floor()} weeks ago';
+        } else {
+          dateText = '${(difference.inDays / 30).floor()} months ago';
+        }
+      } catch (e) {
+        dateText = 'Recently';
+      }
+    }
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Stars
+              ...List.generate(5, (index) {
+                return Icon(
+                  index < rating ? Icons.star : Icons.star_border,
+                  size: 16,
+                  color: Colors.amber[700],
+                );
+              }),
+              const SizedBox(width: 8),
+              Text(
+                dateText,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              if (wouldRecommend == true) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.thumb_up, size: 12, color: AppTheme.accentGreen),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Recommended',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.accentGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (reviewText != null && reviewText.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              reviewText,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[800],
+                height: 1.5,
+              ),
+            ),
+          ],
+          if (whatWentWell != null && whatWentWell.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.accentGreen.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.check_circle_outline, size: 16, color: AppTheme.accentGreen),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'What went well:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          whatWentWell,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (whatCouldImprove != null && whatCouldImprove.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline, size: 16, color: Colors.orange[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Could improve:',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          whatCouldImprove,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          // Tutor Response Section
+          if (review['tutor_response'] != null && (review['tutor_response'] as String).isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.reply, size: 16, color: AppTheme.primaryColor),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tutor Response:',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    review['tutor_response'] as String,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.grey[800],
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          // Respond Button (only for tutor viewing their own profile)
+          if (_currentUserId != null && 
+              widget.tutor['user_id'] == _currentUserId &&
+              (review['tutor_response'] == null || (review['tutor_response'] as String).isEmpty)) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _showResponseDialog(review),
+                icon: const Icon(Icons.reply, size: 16),
+                label: Text(
+                  'Respond',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.primaryColor,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  Future<void> _showResponseDialog(Map<String, dynamic> review) async {
+    final feedbackId = review['id'] as String;
+    final existingResponse = review['tutor_response'] as String?;
+    
+    // TODO: Uncomment when file available
+    // final result = await TutorResponseDialog.show(
+    //   context,
+    //   feedbackId: feedbackId,
+    //   existingResponse: existingResponse,
+    // );
+    final result = null; // Placeholder
+    if (result != null) {
+      // Reload reviews to show the new response
+      _loadReviews();
+    }
   }
 }

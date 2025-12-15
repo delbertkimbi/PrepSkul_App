@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 class SimpleOnboardingScreen extends StatefulWidget {
   const SimpleOnboardingScreen({super.key});
@@ -17,32 +20,20 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
 
   final List<OnboardingSlide> _slides = [
     OnboardingSlide(
-      title: 'Find the Perfect Tutor',
-      titleFr: 'Trouvez le Tuteur Parfait',
-      description:
-          'Connect with qualified tutors who understand your learning needs and help you achieve your goals.',
-      descriptionFr:
-          'Connectez-vous avec des tuteurs qualifiés qui comprennent vos besoins d\'apprentissage et vous aident à atteindre vos objectifs.',
+      titleBuilder: (t) => t.onboardingConnectTitle,
+      descriptionBuilder: (t) => t.onboardingConnectSubtitle,
       image: 'assets/images/onboarding1.png',
       color: AppTheme.primaryColor,
     ),
     OnboardingSlide(
-      title: 'Learn at Your Pace',
-      titleFr: 'Apprenez à Votre Rythme',
-      description:
-          'Personalized lessons that adapt to your learning style and schedule.',
-      descriptionFr:
-          'Des leçons personnalisées qui s\'adaptent à votre style d\'apprentissage et à votre emploi du temps.',
+      titleBuilder: (t) => t.onboardingLearnTitle,
+      descriptionBuilder: (t) => t.onboardingLearnSubtitle,
       image: 'assets/images/onboarding2.png',
       color: AppTheme.accentPurple,
     ),
     OnboardingSlide(
-      title: 'Achieve Your Goals',
-      titleFr: 'Atteignez Vos Objectifs',
-      description:
-          'From struggling students to confident achievers - your potential is limitless.',
-      descriptionFr:
-          'Des étudiants en difficulté aux réussites confiantes - votre potentiel est illimité.',
+      titleBuilder: (t) => t.onboardingAchieveTitle,
+      descriptionBuilder: (t) => t.onboardingAchieveSubtitle,
       image: 'assets/images/onboarding3.jpg',
       color: AppTheme.accentGreen,
     ),
@@ -89,12 +80,13 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_completed', true);
-    print('Onboarding completed, navigating to auth method selection...');
+    LogService.debug('Onboarding completed, navigating to auth method selection...');
     Navigator.pushReplacementNamed(context, '/auth-method-selection');
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -123,7 +115,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
                               child: Text(
-                                'Skip',
+                                t.buttonSkip,
                                 style: GoogleFonts.poppins(
                                   color: AppTheme.textMedium,
                                   fontSize: 16,
@@ -173,7 +165,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
             _buildPageIndicators(),
 
             // Get Started button
-            _buildGetStartedButton(),
+            _buildGetStartedButton(context),
           ],
         ),
       ),
@@ -181,6 +173,9 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
   }
 
   Widget _buildSlide(OnboardingSlide slide) {
+    final t = AppLocalizations.of(context)!;
+    final title = slide.titleBuilder(t);
+    final description = slide.descriptionBuilder(t);
     return LayoutBuilder(
       builder: (context, constraints) {
         // Smart responsive breakpoints based on screen height
@@ -241,7 +236,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
 
                 // Title with responsive font size
                 Text(
-                  slide.title,
+                  title,
                   style: GoogleFonts.poppins(
                     fontSize: titleSize,
                     fontWeight: FontWeight.bold,
@@ -259,7 +254,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
                     horizontal: constraints.maxWidth < 400 ? 4.0 : 8.0,
                   ),
                   child: Text(
-                    slide.description,
+                    description,
                     style: GoogleFonts.poppins(
                       fontSize: descriptionSize,
                       color: AppTheme.textMedium,
@@ -555,7 +550,8 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
     );
   }
 
-  Widget _buildGetStartedButton() {
+  Widget _buildGetStartedButton(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Padding(
       padding: const EdgeInsets.all(20.0),
       child: SizedBox(
@@ -572,7 +568,7 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
             ),
           ),
           child: Text(
-            _currentPage == _slides.length - 1 ? 'Get Started' : 'Next',
+            _currentPage == _slides.length - 1 ? t.buttonGetStarted : t.buttonNext,
             style: GoogleFonts.poppins(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -585,18 +581,14 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
 }
 
 class OnboardingSlide {
-  final String title;
-  final String titleFr;
-  final String description;
-  final String descriptionFr;
+  final String Function(AppLocalizations) titleBuilder;
+  final String Function(AppLocalizations) descriptionBuilder;
   final String image;
   final Color color;
 
   OnboardingSlide({
-    required this.title,
-    required this.titleFr,
-    required this.description,
-    required this.descriptionFr,
+    required this.titleBuilder,
+    required this.descriptionBuilder,
     required this.image,
     required this.color,
   });

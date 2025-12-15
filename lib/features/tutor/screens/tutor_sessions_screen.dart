@@ -1,13 +1,22 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/session_lifecycle_service.dart';
-
+import '../../../features/booking/services/trial_session_service.dart';
+import '../../../features/booking/models/trial_session_model.dart';
+import '../../../features/booking/utils/session_date_utils.dart';
+import '../../../core/services/supabase_service.dart';
+import '../../../features/sessions/widgets/hybrid_mode_selection_dialog.dart';
+import '../../../core/services/google_calendar_service.dart';
+import '../../../core/services/google_calendar_auth_service.dart';
 class TutorSessionsScreen extends StatefulWidget {
   const TutorSessionsScreen({Key? key}) : super(key: key);
 
@@ -18,20 +27,59 @@ class TutorSessionsScreen extends StatefulWidget {
 class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   List<Map<String, dynamic>> _sessions = [];
   bool _isLoading = true;
-  String _selectedFilter = 'all'; // all, upcoming, past
+  final Map<String, bool> _sessionLoadingStates = {};
+  String _selectedFilter = 'upcoming'; // upcoming, all, past (upcoming shown first)
+  bool? _isCalendarConnected;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
     super.initState();
     _loadSessions();
+    _checkCalendarConnection();
+    _startCountdownTimer();
+  }
+  
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+  
+  /// Start countdown timer to update session countdowns every minute
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) {
+        safeSetState(() {
+          // Trigger rebuild to update countdowns
+        });
+      }
+    });
+  }
+  
+  /// Check if Google Calendar is connected
+  Future<void> _checkCalendarConnection() async {
+    try {
+      final isConnected = await GoogleCalendarAuthService.isAuthenticated();
+      if (mounted) {
+        safeSetState(() {
+          _isCalendarConnected = isConnected;
+        });
+      }
+    } catch (e) {
+      LogService.warning('Error checking calendar connection: $e');
+    }
   }
 
   Future<void> _loadSessions() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
-      // Try to load individual sessions first (more specific)
-      List<Map<String, dynamic>> individualSessions = [];
+      final now = DateTime.now();
+      List<Map<String, dynamic>> allSessions = [];
+      
+      // 1. Load individual sessions
       try {
+        List<Map<String, dynamic>> individualSessions = [];
         if (_selectedFilter == 'upcoming' || _selectedFilter == 'all') {
           individualSessions =
               await IndividualSessionService.getTutorUpcomingSessions(
@@ -47,105 +95,293 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             individualSessions = pastSessions;
           }
         }
+        
+        // Mark as individual sessions
+        for (var session in individualSessions) {
+          session['_sessionType'] = 'individual';
+        }
+        allSessions.addAll(individualSessions);
       } catch (e) {
-        print(
-          '⚠️ Could not load individual sessions, falling back to recurring: $e',
-        );
+        LogService.debug('⚠️ Could not load individual sessions: $e');
+      }
+      
+      // 2. Load trial sessions
+      try {
+        final trialSessions = await TrialSessionService.getTutorTrialSessions();
+        
+        // Convert trial sessions to map format and determine status
+        for (var trial in trialSessions) {
+          // Determine if session is expired (time passed, not paid, not approved)
+          // Expired = time passed AND (not paid OR not approved)
+          final isTimePassed = SessionDateUtils.isSessionExpired(trial);
+          final isPaid = trial.paymentStatus.toLowerCase() == 'paid';
+          final isApproved = trial.status == 'approved' || trial.status == 'scheduled';
+          final isExpired = isTimePassed && (!isPaid || !isApproved) && trial.status != 'cancelled';
+          
+          // Determine if session is cancelled (user deleted the request)
+          final isCancelled = trial.status == 'cancelled';
+          
+          // Determine if session is upcoming (approved and time hasn't passed)
+          final isUpcoming = isApproved && !isTimePassed && !isCancelled;
+          
+          // Determine if session is past (time passed and paid, or completed)
+          final isPast = (isTimePassed && isPaid) || trial.status == 'completed' || isExpired || isCancelled;
+          
+          // Filter based on selected filter
+          // "All" should exclude expired, cancelled, and unattended past sessions
+          // "Upcoming" should only show approved sessions that haven't started
+          // "Past" should show completed, expired, cancelled, or paid past sessions
+          bool shouldInclude = false;
+          if (_selectedFilter == 'all') {
+            // Exclude expired, cancelled, and unattended past sessions from "All"
+            shouldInclude = !isExpired && !isCancelled && !(isTimePassed && !isPaid);
+          } else if (_selectedFilter == 'upcoming') {
+            shouldInclude = isUpcoming;
+          } else if (_selectedFilter == 'past') {
+            shouldInclude = isPast;
+          }
+          
+          if (shouldInclude) {
+            // Fetch student name from profile
+            String studentName = 'Student';
+            String? studentAvatar;
+            try {
+              final learnerId = trial.learnerId;
+              final requesterId = trial.requesterId;
+              final studentId = requesterId.isNotEmpty ? requesterId : learnerId;
+              
+              final studentProfile = await SupabaseService.client
+                  .from('profiles')
+                  .select('full_name, avatar_url')
+                  .eq('id', studentId)
+                  .maybeSingle();
+              if (studentProfile != null) {
+                studentName = studentProfile['full_name'] as String? ?? 'Student';
+                studentAvatar = studentProfile['avatar_url'] as String?;
+              }
+            } catch (e) {
+              LogService.warning('Could not fetch student name for trial session: $e');
+            }
+            
+            // Convert TrialSession to Map for consistency
+            final sessionMap = {
+              '_sessionType': 'trial',
+              'id': trial.id,
+              'tutor_id': trial.tutorId,
+              'learner_id': trial.learnerId,
+              'parent_id': trial.parentId,
+              'requester_id': trial.requesterId,
+              'scheduled_date': trial.scheduledDate.toIso8601String().split('T')[0],
+              'scheduled_time': trial.scheduledTime,
+              'duration_minutes': trial.durationMinutes,
+              'subject': trial.subject,
+              'location': trial.location,
+              'address': null, // TrialSession doesn't have address field
+              'status': isExpired ? 'expired' : (isCancelled ? 'cancelled' : trial.status),
+              'payment_status': trial.paymentStatus,
+              'trial_fee': trial.trialFee,
+              'meet_link': trial.meetLink,
+              'rejection_reason': trial.rejectionReason,
+              'created_at': trial.createdAt.toIso8601String(),
+              'updated_at': trial.updatedAt?.toIso8601String(),
+              'student_name': studentName, // Pre-fetched student name
+              'student_avatar_url': studentAvatar, // Pre-fetched student avatar
+            };
+            allSessions.add(sessionMap);
+          }
+        }
+      } catch (e) {
+        LogService.debug('⚠️ Could not load trial sessions: $e');
       }
 
-      // If we have individual sessions, use them; otherwise fall back to recurring
-      if (individualSessions.isNotEmpty) {
-        final now = DateTime.now();
-        List<Map<String, dynamic>> filtered = individualSessions;
+      // 3. Filter and sort all sessions
+      List<Map<String, dynamic>> filtered = allSessions;
+
+      if (_selectedFilter == 'upcoming') {
+        filtered = allSessions.where((s) {
+          final sessionType = s['_sessionType'] as String?;
+          final status = s['status'] as String;
+          
+          if (sessionType == 'trial') {
+            // For trial sessions: check date+time, must be approved/scheduled, not expired/cancelled
+            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+            final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+            final timeParts = scheduledTime.split(':');
+            final hour = int.tryParse(timeParts[0]) ?? 0;
+            final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+            final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+            
+            return sessionDateTime.isAfter(now) &&
+                   (status == 'approved' || status == 'scheduled') &&
+                   status != 'expired' &&
+                   status != 'cancelled';
+          } else {
+            // For individual sessions: check date+time
+            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+            final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+            final timeParts = scheduledTime.split(':');
+            final hour = int.tryParse(timeParts[0]) ?? 0;
+            final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+            final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+            
+            return sessionDateTime.isAfter(now) &&
+                   (status == 'scheduled' || status == 'in_progress');
+          }
+        }).toList();
+      } else if (_selectedFilter == 'past') {
+        filtered = allSessions.where((s) {
+          final sessionType = s['_sessionType'] as String?;
+          final status = s['status'] as String;
+          
+          if (sessionType == 'trial') {
+            // For trial sessions: expired, cancelled, completed, or time passed
+            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+            final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+            final timeParts = scheduledTime.split(':');
+            final hour = int.tryParse(timeParts[0]) ?? 0;
+            final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+            final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+            
+            return sessionDateTime.isBefore(now) ||
+                   status == 'expired' ||
+                   status == 'cancelled' ||
+                   status == 'completed';
+          } else {
+            // For individual sessions
+            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+            final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+            final timeParts = scheduledTime.split(':');
+            final hour = int.tryParse(timeParts[0]) ?? 0;
+            final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+            final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+            
+            return sessionDateTime.isBefore(now) ||
+                   status == 'completed' ||
+                   status == 'cancelled';
+          }
+        }).toList();
+      } else if (_selectedFilter == 'all') {
+        // Filter out expired, cancelled, and unattended past sessions from "All"
+        filtered = allSessions.where((s) {
+          final sessionType = s['_sessionType'] as String?;
+          final status = s['status'] as String;
+          final paymentStatus = (s['payment_status'] as String? ?? '').toLowerCase();
+          final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+          
+          if (sessionType == 'trial') {
+            // Exclude expired, cancelled, and unattended past sessions
+            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+            final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+            final timeParts = scheduledTime.split(':');
+            final hour = int.tryParse(timeParts[0]) ?? 0;
+            final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+            final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+            final isTimePassed = sessionDateTime.isBefore(now);
+            
+            // Exclude if expired, cancelled, or time passed without payment
+            if (status == 'expired' || status == 'cancelled') {
+              return false;
+            }
+            if (isTimePassed && !isPaid) {
+              return false; // Exclude unattended past sessions
+            }
+            return true;
+          } else {
+            // For individual sessions, exclude cancelled
+            return status != 'cancelled';
+          }
+        }).toList();
+      }
+
+      // Sort by scheduled date+time
+      filtered.sort((a, b) {
+        final aDate = DateTime.parse(a['scheduled_date'] as String);
+        final aTime = a['scheduled_time'] as String? ?? '00:00';
+        final aTimeParts = aTime.split(':');
+        final aHour = int.tryParse(aTimeParts[0]) ?? 0;
+        final aMinute = aTimeParts.length > 1 ? (int.tryParse(aTimeParts[1]) ?? 0) : 0;
+        final aDateTime = DateTime(aDate.year, aDate.month, aDate.day, aHour, aMinute);
+        
+        final bDate = DateTime.parse(b['scheduled_date'] as String);
+        final bTime = b['scheduled_time'] as String? ?? '00:00';
+        final bTimeParts = bTime.split(':');
+        final bHour = int.tryParse(bTimeParts[0]) ?? 0;
+        final bMinute = bTimeParts.length > 1 ? (int.tryParse(bTimeParts[1]) ?? 0) : 0;
+        final bDateTime = DateTime(bDate.year, bDate.month, bDate.day, bHour, bMinute);
+        
+        if (_selectedFilter == 'upcoming' || _selectedFilter == 'all') {
+          return aDateTime.compareTo(bDateTime); // Upcoming: earliest first
+        } else {
+          return bDateTime.compareTo(aDateTime); // Past: latest first
+        }
+      });
+
+      // If no sessions found, fall back to recurring sessions
+      if (filtered.isEmpty) {
+        // Fallback to recurring sessions
+        final sessions = await RecurringSessionService.getTutorRecurringSessions(
+          status: _selectedFilter == 'all' ? null : _selectedFilter,
+        );
+
+        // Mark as recurring sessions
+        for (var session in sessions) {
+          session['_sessionType'] = 'recurring';
+        }
+        allSessions.addAll(sessions);
+
+        // Filter for upcoming/past if needed
+        List<Map<String, dynamic>> recurringFiltered = sessions;
 
         if (_selectedFilter == 'upcoming') {
-          filtered = individualSessions.where((s) {
-            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
-            final status = s['status'] as String;
-            return scheduledDate.isAfter(now) &&
-                (status == 'scheduled' || status == 'in_progress');
+          recurringFiltered = sessions.where((s) {
+            final startDate = DateTime.parse(s['start_date'] as String);
+            return startDate.isAfter(now) && s['status'] == 'active';
           }).toList();
         } else if (_selectedFilter == 'past') {
-          filtered = individualSessions.where((s) {
-            final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
-            final status = s['status'] as String;
-            return scheduledDate.isBefore(now) ||
-                status == 'completed' ||
-                status == 'cancelled';
+          recurringFiltered = sessions.where((s) {
+            final startDate = DateTime.parse(s['start_date'] as String);
+            return startDate.isBefore(now) || s['status'] == 'completed';
           }).toList();
+        } else if (_selectedFilter == 'all') {
+          // Sort by priority: upcoming first, then active, then past
+          recurringFiltered.sort((a, b) {
+            final aDate = DateTime.parse(a['start_date'] as String);
+            final bDate = DateTime.parse(b['start_date'] as String);
+            final aStatus = a['status'] as String;
+            final bStatus = b['status'] as String;
+
+            // Upcoming (active and future date) first
+            final aIsUpcoming = aDate.isAfter(now) && aStatus == 'active';
+            final bIsUpcoming = bDate.isAfter(now) && bStatus == 'active';
+            if (aIsUpcoming && !bIsUpcoming) return -1;
+            if (!aIsUpcoming && bIsUpcoming) return 1;
+
+            // Then active (current or past start but still active)
+            if (aStatus == 'active' && bStatus != 'active') return -1;
+            if (aStatus != 'active' && bStatus == 'active') return 1;
+
+            // Then by date (earliest first for upcoming, latest first for past)
+            if (aIsUpcoming || bIsUpcoming) {
+              return aDate.compareTo(bDate); // Upcoming: earliest first
+            } else {
+              return bDate.compareTo(aDate); // Past: latest first
+            }
+          });
         }
 
-        // Sort by scheduled date
-        filtered.sort((a, b) {
-          final aDate = DateTime.parse(a['scheduled_date'] as String);
-          final bDate = DateTime.parse(b['scheduled_date'] as String);
-          if (_selectedFilter == 'upcoming' || _selectedFilter == 'all') {
-            return aDate.compareTo(bDate); // Upcoming: earliest first
-          } else {
-            return bDate.compareTo(aDate); // Past: latest first
-          }
+        safeSetState(() {
+          _sessions = recurringFiltered;
+          _isLoading = false;
         });
-
-        setState(() {
+      } else {
+        safeSetState(() {
           _sessions = filtered;
           _isLoading = false;
         });
-        return;
       }
-
-      // Fallback to recurring sessions
-      final sessions = await RecurringSessionService.getTutorRecurringSessions(
-        status: _selectedFilter == 'all' ? null : _selectedFilter,
-      );
-
-      // Filter for upcoming/past if needed
-      final now = DateTime.now();
-      List<Map<String, dynamic>> filtered = sessions;
-
-      if (_selectedFilter == 'upcoming') {
-        filtered = sessions.where((s) {
-          final startDate = DateTime.parse(s['start_date'] as String);
-          return startDate.isAfter(now) && s['status'] == 'active';
-        }).toList();
-      } else if (_selectedFilter == 'past') {
-        filtered = sessions.where((s) {
-          final startDate = DateTime.parse(s['start_date'] as String);
-          return startDate.isBefore(now) || s['status'] == 'completed';
-        }).toList();
-      } else if (_selectedFilter == 'all') {
-        // Sort by priority: upcoming first, then active, then past
-        filtered.sort((a, b) {
-          final aDate = DateTime.parse(a['start_date'] as String);
-          final bDate = DateTime.parse(b['start_date'] as String);
-          final aStatus = a['status'] as String;
-          final bStatus = b['status'] as String;
-
-          // Upcoming (active and future date) first
-          final aIsUpcoming = aDate.isAfter(now) && aStatus == 'active';
-          final bIsUpcoming = bDate.isAfter(now) && bStatus == 'active';
-          if (aIsUpcoming && !bIsUpcoming) return -1;
-          if (!aIsUpcoming && bIsUpcoming) return 1;
-
-          // Then active (current or past start but still active)
-          if (aStatus == 'active' && bStatus != 'active') return -1;
-          if (aStatus != 'active' && bStatus == 'active') return 1;
-
-          // Then by date (earliest first for upcoming, latest first for past)
-          if (aIsUpcoming || bIsUpcoming) {
-            return aDate.compareTo(bDate); // Upcoming: earliest first
-          } else {
-            return bDate.compareTo(aDate); // Past: latest first
-          }
-        });
-      }
-
-      setState(() {
-        _sessions = filtered;
-        _isLoading = false;
-      });
     } catch (e) {
-      print('❌ Error loading sessions: $e');
-      setState(() => _isLoading = false);
+      LogService.error('Error loading sessions: $e');
+      safeSetState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -186,12 +422,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                 mainAxisAlignment: MainAxisAlignment.start,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _buildFilterChip('all', 'All (${_getCountForFilter('all')})'),
-                  const SizedBox(width: 8),
+                  // Show "Upcoming" first as requested
                   _buildFilterChip(
                     'upcoming',
                     'Upcoming (${_getCountForFilter('upcoming')})',
                   ),
+                  const SizedBox(width: 8),
+                  _buildFilterChip('all', 'All (${_getCountForFilter('all')})'),
                   const SizedBox(width: 8),
                   _buildFilterChip(
                     'past',
@@ -222,7 +459,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         ],
       ),
     );
-  }
+}
+
+
 
   Widget _buildFilterChip(String filter, String label) {
     final isSelected = _selectedFilter == filter;
@@ -230,7 +469,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       label: Text(label),
       selected: isSelected,
       onSelected: (selected) {
-        setState(() {
+        safeSetState(() {
           _selectedFilter = filter;
         });
         _loadSessions();
@@ -248,33 +487,105 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   int _getCountForFilter(String filter) {
+    final now = DateTime.now();
+    
     if (filter == 'all') {
-      return _sessions.length;
-    } else if (filter == 'upcoming') {
-      final now = DateTime.now();
+      // Count sessions excluding expired, cancelled, and unattended past sessions
       return _sessions.where((s) {
-        final isIndividual = s.containsKey('scheduled_date');
-        if (isIndividual) {
+        final sessionType = s['_sessionType'] as String?;
+        final status = s['status'] as String;
+        final paymentStatus = (s['payment_status'] as String? ?? '').toLowerCase();
+        final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+        
+        if (sessionType == 'trial') {
+          // Exclude expired, cancelled, and unattended past sessions
           final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
-          final status = s['status'] as String;
-          return scheduledDate.isAfter(now) &&
+          final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+          final timeParts = scheduledTime.split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+          final isTimePassed = sessionDateTime.isBefore(now);
+          
+          if (status == 'expired' || status == 'cancelled') {
+            return false;
+          }
+          if (isTimePassed && !isPaid) {
+            return false; // Exclude unattended past sessions
+          }
+          return true;
+        } else {
+          // For individual sessions, exclude cancelled
+          return status != 'cancelled';
+        }
+      }).length;
+    } else if (filter == 'upcoming') {
+      return _sessions.where((s) {
+        final sessionType = s['_sessionType'] as String?;
+        final status = s['status'] as String;
+        
+        if (sessionType == 'trial') {
+          // Check date+time for trial sessions
+          final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+          final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+          final timeParts = scheduledTime.split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+          
+          return sessionDateTime.isAfter(now) &&
+                 (status == 'approved' || status == 'scheduled') &&
+                 status != 'expired' &&
+                 status != 'cancelled';
+        } else if (sessionType == 'individual' || s.containsKey('scheduled_date')) {
+          // Check date+time for individual sessions
+          final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+          final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+          final timeParts = scheduledTime.split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+          
+          return sessionDateTime.isAfter(now) &&
               (status == 'scheduled' || status == 'in_progress');
         } else {
+          // Recurring sessions
           final startDate = DateTime.parse(s['start_date'] as String);
           return startDate.isAfter(now) && s['status'] == 'active';
         }
       }).length;
     } else if (filter == 'past') {
-      final now = DateTime.now();
       return _sessions.where((s) {
-        final isIndividual = s.containsKey('scheduled_date');
-        if (isIndividual) {
+        final sessionType = s['_sessionType'] as String?;
+        final status = s['status'] as String;
+        
+        if (sessionType == 'trial') {
+          // Check date+time for trial sessions
           final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
-          final status = s['status'] as String;
-          return scheduledDate.isBefore(now) ||
+          final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+          final timeParts = scheduledTime.split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+          
+          return sessionDateTime.isBefore(now) ||
+                 status == 'expired' ||
+                 status == 'cancelled' ||
+                 status == 'completed';
+        } else if (sessionType == 'individual' || s.containsKey('scheduled_date')) {
+          // Check date+time for individual sessions
+          final scheduledDate = DateTime.parse(s['scheduled_date'] as String);
+          final scheduledTime = s['scheduled_time'] as String? ?? '00:00';
+          final timeParts = scheduledTime.split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+          final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+          
+          return sessionDateTime.isBefore(now) ||
               status == 'completed' ||
               status == 'cancelled';
         } else {
+          // Recurring sessions
           final startDate = DateTime.parse(s['start_date'] as String);
           return startDate.isBefore(now) || s['status'] == 'completed';
         }
@@ -317,10 +628,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session) {
-    // Detect if this is an individual session or recurring session
-    final isIndividualSession =
-        session.containsKey('scheduled_date') &&
-        session.containsKey('scheduled_time');
+    // Detect session type
+    final sessionType = session['_sessionType'] as String?;
+    final isTrialSession = sessionType == 'trial';
+    final isIndividualSession = sessionType == 'individual' ||
+        (session.containsKey('scheduled_date') &&
+         session.containsKey('scheduled_time') &&
+         !isTrialSession);
 
     final status = session['status'] as String;
     String studentName = 'Student';
@@ -335,8 +649,39 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     List<String> days = [];
     Map<String, String> times = {};
     DateTime? startDate;
+    String? paymentStatus;
+    String? meetLink;
+    bool isExpired = false;
+    bool isCancelled = false;
 
-    if (isIndividualSession) {
+    if (isTrialSession) {
+      // Trial session data
+      try {
+        final trial = TrialSession.fromJson(session);
+        // Use pre-fetched student name from session map (fetched in _loadSessions)
+        studentName = session['student_name'] as String? ?? 'Student';
+        studentAvatar = session['student_avatar_url'] as String?;
+        location = trial.location;
+        address = null; // TrialSession doesn't have address field
+        sessionDate = trial.scheduledDate;
+        sessionTime = trial.scheduledTime;
+        subject = trial.subject;
+        paymentStatus = trial.paymentStatus;
+        meetLink = trial.meetLink;
+        
+        // Determine if expired (time passed, not paid, not approved)
+        final isTimePassed = SessionDateUtils.isSessionExpired(trial);
+        final isPaid = trial.paymentStatus.toLowerCase() == 'paid';
+        final isApproved = trial.status == 'approved' || trial.status == 'scheduled';
+        isExpired = isTimePassed && (!isPaid || !isApproved) && trial.status != 'cancelled';
+        
+        // Determine if cancelled (user deleted)
+        isCancelled = trial.status == 'cancelled';
+      } catch (e) {
+        LogService.error('Error parsing trial session: $e');
+        return const SizedBox.shrink();
+      }
+    } else if (isIndividualSession) {
       // Individual session data
       final recurringData =
           session['recurring_sessions'] as Map<String, dynamic>?;
@@ -493,20 +838,95 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                 Icons.location_on,
                 _formatLocation(location, address),
               ),
-              // Action buttons for individual sessions
-              if (isIndividualSession &&
-                  (status == 'scheduled' || status == 'in_progress')) ...[
+              // Countdown timer for upcoming scheduled sessions (individual or trial)
+              if ((isIndividualSession || isTrialSession) && 
+                  (status == 'scheduled' || status == 'approved') && 
+                  sessionDate != null && 
+                  sessionTime != null &&
+                  !isExpired &&
+                  !isCancelled) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withOpacity(0.2),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.timer_outlined,
+                        size: 18,
+                        color: AppTheme.primaryColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildCountdownText(sessionDate!, sessionTime!),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              // Action buttons for trial and individual sessions
+              if ((isTrialSession || isIndividualSession) &&
+                  (status == 'scheduled' || status == 'in_progress' || status == 'approved') &&
+                  !isExpired &&
+                  !isCancelled) ...[
                 const SizedBox(height: 16),
                 Row(
                   children: [
+                    // Join Meeting button (if online and has meet link)
+                    if (location == 'online' && 
+                        ((isTrialSession && meetLink != null && meetLink!.isNotEmpty) ||
+                         (isIndividualSession && session['meeting_link'] != null && 
+                          (session['meeting_link'] as String).isNotEmpty))) ...[
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _openMeetLink(
+                            isTrialSession ? meetLink! : session['meeting_link'] as String,
+                          ),
+                          icon: const Icon(Icons.video_call, size: 18),
+                          label: Text(
+                            'Join Meeting',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    // Start/End Session button
                     if (status == 'scheduled') ...[
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () =>
-                              _handleStartSession(session['id'] as String),
-                          icon: const Icon(Icons.play_arrow, size: 18),
+                          onPressed: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? null
+                              : () => _handleStartSession(session['id'] as String),
+                          icon: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.play_arrow, size: 18),
                           label: Text(
-                            'Start Session',
+                            (_sessionLoadingStates[session['id'] as String] ?? false)
+                                ? 'Starting...'
+                                : 'Start Session',
                             style: GoogleFonts.poppins(fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -522,11 +942,23 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     ] else if (status == 'in_progress') ...[
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () =>
-                              _handleEndSession(session['id'] as String),
-                          icon: const Icon(Icons.stop, size: 18),
+                          onPressed: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? null
+                              : () => _handleEndSession(session['id'] as String),
+                          icon: (_sessionLoadingStates[session['id'] as String] ?? false)
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.stop, size: 18),
                           label: Text(
-                            'End Session',
+                            (_sessionLoadingStates[session['id'] as String] ?? false)
+                                ? 'Ending...'
+                                : 'End Session',
                             style: GoogleFonts.poppins(fontSize: 13),
                           ),
                           style: ElevatedButton.styleFrom(
@@ -540,21 +972,32 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         ),
                       ),
                     ],
-                    if (session['meeting_link'] != null &&
-                        location == 'online') ...[
-                      const SizedBox(width: 12),
+                    // Add to Calendar button (if no calendar event exists)
+                    if ((isIndividualSession || isTrialSession) && 
+                        (status == 'scheduled' || status == 'approved') &&
+                        !isExpired &&
+                        !isCancelled &&
+                        (session['calendar_event_id'] == null || 
+                         (session['calendar_event_id'] as String? ?? '').isEmpty)) ...[
+                      const SizedBox(width: 8),
                       OutlinedButton.icon(
-                        onPressed: () =>
-                            _openMeetLink(session['meeting_link'] as String),
-                        icon: const Icon(Icons.video_call, size: 18),
+                        onPressed: () => _addSessionToCalendar(session),
+                        icon: Icon(
+                          _isCalendarConnected == true 
+                              ? Icons.calendar_today 
+                              : Icons.calendar_today_outlined,
+                          size: 18,
+                        ),
                         label: Text(
-                          'Join',
+                          _isCalendarConnected == true
+                              ? 'Add to Calendar'
+                              : 'Connect & Add',
                           style: GoogleFonts.poppins(fontSize: 13),
                         ),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.primaryColor,
                           side: BorderSide(color: AppTheme.primaryColor),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
@@ -562,6 +1005,43 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                       ),
                     ],
                   ],
+                ),
+              ],
+              // Show expired/cancelled status for trial sessions
+              if (isTrialSession && (isExpired || isCancelled)) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: (isExpired ? Colors.orange : Colors.red).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: (isExpired ? Colors.orange : Colors.red).withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isExpired ? Icons.access_time : Icons.cancel,
+                        size: 18,
+                        color: isExpired ? Colors.orange : Colors.red,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          isExpired 
+                              ? 'Session expired - payment not completed'
+                              : 'Session cancelled',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: isExpired ? Colors.orange : Colors.red,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
               // Next Session (if active recurring session)
@@ -608,6 +1088,195 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     );
   }
 
+  /// Build countdown text widget
+  Widget _buildCountdownText(DateTime sessionDate, String sessionTime) {
+    try {
+      final timeParts = sessionTime.split(':');
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = timeParts.length > 1 
+          ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
+          : 0;
+      
+      final sessionDateTime = DateTime(
+        sessionDate.year,
+        sessionDate.month,
+        sessionDate.day,
+        hour,
+        minute,
+      );
+      final now = DateTime.now();
+      final difference = sessionDateTime.difference(now);
+      
+      String countdownText;
+      if (difference.isNegative) {
+        countdownText = 'Session starting now';
+      } else if (difference.inDays > 0) {
+        countdownText = 'Starts in ${difference.inDays} day${difference.inDays > 1 ? 's' : ''}';
+      } else if (difference.inHours > 0) {
+        countdownText = 'Starts in ${difference.inHours} hour${difference.inHours > 1 ? 's' : ''}';
+      } else if (difference.inMinutes > 0) {
+        countdownText = 'Starts in ${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''}';
+      } else {
+        countdownText = 'Starting soon';
+      }
+      
+      return Text(
+        countdownText,
+        style: GoogleFonts.poppins(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.primaryColor,
+        ),
+      );
+    } catch (e) {
+      return const SizedBox.shrink();
+    }
+  }
+  
+  /// Add session to calendar
+  Future<void> _addSessionToCalendar(Map<String, dynamic> session) async {
+    try {
+      // Check if calendar is connected
+      if (_isCalendarConnected != true) {
+        final connected = await GoogleCalendarAuthService.signIn();
+        if (!connected) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to connect Google Calendar'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        safeSetState(() {
+          _isCalendarConnected = true;
+        });
+      }
+      
+      final sessionType = session['_sessionType'] as String?;
+      final isTrialSession = sessionType == 'trial';
+      
+      final sessionDate = DateTime.parse(session['scheduled_date'] as String);
+      final sessionTime = session['scheduled_time'] as String;
+      final subject = session['subject'] as String? ?? 'Session';
+      final duration = session['duration_minutes'] as int? ?? 60;
+      final location = session['location'] as String? ?? 'online';
+      final meetLink = isTrialSession 
+          ? (session['meet_link'] as String?)
+          : (session['meeting_link'] as String?);
+      
+      // Parse time
+      final timeParts = sessionTime.split(':');
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = timeParts.length > 1 
+          ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
+          : 0;
+      
+      final startTime = DateTime(
+        sessionDate.year,
+        sessionDate.month,
+        sessionDate.day,
+        hour,
+        minute,
+      );
+      
+      // Get student name
+      String studentName = 'Student';
+      try {
+        if (isTrialSession) {
+          final learnerId = session['learner_id'] as String?;
+          final requesterId = session['requester_id'] as String?;
+          final studentId = requesterId?.isNotEmpty == true ? requesterId : learnerId;
+          
+          if (studentId != null) {
+            final studentProfile = await SupabaseService.client
+                .from('profiles')
+                .select('full_name')
+                .eq('id', studentId)
+                .maybeSingle();
+            if (studentProfile != null) {
+              studentName = studentProfile['full_name'] as String? ?? 'Student';
+            }
+          }
+        } else {
+          final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+          studentName = recurringData?['student_name']?.toString() ?? 'Student';
+        }
+      } catch (e) {
+        LogService.warning('Could not fetch student name: $e');
+      }
+      
+      // Create calendar event
+      final calendarEvent = await GoogleCalendarService.createSessionEvent(
+        title: 'PrepSkul Session: $subject',
+        startTime: startTime,
+        durationMinutes: duration,
+        attendeeEmails: [], // Will be populated by service
+        description: 'Tutoring session with $studentName',
+      );
+      
+      // Update session with calendar event ID and Meet link
+      if (isTrialSession) {
+        await SupabaseService.client
+            .from('trial_sessions')
+            .update({
+              'calendar_event_id': calendarEvent.id,
+              if (location == 'online' && calendarEvent.meetLink.isNotEmpty)
+                'meet_link': calendarEvent.meetLink,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', session['id'] as String);
+      } else {
+        await SupabaseService.client
+            .from('individual_sessions')
+            .update({
+              'calendar_event_id': calendarEvent.id,
+              if (location == 'online' && calendarEvent.meetLink.isNotEmpty)
+                'meeting_link': calendarEvent.meetLink,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', session['id'] as String);
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    location == 'online' && calendarEvent.meetLink.isNotEmpty
+                        ? 'Session added to calendar with Meet link!'
+                        : 'Session added to calendar!',
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      // Reload sessions
+      _loadSessions();
+    } catch (e) {
+      LogService.error('Error adding session to calendar: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding to calendar: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
       children: [
@@ -624,13 +1293,18 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'active':
       case 'in_progress':
         return AppTheme.accentGreen;
       case 'scheduled':
+      case 'approved':
         return Colors.blue;
+      case 'pending':
+        return Colors.orange;
       case 'paused':
+        return Colors.orange;
+      case 'expired':
         return Colors.orange;
       case 'completed':
         return AppTheme.textMedium;
@@ -641,10 +1315,49 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     }
   }
 
-  Future<void> _handleStartSession(String sessionId) async {
+      Future<void> _handleStartSession(String sessionId) async {
+    // Get session details to check if it's hybrid
     try {
-      // Use SessionLifecycleService for comprehensive start flow
-      await SessionLifecycleService.startSession(sessionId);
+      final session = await SupabaseService.client
+          .from('individual_sessions')
+          .select('location, onsite_address, meeting_link')
+          .eq('id', sessionId)
+          .single();
+
+      final location = session['location'] as String? ?? 'online';
+      final address = session['onsite_address'] as String? ?? '';
+      final meetLink = session['meeting_link'] as String?;
+
+      // For hybrid sessions, show mode selection dialog
+      bool? isOnline;
+      if (location == 'hybrid') {
+        final selectedMode = await HybridModeSelectionDialog.show(
+          context,
+          sessionAddress: address,
+          meetingLink: meetLink,
+        );
+
+        if (selectedMode == null) {
+          // User cancelled
+          return;
+        }
+
+        isOnline = selectedMode;
+      } else {
+        // For online/onsite, determine from location
+        isOnline = location == 'online';
+      }
+
+      safeSetState(() {
+        _sessionLoadingStates[sessionId] = true;
+      });
+
+      // Use SessionLifecycleService with mode selection
+      await SessionLifecycleService.startSession(
+        sessionId,
+        isOnline: isOnline ?? false,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -662,6 +1375,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       _loadSessions(); // Refresh
     } catch (e) {
       if (mounted) {
+        safeSetState(() {
+          _sessionLoadingStates[sessionId] = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to start session: $e'),
@@ -672,6 +1388,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     }
   }
 
+
   Future<void> _handleEndSession(String sessionId) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -679,6 +1396,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     );
 
     if (result != null) {
+      safeSetState(() {
+        _sessionLoadingStates[sessionId] = true;
+      });
+      
       try {
         // Use SessionLifecycleService for comprehensive end flow
         await SessionLifecycleService.endSession(
@@ -713,6 +1434,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             ),
           );
         }
+      } finally {
+        if (mounted) {
+          safeSetState(() {
+            _sessionLoadingStates[sessionId] = false;
+          });
+        }
       }
     }
   }
@@ -736,7 +1463,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         }
       }
     } catch (e) {
-      print('❌ Error opening Meet link: $e');
+      LogService.error('Error opening Meet link: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -803,6 +1530,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
 }
 
 // End Session Dialog
+
 class _EndSessionDialog extends StatefulWidget {
   @override
   State<_EndSessionDialog> createState() => _EndSessionDialogState();

@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/features/sessions/services/fathom_service.dart';
 
@@ -38,9 +39,9 @@ class FathomSummaryService {
             'created_at': DateTime.now().toIso8601String(),
           }, onConflict: 'session_id,session_type');
 
-      print('✅ Summary stored for session: $sessionId');
+      LogService.success('Summary stored for session: $sessionId');
     } catch (e) {
-      print('❌ Error fetching/storing summary: $e');
+      LogService.error('Error fetching/storing summary: $e');
       rethrow;
     }
   }
@@ -114,9 +115,9 @@ class FathomSummaryService {
         );
       }
 
-      print('✅ Summary notifications sent to all participants');
+      LogService.success('Summary notifications sent to all participants');
     } catch (e) {
-      print('❌ Error sending summary notifications: $e');
+      LogService.error('Error sending summary notifications: $e');
       rethrow;
     }
   }
@@ -142,7 +143,7 @@ class FathomSummaryService {
 
       return response;
     } catch (e) {
-      print('❌ Error getting session summary: $e');
+      LogService.error('Error getting session summary: $e');
       return null;
     }
   }
@@ -170,7 +171,7 @@ class FathomSummaryService {
       }
       return null;
     } catch (e) {
-      print('❌ Error getting session details: $e');
+      LogService.error('Error getting session details: $e');
       return null;
     }
   }

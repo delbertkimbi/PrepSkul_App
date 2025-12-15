@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 
@@ -34,6 +35,16 @@ class TutorRequestService {
           .eq('id', userId)
           .single();
 
+      // Build additional_notes with location description if provided
+      String? finalAdditionalNotes = additionalNotes;
+      if (locationDescription != null && locationDescription!.isNotEmpty) {
+        if (finalAdditionalNotes != null && finalAdditionalNotes.isNotEmpty) {
+          finalAdditionalNotes += '\n\nLocation Description: ' + locationDescription!;
+        } else {
+          finalAdditionalNotes = 'Location Description: ' + locationDescription!;
+        }
+      }
+
       final requestData = {
         'requester_id': userId,
         'subjects': subjects,
@@ -47,9 +58,9 @@ class TutorRequestService {
         'preferred_days': preferredDays,
         'preferred_time': preferredTime,
         'location': location,
-        'location_description': locationDescription,
+        // 'location_description': locationDescription,  // Column doesn't exist in DB, storing in additional_notes instead
         'urgency': urgency,
-        'additional_notes': additionalNotes,
+        'additional_notes': finalAdditionalNotes,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
         // Denormalized data
@@ -71,7 +82,7 @@ class TutorRequestService {
 
       return requestId;
     } catch (e) {
-      print('❌ Error creating tutor request: $e');
+      LogService.error('Error creating tutor request: $e');
       throw Exception('Failed to create tutor request: $e');
     }
   }
@@ -99,7 +110,7 @@ class TutorRequestService {
           .map((json) => TutorRequest.fromJson(json))
           .toList();
     } catch (e) {
-      print('❌ Error fetching user tutor requests: $e');
+      LogService.error('Error fetching user tutor requests: $e');
       throw Exception('Failed to fetch tutor requests: $e');
     }
   }
@@ -115,7 +126,7 @@ class TutorRequestService {
 
       return TutorRequest.fromJson(response);
     } catch (e) {
-      print('❌ Error fetching tutor request: $e');
+      LogService.error('Error fetching tutor request: $e');
       throw Exception('Failed to fetch tutor request: $e');
     }
   }
@@ -147,7 +158,7 @@ class TutorRequestService {
           .update(updateData)
           .eq('id', requestId);
     } catch (e) {
-      print('❌ Error updating tutor request: $e');
+      LogService.error('Error updating tutor request: $e');
       throw Exception('Failed to update tutor request: $e');
     }
   }
@@ -164,7 +175,7 @@ class TutorRequestService {
           })
           .eq('id', requestId);
     } catch (e) {
-      print('❌ Error cancelling tutor request: $e');
+      LogService.error('Error cancelling tutor request: $e');
       throw Exception('Failed to cancel tutor request: $e');
     }
   }
@@ -182,7 +193,7 @@ class TutorRequestService {
           .map((json) => TutorRequest.fromJson(json))
           .toList();
     } catch (e) {
-      print('❌ Error fetching pending tutor requests: $e');
+      LogService.error('Error fetching pending tutor requests: $e');
       throw Exception('Failed to fetch pending tutor requests: $e');
     }
   }
@@ -197,7 +208,7 @@ class TutorRequestService {
           .eq('is_admin', true);
 
       if (adminResponse.isEmpty) {
-        print('⚠️ No admin users found to notify');
+        LogService.warning('No admin users found to notify');
         return;
       }
 
@@ -213,9 +224,9 @@ class TutorRequestService {
         );
       }
 
-      print('✅ Notified ${adminResponse.length} admin(s) about tutor request $requestId');
+      LogService.success('Notified ${adminResponse.length} admin(s) about tutor request $requestId');
     } catch (e) {
-      print('⚠️ Error notifying admins about tutor request: $e');
+      LogService.warning('Error notifying admins about tutor request: $e');
       // Don't throw - notification failure shouldn't block request creation
     }
   }

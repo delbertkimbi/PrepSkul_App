@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 
 /// Session Feedback Service
@@ -114,9 +115,9 @@ class SessionFeedbackService {
       // Process feedback to update tutor rating
       await processFeedback(sessionId);
 
-      print('✅ Student feedback submitted for session: $sessionId');
+      LogService.success('Student feedback submitted for session: $sessionId');
     } catch (e) {
-      print('❌ Error submitting student feedback: $e');
+      LogService.error('Error submitting student feedback: $e');
       rethrow;
     }
   }
@@ -147,7 +148,7 @@ class SessionFeedbackService {
           .single();
 
       if (feedback['feedback_processed'] == true) {
-        print('⚠️ Feedback already processed for session: $sessionId');
+        LogService.warning('Feedback already processed for session: $sessionId');
         return;
       }
 
@@ -205,9 +206,9 @@ class SessionFeedbackService {
         );
       }
 
-      print('✅ Feedback processed for session: $sessionId');
+      LogService.success('Feedback processed for session: $sessionId');
     } catch (e) {
-      print('❌ Error processing feedback: $e');
+      LogService.error('Error processing feedback: $e');
       // Don't rethrow - processing can be retried
     }
   }
@@ -225,7 +226,7 @@ class SessionFeedbackService {
           .maybeSingle();
 
       if (tutorProfile == null) {
-        print('⚠️ Tutor profile not found: $tutorId');
+        LogService.warning('Tutor profile not found: $tutorId');
         return;
       }
 
@@ -273,7 +274,7 @@ class SessionFeedbackService {
             })
             .eq('user_id', tutorId);
 
-        print('✅ Updated tutor rating: $tutorId -> ${averageRating.toStringAsFixed(2)} (from $count real reviews)');
+        LogService.success('Updated tutor rating: $tutorId -> ${averageRating.toStringAsFixed(2)} (from $count real reviews)');
       } else {
         // Still update total_reviews count, but keep using admin_approved_rating for display
         await _supabase
@@ -284,10 +285,10 @@ class SessionFeedbackService {
             })
             .eq('user_id', tutorId);
 
-        print('ℹ️ Tutor $tutorId has $count reviews (< 3), still using admin_approved_rating: ${adminApprovedRating ?? "N/A"}');
+        LogService.info('Tutor $tutorId has $count reviews (< 3), still using admin_approved_rating: ${adminApprovedRating ?? "N/A"}');
       }
     } catch (e) {
-      print('❌ Error updating tutor rating: $e');
+      LogService.error('Error updating tutor rating: $e');
       // Don't rethrow - rating update can be retried
     }
   }
@@ -327,7 +328,7 @@ class SessionFeedbackService {
         },
       );
     } catch (e) {
-      print('⚠️ Error notifying tutor of new review: $e');
+      LogService.warning('Error notifying tutor of new review: $e');
     }
   }
 
@@ -342,7 +343,7 @@ class SessionFeedbackService {
 
       return feedback;
     } catch (e) {
-      print('❌ Error fetching session feedback: $e');
+      LogService.error('Error fetching session feedback: $e');
       return null;
     }
   }
@@ -361,6 +362,8 @@ class SessionFeedbackService {
             student_what_could_improve,
             student_would_recommend,
             student_feedback_submitted_at,
+            tutor_response,
+            tutor_response_submitted_at,
             review_displayed,
             individual_sessions!inner(
               tutor_id,
@@ -374,7 +377,15 @@ class SessionFeedbackService {
 
       return (reviews as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching tutor reviews: $e');
+      // Handle case where table doesn't exist yet (migration not run)
+      final errorStr = e.toString();
+      if (errorStr.contains('PGRST205') || 
+          errorStr.contains('Could not find the table') || 
+          errorStr.contains('session_feedback')) {
+        LogService.info('session_feedback table does not exist yet. Reviews will be available after migration.');
+        return [];
+      }
+      LogService.error('Error fetching tutor reviews: $e');
       return [];
     }
   }
@@ -411,7 +422,7 @@ class SessionFeedbackService {
         'rating_distribution': ratingDistribution,
       };
     } catch (e) {
-      print('❌ Error fetching tutor rating stats: $e');
+      LogService.error('Error fetching tutor rating stats: $e');
       return {
         'average_rating': 0.0,
         'total_reviews': 0,
@@ -461,7 +472,7 @@ class SessionFeedbackService {
 
       return true;
     } catch (e) {
-      print('❌ Error checking if can submit feedback: $e');
+      LogService.error('Error checking if can submit feedback: $e');
       return false;
     }
   }
@@ -495,10 +506,53 @@ class SessionFeedbackService {
 
       return requiredWait - timeSinceEnd; // Time remaining
     } catch (e) {
-      print('❌ Error getting time until feedback available: $e');
+      LogService.error('Error getting time until feedback available: $e');
       return null;
     }
   }
+  /// Submit tutor response to a student review
+  static Future<void> submitTutorResponse({
+    required String feedbackId,
+    required String response,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      final feedback = await _supabase
+          .from('session_feedback')
+          .select('id, session_id, individual_sessions!inner(tutor_id)')
+          .eq('id', feedbackId)
+          .single();
+
+      final tutorId = feedback['individual_sessions']['tutor_id'] as String;
+      if (tutorId != userId) {
+        throw Exception('Unauthorized: Only the tutor can respond');
+      }
+
+      final existing = await _supabase
+          .from('session_feedback')
+          .select('tutor_response')
+          .eq('id', feedbackId)
+          .single();
+
+      if (existing['tutor_response'] != null) {
+        throw Exception('You have already responded');
+      }
+
+      await _supabase
+          .from('session_feedback')
+          .update({
+            'tutor_response': response.trim(),
+            'tutor_response_submitted_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', feedbackId);
+
+      LogService.success('Tutor response submitted: $feedbackId');
+    } catch (e) {
+      LogService.error('Error submitting tutor response: $e');
+      rethrow;
+    }
+  }
 }
-
-

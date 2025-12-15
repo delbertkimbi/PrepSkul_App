@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
@@ -240,7 +242,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                   ),
                                   suffixIcon: GestureDetector(
                                     onTap: () {
-                                      setState(() {
+                                      safeSetState(() {
                                         _obscurePassword = !_obscurePassword;
                                       });
                                     },
@@ -360,17 +362,18 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
 
                               const SizedBox(height: 16),
 
-                              // Use Email Auth Link
+                              // Try another auth method Link
                               Center(
                                 child: TextButton(
                                   onPressed: () {
-                                    Navigator.pushReplacementNamed(
+                                    Navigator.pushNamedAndRemoveUntil(
                                       context,
-                                      '/email-login',
+                                      '/auth-method-selection',
+                                      (route) => false,
                                     );
                                   },
                                   child: Text(
-                                    'Use email instead',
+                                    'Try another auth method',
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
@@ -416,7 +419,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       }
     }
 
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
       // Check if user exists in Supabase
@@ -439,7 +442,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
             ),
           );
         }
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
         return;
       }
 
@@ -473,7 +476,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        safeSetState(() => _isLoading = false);
       }
     }
   }

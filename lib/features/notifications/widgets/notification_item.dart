@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// Notification Item Widget
 /// 
@@ -81,6 +82,169 @@ class NotificationItem extends StatelessWidget {
     }
   }
 
+
+  /// Build user avatar with first letter or profile picture
+  Widget _buildUserAvatar(
+    Map<String, dynamic>? metadata,
+    String? senderAvatarUrl,
+    String? senderInitials,
+    String icon,
+    String priority,
+  ) {
+    // Extract sender name from metadata (tutor_name, student_name, or sender_name)
+    final tutorName = metadata?['tutor_name'] as String?;
+    final studentName = metadata?['student_name'] as String?;
+    final senderName = metadata?['sender_name'] as String?;
+    
+    // Determine the sender name and initials
+    String? displayName;
+    String? displayInitials = senderInitials;
+    
+    if (tutorName != null && tutorName.isNotEmpty) {
+      displayName = tutorName;
+      displayInitials = tutorName[0].toUpperCase();
+    } else if (studentName != null && studentName.isNotEmpty) {
+      displayName = studentName;
+      displayInitials = studentName[0].toUpperCase();
+    } else if (senderName != null && senderName.isNotEmpty) {
+      displayName = senderName;
+      displayInitials = senderName[0].toUpperCase();
+    }
+    
+    // If we have sender info, show avatar (even without profile pic)
+    if (displayName != null || senderAvatarUrl != null || senderInitials != null) {
+      return Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppTheme.primaryColor, // Deep blue background
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: senderAvatarUrl != null && senderAvatarUrl.isNotEmpty
+              ? CachedNetworkImage(
+                  imageUrl: senderAvatarUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: AppTheme.primaryColor,
+                    child: Center(
+                      child: Text(
+                        displayInitials ?? '?',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: AppTheme.primaryColor,
+                    child: Center(
+                      child: Text(
+                        displayInitials ?? '?',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : Container(
+                  color: AppTheme.primaryColor,
+                  child: Center(
+                    child: Text(
+                      displayInitials ?? '?',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      );
+    }
+    
+    // No sender info - show icon with colored background
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: _getPriorityColor(priority).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Center(
+        child: Text(
+          icon,
+          style: const TextStyle(fontSize: 20),
+        ),
+      ),
+    );
+  }
+
+
+  /// Get enhanced message with user names for better context
+  String _getEnhancedMessage(String? message, Map<String, dynamic>? metadata) {
+    if (message == null || message.isEmpty) return '';
+    
+    // Extract user names from metadata
+    final tutorName = metadata?['tutor_name'] as String?;
+    final studentName = metadata?['student_name'] as String?;
+    final senderName = metadata?['sender_name'] as String?;
+    
+    // If message already contains the name, return as is
+    if (tutorName != null && message.contains(tutorName)) {
+      return message;
+    }
+    if (studentName != null && message.contains(studentName)) {
+      return message;
+    }
+    if (senderName != null && message.contains(senderName)) {
+      return message;
+    }
+    
+    // For specific notification types, enhance the message
+    final type = notification['type'] as String?;
+    
+    // Trial-related notifications
+    if (type == 'trial_accepted' && tutorName != null) {
+      return 'Your trial request with $tutorName has been approved. Tap to view details and pay.';
+    }
+    if (type == 'trial_rejected' && tutorName != null) {
+      return '$tutorName has declined your trial request. Tap to find another tutor.';
+    }
+    if (type == 'trial_request' && studentName != null) {
+      return '$studentName wants to book a trial session. Tap to review and respond.';
+    }
+    
+    // Booking-related notifications
+    if (type == 'booking_accepted' && tutorName != null) {
+      return 'Your booking request with $tutorName has been approved. Tap to view details.';
+    }
+    if (type == 'booking_rejected' && tutorName != null) {
+      return '$tutorName has declined your booking request. Tap to find another tutor.';
+    }
+    if (type == 'booking_request' && studentName != null) {
+      return '$studentName wants to book sessions. Tap to review and respond.';
+    }
+    
+    // Payment notifications
+    if (type == 'payment_received' && studentName != null) {
+      return 'Payment received from $studentName. Tap to view details.';
+    }
+    if (type == 'payment_request_paid' && tutorName != null) {
+      return 'Your payment to $tutorName has been confirmed. Tap to view booking.';
+    }
+    
+    // Return original message if no enhancement needed
+    return message;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRead = notification['is_read'] == true;
@@ -91,6 +255,11 @@ class NotificationItem extends StatelessWidget {
     final timeAgo = _getTimeAgo(createdAt);
     final priority = notification['priority'] as String? ?? 'normal';
     final actionText = notification['action_text'] as String?;
+
+    // Extract metadata for avatar
+    final metadata = notification['metadata'] as Map<String, dynamic>?;
+    final senderAvatarUrl = metadata?['sender_avatar_url'] as String?;
+    final senderInitials = metadata?['sender_initials'] as String?;
 
     return Dismissible(
       key: Key(notification['id'] as String),
@@ -138,25 +307,8 @@ class NotificationItem extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icon with LinkedIn-style styling
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _getPriorityColor(priority).withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: _getPriorityColor(priority).withOpacity(0.1),
-                    width: 1,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    icon,
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
+              // User Avatar (always show if sender info available, otherwise show icon)
+              _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, icon, priority),
               const SizedBox(width: 12),
 
               // Content
@@ -191,13 +343,13 @@ class NotificationItem extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      message,
+                      _getEnhancedMessage(message, metadata),
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
                         color: AppTheme.textMedium,
                       ),
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
@@ -244,4 +396,3 @@ class NotificationItem extends StatelessWidget {
     );
   }
 }
-

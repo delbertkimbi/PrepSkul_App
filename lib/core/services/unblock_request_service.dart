@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import 'package:prepskul/core/services/log_service.dart';
 import 'dart:convert';
 import 'package:prepskul/core/services/supabase_service.dart';
 
@@ -48,7 +49,7 @@ class UnblockRequestService {
         throw Exception(error['error'] ?? 'Failed to submit request');
       }
     } catch (e) {
-      print('❌ Error submitting unblock request: $e');
+      LogService.error('Error submitting unblock request: $e');
       rethrow;
     }
   }
@@ -70,7 +71,7 @@ class UnblockRequestService {
 
       return response;
     } catch (e) {
-      print('❌ Error getting request status: $e');
+      LogService.error('Error getting request status: $e');
       return null;
     }
   }

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/booking/services/availability_service.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Step 3: Time Grid Selector
 ///
 /// Beautiful calendar-style time grid (like trial booking)
 /// Shows available time slots per day
 /// Groups by Afternoon/Evening
-/// Shows conflicts (tutor has another student)
 /// User picks one time for each selected day
 class TimeGridSelector extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -30,56 +32,110 @@ class TimeGridSelector extends StatefulWidget {
 class _TimeGridSelectorState extends State<TimeGridSelector> {
   Map<String, String> _selectedTimes = {};
   int _currentDayIndex = 0;
-
-  // Available time slots (in production, this would come from tutor's availability)
-  final List<String> _afternoonSlots = [
-    '12:00 PM',
-    '12:30 PM',
-    '1:00 PM',
-    '1:30 PM',
-    '2:00 PM',
-    '2:30 PM',
-    '3:00 PM',
-    '3:30 PM',
-    '4:00 PM',
-    '4:30 PM',
-    '5:00 PM',
-    '5:30 PM',
-  ];
-
-  final List<String> _eveningSlots = [
-    '6:00 PM',
-    '6:30 PM',
-    '7:00 PM',
-    '7:30 PM',
-    '8:00 PM',
-    '8:30 PM',
-    '9:00 PM',
-    '9:30 PM',
-  ];
-
-  // Slots that are already booked (demo data)
-  final Map<String, List<String>> _conflictSlots = {
-    'Monday': ['4:00 PM', '4:30 PM'],
-    'Wednesday': ['3:00 PM'],
-  };
+  bool _isLoading = false;
+  
+  // Loaded from service
+  List<String> _availableSlots = [];
+  
+  // Grouped slots
+  List<String> _afternoonSlots = [];
+  List<String> _eveningSlots = [];
 
   @override
   void initState() {
     super.initState();
     _selectedTimes = widget.initialTimes ?? {};
+    _loadAvailability();
+  }
+
+  @override
+  void didUpdateWidget(TimeGridSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedDays != widget.selectedDays) {
+      // Reset index if days changed significantly
+      _currentDayIndex = 0;
+      _loadAvailability();
+    }
   }
 
   String get _currentDay {
+    if (widget.selectedDays.isEmpty) return '';
     return widget.selectedDays[_currentDayIndex];
   }
 
-  bool _isSlotAvailable(String time) {
-    return !(_conflictSlots[_currentDay]?.contains(time) ?? false);
+  Future<void> _loadAvailability() async {
+    if (_currentDay.isEmpty) return;
+    
+    safeSetState(() {
+      _isLoading = true;
+      _afternoonSlots = [];
+      _eveningSlots = [];
+    });
+
+    try {
+      final tutorId = widget.tutor['user_id'] ?? widget.tutor['id'];
+      // For recurring sessions, we check generic day availability (no specific date)
+      final slots = await AvailabilityService.getAvailableTimesForDay(
+        tutorId: tutorId,
+        day: _currentDay,
+      );
+
+      // Sort slots chronologically
+      slots.sort((a, b) {
+        return _parseTime(a).compareTo(_parseTime(b));
+      });
+
+      // Group slots
+      final afternoon = <String>[];
+      final evening = <String>[];
+
+      for (final slot in slots) {
+        final time = _parseTime(slot);
+        // Afternoon: < 6 PM (18:00)
+        if (time.hour < 18) {
+          afternoon.add(slot);
+        } else {
+          evening.add(slot);
+        }
+      }
+
+      if (mounted) {
+        safeSetState(() {
+          _availableSlots = slots;
+          _afternoonSlots = afternoon;
+          _eveningSlots = evening;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      LogService.debug('Error loading availability: $e');
+      if (mounted) {
+        safeSetState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // Helper to parse "3:00 PM" to DateTime (using dummy date)
+  DateTime _parseTime(String timeStr) {
+    try {
+      final parts = timeStr.split(' ');
+      final timeParts = parts[0].split(':');
+      int hour = int.parse(timeParts[0]);
+      final minute = int.parse(timeParts[1]);
+      final isPM = parts[1].toUpperCase() == 'PM';
+
+      if (isPM && hour != 12) hour += 12;
+      if (!isPM && hour == 12) hour = 0;
+
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day, hour, minute);
+    } catch (e) {
+      return DateTime.now();
+    }
   }
 
   void _selectTime(String time) {
-    setState(() {
+    safeSetState(() {
       _selectedTimes[_currentDay] = time;
     });
     widget.onTimesSelected(_selectedTimes);
@@ -87,18 +143,24 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
 
   void _nextDay() {
     if (_currentDayIndex < widget.selectedDays.length - 1) {
-      setState(() => _currentDayIndex++);
+      safeSetState(() => _currentDayIndex++);
+      _loadAvailability();
     }
   }
 
   void _previousDay() {
     if (_currentDayIndex > 0) {
-      setState(() => _currentDayIndex--);
+      safeSetState(() => _currentDayIndex--);
+      _loadAvailability();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.selectedDays.isEmpty) {
+      return Center(child: Text('Please select days first'));
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -169,31 +231,53 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
           ),
           const SizedBox(height: 32),
 
-          // Afternoon slots
-          Text(
-            'Afternoon (12 PM - 6 PM)',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildTimeGrid(_afternoonSlots),
-          const SizedBox(height: 32),
+          if (_isLoading)
+            const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+          else ...[
+            // Afternoon slots
+            if (_afternoonSlots.isNotEmpty) ...[
+              Text(
+                'Afternoon (12 PM - 6 PM)',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildTimeGrid(_afternoonSlots),
+              const SizedBox(height: 32),
+            ],
 
-          // Evening slots
-          Text(
-            'Evening (6 PM - 10 PM)',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildTimeGrid(_eveningSlots),
-          const SizedBox(height: 24),
+            // Evening slots
+            if (_eveningSlots.isNotEmpty) ...[
+              Text(
+                'Evening (6 PM - 10 PM)',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _buildTimeGrid(_eveningSlots),
+              const SizedBox(height: 24),
+            ],
+            
+            if (_afternoonSlots.isEmpty && _eveningSlots.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40),
+                child: Center(
+                  child: Text(
+                    'No available slots for this day',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ),
+              ),
+          ],
 
           // Selected time indicator
           if (_selectedTimes.containsKey(_currentDay))
@@ -219,39 +303,6 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
                 ],
               ),
             ),
-
-          // Conflict warning (if any)
-          if (_conflictSlots[_currentDay]?.isNotEmpty ?? false) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.orange[200]!),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.warning_amber,
-                    size: 18,
-                    color: Colors.orange[700],
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Note: Tutor has another student at ${_conflictSlots[_currentDay]!.join(', ')}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.orange[900],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
 
           const SizedBox(height: 32),
 
@@ -321,21 +372,21 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
   }
 
   Widget _buildTimeSlot(String time) {
-    final isAvailable = _isSlotAvailable(time);
+    // Availability is already filtered by the service, so all displayed slots are available
     final isSelected = _selectedTimes[_currentDay] == time;
 
     return GestureDetector(
-      onTap: isAvailable ? () => _selectTime(time) : null,
+      onTap: () => _selectTime(time),
       child: Container(
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.primaryColor
-              : (isAvailable ? Colors.white : Colors.grey[100]),
+              : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
-                : (isAvailable ? Colors.grey[300]! : Colors.grey[200]!),
+                : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
@@ -349,22 +400,20 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
               : null,
         ),
         child: Center(
-          child: isAvailable
-              ? FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Text(
-                      time,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected ? Colors.white : Colors.black,
-                      ),
-                    ),
-                  ),
-                )
-              : Icon(Icons.block, size: 16, color: Colors.grey[400]),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Text(
+                time,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : Colors.black,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

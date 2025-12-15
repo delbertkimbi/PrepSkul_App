@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -231,7 +232,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
       'paymentPolicyAgreed': _paymentPolicyAgreed,
     };
     await prefs.setString('parent_survey_data', jsonEncode(data));
-    print('✅ Auto-saved parent survey data');
+    LogService.success('Auto-saved parent survey data');
   }
 
   Future<void> _loadSavedData() async {
@@ -314,7 +315,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
           _updateSteps();
         }
 
-        print(
+        LogService.debug(
           '✅ Loaded saved parent survey data - resuming at step $_currentStep',
         );
 
@@ -325,7 +326,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
           });
         }
       } catch (e) {
-        print('⚠️ Error loading saved data: $e');
+        LogService.warning('Error loading saved data: $e');
       }
     }
   }
@@ -822,7 +823,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
         });
         _saveData();
       } catch (e) {
-        print('⚠️ Error parsing date: $e');
+        LogService.warning('Error parsing date: $e');
         _childDateOfBirth = null;
       }
     } else {
@@ -2936,7 +2937,7 @@ No direct payments should be made to tutors outside the platform.''';
 
   Future<void> _completeSurvey() async {
     try {
-      print('📝 Parent Survey submission started...');
+      LogService.debug('📝 Parent Survey submission started...');
 
       // Show loading indicator
       if (!mounted) return;
@@ -3061,7 +3062,7 @@ No direct payments should be made to tutors outside the platform.''';
           },
         );
       } catch (e) {
-        print('⚠️ Error notifying admins about survey: $e');
+        LogService.warning('Error notifying admins about survey: $e');
         // Don't block survey completion if notification fails
       }
 
@@ -3069,9 +3070,9 @@ No direct payments should be made to tutors outside the platform.''';
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('parent_survey_data');
       await prefs.setBool('survey_completed', true);
-      print('✅ Cleared saved parent survey data after submission');
+      LogService.success('Cleared saved parent survey data after submission');
 
-      print('✅ Parent survey saved successfully!');
+      LogService.success('Parent survey saved successfully!');
 
       // Close loading dialog
       if (!mounted) return;
@@ -3088,7 +3089,7 @@ No direct payments should be made to tutors outside the platform.''';
       if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/parent-nav');
     } catch (e) {
-      print('❌ Error saving parent survey: $e');
+      LogService.error('Error saving parent survey: $e');
 
       // Close loading dialog if open
       if (mounted) Navigator.of(context).pop();

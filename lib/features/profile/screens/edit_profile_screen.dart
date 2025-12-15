@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
@@ -10,6 +11,7 @@ import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/widgets/branded_snackbar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Edit Profile Screen
 /// 
@@ -48,7 +50,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _loadProfileData() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
@@ -74,7 +76,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final rawPhone = profileResponse?['phone_number']?.toString() ?? '';
       final formattedPhone = _formatPhoneNumber(rawPhone);
 
-      setState(() {
+      safeSetState(() {
         _nameController.text = profileResponse?['full_name']?.toString() ?? '';
         _phoneController.text = formattedPhone;
         _emailController.text = profileResponse?['email']?.toString() ?? '';
@@ -85,8 +87,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      print('❌ Error loading profile: $e');
-      setState(() => _isLoading = false);
+      LogService.error('Error loading profile: $e');
+      safeSetState(() => _isLoading = false);
     }
   }
 
@@ -139,7 +141,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (!mounted) return;
       
-      setState(() {
+      safeSetState(() {
         _uploadedProfilePhotoUrl = uploadedUrl;
         _profilePhotoUrl = cacheBustUrl; // Use cache-busted URL for immediate display
       });
@@ -151,7 +153,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).clearSnackBars();
       BrandedSnackBar.showSuccess(context, 'Profile photo uploaded successfully!');
     } catch (e) {
-      print('❌ Error uploading profile photo: $e');
+      LogService.error('Error uploading profile photo: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).clearSnackBars();
       BrandedSnackBar.showError(context, 'Error uploading photo: ${e.toString()}');
@@ -167,7 +169,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    setState(() => _isSaving = true);
+    safeSetState(() => _isSaving = true);
 
     try {
       final user = await AuthService.getCurrentUser();
@@ -229,7 +231,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       BrandedSnackBar.showError(context, 'Error updating profile: ${e.toString()}');
     } finally {
       if (mounted) {
-        setState(() => _isSaving = false);
+        safeSetState(() => _isSaving = false);
       }
     }
   }

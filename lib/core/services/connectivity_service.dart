@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Connectivity Service
 ///
@@ -35,23 +36,33 @@ class ConnectivityService {
       _isOnline = _hasConnection(result);
       _isInitialized = true;
 
-      print('🌐 Connectivity initialized: ${_isOnline ? "Online" : "Offline"}');
+      LogService.debug('🌐 Connectivity initialized: ${_isOnline ? "Online" : "Offline"}');
 
       // Listen for connectivity changes
       _subscription = _connectivity.onConnectivityChanged.listen(
-        (ConnectivityResult result) {
+        (ConnectivityResult result) async {
           final wasOnline = _isOnline;
-          _isOnline = _hasConnection(result);
+          final newOnlineStatus = _hasConnection(result);
+          
+          // Always update internal state
+          _isOnline = newOnlineStatus;
 
-          if (wasOnline != _isOnline) {
-            print(
+          // Always notify listeners of the change (even if it seems the same)
+          // This ensures UI updates when connectivity is restored
+          if (wasOnline != newOnlineStatus) {
+            LogService.debug(
               '🌐 Connectivity changed: ${_isOnline ? "Online" : "Offline"}',
             );
             _connectivityController?.add(_isOnline);
+          } else if (!wasOnline && newOnlineStatus) {
+            // Special case: if we were offline and now online, always notify
+            // This handles edge cases where state might not have updated
+            LogService.debug('🌐 Connection restored - notifying listeners');
+            _connectivityController?.add(true);
           }
         },
         onError: (error) {
-          print('❌ Connectivity monitoring error: $error');
+          LogService.error('Connectivity monitoring error: $error');
           // Assume offline on error
           if (_isOnline) {
             _isOnline = false;
@@ -60,7 +71,7 @@ class ConnectivityService {
         },
       );
     } catch (e) {
-      print('❌ Error initializing connectivity: $e');
+      LogService.error('Error initializing connectivity: $e');
       // Default to offline on error
       _isOnline = false;
       _isInitialized = true;
@@ -80,7 +91,7 @@ class ConnectivityService {
       _isOnline = _hasConnection(result);
       return _isOnline;
     } catch (e) {
-      print('❌ Error checking connectivity: $e');
+      LogService.error('Error checking connectivity: $e');
       return false;
     }
   }

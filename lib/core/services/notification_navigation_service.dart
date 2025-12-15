@@ -8,9 +8,15 @@
  */
 
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
+import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
+import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -26,7 +32,7 @@ class NotificationNavigationService {
 
     final navService = NavigationService();
     if (!navService.isReady) {
-      print('⚠️ [NOTIF_NAV] NavigationService not ready, queueing action: $actionUrl');
+      LogService.warning('[NOTIF_NAV] NavigationService not ready, queueing action: $actionUrl');
       navService.queueDeepLink(Uri.parse(actionUrl));
       return;
     }
@@ -44,7 +50,7 @@ class NotificationNavigationService {
       // Get current user role
       final userId = SupabaseService.currentUser?.id;
       if (userId == null) {
-        print('⚠️ [NOTIF_NAV] No user found, cannot navigate');
+        LogService.warning('[NOTIF_NAV] No user found, cannot navigate');
         return;
       }
 
@@ -62,6 +68,17 @@ class NotificationNavigationService {
         await _navigateToBooking(pathSegments, userType);
       } else if (pathSegments[0] == 'trial-sessions') {
         await _navigateToTrialSession(pathSegments, userType);
+      } else if (pathSegments[0] == 'trials') {
+        // New trial routes: /trials/{id} or /trials/{id}/payment
+        if (pathSegments.length >= 3 && pathSegments[2] == 'payment') {
+          final trialId = pathSegments[1];
+          await _navigateToTrialPayment(trialId, userType);
+        } else {
+          await _navigateToTrialSession(
+            ['trial-sessions', ...pathSegments.sublist(1)],
+            userType,
+          );
+        }
       } else if (pathSegments[0] == 'profile') {
         await _navigateToProfile(userType: userType);
       } else if (pathSegments[0] == 'tutor') {
@@ -77,7 +94,7 @@ class NotificationNavigationService {
         await _navigateByNotificationType(notificationType, metadata, userType);
       }
     } catch (e) {
-      print('❌ [NOTIF_NAV] Error navigating to notification action: $e');
+      LogService.error('[NOTIF_NAV] Error navigating to notification action: $e');
       // Don't throw - navigation failure shouldn't break the app
     }
   }
@@ -93,32 +110,36 @@ class NotificationNavigationService {
 
     final bookingId = pathSegments[1];
     final navService = NavigationService();
+    final context = navService.context;
 
     try {
-      // Fetch booking request to validate it exists
-      await BookingService.getBookingRequestById(bookingId);
+      // Fetch booking request
+      final bookingRequest = await BookingService.getBookingRequestById(bookingId);
 
-      // Check if user is tutor or student
+      if (context == null) {
+        LogService.warning('[NOTIF_NAV] No context for booking navigation, queuing link');
+        navService.queueDeepLink(Uri(path: '/bookings/$bookingId'));
+        return;
+      }
+
+      // Check if user is tutor or student/parent
       if (userType == 'tutor') {
-        // Navigate to tutor booking detail screen (push, not replace)
-        // TODO: Create proper route for booking detail
-        // For now, navigate to requests tab which will show the booking
-        await navService.navigateToRoute(
-          '/tutor-nav',
-          arguments: {'initialTab': 1}, // Requests tab
-          replace: false, // Push to allow back navigation
+        // Navigate to tutor booking detail screen
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TutorBookingDetailScreen(request: bookingRequest),
+          ),
         );
       } else {
-        // For students/parents, navigate to requests tab
-        final role = userType == 'parent' ? 'parent' : 'student';
-        await navService.navigateToRoute(
-          role == 'parent' ? '/parent-nav' : '/student-nav',
-          arguments: {'initialTab': 2}, // Requests tab
-          replace: false,
+        // For students/parents, navigate to request detail screen
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RequestDetailScreen(request: bookingRequest.toJson()),
+          ),
         );
       }
     } catch (e) {
-      print('❌ [NOTIF_NAV] Error navigating to booking: $e');
+      LogService.error('[NOTIF_NAV] Error navigating to booking: $e');
       // Fallback: navigate to requests tab
       final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
       final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
@@ -143,17 +164,68 @@ class NotificationNavigationService {
     final trialId = pathSegments[1];
     final navService = NavigationService();
 
-    // Navigate to requests tab where trial sessions are shown
-    // TODO: Create proper route for trial session details
-    final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
-    final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-    final tab = role == 'tutor' ? 1 : 2;
-    
-    await navService.navigateToRoute(
-      route,
-      arguments: {'initialTab': tab, 'trialId': trialId},
-      replace: false,
-    );
+    final context = navService.context;
+
+    try {
+      // Fetch trial session
+      final trialSession = await TrialSessionService.getTrialSessionById(trialId);
+
+      if (context == null) {
+        LogService.warning('[NOTIF_NAV] No context for trial navigation, queuing link');
+        navService.queueDeepLink(Uri(path: '/trials/$trialId'));
+        return;
+      }
+
+      // Navigate to request detail screen with trial session
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RequestDetailScreen(trialSession: trialSession),
+        ),
+      );
+    } catch (e) {
+      LogService.error('[NOTIF_NAV] Error navigating to trial session: $e');
+      // Fallback: navigate to requests tab
+      final role = userType == 'parent' ? 'parent' : (userType == 'tutor' ? 'tutor' : 'student');
+      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+      final tab = role == 'tutor' ? 1 : 2;
+      
+      await navService.navigateToRoute(
+        route,
+        arguments: {'initialTab': tab, 'trialId': trialId},
+        replace: false,
+      );
+    }
+  }
+
+  /// Navigate directly to trial payment screen
+  static Future<void> _navigateToTrialPayment(
+    String trialId,
+    String? userType,
+  ) async {
+    final navService = NavigationService();
+
+    try {
+      // Load trial session to pass into payment screen
+      final TrialSession trial =
+          await TrialSessionService.getTrialSessionById(trialId);
+
+      final context = navService.context;
+      if (context == null) {
+        LogService.warning('[NOTIF_NAV] No context for trial payment navigation, queuing link');
+        navService.queueDeepLink(Uri(path: '/trials/$trialId/payment'));
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TrialPaymentScreen(trialSession: trial),
+        ),
+      );
+    } catch (e) {
+      LogService.error('[NOTIF_NAV] Error navigating to trial payment: $e');
+      // Fallback: navigate to trial sessions / requests tab
+      await _navigateToTrialSession(['trial-sessions', trialId], userType);
+    }
   }
 
   /// Navigate to profile
@@ -175,7 +247,7 @@ class NotificationNavigationService {
           userType = profile?['user_type'] as String?;
         }
       } catch (e) {
-        print('❌ [NOTIF_NAV] Error fetching user type: $e');
+        LogService.error('[NOTIF_NAV] Error fetching user type: $e');
       }
     }
 
@@ -228,16 +300,32 @@ class NotificationNavigationService {
     } else if (section == 'bookings' && pathSegments.length >= 3) {
       // Navigate to specific booking detail
       final bookingId = pathSegments[2];
+      final context = navService.context;
+      
       try {
-        // TODO: Create proper route for booking detail
-        // For now, navigate to requests tab
+        // Fetch booking request
+        final bookingRequest = await BookingService.getBookingRequestById(bookingId);
+        
+        if (context == null) {
+          LogService.warning('[NOTIF_NAV] No context for booking navigation, queuing link');
+          navService.queueDeepLink(Uri(path: '/tutor/bookings/$bookingId'));
+          return;
+        }
+
+        // Navigate to tutor booking detail screen
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TutorBookingDetailScreen(request: bookingRequest),
+          ),
+        );
+      } catch (e) {
+        LogService.error('[NOTIF_NAV] Error navigating to booking: $e');
+        // Fallback: navigate to requests tab
         await navService.navigateToRoute(
           '/tutor-nav',
           arguments: {'initialTab': 1, 'bookingId': bookingId},
           replace: false,
         );
-      } catch (e) {
-        print('❌ [NOTIF_NAV] Error navigating to booking: $e');
       }
     }
   }
@@ -290,27 +378,40 @@ class NotificationNavigationService {
       return;
     }
 
+    final sessionId = pathSegments[1];
     final action = pathSegments.length >= 3 ? pathSegments[2] : null;
 
-    if (action == 'review') {
-      // TODO: Navigate to review screen when implemented
-      // For now, navigate to sessions tab
-      if (userType == 'tutor') {
+    if (action == 'feedback' || action == 'review') {
+      // Navigate to feedback screen
+      try {
         await navService.navigateToRoute(
-          '/tutor-nav',
+          '/sessions/$sessionId/feedback',
+          replace: false,
+        );
+      } catch (e) {
+        LogService.error('[NOTIF_NAV] Error navigating to feedback screen: $e');
+        // Fallback: navigate to sessions tab
+        final role = userType == 'tutor'
+            ? 'tutor'
+            : (userType == 'parent' ? 'parent' : 'student');
+        final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+        await navService.navigateToRoute(
+          route,
           arguments: {'initialTab': 2}, // Sessions tab
           replace: false,
         );
       }
     } else {
       // Navigate to sessions tab (session details can be shown there)
-      if (userType == 'tutor') {
-        await navService.navigateToRoute(
-          '/tutor-nav',
-          arguments: {'initialTab': 2}, // Sessions tab
-          replace: false,
-        );
-      }
+      final role = userType == 'tutor'
+          ? 'tutor'
+          : (userType == 'parent' ? 'parent' : 'student');
+      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+      await navService.navigateToRoute(
+        route,
+        arguments: {'initialTab': 2}, // Sessions tab
+        replace: false,
+      );
     }
   }
 

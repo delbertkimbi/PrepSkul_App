@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 
 /// Step 4: Location Selector
 ///
@@ -86,7 +88,7 @@ class _LocationSelectorState extends State<LocationSelector> {
   }
 
   void _selectLocation(String location) async {
-    setState(() => _selectedLocation = location);
+    safeSetState(() => _selectedLocation = location);
     
     // Auto-populate address from survey if hybrid/onsite selected and address is empty
     if ((location == 'onsite' || location == 'hybrid') && 
@@ -126,7 +128,7 @@ class _LocationSelectorState extends State<LocationSelector> {
           
           final address = '${city.toString()}, ${quarter.toString()}$streetStr';
           
-          setState(() {
+          safeSetState(() {
             _addressController.text = address;
           });
           
@@ -145,7 +147,7 @@ class _LocationSelectorState extends State<LocationSelector> {
         }
       }
     } catch (e) {
-      print('⚠️ Could not auto-fill address from survey: $e');
+      LogService.warning('Could not auto-fill address from survey: $e');
       // Silent fail - user can still type manually
     }
   }
@@ -159,11 +161,11 @@ class _LocationSelectorState extends State<LocationSelector> {
     // Validate address if needed
     if (needsAddress) {
       final addressText = _addressController.text.trim();
-      setState(() {
+      safeSetState(() {
         _showAddressError = addressText.isEmpty;
       });
     } else {
-      setState(() {
+      safeSetState(() {
         _showAddressError = false;
       });
     }
@@ -251,16 +253,16 @@ class _LocationSelectorState extends State<LocationSelector> {
               onChanged: (_) {
                 // Clear error when user starts typing
                 if (_showAddressError && _addressController.text.trim().isNotEmpty) {
-                  setState(() {
+                  safeSetState(() {
                     _showAddressError = false;
                   });
                 }
                 _notifyParent();
               },
-              maxLines: 3,
+              maxLines: 1,
               decoration: InputDecoration(
                 labelText: 'Address *',
-                hintText: 'Enter your full address\nCity, Quarter, Street...',
+                hintText: 'Enter your full address (City, Quarter, Street...)',
                 hintStyle: GoogleFonts.poppins(
                   fontSize: 14,
                   color: Colors.grey[400],

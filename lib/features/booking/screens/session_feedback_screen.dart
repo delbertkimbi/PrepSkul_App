@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
 import '../services/session_feedback_service.dart';
 
 /// Session Feedback Screen
@@ -45,7 +46,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
     final canSubmit = await SessionFeedbackService.canSubmitFeedback(
       widget.sessionId,
     );
-    setState(() {
+    safeSetState(() {
       _canSubmit = canSubmit;
     });
   }
@@ -55,7 +56,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
         await SessionFeedbackService.getTimeUntilFeedbackAvailable(
           widget.sessionId,
         );
-    setState(() {
+    safeSetState(() {
       _timeRemaining = timeRemaining;
     });
 
@@ -90,7 +91,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
       return;
     }
 
-    setState(() => _isSubmitting = true);
+    safeSetState(() => _isSubmitting = true);
 
     try {
       await SessionFeedbackService.submitStudentFeedback(
@@ -141,7 +142,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        safeSetState(() => _isSubmitting = false);
       }
     }
   }
@@ -269,7 +270,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
               children: List.generate(5, (index) {
                 final rating = index + 1;
                 return GestureDetector(
-                  onTap: () => setState(() => _selectedRating = rating),
+                  onTap: () => safeSetState(() => _selectedRating = rating),
                   child: Container(
                     width: 56,
                     height: 56,
@@ -464,7 +465,7 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
   Widget _buildRecommendButton(bool recommend) {
     final isSelected = _wouldRecommend == recommend;
     return OutlinedButton(
-      onPressed: () => setState(() => _wouldRecommend = recommend),
+      onPressed: () => safeSetState(() => _wouldRecommend = recommend),
       style: OutlinedButton.styleFrom(
         side: BorderSide(
           color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,

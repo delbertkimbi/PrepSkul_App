@@ -1,9 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/payment/models/fapshi_transaction_model.dart';
+import 'package:prepskul/features/booking/services/quality_assurance_service.dart';
 
 /// Session Payment Service
 ///
@@ -118,17 +120,17 @@ class SessionPaymentService {
           earnings: tutorEarnings,
         );
       } catch (e) {
-        print('⚠️ Error sending earnings notification: $e');
+        LogService.warning('Error sending earnings notification: $e');
         // Don't fail payment creation if notification fails
       }
 
-      print('✅ Payment record created for session: $sessionId');
-      print(
+      LogService.success('Payment record created for session: $sessionId');
+      LogService.debug(
         '✅ Earnings: ${tutorEarnings.toStringAsFixed(2)} XAF (85% of ${sessionFee.toStringAsFixed(2)} XAF)',
       );
       return paymentId;
     } catch (e) {
-      print('❌ Error creating session payment: $e');
+      LogService.error('Error creating session payment: $e');
       rethrow;
     }
   }
@@ -233,12 +235,12 @@ class SessionPaymentService {
           })
           .eq('id', finalPayment['id']);
 
-      print(
+      LogService.debug(
         '✅ Payment initiated for session: $sessionId (Fapshi: ${paymentResponse.transId})',
       );
       return paymentResponse;
     } catch (e) {
-      print('❌ Error initiating payment: $e');
+      LogService.error('Error initiating payment: $e');
       rethrow;
     }
   }
@@ -268,7 +270,7 @@ class SessionPaymentService {
           .maybeSingle();
 
       if (payment == null) {
-        print('⚠️ Payment not found for transaction: $transactionId');
+        LogService.warning('Payment not found for transaction: $transactionId');
         return;
       }
 
@@ -308,7 +310,7 @@ class SessionPaymentService {
           tutorId: tutorId,
         );
 
-        print('✅ Payment confirmed for session: $sessionId');
+        LogService.success('Payment confirmed for session: $sessionId');
       } else if (status == 'FAILED' ||
           status == 'failed' ||
           status == 'EXPIRED') {
@@ -325,10 +327,10 @@ class SessionPaymentService {
         // Send notification
         await _sendPaymentFailedNotification(sessionId: sessionId);
 
-        print('⚠️ Payment failed for session: $sessionId');
+        LogService.warning('Payment failed for session: $sessionId');
       }
     } catch (e) {
-      print('❌ Error handling payment webhook: $e');
+      LogService.error('Error handling payment webhook: $e');
       // Don't rethrow - webhook should not fail
     }
   }
@@ -352,11 +354,13 @@ class SessionPaymentService {
         throw Exception('Cannot refund: Payment not confirmed');
       }
 
-      // TODO: Process refund via Fapshi API when available
+      // Note: Fapshi refund API may not be available yet
+      // When available, implement refund via Fapshi API:
       // final refundAmountValue = refundAmount ?? (payment['session_fee'] as num).toDouble();
       // final fapshiTransId = payment['fapshi_trans_id'] as String?;
-
-      // For now, just mark as refunded
+      // await FapshiService.processRefund(transId: fapshiTransId, amount: refundAmountValue);
+      
+      // For now, mark as refunded in database (manual refund processing)
       await _supabase
           .from('session_payments')
           .update({
@@ -376,12 +380,12 @@ class SessionPaymentService {
           })
           .eq('session_payment_id', payment['id']);
 
-      // Remove from wallet (if already added)
-      // TODO: Implement wallet balance reversal
+      // Note: Wallet balance reversal will be implemented when wallet system is complete
+      // For now, earnings are cancelled which prevents payout
 
-      print('✅ Refund processed for session: $sessionId');
+      LogService.success('Refund processed for session: $sessionId');
     } catch (e) {
-      print('❌ Error processing refund: $e');
+      LogService.error('Error processing refund: $e');
       rethrow;
     }
   }
@@ -399,7 +403,7 @@ class SessionPaymentService {
 
       return payment;
     } catch (e) {
-      print('❌ Error fetching session payment: $e');
+      LogService.error('Error fetching session payment: $e');
       return null;
     }
   }
@@ -407,10 +411,19 @@ class SessionPaymentService {
   /// Get tutor's wallet balances
   ///
   /// Calculates pending and active balances from tutor_earnings
+  /// Also processes any pending earnings that are ready to move to active (24-48h quality assurance period)
   static Future<Map<String, dynamic>> getTutorWalletBalances(
     String tutorId,
   ) async {
     try {
+      // Process pending earnings that are ready to move to active balance
+      // This runs automatically when tutor checks their wallet
+      try {
+        await QualityAssuranceService.processPendingEarningsToActive(qualityAssuranceHours: 24);
+      } catch (e) {
+        LogService.warning('Error processing pending earnings (non-blocking): $e');
+        // Don't fail wallet balance fetch if processing fails
+      }
       // Pending balance (earnings_status = 'pending')
       final pendingEarnings = await _supabase
           .from('tutor_earnings')
@@ -445,7 +458,7 @@ class SessionPaymentService {
         'total_balance': pendingBalance + activeBalance,
       };
     } catch (e) {
-      print('❌ Error fetching wallet balances: $e');
+      LogService.error('Error fetching wallet balances: $e');
       return {
         'pending_balance': 0.0,
         'active_balance': 0.0,
@@ -474,9 +487,9 @@ class SessionPaymentService {
           })
           .eq('session_payment_id', paymentId);
 
-      print('✅ Added $amount XAF to pending balance for tutor: $tutorId');
+      LogService.success('Added $amount XAF to pending balance for tutor: $tutorId');
     } catch (e) {
-      print('⚠️ Error adding to pending balance: $e');
+      LogService.warning('Error adding to pending balance: $e');
     }
   }
 
@@ -490,6 +503,7 @@ class SessionPaymentService {
       await _supabase
           .from('tutor_earnings')
           .update({
+            'earnings_status': 'active',
             'added_to_active_balance': true,
             'active_balance_added_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
@@ -506,9 +520,135 @@ class SessionPaymentService {
           })
           .eq('id', paymentId);
 
-      print('✅ Moved $amount XAF to active balance for tutor: $tutorId');
+      LogService.success('Moved $amount XAF to active balance for tutor: $tutorId');
     } catch (e) {
-      print('⚠️ Error moving to active balance: $e');
+      LogService.warning('Error moving to active balance: $e');
+    }
+  }
+
+  /// Process pending earnings that are ready to move to active balance
+  /// 
+  /// Checks for earnings that have been in pending status for 24-48 hours
+  /// and automatically moves them to active balance after quality assurance period
+  /// 
+  /// This should be called periodically (e.g., on app startup, or via scheduled task)
+  static Future<int> processPendingEarningsToActive({
+    int qualityAssuranceHours = 24, // Default 24 hours, can be 24-48
+  }) async {
+    try {
+      final now = DateTime.now();
+      final cutoffTime = now.subtract(Duration(hours: qualityAssuranceHours));
+      final cutoffTimeStr = cutoffTime.toIso8601String();
+
+      LogService.debug('🔄 Processing pending earnings older than $qualityAssuranceHours hours...');
+
+      // Find earnings that are:
+      // 1. Status is 'pending'
+      // 2. Payment was confirmed (payment_confirmed_at exists)
+      // 3. Payment confirmed more than qualityAssuranceHours ago
+      // 4. Not yet moved to active balance
+      
+      // First, find session_payments that were confirmed more than qualityAssuranceHours ago
+      final confirmedPaymentsResponse = await _supabase
+          .from('session_payments')
+          .select('id, payment_confirmed_at')
+          .eq('payment_status', 'paid')
+          .not('payment_confirmed_at', 'is', null)
+          .lt('payment_confirmed_at', cutoffTimeStr);
+      
+      final confirmedPayments = confirmedPaymentsResponse as List;
+      
+      if (confirmedPayments.isEmpty) {
+        LogService.success('No confirmed payments older than $qualityAssuranceHours hours');
+        return 0;
+      }
+      
+      // Create a map of payment_id -> payment_confirmed_at for quick lookup
+      final confirmedPaymentMap = <String, String>{};
+      for (final payment in confirmedPayments) {
+        final paymentId = payment['id'] as String;
+        final confirmedAt = payment['payment_confirmed_at'] as String?;
+        if (confirmedAt != null) {
+          confirmedPaymentMap[paymentId] = confirmedAt;
+        }
+      }
+      
+      if (confirmedPaymentMap.isEmpty) {
+        return 0;
+      }
+      
+      // Get all pending earnings
+      final allPendingEarningsResponse = await _supabase
+          .from('tutor_earnings')
+          .select('id, tutor_id, tutor_earnings, session_payment_id')
+          .eq('earnings_status', 'pending')
+          .eq('added_to_active_balance', false);
+      
+      final allPendingEarnings = allPendingEarningsResponse as List;
+      
+      // Filter to only those linked to confirmed payments
+      final pendingEarnings = allPendingEarnings.where((earning) {
+        final paymentId = earning['session_payment_id'] as String?;
+        return paymentId != null && confirmedPaymentMap.containsKey(paymentId);
+      }).toList();
+
+      if (pendingEarnings.isEmpty) {
+        LogService.success('No pending earnings ready to move to active balance');
+        return 0;
+      }
+
+      LogService.info('Found ${pendingEarnings.length} pending earnings ready to move to active');
+
+      int movedCount = 0;
+      for (final earning in pendingEarnings) {
+        try {
+          final earningId = earning['id'] as String;
+          final tutorId = earning['tutor_id'] as String;
+          final tutorEarnings = (earning['tutor_earnings'] as num).toDouble();
+          final paymentId = earning['session_payment_id'] as String?;
+
+          if (paymentId == null) {
+            LogService.warning('Skipping earning $earningId: no payment_id');
+            continue;
+          }
+
+          // Move to active balance
+          await _moveToActiveBalance(tutorId, tutorEarnings, paymentId);
+
+          // Send notification to tutor
+          try {
+            await NotificationService.createNotification(
+              userId: tutorId,
+              type: 'earnings_activated',
+              title: '💰 Earnings Available',
+              message: '${tutorEarnings.toStringAsFixed(0)} XAF has been moved to your active balance and is now available for withdrawal.',
+              priority: 'normal',
+              actionUrl: '/earnings',
+              actionText: 'View Earnings',
+              icon: '💰',
+              metadata: {
+                'earning_id': earningId,
+                'amount': tutorEarnings,
+                'payment_id': paymentId,
+              },
+            );
+          } catch (e) {
+            LogService.warning('Error sending earnings activation notification: $e');
+            // Don't fail the move if notification fails
+          }
+
+          movedCount++;
+        } catch (e) {
+          LogService.warning('Error processing earning ${earning['id']}: $e');
+          // Continue with next earning
+        }
+      }
+
+      LogService.success('Moved $movedCount earnings from pending to active balance');
+      return movedCount;
+    } catch (e) {
+      LogService.error('Error processing pending earnings: $e');
+      return 0;
     }
   }
 
@@ -554,7 +694,7 @@ class SessionPaymentService {
         );
       }
     } catch (e) {
-      print('⚠️ Error sending payment confirmed notifications: $e');
+      LogService.warning('Error sending payment confirmed notifications: $e');
     }
   }
 
@@ -584,7 +724,7 @@ class SessionPaymentService {
         );
       }
     } catch (e) {
-      print('⚠️ Error sending payment failed notification: $e');
+      LogService.warning('Error sending payment failed notification: $e');
     }
   }
 
@@ -622,10 +762,10 @@ class SessionPaymentService {
         );
       } catch (e) {
         // Silently fail - in-app notification already sent
-        print('⚠️ Could not send email/push notification for earnings: $e');
+        LogService.warning('Could not send email/push notification for earnings: $e');
       }
     } catch (e) {
-      print('⚠️ Error sending earnings notification: $e');
+      LogService.warning('Error sending earnings notification: $e');
     }
   }
 }

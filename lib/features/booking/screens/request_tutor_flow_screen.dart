@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -38,8 +42,8 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   String? _tutorGender;
   String? _tutorQualification;
   String? _teachingMode; // online, onsite, hybrid
-  int _minBudget = 2500;
-  int _maxBudget = 15000;
+  int _minBudget = 20000;  // Monthly budget (XAF)
+  int _maxBudget = 100000;  // Monthly budget (XAF)
 
   // Step 3: Schedule & Location
   List<String> _preferredDays = [];
@@ -72,7 +76,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   /// Pre-fill data from search filters or survey
   Future<void> _prefillFromData() async {
     if (widget.prefillData != null) {
-      setState(() {
+      safeSetState(() {
         _selectedSubjects = List<String>.from(
           widget.prefillData!['subjects'] ?? [],
         );
@@ -103,8 +107,27 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         }
 
         if (surveyData != null && mounted) {
-          // Get user's subjects from survey
-          final userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+          // Get user's subjects/skills from survey based on learning path
+          final learningPath = surveyData['learning_path']?.toString();
+          List<String> userSubjects = [];
+          
+          if (learningPath == 'Academic Tutoring') {
+            // For academic tutoring, use subjects
+            userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+          } else if (learningPath == 'Skill Development') {
+            // For skill development, use skills
+            userSubjects = List<String>.from(surveyData['skills'] ?? []);
+          } else if (learningPath == 'Exam Preparation') {
+            // For exam preparation, use exam_subjects
+            userSubjects = List<String>.from(surveyData['exam_subjects'] ?? []);
+          } else {
+            // Fallback to subjects if learning path not set
+            userSubjects = List<String>.from(surveyData['subjects'] ?? []);
+            // Also check skills as fallback
+            if (userSubjects.isEmpty) {
+              userSubjects = List<String>.from(surveyData['skills'] ?? []);
+            }
+          }
 
           // Map education level from survey to display format
           String? educationLevel = _mapEducationLevel(surveyData);
@@ -125,8 +148,16 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             );
           }
 
-          // If no subjects found, use a default list
-          if (availableSubjects.isEmpty) {
+          // If no subjects found from education level, try to use user's subjects
+          // or fall back to defaults
+          if (availableSubjects.isEmpty && userSubjects.isNotEmpty) {
+            // Use user's subjects as the base list
+            availableSubjects = List<String>.from(userSubjects);
+          }
+          
+                    // Prioritize user's subjects from survey
+          // Only use generic subjects if BOTH user's subjects AND available subjects are empty
+          if (availableSubjects.isEmpty && userSubjects.isEmpty) {
             availableSubjects = [
               'Mathematics',
               'Physics',
@@ -140,16 +171,90 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
               'History',
             ];
           }
-
-          setState(() {
+          
+          // If user has subjects but no available subjects, use user's subjects as available
+          if (availableSubjects.isEmpty && userSubjects.isNotEmpty) {
+            availableSubjects = List<String>.from(userSubjects);
+          }
+safeSetState(() {
             _userSubjects = userSubjects;
             _selectedSubjects = List<String>.from(
               userSubjects,
             ); // Pre-select user's subjects
-            _availableSubjects = availableSubjects;
+
+            // Combine user's subjects/skills with available subjects
+            // CRITICAL: User's selected subjects MUST appear FIRST
+            final Set<String> allSubjectsSet = {};
+            
+            // Step 1: Add user's selected subjects/skills FIRST (these are pre-selected)
+            for (var subject in userSubjects) {
+              if (subject != null && subject.toString().trim().isNotEmpty) {
+                allSubjectsSet.add(subject.toString().trim());
+              }
+            }
+            
+            // Step 2: Add available subjects from user's niche (education level/stream)
+            for (var subject in availableSubjects) {
+              if (subject != null && subject.toString().trim().isNotEmpty) {
+                allSubjectsSet.add(subject.toString().trim());
+              }
+            }
+            
+            // Step 3: Build final list with user's subjects FIRST, then others alphabetically
+            final List<String> finalSubjectsList = [];
+            
+            // Add user's subjects FIRST (in the order they were selected)
+            for (var subject in userSubjects) {
+              final subjectStr = subject.toString().trim();
+              if (subjectStr.isNotEmpty && allSubjectsSet.contains(subjectStr) && !finalSubjectsList.contains(subjectStr)) {
+                finalSubjectsList.add(subjectStr);
+              }
+            }
+            
+            // Add other available subjects (alphabetically sorted)
+            final otherSubjects = allSubjectsSet
+                .where((s) => !userSubjects.contains(s))
+                .toList()
+              ..sort();
+            finalSubjectsList.addAll(otherSubjects);
+            
+            // If still empty, add defaults
+            if (finalSubjectsList.isEmpty) {
+              finalSubjectsList.addAll([
+                'Mathematics',
+                'Physics',
+                'Chemistry',
+                'Biology',
+                'English',
+                'French',
+                'Computer Science',
+                'Economics',
+                'Geography',
+                'History',
+              ]);
+            }
+            
+            _availableSubjects = finalSubjectsList;
             _educationLevel = educationLevel;
-            _minBudget = surveyData?['budget_min'] as int? ?? 2500;
-            _maxBudget = surveyData?['budget_max'] as int? ?? 15000;
+            
+            // Pre-fill specific requirements from survey
+            final specificReqs = surveyData?['specific_requirements'];
+            final learningGoals = surveyData?['learning_goals'];
+            final challenges = surveyData?['challenges'];
+            
+            if (specificReqs != null) {
+              if (specificReqs is List) {
+                _selectedRequirements = List<String>.from(specificReqs);
+              } else if (specificReqs is String) {
+                _selectedRequirements = specificReqs.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+              }
+            } else if (learningGoals != null && learningGoals is List) {
+              _selectedRequirements = List<String>.from(learningGoals);
+            } else if (challenges != null && challenges is List) {
+              _selectedRequirements = List<String>.from(challenges);
+            }
+            _minBudget = ((surveyData?['budget_min'] as num?)?.toInt() ?? 20000).clamp(2000, 200000);  // Monthly budget default
+            _maxBudget = ((surveyData?['budget_max'] as num?)?.toInt() ?? 100000).clamp(2000, 200000);  // Monthly budget default
             _tutorGender = surveyData?['tutor_gender_preference']?.toString();
             _tutorQualification = surveyData?['tutor_qualification_preference']
                 ?.toString();
@@ -184,7 +289,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           _loadAvailableSubjects();
         }
       } catch (e) {
-        print('Error prefilling from survey: $e');
+        LogService.debug('Error prefilling from survey: $e');
         _loadAvailableSubjects();
       }
     }
@@ -211,14 +316,21 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
   /// Map education level from survey to display format
   String? _mapEducationLevel(Map<String, dynamic> surveyData) {
-    final eduLevel =
-        surveyData['education_level']?.toString() ??
-        surveyData['selected_education_level']?.toString();
-
-    if (eduLevel == null) return null;
+    // First check if class_level is available (more specific)
+    final classLevel = surveyData['class_level']?.toString() ?? 
+                       surveyData['class']?.toString();
+    
+    // Then check education_level
+    final eduLevel = surveyData['education_level']?.toString() ??
+                    surveyData['selected_education_level']?.toString();
+    
+    // Prefer class_level if available, otherwise use education_level
+    final levelToMap = classLevel ?? eduLevel;
+    
+    if (levelToMap == null) return null;
 
     // Normalize the education level (trim and lowercase for comparison)
-    final normalized = eduLevel.trim().toLowerCase();
+    final normalized = levelToMap.trim().toLowerCase();
 
     // Map survey education level to request tutor format
     // Handle various formats that might come from survey
@@ -295,7 +407,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
-      setState(() => _currentStep++);
+      safeSetState(() => _currentStep++);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -306,7 +418,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
   void _previousStep() {
     if (_currentStep > 0) {
-      setState(() => _currentStep--);
+      safeSetState(() => _currentStep--);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -382,7 +494,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             child: PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
-              onPageChanged: (index) => setState(() => _currentStep = index),
+              onPageChanged: (index) => safeSetState(() => _currentStep = index),
               children: [
                 _buildStep1SubjectLevel(),
                 _buildStep2Preferences(),
@@ -447,7 +559,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                     ),
                     child: Text(
                       _currentStep == _totalSteps - 1
-                          ? 'Submit Request'
+                          ? AppLocalizations.of(context)!.requestTutorSubmitRequest
                           : 'Continue',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
@@ -466,7 +578,8 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   }
 
   Widget _buildStep1SubjectLevel() {
-    // Use available subjects (from user's niche) or default
+    // Use available subjects - user's selected subjects will be first
+    // This list is already properly ordered from _prefillFromData
     final subjects = _availableSubjects.isNotEmpty
         ? _availableSubjects
         : [
@@ -481,6 +594,12 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             'Geography',
             'History',
           ];
+    
+    // Debug: Print to verify user's subjects are first
+    if (_userSubjects.isNotEmpty) {
+      LogService.debug('📚 User\'s selected subjects (should appear first): ${_userSubjects}');
+      LogService.debug('📚 Available subjects list: ${subjects.take(10).toList()}');
+    }
 
     final levels = [
       'Primary School',
@@ -499,185 +618,423 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'What subject do you need help with?',
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textDark,
-            ),
+          // Header with icon
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.primaryColor.withOpacity(0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.school,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'What subject do you need help with?',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            _userSubjects.isNotEmpty
-                ? 'Your subjects are pre-selected. You can add more if needed.'
-                : 'Select all subjects you need tutoring for',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: AppTheme.textMedium,
+          if (_userSubjects.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryColor.withOpacity(0.15),
+                    AppTheme.primaryColor.withOpacity(0.08),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.3),
+                  width: 1.5,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pre-filled from your profile',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'You can add more subjects if needed',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
+          if (_userSubjects.isEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Select all subjects you need tutoring for',
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
 
-          // Subjects - Highlight user's subjects
+          // Subjects - Modern colorful chips
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 10,
+            runSpacing: 10,
             children: subjects.map((subject) {
               final isSelected = _selectedSubjects.contains(subject);
               final isUserSubject = _userSubjects.contains(subject);
-              return FilterChip(
-                selected: isSelected,
-                label: Text(subject),
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _selectedSubjects.add(subject);
-                    } else {
+              
+              // Color scheme based on selection
+              final colors = _getSubjectColors(subject, isSelected, isUserSubject);
+              
+              return InkWell(
+                onTap: () {
+                  safeSetState(() {
+                    if (isSelected) {
                       _selectedSubjects.remove(subject);
+                    } else {
+                      _selectedSubjects.add(subject);
                     }
                   });
                 },
-                selectedColor: isUserSubject
-                    ? AppTheme.primaryColor.withOpacity(
-                        0.3,
-                      ) // Highlighted for user's subjects
-                    : AppTheme.primaryColor.withOpacity(0.2),
-                checkmarkColor: AppTheme.primaryColor,
-                side: isUserSubject && isSelected
-                    ? BorderSide(
-                        color: AppTheme.primaryColor,
-                        width: 2,
-                      ) // Highlight border
-                    : null,
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: isUserSubject && isSelected
-                      ? FontWeight
-                            .w600 // Bold for user's subjects
-                      : FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: colors,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? colors[0]
+                          : (isUserSubject
+                              ? AppTheme.primaryColor.withOpacity(0.3)
+                              : Colors.grey[300]!),
+                      width: isSelected ? 0 : 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: colors[0].withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isUserSubject && isSelected)
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      if (isUserSubject && isSelected) const SizedBox(width: 6),
+                      Text(
+                        subject,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected ? Colors.white : AppTheme.textDark,
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                avatar: isUserSubject && isSelected
-                    ? Icon(Icons.star, size: 16, color: AppTheme.primaryColor)
-                    : null,
               );
             }).toList(),
           ),
           const SizedBox(height: 32),
 
-          // Education Level - Pre-selected from survey
-          Text(
-            'Education Level',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...levels.map((level) {
-            final isPreSelected = _educationLevel == level;
-            return RadioListTile<String>(
-              value: level,
-              groupValue: _educationLevel,
-              onChanged: (value) => setState(() => _educationLevel = value),
-              title: Row(
-                children: [
-                  Text(
-                    level,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: isPreSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                  if (isPreSelected) ...[
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.check_circle,
-                      size: 18,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ],
-                ],
+          // Education Level - Modern card selection
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                Icons.school_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
               ),
-              activeColor: AppTheme.primaryColor,
-              contentPadding: EdgeInsets.zero,
+              const SizedBox(width: 8),
+              Text(
+                AppLocalizations.of(context)!.requestTutorEducationLevel,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ...levels.map((level) {
+            final isSelected = _educationLevel == level;
+            final icon = _getEducationLevelIcon(level);
+            
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: InkWell(
+                onTap: () => safeSetState(() => _educationLevel = level),
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: [
+                              AppTheme.primaryColor,
+                              AppTheme.primaryColor.withOpacity(0.8),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : Colors.grey[300]!,
+                      width: isSelected ? 0 : 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? Colors.white.withOpacity(0.2)
+                              : AppTheme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          icon,
+                          color: isSelected ? Colors.white : AppTheme.primaryColor,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Text(
+                          level,
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      if (isSelected)
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            color: AppTheme.primaryColor,
+                            size: 18,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             );
           }).toList(),
           const SizedBox(height: 24),
 
-          // Specific Requirements - Now selectable options
-          Text(
-            'Specific Requirements (Optional)',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textDark,
-            ),
+          // Specific Requirements - Modern design
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                Icons.tune_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                AppLocalizations.of(context)!.requestTutorSpecificRequirements,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
-            'Select all that apply',
+            AppLocalizations.of(context)!.requestTutorSelectAll,
             style: GoogleFonts.poppins(
               fontSize: 13,
               color: AppTheme.textMedium,
-              fontStyle: FontStyle.italic,
+              fontWeight: FontWeight.w500,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 10,
+            runSpacing: 10,
             children: requirementOptions.map((req) {
               final isSelected = _selectedRequirements.contains(req['value']);
-              return FilterChip(
-                selected: isSelected,
-                label: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (req['icon'] != null) ...[
-                      Icon(
-                        req['icon'] as IconData,
-                        size: 16,
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : AppTheme.textMedium,
-                      ),
-                      const SizedBox(width: 6),
-                    ],
-                    Flexible(
-                      child: Text(
-                        req['label'] as String,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      _selectedRequirements.add(req['value'] as String);
-                    } else {
+              final reqColors = _getRequirementColors(req['value'] as String, isSelected);
+              
+              return InkWell(
+                onTap: () {
+                  safeSetState(() {
+                    if (isSelected) {
                       _selectedRequirements.remove(req['value'] as String);
+                    } else {
+                      _selectedRequirements.add(req['value'] as String);
                     }
                   });
                 },
-                selectedColor: AppTheme.primaryColor.withOpacity(0.15),
-                checkmarkColor: AppTheme.primaryColor,
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: isSelected
+                        ? LinearGradient(
+                            colors: reqColors,
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
+                    color: isSelected ? null : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected
+                          ? reqColors[0]
+                          : Colors.grey[300]!,
+                      width: isSelected ? 0 : 1.5,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: reqColors[0].withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (req['icon'] != null) ...[
+                        Icon(
+                          req['icon'] as IconData,
+                          size: 18,
+                          color: isSelected ? Colors.white : AppTheme.primaryColor,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Text(
+                          req['label'] as String,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                            color: isSelected ? Colors.white : AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               );
             }).toList(),
@@ -685,6 +1042,65 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         ],
       ),
     );
+  }
+
+  /// Get color scheme for subject chips
+  List<Color> _getSubjectColors(String subject, bool isSelected, bool isUserSubject) {
+    if (!isSelected) return [Colors.grey, Colors.grey];
+    
+    // Different color gradients for different subjects
+    final subjectLower = subject.toLowerCase();
+    if (subjectLower.contains('math') || subjectLower.contains('physics')) {
+      return [Colors.blue[600]!, Colors.blue[400]!];
+    } else if (subjectLower.contains('chem') || subjectLower.contains('bio')) {
+      return [Colors.green[600]!, Colors.green[400]!];
+    } else if (subjectLower.contains('english') || subjectLower.contains('french')) {
+      return [Colors.purple[600]!, Colors.purple[400]!];
+    } else if (subjectLower.contains('computer') || subjectLower.contains('science')) {
+      return [Colors.orange[600]!, Colors.orange[400]!];
+    } else {
+      return [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.7)];
+    }
+  }
+
+  /// Get icon for education level
+  IconData _getEducationLevelIcon(String level) {
+    if (level.contains('Primary')) {
+      return Icons.child_care_rounded;
+    } else if (level.contains('Form 1-3')) {
+      return Icons.school_rounded;
+    } else if (level.contains('O-Level')) {
+      return Icons.assignment_rounded;
+    } else if (level.contains('Lower Sixth')) {
+      return Icons.menu_book_rounded;
+    } else if (level.contains('A-Level')) {
+      return Icons.workspace_premium_rounded;
+    } else if (level.contains('University')) {
+      return Icons.school_rounded;
+    }
+    return Icons.school_rounded;
+  }
+
+  /// Get color scheme for requirement chips
+  List<Color> _getRequirementColors(String value, bool isSelected) {
+    if (!isSelected) return [Colors.grey, Colors.grey];
+    
+    switch (value) {
+      case 'exam_preparation':
+        return [Colors.red[600]!, Colors.red[400]!];
+      case 'gce_exams':
+        return [Colors.blue[600]!, Colors.blue[400]!];
+      case 'homework_help':
+        return [Colors.green[600]!, Colors.green[400]!];
+      case 'catch_up':
+        return [Colors.orange[600]!, Colors.orange[400]!];
+      case 'difficult_topic':
+        return [Colors.purple[600]!, Colors.purple[400]!];
+      case 'improve_grades':
+        return [Colors.teal[600]!, Colors.teal[400]!];
+      default:
+        return [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.7)];
+    }
   }
 
   List<Map<String, dynamic>> _getRequirementOptions() {
@@ -741,7 +1157,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Tutor Preferences',
+            AppLocalizations.of(context)!.requestTutorTutorPreferences,
             style: GoogleFonts.poppins(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -750,7 +1166,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Help us find the perfect match for you',
+            AppLocalizations.of(context)!.requestTutorHelpFindMatch,
             style: GoogleFonts.poppins(
               fontSize: 14,
               color: AppTheme.textMedium,
@@ -759,14 +1175,14 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Teaching Mode
-          _buildSectionTitle('Teaching Mode *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorTeachingMode),
           const SizedBox(height: 12),
           _buildOptionCard(
             icon: Icons.laptop_mac,
             title: 'Online',
             subtitle: 'Virtual sessions via video call',
             isSelected: _teachingMode == 'online',
-            onTap: () => setState(() => _teachingMode = 'online'),
+            onTap: () => safeSetState(() => _teachingMode = 'online'),
           ),
           const SizedBox(height: 12),
           _buildOptionCard(
@@ -774,7 +1190,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             title: 'Onsite',
             subtitle: 'In-person at your location',
             isSelected: _teachingMode == 'onsite',
-            onTap: () => setState(() => _teachingMode = 'onsite'),
+            onTap: () => safeSetState(() => _teachingMode = 'onsite'),
           ),
           const SizedBox(height: 12),
           _buildOptionCard(
@@ -782,14 +1198,14 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             title: 'Hybrid',
             subtitle: 'Mix of online and onsite',
             isSelected: _teachingMode == 'hybrid',
-            onTap: () => setState(() => _teachingMode = 'hybrid'),
+            onTap: () => safeSetState(() => _teachingMode = 'hybrid'),
           ),
           const SizedBox(height: 32),
 
           // Budget Range
-          _buildSectionTitle('Budget Range'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorBudgetRange),
           Text(
-            'Per month',
+            AppLocalizations.of(context)!.requestTutorPerMonth,
             style: GoogleFonts.poppins(
               fontSize: 12,
               color: AppTheme.textMedium,
@@ -818,13 +1234,13 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             ],
           ),
           RangeSlider(
-            values: RangeValues(_minBudget.toDouble(), _maxBudget.toDouble()),
+            values: RangeValues(_minBudget.toDouble().clamp(2000.0, 200000.0), _maxBudget.toDouble().clamp(2000.0, 200000.0)),
             min: 2000,
-            max: 20000,
+            max: 200000,  // Monthly budget range
             divisions: 36,
             activeColor: AppTheme.primaryColor,
             onChanged: (values) {
-              setState(() {
+              safeSetState(() {
                 _minBudget = values.start.toInt();
                 _maxBudget = values.end.toInt();
               });
@@ -833,7 +1249,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 24),
 
           // Gender Preference
-          _buildSectionTitle('Gender Preference (Optional)'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorGenderPreference),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -843,7 +1259,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                 label: Text(gender),
                 selected: isSelected,
                 onSelected: (selected) {
-                  setState(() => _tutorGender = selected ? gender : null);
+                  safeSetState(() => _tutorGender = selected ? gender : null);
                 },
                 selectedColor: AppTheme.primaryColor.withOpacity(0.2),
                 labelStyle: GoogleFonts.poppins(
@@ -857,7 +1273,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 24),
 
           // Qualification
-          _buildSectionTitle('Tutor Qualification (Optional)'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorQualification),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -917,7 +1333,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Schedule & Location',
+            AppLocalizations.of(context)!.requestTutorScheduleLocation,
             style: GoogleFonts.poppins(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -926,7 +1342,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            'When and where would you like the sessions?',
+            AppLocalizations.of(context)!.requestTutorWhenWhere,
             style: GoogleFonts.poppins(
               fontSize: 14,
               color: AppTheme.textMedium,
@@ -935,7 +1351,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Preferred Days
-          _buildSectionTitle('Preferred Days *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorPreferredDays),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -946,7 +1362,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                 selected: isSelected,
                 label: Text(day),
                 onSelected: (selected) {
-                  setState(() {
+                  safeSetState(() {
                     if (selected) {
                       _preferredDays.add(day);
                     } else {
@@ -967,13 +1383,13 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Preferred Time
-          _buildSectionTitle('Preferred Time *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorPreferredTime),
           const SizedBox(height: 12),
           ...times.map((time) {
             return RadioListTile<String>(
               value: time,
               groupValue: _preferredTime,
-              onChanged: (value) => setState(() => _preferredTime = value),
+              onChanged: (value) => safeSetState(() => _preferredTime = value),
               title: Text(time, style: GoogleFonts.poppins(fontSize: 14)),
               activeColor: AppTheme.primaryColor,
               contentPadding: EdgeInsets.zero,
@@ -982,7 +1398,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Location
-          _buildSectionTitle('Location *'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorLocation),
           const SizedBox(height: 12),
           TextField(
             controller: _locationController,
@@ -1012,7 +1428,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             controller: _locationDescriptionController,
             maxLines: 3,
             decoration: InputDecoration(
-              labelText: 'Location Description (Optional)',
+              labelText: AppLocalizations.of(context)!.requestTutorLocationDescription,
               hintText:
                   'Add landmarks, nearby buildings, or clear directions to help the tutor find your location easily',
               hintStyle: GoogleFonts.poppins(
@@ -1089,6 +1505,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                           final options = _getRequirementOptions();
                           final option = options.firstWhere(
                             (o) => o['value'] == r,
+                            orElse: () => {'label': r, 'value': r},
                           );
                           return option['label'] as String;
                         })
@@ -1117,7 +1534,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           const SizedBox(height: 32),
 
           // Urgency
-          _buildSectionTitle('How urgent is this request?'),
+          _buildSectionTitle(AppLocalizations.of(context)!.requestTutorUrgency),
           const SizedBox(height: 12),
           ...['urgent', 'normal', 'flexible'].map((urgencyLevel) {
             final labels = {
@@ -1128,7 +1545,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             return RadioListTile<String>(
               value: urgencyLevel,
               groupValue: _urgency,
-              onChanged: (value) => setState(() => _urgency = value!),
+              onChanged: (value) => safeSetState(() => _urgency = value!),
               title: Text(
                 labels[urgencyLevel]!,
                 style: GoogleFonts.poppins(fontSize: 14),
@@ -1181,7 +1598,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
                 subtitle: reason['subtitle'] as String?,
                 isSelected: isSelected,
                 onTap: () {
-                  setState(() {
+                  safeSetState(() {
                     _requestReason = reason['value'] as String;
                     if (_requestReason != 'other') {
                       _customReasonController.clear();
@@ -1412,7 +1829,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         ),
       );
       // Navigate back to step 1
-      setState(() => _currentStep = 0);
+      safeSetState(() => _currentStep = 0);
       _pageController.animateToPage(
         0,
         duration: const Duration(milliseconds: 300),
@@ -1432,7 +1849,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         ),
       );
       // Navigate back to step 2
-      setState(() => _currentStep = 1);
+      safeSetState(() => _currentStep = 1);
       _pageController.animateToPage(
         1,
         duration: const Duration(milliseconds: 300),
@@ -1452,7 +1869,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         ),
       );
       // Navigate back to step 3
-      setState(() => _currentStep = 2);
+      safeSetState(() => _currentStep = 2);
       _pageController.animateToPage(
         2,
         duration: const Duration(milliseconds: 300),
@@ -1472,7 +1889,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         ),
       );
       // Navigate back to step 3
-      setState(() => _currentStep = 2);
+      safeSetState(() => _currentStep = 2);
       _pageController.animateToPage(
         2,
         duration: const Duration(milliseconds: 300),
@@ -1492,7 +1909,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         ),
       );
       // Navigate back to step 3
-      setState(() => _currentStep = 2);
+      safeSetState(() => _currentStep = 2);
       _pageController.animateToPage(
         2,
         duration: const Duration(milliseconds: 300),
@@ -1539,7 +1956,10 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
             ? _selectedRequirements
                   .map((r) {
                     final options = _getRequirementOptions();
-                    final option = options.firstWhere((o) => o['value'] == r);
+                    final option = options.firstWhere(
+                      (o) => o['value'] == r,
+                      orElse: () => {'label': r, 'value': r},
+                    );
                     return option['label'] as String;
                   })
                   .join(', ')
@@ -1552,19 +1972,26 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
         preferredDays: _preferredDays,
         preferredTime: _preferredTime!,
         location: _locationController.text.trim(),
-        locationDescription:
-            _locationDescriptionController.text.trim().isNotEmpty
-            ? _locationDescriptionController.text.trim()
-            : null,
+        locationDescription: null,  // Column doesn't exist in DB, storing in additional_notes instead
         urgency: _urgency,
-        additionalNotes: _requestReason == 'other'
-            ? _customReasonController.text.trim()
-            : (_requestReason != null
-                  ? _getRequestReasonOptions().firstWhere(
-                          (r) => r['value'] == _requestReason,
-                        )['title']
-                        as String
-                  : null),
+        additionalNotes: () {
+          String notes = '';
+          if (_requestReason == 'other') {
+            notes = _customReasonController.text.trim();
+          } else if (_requestReason != null) {
+            final reasonOption = _getRequestReasonOptions().firstWhere(
+              (r) => r['value'] == _requestReason,
+              orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
+            );
+            notes = reasonOption['title'] as String;
+          }
+          // Append location description if provided (for hybrid/onsite)
+          if (_locationDescriptionController.text.trim().isNotEmpty) {
+            if (notes.isNotEmpty) notes += '\n\n';
+            notes += 'Location Description: ' + _locationDescriptionController.text.trim();
+          }
+          return notes.isEmpty ? null : notes;
+        }(),
       );
 
       // Send WhatsApp notification to PrepSkul team
@@ -1576,9 +2003,9 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
       // Show success
       _showSuccessDialog();
     } catch (e) {
-      print('❌ Error submitting request: $e');
-      print('❌ Error details: ${e.toString()}');
-      print('❌ Stack trace: ${StackTrace.current}');
+      LogService.error('Error submitting request: $e');
+      LogService.error('Error details: ${e.toString()}');
+      LogService.error('Stack trace: ${StackTrace.current}');
 
       // Close loading
       if (mounted) Navigator.pop(context);
@@ -1639,10 +2066,18 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
     final userProfile = await AuthService.getUserProfile();
     final userName = userProfile?['full_name'] ?? 'User';
     final userPhone = userProfile?['phone_number'] ?? 'Not provided';
+    
+    // Get user type for personalized message
+    final userType = userProfile?['user_type']?.toString() ?? 'user';
+      final isParent = userType == 'parent';
+      
+      final greeting = isParent 
+          ? 'Hello PrepSkul Team,\n\nI\'m requesting a tutor for my child.'
+          : 'Hello PrepSkul Team,\n\nI\'m looking for a tutor.';
+      
+      final message = '''\$greeting
 
-    final message =
-        '''
-🎓 *New Tutor Request* 
+*Request Details - Request #$requestId* 
 
 *Request ID:* $requestId
 *From:* $userName ($userPhone)
@@ -1662,9 +2097,15 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
 
 ${_selectedRequirements.isNotEmpty ? '*Requirements:*\n${_selectedRequirements.map((r) {
                 final options = _getRequirementOptions();
-                final option = options.firstWhere((o) => o['value'] == r);
+                final option = options.firstWhere(
+                  (o) => o['value'] == r,
+                  orElse: () => {'label': r, 'value': r},
+                );
                 return option['label'] as String;
-              }).join(', ')}\n\n' : ''}${_requestReason != null ? '*Reason for Request:*\n${_requestReason == 'other' ? (_customReasonController.text.trim().isNotEmpty ? _customReasonController.text.trim() : 'Other') : _getRequestReasonOptions().firstWhere((r) => r['value'] == _requestReason)['title']}\n\n' : ''}---
+              }).join(', ')}\n\n' : ''}${_requestReason != null ? '*Reason for Request:*\n${_requestReason == 'other' ? (_customReasonController.text.trim().isNotEmpty ? _customReasonController.text.trim() : 'Other') : _getRequestReasonOptions().firstWhere(
+                  (r) => r['value'] == _requestReason,
+                  orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
+                )['title']}\n\n' : ''}---
 Please find a tutor for this user as soon as possible.
 ''';
 
@@ -1672,13 +2113,78 @@ Please find a tutor for this user as soon as possible.
       'https://wa.me/237653301997?text=${Uri.encodeComponent(message)}',
     );
 
-    try {
-      if (await canLaunchUrl(whatsappUrl)) {
-        await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+          // Show dialog to ask if user wants to send WhatsApp message
+      if (mounted) {
+        final shouldSend = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              AppLocalizations.of(context)!.requestTutorSendWhatsApp,
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            content: Text(
+              AppLocalizations.of(context)!.requestTutorWhatsAppPrompt,
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(
+                  AppLocalizations.of(context)!.requestTutorSkip,
+                  style: GoogleFonts.poppins(
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                ),
+                child: Text(
+                  AppLocalizations.of(context)!.requestTutorSend,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ) ?? false;
+        
+        if (shouldSend) {
+          try {
+            if (await canLaunchUrl(whatsappUrl)) {
+              await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Could not open WhatsApp'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            LogService.debug('Could not launch WhatsApp: \$e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Could not open WhatsApp'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        }
       }
-    } catch (e) {
-      print('Could not launch WhatsApp: $e');
-    }
   }
 
   void _showSuccessDialog() {
@@ -1740,7 +2246,7 @@ Please find a tutor for this user as soon as possible.
                   ),
                 ),
                 child: Text(
-                  'Done',
+                  AppLocalizations.of(context)!.requestTutorDone,
                   style: GoogleFonts.poppins(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,

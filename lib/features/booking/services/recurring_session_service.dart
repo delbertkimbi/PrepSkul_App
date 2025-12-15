@@ -1,6 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
+
 
 /// RecurringSessionService
 ///
@@ -10,9 +14,13 @@ class RecurringSessionService {
   static SupabaseClient get _supabase => SupabaseService.client;
 
   /// Create a recurring session from an approved booking request
+  /// Create a recurring session from an approved booking request
+  /// 
+  /// [paymentRequestId] - Optional payment request ID to link after creation
   static Future<Map<String, dynamic>> createRecurringSessionFromBooking(
-    BookingRequest bookingRequest,
-  ) async {
+    BookingRequest bookingRequest, {
+    String? paymentRequestId,
+  }) async {
     try {
       // Calculate start date (next available session date)
       final startDate = _calculateStartDate(bookingRequest);
@@ -56,23 +64,89 @@ class RecurringSessionService {
           .select()
           .single();
 
-      print('✅ Recurring session created: ${response['id']}');
+      LogService.success('Recurring session created: ${response['id']}');
+
+      // Link payment request to recurring session if provided
+      if (paymentRequestId != null) {
+        try {
+          await PaymentRequestService.linkPaymentRequestToRecurringSession(
+            paymentRequestId,
+            response['id'] as String,
+          );
+          LogService.success('Payment request linked to recurring session');
+        } catch (e) {
+          LogService.warning('Failed to link payment request to recurring session: $e');
+          // Don't fail the recurring session creation if linking fails
+        }
+      }
 
       // Generate initial individual sessions (next 8 weeks)
+      // Sessions are created WITHOUT calendar events - user can add to calendar later
       try {
         await generateIndividualSessions(
           recurringSessionId: response['id'] as String,
           weeksAhead: 8,
         );
-        print('✅ Initial individual sessions generated');
+        LogService.success('Initial individual sessions generated (without calendar events)');
+        
+        // Schedule session reminder notifications (24h, 1h, 15min before)
+        try {
+          final tutorProfile = await _supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', bookingRequest.tutorId)
+              .maybeSingle();
+          final studentProfile = await _supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', bookingRequest.studentId)
+              .maybeSingle();
+          
+          final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+          final studentName = studentProfile?['full_name'] as String? ?? 'Student';
+          
+          // Calculate first session start time
+          final firstSessionStart = _calculateStartDate(bookingRequest);
+          final firstDay = bookingRequest.days.first;
+          final firstTime = bookingRequest.times[firstDay] ?? '10:00 AM';
+          final timeParts = firstTime.replaceAll(' ', '').split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 10;
+          final minute = int.tryParse(timeParts[1].replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+          final isPM = firstTime.toUpperCase().contains('PM');
+          final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
+          
+          final sessionStart = DateTime(
+            firstSessionStart.year,
+            firstSessionStart.month,
+            firstSessionStart.day,
+            hour24,
+            minute,
+          );
+          
+          // Schedule reminders for all individual sessions (will be scheduled when sessions are generated)
+          // For now, schedule for the first session
+          await NotificationHelperService.scheduleSessionReminders(
+            tutorId: bookingRequest.tutorId,
+            studentId: bookingRequest.studentId,
+            sessionId: response['id'] as String, // Use recurring session ID for now
+            sessionType: 'recurring',
+            tutorName: tutorName,
+            studentName: studentName,
+            sessionStart: sessionStart,
+            subject: bookingRequest.subject ?? 'Tutoring Session',
+          );
+        } catch (e) {
+          LogService.warning('Failed to schedule session reminders: $e');
+          // Don't fail session creation if reminder scheduling fails
+        }
       } catch (e) {
-        print('⚠️ Failed to generate initial individual sessions: $e');
+        LogService.warning('Failed to generate initial individual sessions: $e');
         // Don't fail the recurring session creation if individual session generation fails
       }
 
       return response;
     } catch (e) {
-      print('❌ Error creating recurring session: $e');
+      LogService.error('Error creating recurring session: $e');
       rethrow;
     }
   }
@@ -144,7 +218,7 @@ class RecurringSessionService {
       final response = await query.order('start_date', ascending: true);
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching tutor recurring sessions: $e');
+      LogService.error('Error fetching tutor recurring sessions: $e');
       throw Exception('Failed to fetch recurring sessions: $e');
     }
   }
@@ -167,7 +241,7 @@ class RecurringSessionService {
       final response = await query.order('start_date', ascending: true);
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('❌ Error fetching student recurring sessions: $e');
+      LogService.error('Error fetching student recurring sessions: $e');
       throw Exception('Failed to fetch recurring sessions: $e');
     }
   }
@@ -193,9 +267,9 @@ class RecurringSessionService {
           .update(updateData)
           .eq('id', sessionId);
 
-      print('✅ Session status updated: $sessionId -> $status');
+      LogService.success('Session status updated: $sessionId -> $status');
     } catch (e) {
-      print('❌ Error updating session status: $e');
+      LogService.error('Error updating session status: $e');
       rethrow;
     }
   }
@@ -304,7 +378,7 @@ class RecurringSessionService {
             'scheduled_date': dateFormatted,
             'scheduled_time': timeFormatted,
             'duration_minutes': durationMinutes,
-            'location': location == 'hybrid' ? 'online' : location, // Default hybrid to online
+            'location': location, // Supports 'online', 'onsite', or 'hybrid'
             'onsite_address': location == 'onsite' || location == 'hybrid' ? address : null,
             'status': 'scheduled',
             'created_at': DateTime.now().toIso8601String(),
@@ -321,12 +395,12 @@ class RecurringSessionService {
           final chunk = sessionsToCreate.skip(i).take(chunkSize).toList();
           await _supabase.from('individual_sessions').insert(chunk);
         }
-        print('✅ Generated ${sessionsToCreate.length} individual sessions');
+        LogService.success('Generated ${sessionsToCreate.length} individual sessions');
       } else {
-        print('ℹ️ No new individual sessions to generate');
+        LogService.info('No new individual sessions to generate');
       }
     } catch (e) {
-      print('❌ Error generating individual sessions: $e');
+      LogService.error('Error generating individual sessions: $e');
       rethrow;
     }
   }

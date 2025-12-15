@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 
@@ -23,7 +25,7 @@ class _TutorStudentsScreenState extends State<TutorStudentsScreen> {
   }
 
   Future<void> _loadStudents() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
     try {
       // Fetch active recurring sessions (each represents a student)
       final sessions = await RecurringSessionService.getTutorRecurringSessions(
@@ -60,13 +62,13 @@ class _TutorStudentsScreenState extends State<TutorStudentsScreen> {
         uniqueStudents[studentId]!['total_revenue'] = currentRevenue + sessionRevenue;
       }
 
-      setState(() {
+      safeSetState(() {
         _students = uniqueStudents.values.toList();
         _isLoading = false;
       });
     } catch (e) {
-      print('❌ Error loading students: $e');
-      setState(() => _isLoading = false);
+      LogService.error('Error loading students: $e');
+      safeSetState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

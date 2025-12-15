@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
 
 // Helper function to safely cast dynamic values
 T? _safeCast<T>(dynamic value) {
@@ -26,6 +29,7 @@ class TutorService {
 
   /// Fetch all tutors
   /// Returns list of tutor profiles with all details
+  /// Automatically uses cache when offline
   static Future<List<Map<String, dynamic>>> fetchTutors({
     String? subject,
     int? minRate,
@@ -33,8 +37,36 @@ class TutorService {
     double? minRating,
     bool? isVerified,
   }) async {
+    // Check connectivity first
+    final connectivity = ConnectivityService();
+    await connectivity.initialize();
+    final isOnline = await connectivity.checkConnectivity();
+    
+    // If offline, try to return cached data
+    if (!isOnline) {
+      LogService.info('TutorService: Offline - checking cache...');
+      final cachedTutors = await OfflineCacheService.getCachedTutors();
+      if (cachedTutors != null && cachedTutors.isNotEmpty) {
+        LogService.success('TutorService: Returning ${cachedTutors.length} tutors from cache');
+        // Apply filters to cached data if needed
+        return _applyFiltersToTutors(
+          cachedTutors,
+          subject: subject,
+          minRate: minRate,
+          maxRate: maxRate,
+          minRating: minRating,
+          isVerified: isVerified,
+        );
+      } else {
+        LogService.warning('TutorService: No cached tutors available');
+        return []; // Return empty list when offline and no cache
+      }
+    }
+    
+    // Online - fetch from source
+    List<Map<String, dynamic>> tutors;
     if (USE_DEMO_DATA) {
-      return _fetchDemoTutors(
+      tutors = await _fetchDemoTutors(
         subject: subject,
         minRate: minRate,
         maxRate: maxRate,
@@ -42,7 +74,7 @@ class TutorService {
         isVerified: isVerified,
       );
     } else {
-      return _fetchSupabaseTutors(
+      tutors = await _fetchSupabaseTutors(
         subject: subject,
         minRate: minRate,
         maxRate: maxRate,
@@ -50,6 +82,67 @@ class TutorService {
         isVerified: isVerified,
       );
     }
+    
+    // Cache the fetched tutors for offline use
+    if (tutors.isNotEmpty) {
+      await OfflineCacheService.cacheTutors(tutors);
+    }
+    
+    return tutors;
+  }
+  
+  /// Apply filters to a list of tutors (for offline cached data)
+  static List<Map<String, dynamic>> _applyFiltersToTutors(
+    List<Map<String, dynamic>> tutors, {
+    String? subject,
+    int? minRate,
+    int? maxRate,
+    double? minRating,
+    bool? isVerified,
+  }) {
+    var filtered = tutors;
+    
+    if (subject != null && subject.isNotEmpty) {
+      filtered = filtered.where((tutor) {
+        final subjects = tutor['subjects'] as List?;
+        final specializations = tutor['specializations'] as List?;
+        final allSubjects = [
+          ...?subjects?.map((s) => s.toString().toLowerCase()),
+          ...?specializations?.map((s) => s.toString().toLowerCase()),
+        ];
+        return allSubjects.contains(subject.toLowerCase());
+      }).toList();
+    }
+    
+    if (minRate != null) {
+      filtered = filtered.where((tutor) {
+        final rate = _safeCast<num>(tutor['hourly_rate']) ?? 0;
+        return rate >= minRate;
+      }).toList();
+    }
+    
+    if (maxRate != null) {
+      filtered = filtered.where((tutor) {
+        final rate = _safeCast<num>(tutor['hourly_rate']) ?? 0;
+        return rate <= maxRate;
+      }).toList();
+    }
+    
+    if (minRating != null) {
+      filtered = filtered.where((tutor) {
+        final rating = _safeCast<num>(tutor['rating']) ?? 0.0;
+        return rating >= minRating;
+      }).toList();
+    }
+    
+    if (isVerified != null) {
+      filtered = filtered.where((tutor) {
+        final verified = _safeCast<bool>(tutor['is_verified']) ?? false;
+        return verified == isVerified;
+      }).toList();
+    }
+    
+    return filtered;
   }
 
   /// Fetch single tutor by ID
@@ -191,9 +284,7 @@ class TutorService {
       // Build query - use INNER join to ensure we only get tutors with profiles
       // The relationship is: tutor_profiles.user_id -> profiles.id
       // Try multiple relationship syntaxes for compatibility
-      print(
-        '🔍 Query: Fetching approved tutors with profile data via user_id relationship',
-      );
+      LogService.database('Fetching approved tutors with profile data via user_id relationship');
       
       var query = SupabaseService.client
           .from('tutor_profiles')
@@ -205,7 +296,8 @@ class TutorService {
               email
             )
           ''')
-          .eq('status', 'approved'); // Only show approved tutors
+          .eq('status', 'approved')
+          .neq('is_hidden', true); // Only show approved & not-hidden tutors
 
       // Also fetch profile_photo_url from tutor_profiles (if it exists)
 
@@ -230,88 +322,103 @@ class TutorService {
         query = query.eq('is_verified', isVerified);
       }
 
-      print('🔍 Executing query...');
+      LogService.database('Executing query...');
       List rawTutors;
       try {
       final response = await query.order('rating', ascending: false);
         rawTutors = response as List;
-        print(
-          '✅ Query successful! Raw query returned ${rawTutors.length} approved tutors from Supabase',
-        );
+        LogService.success('Query successful: Raw query returned ${rawTutors.length} approved tutors from Supabase');
       } catch (queryError) {
-        print('❌ Query failed with error: $queryError');
-        print('❌ Query error type: ${queryError.runtimeType}');
+        LogService.error('Query failed with error: $queryError');
+        LogService.error('Query error type: ${queryError.runtimeType}');
         
         // Try fallback query without relationship join
-        print('🔄 Attempting fallback query without relationship join...');
+        LogService.info('Attempting fallback query without relationship join...');
         try {
           final fallbackQuery = SupabaseService.client
               .from('tutor_profiles')
               .select('*')
-              .eq('status', 'approved');
+              .eq('status', 'approved')
+              .neq('is_hidden', true);
           
           final fallbackResponse = await fallbackQuery.order('rating', ascending: false);
           final fallbackTutors = fallbackResponse as List;
-          print('✅ Fallback query returned ${fallbackTutors.length} tutors');
+          LogService.success('Fallback query returned ${fallbackTutors.length} tutors');
           
           if (fallbackTutors.isEmpty) {
-            print('⚠️ Fallback query also returned no tutors');
+            LogService.warning('Fallback query also returned no tutors');
             return [];
           }
           
-          // Fetch profiles separately for each tutor
-          print('🔄 Fetching profiles separately...');
-          final tutorsWithProfiles = <Map<String, dynamic>>[];
-          for (var tutor in fallbackTutors) {
+          // Fetch all profiles in one batch query (fixes N+1 problem)
+          LogService.database('Fetching profiles for tutors in batch');
+          final userIds = fallbackTutors
+              .map((t) => t['user_id']?.toString())
+              .where((id) => id != null)
+              .cast<String>()
+              .toList();
+
+          if (userIds.isEmpty) {
+            LogService.warning('No user IDs found for profile fetching');
+            rawTutors = [];
+          } else {
             try {
-              final userId = tutor['user_id']?.toString();
-              if (userId == null) continue;
-              
-              final profileResponse = await SupabaseService.client
+              final profilesResponse = await SupabaseService.client
                   .from('profiles')
-                  .select('full_name, avatar_url, email')
-                  .eq('id', userId)
-                  .maybeSingle();
-              
-              if (profileResponse != null) {
-                tutor['profiles'] = profileResponse;
-                tutorsWithProfiles.add(tutor);
+                  .select('id, full_name, avatar_url, email')
+                  .inFilter('id', userIds);
+
+              // Create a map for O(1) lookup
+              final profileMap = {
+                for (var profile in profilesResponse as List)
+                  profile['id'] as String: profile
+              };
+
+              // Attach profiles to tutors
+              final tutorsWithProfiles = <Map<String, dynamic>>[];
+              for (var tutor in fallbackTutors) {
+                final userId = tutor['user_id']?.toString();
+                if (userId != null && profileMap.containsKey(userId)) {
+                  tutor['profiles'] = profileMap[userId];
+                  tutorsWithProfiles.add(tutor);
+                }
               }
+
+              LogService.success('Fetched ${tutorsWithProfiles.length} tutors with profiles in batch');
+              rawTutors = tutorsWithProfiles;
             } catch (e) {
-              print('⚠️ Could not fetch profile for tutor ${tutor['user_id']}: $e');
+              LogService.error('Failed to fetch profiles in batch', e);
+              rawTutors = [];
             }
           }
-          
-          print('✅ Successfully fetched ${tutorsWithProfiles.length} tutors with profiles');
-          rawTutors = tutorsWithProfiles;
         } catch (fallbackError) {
-          print('❌ Fallback query also failed: $fallbackError');
+          LogService.error('Fallback query also failed: $fallbackError');
           rethrow; // Re-throw the original error
         }
       }
 
       if (rawTutors.isEmpty) {
-        print('⚠️ No tutors found with status="approved"');
+        LogService.warning('No tutors found with status="approved"');
         // Let's check what statuses exist and if there are any tutors at all
         try {
           final statusCheck = await SupabaseService.client
               .from('tutor_profiles')
               .select('status, user_id')
               .limit(10);
-          print('📋 Sample tutor statuses: $statusCheck');
+          LogService.debug('Sample tutor statuses', statusCheck);
           
           // Also check total tutors without filter
           final allTutors = await SupabaseService.client
               .from('tutor_profiles')
               .select('status')
               .limit(100);
-          print('📋 Total tutors checked: ${(allTutors as List).length}');
+          LogService.debug('Total tutors checked', (allTutors as List).length);
           if ((allTutors as List).isNotEmpty) {
             final statuses = (allTutors as List).map((t) => t['status']).toSet();
-            print('📋 Available statuses: $statuses');
+            LogService.debug('Available statuses', statuses);
           }
         } catch (e) {
-          print('⚠️ Could not check tutor statuses: $e');
+          LogService.warning('Could not check tutor statuses: $e');
         }
         return []; // Return empty list if no tutors found
       } else {
@@ -321,15 +428,13 @@ class TutorService {
           final profile = tutor['profiles'];
           final subjects = tutor['subjects'];
           final status = tutor['status'];
-          print('🔍 Tutor Debug - userId: $userId, status: $status');
-          print('   - Profile: ${profile != null ? "exists" : "NULL"}');
-          print('   - Full name: ${profile?['full_name'] ?? "MISSING"}');
-          print(
-            '   - Subjects: ${subjects ?? "NULL"} (type: ${subjects.runtimeType})',
-          );
-          print('   - Subjects is List: ${subjects is List}');
+          LogService.database('Tutor Debug - userId: $userId, status: $status');
+          // Profile existence logged above
+          // Full name logged above
+          // Subjects details logged above
+          // Subjects type logged above
           if (subjects is List) {
-            print('   - Subjects length: ${subjects.length}');
+            // Subjects length logged above
           }
         }
       }
@@ -342,7 +447,7 @@ class TutorService {
         // Ensure tutor has a profile and required fields
         final profilesData = tutor['profiles'];
         if (profilesData == null) {
-          print('❌ FILTERED OUT: Tutor $userId has no profile data');
+          LogService.error('FILTERED OUT: Tutor $userId has no profile data');
           return false;
         }
 
@@ -361,7 +466,7 @@ class TutorService {
               profile = Map<String, dynamic>.from(decoded[0]);
             }
           } catch (e) {
-            print('⚠️ Tutor $userId: Could not parse profile JSON string: $e');
+            LogService.warning('Tutor $userId: Could not parse profile JSON string: $e');
             return false;
           }
         } else if (profilesData is List && profilesData.isNotEmpty) {
@@ -373,14 +478,14 @@ class TutorService {
         }
 
         if (profile == null) {
-          print('❌ FILTERED OUT: Tutor $userId has invalid profile data type: ${profilesData.runtimeType}');
+          LogService.error('FILTERED OUT: Tutor $userId has invalid profile data type: ${profilesData.runtimeType}');
           return false;
         }
 
         // Check for required fields
         final fullName = profile['full_name']?.toString() ?? '';
         if (fullName.trim().isEmpty) {
-          print(
+          LogService.debug(
             '❌ FILTERED OUT: Tutor $userId has no full_name (profile exists but name is empty)',
           );
           return false;
@@ -399,7 +504,7 @@ class TutorService {
             specializations != null &&
             specializations is List &&
             specializations.isNotEmpty) {
-          print(
+          LogService.debug(
             'ℹ️ Tutor $userId has specializations but no subjects - using specializations: $specializations',
           );
           subjects = specializations;
@@ -407,26 +512,26 @@ class TutorService {
 
         // Log if tutor has no subjects/specializations
         if (subjects == null) {
-          print(
+          LogService.debug(
             '⚠️ Tutor $userId has null subjects and specializations - will show but may not match subject filters',
           );
         } else if (subjects is List && subjects.isEmpty) {
-          print(
+          LogService.debug(
             '⚠️ Tutor $userId has empty subjects/specializations array - will show but may not match subject filters',
           );
         } else if (subjects is String && subjects.trim().isEmpty) {
-          print(
+          LogService.debug(
             '⚠️ Tutor $userId has empty subjects/specializations string - will show but may not match subject filters',
           );
         }
 
-        print(
+        LogService.debug(
           '✅ Tutor $userId PASSED all checks: name="$fullName", subjects=$subjects',
         );
         return true;
       }).toList();
 
-      print(
+      LogService.debug(
         '✅ After filtering: ${filteredTutors.length} tutors available for display',
       );
 
@@ -451,7 +556,7 @@ class TutorService {
               }
             }
           } catch (e) {
-            print('⚠️ Tutor ${tutor['user_id']}: Could not parse profile JSON string: $e');
+            LogService.warning('Tutor ${tutor['user_id']}: Could not parse profile JSON string: $e');
             return null;
           }
         } else if (profilesData is List && profilesData.isNotEmpty) {
@@ -467,7 +572,7 @@ class TutorService {
                 profile = Map<String, dynamic>.from(decoded);
               }
             } catch (e) {
-              print('⚠️ Tutor ${tutor['user_id']}: Could not parse profile from list: $e');
+              LogService.warning('Tutor ${tutor['user_id']}: Could not parse profile from list: $e');
               return null;
             }
           }
@@ -475,7 +580,7 @@ class TutorService {
         
         // If we couldn't get a valid profile, skip this tutor
         if (profile == null) {
-          print('⚠️ Tutor ${tutor['user_id']}: No valid profile data found (type: ${profilesData?.runtimeType ?? 'null'})');
+          LogService.warning('Tutor ${tutor['user_id']}: No valid profile data found (type: ${profilesData?.runtimeType ?? 'null'})');
           return null;
         }
 
@@ -496,36 +601,83 @@ class TutorService {
         final adminApprovedRating = _safeCast<double>(tutor['admin_approved_rating']);
         final calculatedRating = _safeCast<double>(tutor['rating']) ?? 0.0;
 
+        // DEBUG: Print rating values
+        final tutorName = profile?['full_name'] ?? 'Unknown';
+        print('📊 [TUTOR_SERVICE] Name: $tutorName');
+        print('   - total_reviews (raw): $totalReviews');
+        print('   - admin_approved_rating (raw): $adminApprovedRating');
+        print('   - calculated_rating (raw): $calculatedRating');
+
         // Use admin rating until we have at least 3 real reviews
-        final effectiveRating =
-            (totalReviews < 3 && adminApprovedRating != null)
-            ? adminApprovedRating
-            : (calculatedRating > 0
-                  ? calculatedRating
-                  : (adminApprovedRating ?? 0.0));
+        // If admin_approved_rating is null but tutor is approved, use calculated rating or default 3.5
+        // This handles the case where new tutors don't have admin_approved_rating set yet
+        double effectiveRating;
+        if (totalReviews < 3 && adminApprovedRating != null) {
+          // Use admin rating if available and reviews < 3
+          effectiveRating = adminApprovedRating;
+        } else if (calculatedRating > 0) {
+          // Use calculated rating if available
+          effectiveRating = calculatedRating;
+        } else if (adminApprovedRating != null) {
+          // Use admin rating even if calculated is 0
+          effectiveRating = adminApprovedRating;
+        } else {
+          // Default to 3.5 for approved tutors without any rating set
+          effectiveRating = 3.5;
+        }
 
         // Use effective total_reviews (show 10 if using admin rating and reviews < 3)
+        // Also show 10 if tutor is approved but has no reviews yet (new tutor)
         final effectiveTotalReviews =
-            (totalReviews < 3 && adminApprovedRating != null)
+            (totalReviews < 3 && (adminApprovedRating != null || totalReviews == 0))
             ? 10 // Temporary count until real reviews come in
             : totalReviews;
+
+        print('   - Final effectiveRating: $effectiveRating');
+        print('   - Final effectiveTotalReviews: $effectiveTotalReviews');
 
         // Get pricing: Prioritize base_session_price > admin_price_override > hourly_rate
         final baseSessionPrice = _safeCast<num>(tutor['base_session_price']);
         final adminPriceOverride = _safeCast<num>(tutor['admin_price_override']);
-        final hourlyRate = _safeCast<num>(tutor['hourly_rate']);
+        final hourlyRateRaw = tutor['hourly_rate'];
         final perSessionRate = _safeCast<num>(tutor['per_session_rate']);
 
-        // Determine the effective rate
-        final effectiveRate = (baseSessionPrice != null && baseSessionPrice > 0)
-            ? baseSessionPrice.toDouble()
-            : (adminPriceOverride != null && adminPriceOverride > 0)
-            ? adminPriceOverride.toDouble()
-            : (perSessionRate != null && perSessionRate > 0)
-            ? perSessionRate.toDouble()
-            : (hourlyRate != null && hourlyRate > 0)
-            ? hourlyRate.toDouble()
-            : 0.0;
+        // DEBUG: Print pricing values
+        print('💰 [TUTOR_SERVICE] Name: $tutorName');
+        print('   - base_session_price: $baseSessionPrice');
+        print('   - admin_price_override: $adminPriceOverride');
+        print('   - hourly_rate (raw): $hourlyRateRaw');
+        print('   - per_session_rate: $perSessionRate');
+
+        // Validate and sanitize hourly_rate (prevent very large numbers)
+        double hourlyRate = 3000.0; // Default fallback
+        if (hourlyRateRaw != null) {
+          final hourlyRateValue = hourlyRateRaw is num 
+              ? hourlyRateRaw.toDouble() 
+              : double.tryParse(hourlyRateRaw.toString());
+          // Only use if it's a reasonable value (between 1000 and 50000 XAF)
+          if (hourlyRateValue != null && hourlyRateValue >= 1000 && hourlyRateValue <= 50000) {
+            hourlyRate = hourlyRateValue;
+          } else {
+            print('   ⚠️ hourly_rate invalid: $hourlyRateValue (using default 3000)');
+          }
+        }
+
+        // Determine the effective rate (validate each to prevent very large numbers)
+        double effectiveRate;
+        if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
+          effectiveRate = baseSessionPrice.toDouble();
+          print('   ✅ Using base_session_price: $effectiveRate');
+        } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
+          effectiveRate = adminPriceOverride.toDouble();
+          print('   ✅ Using admin_price_override: $effectiveRate');
+        } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
+          effectiveRate = perSessionRate.toDouble();
+          print('   ✅ Using per_session_rate: $effectiveRate');
+        } else {
+          effectiveRate = hourlyRate;
+          print('   ✅ Using hourly_rate (fallback): $effectiveRate');
+        }
 
         // Bio mapping:
         // - 'bio': Dynamic bio for cards (starts with subjects, no "Hello!")
@@ -566,25 +718,23 @@ class TutorService {
               educationJson = Map<String, dynamic>.from(decoded);
             }
           } catch (e) {
-            print('⚠️ Tutor ${tutor['user_id']}: Could not parse education JSON: $e');
+            LogService.warning('Tutor ${tutor['user_id']}: Could not parse education JSON: $e');
           }
         }
-        final institution = tutor['institution'] is String ? tutor['institution'] as String : null;
-        final fieldOfStudy = tutor['field_of_study'] is String ? tutor['field_of_study'] as String : null;
-        final highestEducation = tutor['highest_education'] is String ? tutor['highest_education'] as String : null;
+        final institution = tutor['institution']?.toString();
+        final fieldOfStudy = tutor['field_of_study']?.toString();
+        final highestEducation = tutor['highest_education']?.toString();
 
         String formattedEducation = '';
         // Priority: field_of_study (program) • institution (university)
-        final program =
-            educationJson?['field_of_study']?.toString() ?? fieldOfStudy;
-        final university =
-            educationJson?['institution']?.toString() ?? institution;
+        final program = (educationJson?['field_of_study']?.toString() ?? fieldOfStudy ?? '').toString();
+        final university = (educationJson?['institution']?.toString() ?? institution ?? '').toString();
 
         final parts = <String>[];
-        if (program != null && program.trim().isNotEmpty) {
+        if (program.trim().isNotEmpty) {
           parts.add(program);
         }
-        if (university != null && university.trim().isNotEmpty) {
+        if (university.trim().isNotEmpty) {
           parts.add(university);
         }
         formattedEducation = parts.join(' • ');
@@ -672,9 +822,9 @@ class TutorService {
             availabilitySchedule;
 
         // Get video: Use video_url (primary), fallback to video_link or video_intro
-        final videoUrl = tutor['video_url'] as String?;
-        final videoLink = tutor['video_link'] as String?;
-        final videoIntro = tutor['video_intro'] as String?;
+        final videoUrl = tutor['video_url']?.toString();
+        final videoLink = tutor['video_link']?.toString();
+        final videoIntro = tutor['video_intro']?.toString();
         final effectiveVideoUrl = videoUrl ?? videoLink ?? videoIntro;
 
         // Get student success metrics - use REAL session count from individual_sessions
@@ -686,8 +836,8 @@ class TutorService {
         final completedSessions = 0;
 
         // Get avatar from tutor_profiles.profile_photo_url first, then fallback to profiles.avatar_url
-        final profilePhotoUrl = tutor['profile_photo_url'] as String?;
-        final avatarUrl = profile?['avatar_url'] as String?;
+        final profilePhotoUrl = tutor['profile_photo_url']?.toString();
+        final avatarUrl = profile?['avatar_url']?.toString();
         final effectiveAvatarUrl =
             (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
             ? profilePhotoUrl
@@ -696,10 +846,10 @@ class TutorService {
             : null;
 
         return {
-          'id': tutor['user_id'],
-          'full_name': profile?['full_name'] ?? 'Unknown',
-          'avatar_url': effectiveAvatarUrl, // Use consolidated avatar URL
-          'email': profile?['email'],
+          'id': tutor['user_id']?.toString() ?? '',
+          'full_name': (profile?['full_name']?.toString() ?? 'Unknown').toString(),
+          'avatar_url': effectiveAvatarUrl?.toString(), // Use consolidated avatar URL
+          'email': profile?['email']?.toString(),
           'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
           'personal_statement':
               effectivePersonalStatement, // Full bio for detail page (with "Hello!")
@@ -714,14 +864,14 @@ class TutorService {
                 if (institution != null) 'institution': institution,
                 if (fieldOfStudy != null) 'field_of_study': fieldOfStudy,
               },
-          'experience': formattedExperience.isNotEmpty
-              ? formattedExperience
-              : tutor['experience'],
-          'teaching_duration': teachingDuration,
+          'experience': formattedExperience.isNotEmpty ? formattedExperience : (tutor['experience']?.toString() ?? ''),
+          'teaching_duration': teachingDuration?.toString(),
           'subjects': subjects ?? [],
-          'hourly_rate': effectiveRate, // Use effective rate
+          'hourly_rate': effectiveRate, // Use validated effective rate (already sanitized)
+          'effective_rate': effectiveRate, // Also store as effective_rate for clarity
           'base_session_price': baseSessionPrice?.toDouble(),
           'admin_price_override': adminPriceOverride?.toDouble(),
+          'per_session_rate': perSessionRate?.toDouble(),
           'availability': effectiveAvailability, // Use effective availability
           'tutoring_availability': tutoringAvailability,
           'test_session_availability': testSessionAvailability,
@@ -734,16 +884,17 @@ class TutorService {
               ...testSessionAvailability,
           },
           'is_verified': tutor['is_verified'] ?? false,
-          'rating': effectiveRating, // Use effective rating
-          'total_reviews': effectiveTotalReviews, // Use effective review count
-          'admin_approved_rating': adminApprovedRating,
+          'rating': effectiveRating, // Use effective rating (already calculated above)
+          'total_reviews': effectiveTotalReviews, // Use effective review count (already calculated above)
+          'admin_approved_rating': adminApprovedRating, // Keep raw value for reference
+          'calculated_rating': calculatedRating, // Keep raw calculated rating for reference
           'total_students': totalStudents,
           'total_hours_taught': totalHoursTaught,
           'completed_sessions': completedSessions,
-          'city': tutor['city'],
-          'quarter': tutor['quarter'],
-          'video_intro': effectiveVideoUrl, // Use effective video URL
-          'video_url': effectiveVideoUrl,
+          'city': tutor['city']?.toString(),
+          'quarter': tutor['quarter']?.toString(),
+          'video_intro': effectiveVideoUrl?.toString(), // Use effective video URL
+          'video_url': effectiveVideoUrl?.toString(),
           // Teaching style: Build from teaching_approaches, preferred_mode, preferred_session_type
           'teaching_style': _buildTeachingStyleText(
             tutor['teaching_approaches'] as List?,
@@ -752,8 +903,8 @@ class TutorService {
             tutor['handles_multiple_learners'] as bool?,
           ),
           'teaching_approaches': tutor['teaching_approaches'],
-          'preferred_mode': tutor['preferred_mode'],
-          'preferred_session_type': tutor['preferred_session_type'],
+          'preferred_mode': tutor['preferred_mode']?.toString(),
+          'preferred_session_type': tutor['preferred_session_type']?.toString(),
           'handles_multiple_learners': tutor['handles_multiple_learners'],
         };
       }).whereType<Map<String, dynamic>>().toList(); // Filter out nulls
@@ -775,8 +926,8 @@ class TutorService {
 
       return tutors;
     } catch (e) {
-      print('❌ Error fetching tutors from Supabase: $e');
-      print('Stack trace: ${StackTrace.current}');
+      LogService.error('Error fetching tutors from Supabase: $e');
+      // Stack trace logged in LogService.error above
       return [];
     }
   }
@@ -797,6 +948,7 @@ class TutorService {
           ''')
           .eq('user_id', tutorId)
           .eq('status', 'approved')
+          .neq('is_hidden', true)
           .single();
 
       final profile = response['profiles'];
@@ -872,16 +1024,14 @@ class TutorService {
 
       String formattedEducation = '';
       // Priority: field_of_study (program) • institution (university)
-      final program =
-          educationJson?['field_of_study']?.toString() ?? fieldOfStudy;
-      final university =
-          educationJson?['institution']?.toString() ?? institution;
+      final program = (educationJson?['field_of_study']?.toString() ?? fieldOfStudy ?? '').toString();
+      final university = (educationJson?['institution']?.toString() ?? institution ?? '').toString();
 
       final parts = <String>[];
-      if (program != null && program.trim().isNotEmpty) {
+      if (program.trim().isNotEmpty) {
         parts.add(program);
       }
-      if (university != null && university.trim().isNotEmpty) {
+      if (university.trim().isNotEmpty) {
         parts.add(university);
       }
       formattedEducation = parts.join(' • ');
@@ -953,9 +1103,9 @@ class TutorService {
 
       return {
         'id': response['user_id'],
-        'full_name': profile['full_name'],
-        'avatar_url': profile['avatar_url'],
-        'email': profile['email'],
+        'full_name': profile['full_name']?.toString() ?? 'Unknown',
+        'avatar_url': profile['avatar_url']?.toString(),
+        'email': profile['email']?.toString(),
         'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
         'personal_statement':
             effectivePersonalStatement, // Full bio for detail page (with "Hello!")
@@ -971,8 +1121,8 @@ class TutorService {
             },
         'experience': formattedExperience.isNotEmpty
             ? formattedExperience
-            : response['experience'],
-        'teaching_duration': teachingDuration,
+            : response['experience']?.toString() ?? '',
+        'teaching_duration': teachingDuration?.toString(),
         'subjects': subjects ?? [],
         'hourly_rate': effectiveRate, // Use effective rate
         'base_session_price': baseSessionPrice?.toDouble(),
@@ -995,10 +1145,10 @@ class TutorService {
         'total_students': totalStudents,
         'total_hours_taught': totalHoursTaught,
         'completed_sessions': completedSessions,
-        'city': response['city'],
-        'quarter': response['quarter'],
-        'video_intro': effectiveVideoUrl, // Use effective video URL
-        'video_url': effectiveVideoUrl,
+        'city': response['city']?.toString(),
+        'quarter': response['quarter']?.toString(),
+        'video_intro': effectiveVideoUrl?.toString(), // Use effective video URL
+        'video_url': effectiveVideoUrl?.toString(),
         // Teaching style: Build from teaching_approaches, preferred_mode, preferred_session_type
         'teaching_style': _buildTeachingStyleText(
           response['teaching_approaches'] as List?,
@@ -1007,12 +1157,12 @@ class TutorService {
           response['handles_multiple_learners'] as bool?,
         ),
         'teaching_approaches': response['teaching_approaches'],
-        'preferred_mode': response['preferred_mode'],
-        'preferred_session_type': response['preferred_session_type'],
+        'preferred_mode': response['preferred_mode']?.toString(),
+        'preferred_session_type': response['preferred_session_type']?.toString(),
         'handles_multiple_learners': response['handles_multiple_learners'],
       };
     } catch (e) {
-      print('❌ Error fetching tutor by ID from Supabase: $e');
+      LogService.error('Error fetching tutor by ID from Supabase: $e');
       return null;
     }
   }
@@ -1069,23 +1219,24 @@ class TutorService {
             )
           ''')
           .eq('status', 'approved')
+          .neq('is_hidden', true)
           .or('profiles.full_name.ilike.%$query%,subjects.cs.{$query}');
 
       return (response as List).map((tutor) {
         final profile = tutor['profiles'];
         return {
-          'id': tutor['user_id'],
-          'full_name': profile['full_name'],
-          'avatar_url': profile['avatar_url'],
-          'subjects': tutor['subjects'],
+          'id': tutor['user_id']?.toString() ?? '',
+          'full_name': profile['full_name']?.toString() ?? 'Unknown',
+          'avatar_url': profile['avatar_url']?.toString(),
+          'subjects': tutor['subjects'] ?? [],
           'hourly_rate': tutor['hourly_rate'],
           'is_verified': tutor['is_verified'] ?? false,
           'rating': tutor['rating'] ?? 0.0,
-          'city': tutor['city'],
+          'city': tutor['city']?.toString(),
         };
       }).toList();
     } catch (e) {
-      print('❌ Error searching tutors in Supabase: $e');
+      LogService.error('Error searching tutors in Supabase: $e');
       return [];
     }
   }

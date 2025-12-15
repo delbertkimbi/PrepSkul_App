@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
@@ -51,7 +53,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       if (!mounted) return;
       if (state.event == AuthChangeEvent.signedIn &&
           state.session?.user != null) {
-        setState(() => _isProcessingVerification = true);
+        safeSetState(() => _isProcessingVerification = true);
         try {
           await AuthService.completeEmailVerification(state.session!.user);
           if (!mounted) return;
@@ -70,7 +72,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
           }
         } finally {
           if (mounted) {
-            setState(() => _isProcessingVerification = false);
+            safeSetState(() => _isProcessingVerification = false);
           }
         }
       }
@@ -79,92 +81,159 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
 
   Future<void> _navigateAfterVerification() async {
     final prefs = await SharedPreferences.getInstance();
-    final userRole = await AuthService.getUserRole() ?? widget.userRole;
-    final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+    final user = SupabaseService.currentUser;
 
     if (!mounted) return;
+    if (user == null) return;
 
-    if ((userRole == 'student' ||
-            userRole == 'learner' ||
-            userRole == 'parent') &&
-        !surveyIntroSeen) {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/survey-intro',
-        (route) => false,
-        arguments: {'userType': userRole},
-      );
-    } else {
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        '/profile-setup',
-        (route) => false,
-        arguments: {'userRole': userRole},
-      );
-
-      // Save auth method preference
-      await prefs.setString('auth_method', 'email');
-
-      // For new users, ensure survey_intro_seen is cleared so they see the intro screen
-      await prefs.setBool('survey_intro_seen', false);
-      print('🆕 New email user signup - cleared survey_intro_seen flag');
-
-      // Clear stored signup data (no longer needed)
-      await prefs.remove('signup_user_role');
-      await prefs.remove('signup_full_name');
-      await prefs.remove('signup_email');
-
-      // Check if user should see survey intro screen
-      final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+    try {
+      // Wait a moment for profile to be created by completeEmailVerification
+      await Future.delayed(const Duration(milliseconds: 500));
       
-      // Navigate based on role
+      // Check if this is a first-time signup by checking profile creation time
+      // or if survey_completed is false/null
+      // Also check user_type to ensure it was set correctly
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('survey_completed, created_at, user_type')
+          .eq('id', user.id)
+          .maybeSingle();
+      
+      // If profile doesn't exist or user_type is missing, create it now
+      if (profile == null || profile['user_type'] == null || (profile['user_type'] as String).isEmpty) {
+        LogService.warning('Profile missing or user_type not set after verification - creating now');
+        final storedRole = prefs.getString('signup_user_role') ?? widget.userRole;
+        await SupabaseService.client.from('profiles').upsert({
+          'id': user.id,
+          'email': user.email ?? widget.email,
+          'full_name': widget.fullName,
+          'phone_number': null,
+          'user_type': storedRole,
+          'survey_completed': false,
+          'is_admin': false,
+        }, onConflict: 'id');
+        
+        // Re-fetch profile
+        final updatedProfile = await SupabaseService.client
+            .from('profiles')
+            .select('survey_completed, created_at, user_type')
+            .eq('id', user.id)
+            .maybeSingle();
+        
+        final userRole = updatedProfile?['user_type'] ?? storedRole;
+        final surveyCompleted = updatedProfile?['survey_completed'] ?? false;
+        final isFirstSignup = !surveyCompleted;
+        
+        // Continue with navigation using the correct role
+        await _navigateBasedOnRole(userRole, isFirstSignup, prefs);
+        return;
+      }
+      
+      final userRole = profile['user_type'] ?? widget.userRole;
+      final surveyCompleted = profile['survey_completed'] ?? false;
+      final isFirstSignup = !surveyCompleted;
+      
+      // Continue with navigation using the correct role
+      await _navigateBasedOnRole(userRole, isFirstSignup, prefs);
+    } catch (e) {
+      LogService.error('Error navigating after verification', e);
       if (mounted) {
-        if (storedRole == 'tutor') {
-          // For tutors, check if onboarding choice screen should be shown
-          final progress = await TutorOnboardingProgressService.loadProgress(user.id);
-          final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
-          
-          // For new tutors (signup), always show choice screen if no progress exists
-          if (progress == null && !onboardingSkipped) {
-            print('✅ New tutor signup - navigating to onboarding choice screen');
-            Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
-          } else {
-            // Has some progress or was skipped - go to dashboard (they can continue from there)
-            print('✅ Tutor with existing progress - navigating to dashboard');
-            Navigator.pushReplacementNamed(context, '/tutor-nav');
-          }
-        } else if ((storedRole == 'student' ||
-                storedRole == 'learner' ||
-                storedRole == 'parent') &&
-            !surveyIntroSeen) {
-          print('✅ Navigating to survey intro screen for $storedRole');
-          Navigator.pushReplacementNamed(
+        // Fallback: try to navigate using widget.userRole
+        final fallbackRole = widget.userRole;
+        LogService.warning('Using fallback role: $fallbackRole');
+        await _navigateBasedOnRole(fallbackRole, true, prefs);
+      }
+    }
+  }
+  
+  /// Navigate based on user role after email verification
+  Future<void> _navigateBasedOnRole(String userRole, bool isFirstSignup, SharedPreferences prefs) async {
+    final user = SupabaseService.currentUser;
+    if (user == null || !mounted) return;
+    
+    try {
+        // Save auth method preference
+        await prefs.setString('auth_method', 'email');
+
+        // For new users, ensure survey_intro_seen is cleared so they see the intro screen
+        await prefs.setBool('survey_intro_seen', false);
+      LogService.info('Email user verification - cleared survey_intro_seen flag');
+
+        // Clear stored signup data (no longer needed)
+        await prefs.remove('signup_user_role');
+        await prefs.remove('signup_full_name');
+        await prefs.remove('signup_email');
+
+        // Navigate based on role
+      if (!mounted) return;
+      
+          if (userRole == 'tutor') {
+            // For tutors, check tutor-specific onboarding status
+            try {
+              final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(user.id);
+              final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
+              
+              if (onboardingComplete || onboardingSkipped) {
+                // Tutor onboarding complete or skipped - go directly to dashboard
+                LogService.success('Tutor onboarding complete - navigating to dashboard');
+                Navigator.pushReplacementNamed(context, '/tutor-nav');
+              } else {
+                // Check if it's a new tutor (no progress at all)
+                final progress = await TutorOnboardingProgressService.loadProgress(user.id);
+                if (progress == null && !onboardingSkipped) {
+                  // New tutor - show choice screen
+                  LogService.success('New tutor signup - navigating to onboarding choice screen');
+                  Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+                } else {
+                  // Has some progress - go to dashboard (they can continue from there)
+                  LogService.success('Tutor with existing progress - navigating to dashboard');
+                  Navigator.pushReplacementNamed(context, '/tutor-nav');
+                }
+              }
+            } catch (e) {
+              LogService.warning('Error checking tutor onboarding: $e - navigating to dashboard');
+              // On error, go to dashboard (better than blocking user)
+              Navigator.pushReplacementNamed(context, '/tutor-nav');
+            }
+      } else if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
+        // For first-time signup (student/parent/learner), always show survey intro
+        if (isFirstSignup) {
+          LogService.info('First signup detected - showing survey intro for $userRole');
+          Navigator.pushNamedAndRemoveUntil(
             context,
             '/survey-intro',
-            arguments: {'userType': storedRole},
+            (route) => false,
+            arguments: {'userType': userRole},
           );
         } else {
-          print('⏭️ Skipping survey intro - navigating to profile setup');
-          Navigator.pushReplacementNamed(
-            context,
-            '/profile-setup',
-            arguments: {'userRole': storedRole},
-          );
-        }
+            // Show survey intro for students/parents who haven't seen it
+            final surveyIntroSeen = prefs.getBool('survey_intro_seen') ?? false;
+            if (!surveyIntroSeen) {
+              LogService.success('Navigating to survey intro screen for $userRole');
+              Navigator.pushReplacementNamed(
+              context,
+              '/survey-intro',
+              arguments: {'userType': userRole},
+              );
+            } else {
+            // Survey intro already seen, go to appropriate dashboard
+            final route = userRole == 'parent' ? '/parent-nav' : '/student-nav';
+            Navigator.pushReplacementNamed(context, route);
+          }
+            }
+          } else {
+        LogService.info('Unknown role - navigating to profile setup');
+            Navigator.pushReplacementNamed(
+              context,
+              '/profile-setup',
+              arguments: {'userRole': userRole},
+            );
       }
     } catch (e) {
-      print('Error proceeding to survey: $e');
+      LogService.error('Error in _navigateBasedOnRole', e);
       if (mounted) {
-        final errorMessage = AuthService.parseAuthError(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage, style: GoogleFonts.poppins()),
-            backgroundColor: AppTheme.primaryColor,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        // Final fallback: navigate to student dashboard
+        Navigator.pushReplacementNamed(context, '/student-nav');
       }
     }
   }
@@ -172,7 +241,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
   void _startCountdown() {
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted && _resendCountdown > 0) {
-        setState(() => _resendCountdown--);
+        safeSetState(() => _resendCountdown--);
         _startCountdown();
       }
     });
@@ -194,7 +263,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       return;
     }
 
-    setState(() => _isResending = true);
+    safeSetState(() => _isResending = true);
 
     try {
       // Resend confirmation email with proper redirect URL
@@ -214,7 +283,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
           ),
         );
 
-        setState(() {
+        safeSetState(() {
           _resendCountdown = 60;
         });
         _startCountdown();
@@ -234,7 +303,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
       }
     } finally {
       if (mounted) {
-        setState(() => _isResending = false);
+        safeSetState(() => _isResending = false);
       }
     }
   }
@@ -326,7 +395,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                             Icons.mark_email_read_outlined,
                             size: 50,
                             color: AppTheme.primaryColor,
-                          ),
+                            ),
                         ),
 
                         const SizedBox(height: 24),
@@ -466,7 +535,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                               side: BorderSide(
                                 color: AppTheme.primaryColor,
                                 width: 1.5,
-                              ),
+                                ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),

@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 
@@ -12,36 +13,128 @@ class PaymentRequestService {
   /// Create payment request when tutor approves booking
   /// 
   /// This is called automatically when a booking request is approved
-  /// Creates payment request record and calculates amount based on plan
+  /// Creates payment request record(s) and calculates amount based on plan
+  /// - Monthly: Creates 1 payment request
+  /// - Bi-weekly: Creates 2 payment requests (first + second)
+  /// - Weekly: Creates 4 payment requests (first + 3 more)
   static Future<String> createPaymentRequestOnApproval(
     BookingRequest approvedRequest,
   ) async {
     try {
-      print('💰 Creating payment request for approved booking: ${approvedRequest.id}');
+      LogService.info('Creating payment request(s) for approved booking: ${approvedRequest.id}');
 
-      // Calculate payment amount based on plan
-      // Monthly: monthlyTotal (with discount)
-      // Bi-weekly: monthlyTotal / 2 (with discount)
-      // Weekly: monthlyTotal / 4 (no discount)
-      final paymentAmount = _calculatePaymentAmount(
-        monthlyTotal: approvedRequest.monthlyTotal,
-        paymentPlan: approvedRequest.paymentPlan,
-      );
+      final paymentPlan = approvedRequest.paymentPlan.toLowerCase();
+      
+      if (paymentPlan == 'monthly') {
+        return await _createSinglePaymentRequest(approvedRequest);
+      } else if (paymentPlan == 'bi-weekly' || paymentPlan == 'biweekly') {
+        return await _createRecurringPaymentRequests(approvedRequest, count: 2);
+      } else if (paymentPlan == 'weekly') {
+        return await _createRecurringPaymentRequests(approvedRequest, count: 4);
+      } else {
+        // Default to monthly
+        return await _createSinglePaymentRequest(approvedRequest);
+      }
+    } catch (e) {
+      LogService.error('Error creating payment request: $e');
+      if (e.toString().contains('relation "payment_requests" does not exist')) {
+        LogService.warning('payment_requests table does not exist - need to create migration');
+        throw Exception('Payment requests table not found. Please run database migration.');
+      }
+      rethrow;
+    }
+  }
 
-      // Get pricing details (discount, etc.) for the actual payment period
-      final baseAmount = _getBaseAmountForPlan(
-        monthlyTotal: approvedRequest.monthlyTotal,
-        paymentPlan: approvedRequest.paymentPlan,
-      );
-      final pricingDetails = PricingService.calculateDiscount(
-        monthlyTotal: baseAmount,
-        paymentPlan: approvedRequest.paymentPlan,
-      );
+  /// Create a single payment request (for monthly plan)
+  static Future<String> _createSinglePaymentRequest(
+    BookingRequest approvedRequest,
+  ) async {
+    final paymentAmount = _calculatePaymentAmount(
+      monthlyTotal: approvedRequest.monthlyTotal,
+      paymentPlan: approvedRequest.paymentPlan,
+    );
 
-      // Create payment request data
+    final baseAmount = _getBaseAmountForPlan(
+      monthlyTotal: approvedRequest.monthlyTotal,
+      paymentPlan: approvedRequest.paymentPlan,
+    );
+    final pricingDetails = PricingService.calculateDiscount(
+      monthlyTotal: baseAmount,
+      paymentPlan: approvedRequest.paymentPlan,
+    );
+
+    final paymentRequestData = {
+      'booking_request_id': approvedRequest.id,
+      'recurring_session_id': null,
+      'student_id': approvedRequest.studentId,
+      'tutor_id': approvedRequest.tutorId,
+      'amount': paymentAmount,
+      'original_amount': approvedRequest.monthlyTotal,
+      'discount_percent': pricingDetails['discountPercent'] as double,
+      'discount_amount': pricingDetails['discountAmount'] as double,
+      'payment_plan': approvedRequest.paymentPlan,
+      'status': 'pending',
+      'due_date': _calculateDueDate(approvedRequest.paymentPlan),
+      'description': _generatePaymentDescription(approvedRequest),
+      'metadata': {
+        'frequency': approvedRequest.frequency,
+        'days': approvedRequest.days,
+        'location': approvedRequest.location,
+        'student_name': approvedRequest.studentName,
+        'tutor_name': approvedRequest.tutorName,
+        'payment_number': 1,
+        'total_payments': 1,
+      },
+      'created_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    final response = await SupabaseService.client
+        .from('payment_requests')
+        .insert(paymentRequestData)
+        .select('id')
+        .single();
+
+    final paymentRequestId = response['id'] as String;
+    LogService.success('Payment request created: $paymentRequestId (Amount: ${PricingService.formatPrice(paymentAmount)})');
+
+    return paymentRequestId;
+  }
+
+  /// Create multiple payment requests for bi-weekly or weekly plans
+  /// Returns the ID of the first payment request
+  static Future<String> _createRecurringPaymentRequests(
+    BookingRequest approvedRequest, {
+    required int count,
+  }) async {
+    final baseAmount = _getBaseAmountForPlan(
+      monthlyTotal: approvedRequest.monthlyTotal,
+      paymentPlan: approvedRequest.paymentPlan,
+    );
+    final pricingDetails = PricingService.calculateDiscount(
+      monthlyTotal: baseAmount,
+      paymentPlan: approvedRequest.paymentPlan,
+    );
+    final paymentAmount = pricingDetails['finalAmount'] as double;
+
+    final paymentPlan = approvedRequest.paymentPlan.toLowerCase();
+    
+    // Calculate interval between payments
+    final daysInterval = paymentPlan == 'weekly' ? 7 : 14;
+    
+    // Calculate first due date
+    final firstDueDate = _calculateDueDate(approvedRequest.paymentPlan);
+    final firstDueDateTime = DateTime.parse(firstDueDate);
+
+    final paymentRequests = <Map<String, dynamic>>[];
+
+    // Create all payment requests
+    for (int i = 0; i < count; i++) {
+      final dueDate = firstDueDateTime.add(Duration(days: i * daysInterval));
+      
       final paymentRequestData = {
         'booking_request_id': approvedRequest.id,
-        'recurring_session_id': null, // Will be set when recurring session is created
+        'recurring_session_id': null,
         'student_id': approvedRequest.studentId,
         'tutor_id': approvedRequest.tutorId,
         'amount': paymentAmount,
@@ -49,40 +142,58 @@ class PaymentRequestService {
         'discount_percent': pricingDetails['discountPercent'] as double,
         'discount_amount': pricingDetails['discountAmount'] as double,
         'payment_plan': approvedRequest.paymentPlan,
-        'status': 'pending', // pending, paid, failed, expired
-        'due_date': _calculateDueDate(approvedRequest.paymentPlan),
-        'description': _generatePaymentDescription(approvedRequest),
+        'status': 'pending',
+        'due_date': dueDate.toIso8601String(),
+        'description': _generateRecurringPaymentDescription(
+          approvedRequest,
+          paymentNumber: i + 1,
+          totalPayments: count,
+          dueDate: dueDate,
+        ),
         'metadata': {
           'frequency': approvedRequest.frequency,
           'days': approvedRequest.days,
           'location': approvedRequest.location,
           'student_name': approvedRequest.studentName,
           'tutor_name': approvedRequest.tutorName,
+          'payment_number': i + 1,
+          'total_payments': count,
         },
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      // Insert into payment_requests table
-      final response = await SupabaseService.client
-          .from('payment_requests')
-          .insert(paymentRequestData)
-          .select('id')
-          .single();
-
-      final paymentRequestId = response['id'] as String;
-      print('✅ Payment request created: $paymentRequestId (Amount: ${PricingService.formatPrice(paymentAmount)})');
-
-      return paymentRequestId;
-    } catch (e) {
-      print('❌ Error creating payment request: $e');
-      // Check if table doesn't exist
-      if (e.toString().contains('relation "payment_requests" does not exist')) {
-        print('⚠️ payment_requests table does not exist - need to create migration');
-        throw Exception('Payment requests table not found. Please run database migration.');
-      }
-      rethrow;
+      paymentRequests.add(paymentRequestData);
     }
+
+    // Batch insert all payment requests
+    final response = await SupabaseService.client
+        .from('payment_requests')
+        .insert(paymentRequests)
+        .select('id');
+
+    if (response.isNotEmpty) {
+      final firstPaymentRequestId = (response as List)[0]['id'] as String;
+      LogService.success('Created $count payment request(s) for ${approvedRequest.paymentPlan} plan. First ID: $firstPaymentRequestId');
+      return firstPaymentRequestId;
+    } else {
+      throw Exception('Failed to create payment requests');
+    }
+  }
+
+  /// Generate description for recurring payment requests
+  static String _generateRecurringPaymentDescription(
+    BookingRequest request, {
+    required int paymentNumber,
+    required int totalPayments,
+    required DateTime dueDate,
+  }) {
+    final plan = request.paymentPlan.toUpperCase();
+    final frequency = request.frequency;
+    final days = request.days.join(', ');
+    final dueDateStr = '${dueDate.day}/${dueDate.month}/${dueDate.year}';
+    
+    return '$plan payment $paymentNumber of $totalPayments for $frequency session${frequency > 1 ? 's' : ''} per week ($days) with ${request.tutorName} - Due: $dueDateStr';
   }
 
   /// Get base amount for the payment plan period
@@ -178,7 +289,7 @@ class PaymentRequestService {
 
       return response;
     } catch (e) {
-      print('❌ Error fetching payment request: $e');
+      LogService.error('Error fetching payment request: $e');
       return null;
     }
   }
@@ -195,7 +306,7 @@ class PaymentRequestService {
 
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('❌ Error fetching pending payment requests: $e');
+      LogService.error('Error fetching pending payment requests: $e');
       return [];
     }
   }
@@ -230,23 +341,23 @@ class PaymentRequestService {
           if (item is Map<String, dynamic>) {
             paymentRequests.add(item);
           } else {
-            print('⚠️ Skipping invalid payment request format: ${item.runtimeType}');
+            LogService.warning('Skipping invalid payment request format: ${item.runtimeType}');
           }
         } catch (parseError) {
-          print('⚠️ Error parsing payment request: $parseError');
+          LogService.warning('Error parsing payment request: $parseError');
           // Continue processing other items
         }
       }
       
       return paymentRequests;
     } catch (e) {
-      print('❌ Error fetching all payment requests: $e');
-      print('❌ Stack trace: ${StackTrace.current}');
+      LogService.error('Error fetching all payment requests: $e');
+      LogService.error('Stack trace: ${StackTrace.current}');
       // Check if it's a table not found error
       if (e.toString().contains('does not exist') || 
           e.toString().contains('relation') ||
           e.toString().contains('PGRST')) {
-        print('⚠️ Payment requests table might not exist yet');
+        LogService.warning('Payment requests table might not exist yet');
       }
       return [];
     }
@@ -274,11 +385,58 @@ class PaymentRequestService {
           .update(updateData)
           .eq('id', paymentRequestId);
 
-      print('✅ Payment request status updated: $paymentRequestId -> $status');
+      LogService.success('Payment request status updated: $paymentRequestId -> $status');
     } catch (e) {
-      print('❌ Error updating payment request status: $e');
+      LogService.error('Error updating payment request status: $e');
       rethrow;
     }
   }
-}
+  /// Link payment request to recurring session
+  /// 
+  /// Called after recurring session is created to link the payment request
+  static Future<void> linkPaymentRequestToRecurringSession(
+    String paymentRequestId,
+    String recurringSessionId,
+  ) async {
+    try {
+      await SupabaseService.client
+          .from('payment_requests')
+          .update({
+            'recurring_session_id': recurringSessionId,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', paymentRequestId);
 
+      LogService.success('Payment request linked to recurring session: '
+          '$paymentRequestId -> $recurringSessionId');
+    } catch (e) {
+      LogService.error('Error linking payment request to recurring session: $e');
+      rethrow;
+    }
+  }
+
+  /// Get payment request by booking request ID
+  /// 
+  /// Returns the payment request created for a specific booking request
+  static Future<String?> getPaymentRequestIdByBookingRequestId(
+    String bookingRequestId,
+  ) async {
+    try {
+      final response = await SupabaseService.client
+          .from('payment_requests')
+          .select('id')
+          .eq('booking_request_id', bookingRequestId)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (response != null) {
+        return response['id'] as String?;
+      }
+      return null;
+    } catch (e) {
+      LogService.error('Error fetching payment request by booking request ID: $e');
+      return null;
+    }
+  }
+}

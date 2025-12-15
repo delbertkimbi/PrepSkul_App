@@ -1,3 +1,5 @@
+import 'package:prepskul/core/services/log_service.dart';
+
 /// Navigation State Management
 /// 
 /// Tracks current route, navigation history, and prevents duplicate navigations
@@ -33,7 +35,7 @@ class NavigationState {
         _navigationHistory.removeAt(0);
       }
       
-      print('📍 [NAV_STATE] Current route: $route');
+      LogService.debug('📍 [NAV_STATE] Current route: $route');
     }
   }
 
@@ -50,14 +52,14 @@ class NavigationState {
   /// Check if we can navigate (debounce check)
   bool canNavigate() {
     if (_isNavigating) {
-      print('⚠️ [NAV_STATE] Navigation already in progress');
+      LogService.warning('[NAV_STATE] Navigation already in progress');
       return false;
     }
 
     if (_lastNavigationTime != null) {
       final timeSinceLastNav = DateTime.now().difference(_lastNavigationTime!);
       if (timeSinceLastNav < _debounceDuration) {
-        print('⚠️ [NAV_STATE] Navigation debounced (${timeSinceLastNav.inMilliseconds}ms ago)');
+        LogService.warning('[NAV_STATE] Navigation debounced (${timeSinceLastNav.inMilliseconds}ms ago)');
         return false;
       }
     }
@@ -71,7 +73,7 @@ class NavigationState {
     _navigationHistory.clear();
     _isNavigating = false;
     _lastNavigationTime = null;
-    print('🔄 [NAV_STATE] Navigation state reset');
+    LogService.debug('🔄 [NAV_STATE] Navigation state reset');
   }
 
   /// Check if route is in history

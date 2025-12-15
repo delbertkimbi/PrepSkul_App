@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
@@ -9,8 +12,15 @@ import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/tutor_matching_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -24,9 +34,15 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   List<Map<String, dynamic>> _tutors = [];
   List<Map<String, dynamic>> _filteredTutors = [];
   bool _isLoading = true;
+  List<MatchedTutor> _matchedTutors = []; // Store matched tutors with scores
+  Map<String, MatchScore> _matchScores = {}; // Cache match scores by tutor ID
+  String _sortBy = 'match'; // 'match', 'rating', 'price'
   String? _selectedSubject;
   String? _selectedPriceRange;
   double _minRating = 0.0;
+  bool _isOffline = false;
+  DateTime? _cacheTimestamp;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   // Smart subject list based on user preferences
   List<String> _subjects = [];
@@ -52,22 +68,72 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   // Monthly price ranges (in XAF per month)
   // Based on typical monthly pricing: 2-3 sessions/week × 4 weeks
   // Example: 3k/session × 2 sessions/week × 4 weeks = 24k/month
-  final List<Map<String, dynamic>> _priceRanges = [
-    {'label': 'Under 20k/mo', 'min': 0, 'max': 20000},
-    {'label': '20k - 30k/mo', 'min': 20000, 'max': 30000},
-    {'label': '30k - 40k/mo', 'min': 30000, 'max': 40000},
-    {'label': '40k - 50k/mo', 'min': 40000, 'max': 50000},
-    {'label': 'Above 50k/mo', 'min': 50000, 'max': 200000},
-  ];
+
+
+
+  // Get localized price ranges
+  List<Map<String, dynamic>> _getPriceRanges(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
+    return [
+      {'label': t.filterUnder20k, 'min': 0, 'max': 20000},
+      {'label': t.filter20kTo30k, 'min': 20000, 'max': 30000},
+      {'label': t.filter30kTo40k, 'min': 30000, 'max': 40000},
+      {'label': t.filter40kTo50k, 'min': 40000, 'max': 50000},
+      {'label': t.filterAbove50k, 'min': 50000, 'max': 200000},
+    ];
+  }
+
+
+    // Get localized price ranges
 
   @override
   void initState() {
     super.initState();
+    _initializeConnectivity();
     _loadUserSubjects(); // Load user's preferred subjects first
     _loadTutors();
     
     // Listen to search text changes and filter tutors
     _searchController.addListener(_filterTutors);
+  }
+
+  /// Initialize connectivity monitoring
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    
+    // Listen to connectivity changes
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        final wasOffline = _isOffline;
+        safeSetState(() {
+          _isOffline = !isOnline;
+        });
+        
+        // If came back online, reload tutors and clear offline state
+        if (isOnline && wasOffline) {
+          LogService.info('🌐 Connection restored - reloading tutors');
+          _loadTutors();
+        }
+      }
+    });
+  }
+
+  /// Check current connectivity status
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      final wasOffline = _isOffline;
+      safeSetState(() {
+        _isOffline = !isOnline;
+      });
+      
+      // If we just came back online, reload data
+      if (isOnline && wasOffline) {
+        LogService.info('🌐 Connection detected - reloading tutors');
+        _loadTutors();
+      }
+    }
   }
 
   /// Load user's subjects from survey and build smart subject list
@@ -76,7 +142,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final userProfile = await AuthService.getUserProfile();
       if (userProfile == null) {
         // No user profile - use default subjects
-        setState(() {
+        safeSetState(() {
           _subjects = _defaultSubjects;
           _subjectsLoaded = true;
         });
@@ -86,7 +152,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final userType = userProfile['user_type']?.toString();
       if (userType != 'student' && userType != 'parent') {
         // Not a student/parent - use default subjects
-        setState(() {
+        safeSetState(() {
           _subjects = _defaultSubjects;
           _subjectsLoaded = true;
         });
@@ -160,7 +226,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         sortedSubjects.addAll(otherSubjects);
 
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _userPreferredSubjects = userSubjects;
             _subjects = sortedSubjects.isNotEmpty ? sortedSubjects : _defaultSubjects;
             _subjectsLoaded = true;
@@ -169,17 +235,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       } else {
         // No survey data - use default subjects
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _subjects = _defaultSubjects;
             _subjectsLoaded = true;
           });
         }
       }
     } catch (e) {
-      print('⚠️ Error loading user subjects: $e');
+      LogService.warning('Error loading user subjects: $e');
       // Fallback to default subjects
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _subjects = _defaultSubjects;
           _subjectsLoaded = true;
         });
@@ -211,45 +277,193 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Future<void> _loadTutors() async {
-    setState(() => _isLoading = true);
+    safeSetState(() => _isLoading = true);
 
     try {
-      print('🔍 FindTutorsScreen: Starting to load tutors...');
-      // ✅ USING TutorService - Easy to swap demo/real data!
-      // Change TutorService.USE_DEMO_DATA to false when ready for Supabase
-      final tutors = await TutorService.fetchTutors();
-      print('🔍 FindTutorsScreen: Received ${tutors.length} tutors from TutorService');
-
+      // Check connectivity first - always get fresh status
+      final isOnline = await _connectivity.checkConnectivity();
       if (mounted) {
-        setState(() {
-          _tutors = tutors;
-          _filteredTutors = _tutors;
-          _isLoading = false;
+        safeSetState(() {
+          _isOffline = !isOnline;
         });
-        print('🔍 FindTutorsScreen: Updated state with ${_tutors.length} tutors, ${_filteredTutors.length} filtered');
-        
-        // Show debug message if no tutors found
-        if (tutors.isEmpty) {
-          print('⚠️ FindTutorsScreen: No tutors found! Check TutorService logs for details.');
       }
+      
+      // If offline, try to load from cache
+      if (_isOffline) {
+        LogService.info('FindTutorsScreen: Offline - loading from cache...');
+        final cachedTutors = await OfflineCacheService.getCachedTutors();
+        if (cachedTutors != null && cachedTutors.isNotEmpty) {
+          final timestamp = await SharedPreferences.getInstance().then(
+            (prefs) => prefs.getInt('cached_tutors_timestamp') ?? 0,
+          );
+          if (mounted) {
+            safeSetState(() {
+              _tutors = cachedTutors;
+              _filteredTutors = cachedTutors;
+              _isLoading = false;
+              _cacheTimestamp = timestamp > 0 
+                  ? DateTime.fromMillisecondsSinceEpoch(timestamp)
+                  : null;
+            });
+          }
+          LogService.success('FindTutorsScreen: Loaded ${cachedTutors.length} tutors from cache');
+          return;
+        } else {
+          // No cache available - just show empty state
+          if (mounted) {
+            safeSetState(() => _isLoading = false);
+          }
+          return;
+        }
+      }
+      
+      LogService.debug('FindTutorsScreen: Starting to load tutors...');
+      
+      // Get current user info
+      final currentUserData = await AuthService.getCurrentUser();
+      if (currentUserData == null) {
+        // Fallback to regular tutor loading if no user
+        final tutors = await TutorService.fetchTutors();
+        // Cache the tutors
+        await OfflineCacheService.cacheTutors(tutors);
+        if (mounted) {
+          safeSetState(() {
+            _tutors = tutors;
+            _filteredTutors = tutors;
+            _isLoading = false;
+            _cacheTimestamp = DateTime.now();
+          });
+        }
+        return;
+      }
+
+      // Determine user type
+      final userType = await _getUserType(currentUserData['id']?.toString() ?? '');
+      
+      // Use matching algorithm if user has preferences
+      try {
+        final matchedTutors = await TutorMatchingService.matchTutorsForUser(
+          userId: currentUserData['id']?.toString() ?? '',
+          userType: userType,
+          filters: {
+            if (_selectedSubject != null) 'subject': _selectedSubject,
+            if (_selectedPriceRange != null) ..._getPriceRangeFilters(),
+            if (_minRating > 0) 'minRating': _minRating,
+          },
+        );
+
+        if (matchedTutors.isNotEmpty) {
+          // Use matched tutors
+          final tutorList = matchedTutors.map((mt) => mt.tutor).toList();
+          // Cache the tutors
+          await OfflineCacheService.cacheTutors(tutorList);
+          safeSetState(() {
+            _matchedTutors = matchedTutors;
+            _tutors = tutorList;
+            _matchScores = {
+              for (var mt in matchedTutors)
+                mt.tutor['id'] as String: mt.matchScore
+            };
+            _filteredTutors = _tutors;
+            _isLoading = false;
+            _cacheTimestamp = DateTime.now();
+          });
+          LogService.success('FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
+        } else {
+          // Fallback to regular loading if no matches
+          final tutors = await TutorService.fetchTutors();
+          // Cache the tutors
+          await OfflineCacheService.cacheTutors(tutors);
+          if (mounted) {
+            safeSetState(() {
+              _tutors = tutors;
+              _filteredTutors = tutors;
+              _isLoading = false;
+              _cacheTimestamp = DateTime.now();
+            });
+          }
+          LogService.warning('FindTutorsScreen: No matches found, using regular tutor list');
+        }
+      } catch (e) {
+        // Fallback to regular loading on error
+        LogService.warning('FindTutorsScreen: Matching error, using regular loading: $e');
+        final tutors = await TutorService.fetchTutors();
+        // Cache the tutors
+        await OfflineCacheService.cacheTutors(tutors);
+        if (mounted) {
+          safeSetState(() {
+            _tutors = tutors;
+            _filteredTutors = tutors;
+            _isLoading = false;
+            _cacheTimestamp = DateTime.now();
+          });
+        }
       }
     } catch (e, stackTrace) {
-      print('❌ FindTutorsScreen: Error loading tutors: $e');
-      print('❌ Stack trace: $stackTrace');
+      LogService.error('FindTutorsScreen: Error loading tutors: $e');
+      LogService.error('Error type: ${e.runtimeType}');
+      LogService.error('Stack trace: $stackTrace');
+      
+      // Log specific error details for null type errors
+      if (e.toString().contains('null') || e.toString().contains('Null')) {
+        LogService.warning('Null type error detected - checking tutor data transformation');
+        LogService.warning('This may indicate a field is null when String is expected');
+      }
+      
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading tutors: $e'),
-            duration: const Duration(seconds: 5),
-          ),
+        safeSetState(() => _isLoading = false);
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to load tutors. Please try again.',
         );
       }
     }
   }
 
+  Future<String> _getUserType(String userId) async {
+    try {
+      // Check if user is a parent
+      final parentProfile = await SupabaseService.client
+          .from('parent_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      if (parentProfile != null) return 'parent';
+      
+      // Check if user is a student
+      final learnerProfile = await SupabaseService.client
+          .from('learner_profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+      if (learnerProfile != null) return 'student';
+      
+      return 'student'; // Default
+    } catch (e) {
+      LogService.warning('Error determining user type: $e');
+      return 'student';
+    }
+  }
+
+  Map<String, dynamic> _getPriceRangeFilters() {
+    if (_selectedPriceRange == null) return {};
+    final ranges = _getPriceRanges(context);
+    final range = ranges.firstWhere(
+      (r) => r['label'] == _selectedPriceRange,
+      orElse: () => {'min': 0, 'max': 200000},
+    );
+    return {
+      'minRate': range['min'] as int,
+      'maxRate': range['max'] as int,
+    };
+  }
+
+
   void _filterTutors() {
-    setState(() {
+    safeSetState(() {
       _filteredTutors = _tutors.where((tutor) {
         final searchQuery = _searchController.text.toLowerCase();
         if (searchQuery.isNotEmpty) {
@@ -269,7 +483,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
 
         if (_selectedPriceRange != null) {
-          final priceRange = _priceRanges.firstWhere(
+          final priceRange = _getPriceRanges(context).firstWhere(
             (range) => range['label'] == _selectedPriceRange,
           );
           // Calculate monthly price for this tutor
@@ -291,7 +505,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   void _clearFilters() {
-    setState(() {
+    safeSetState(() {
       _searchController.clear();
       _selectedSubject = null;
       _selectedPriceRange = null;
@@ -299,6 +513,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     });
     _filterTutors(); // Apply cleared filters
   }
+
+  // Check if any filter is active
+  bool get _isFilterActive =>
+      _searchController.text.isNotEmpty ||
+      _selectedSubject != null ||
+      _selectedPriceRange != null ||
+      _minRating > 0;
 
   @override
   Widget build(BuildContext context) {
@@ -312,8 +533,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         title: const AppLogoHeader(),
         actions: [
           IconButton(
-            icon: Icon(Icons.tune, color: Colors.black),
-            onPressed: _showFilterBottomSheet,
+            icon: Icon(
+              Icons.tune, 
+              color: _isOffline ? Colors.grey[400] : Colors.black,
+            ),
+            onPressed: _isOffline 
+                ? () => OfflineDialog.show(
+                      context,
+                      message: 'Filters require an internet connection. Please check your connection and try again.',
+                    )
+                : _showFilterBottomSheet,
+            tooltip: _isOffline ? 'Filters unavailable offline' : 'Filter tutors',
           ),
         ],
       ),
@@ -333,9 +563,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ),
                   child: TextField(
                     controller: _searchController,
+                    enabled: !_isOffline, // Disable search when offline
                     onChanged: (value) {
-                      setState(() {});
-                      _filterTutors();
+                      if (!_isOffline) {
+                        safeSetState(() {});
+                        _filterTutors();
+                      } else {
+                        // Show offline dialog if user tries to search while offline
+                        OfflineDialog.show(
+                          context,
+                          message: 'Search requires an internet connection. Please check your connection and try again.',
+                        );
+                      }
                     },
                     style: GoogleFonts.poppins(
                       color: Colors.black,
@@ -361,7 +600,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               ),
                               onPressed: () {
                                 _searchController.clear();
-                                setState(() {});
+                                safeSetState(() {});
                                 _filterTutors();
                               },
                             )
@@ -390,13 +629,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               children: [
                                 if (_selectedSubject != null)
                                   _buildFilterChip(_selectedSubject!, () {
-                                    setState(() => _selectedSubject = null);
+                                    safeSetState(() => _selectedSubject = null);
                                     _filterTutors();
                                   }),
                                 if (_selectedPriceRange != null) ...[
                                   const SizedBox(width: 8),
                                   _buildFilterChip(_selectedPriceRange!, () {
-                                    setState(() => _selectedPriceRange = null);
+                                    safeSetState(() => _selectedPriceRange = null);
                                     _filterTutors();
                                   }),
                                 ],
@@ -405,7 +644,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                   _buildFilterChip(
                                     '${_minRating.toInt()}+ ⭐',
                                     () {
-                                      setState(() => _minRating = 0.0);
+                                      safeSetState(() => _minRating = 0.0);
                                       _filterTutors();
                                     },
                                   ),
@@ -430,24 +669,31 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   ),
               ],
             ),
+
+
+
           ),
 
-          // Results Count
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Row(
-              children: [
-                Text(
-                  '${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
+          // Results Count and Cache Info
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                if (_isFilterActive)
+                  Text(
+                    'Found ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+
+          
 
           // Tutors List
           Expanded(
@@ -458,7 +704,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 : _filteredTutors.isEmpty
                 ? _buildEmptyState()
                 : RefreshIndicator(
-                    onRefresh: _loadTutors,
+                    onRefresh: _isOffline 
+                    ? () => OfflineDialog.show(
+                          context,
+                          message: 'Refresh requires an internet connection. Please check your connection and try again.',
+                        )
+                    : _loadTutors,
                     child: ListView.builder(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                       itemCount: _filteredTutors.length,
@@ -473,16 +724,25 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
-  Widget _buildRatingIndicator(int rating, String label) {
+  Widget _buildRatingIndicator(int rating, String label, {StateSetter? modalSetState}) {
     // Show as selected if this exact rating value is closest to current minRating
     // Round to nearest integer for selection
     final currentRating = _minRating.round();
     final isSelected = currentRating == rating;
     return GestureDetector(
       onTap: () {
-        setState(() {
+        // Update parent state first
+        safeSetState(() {
           _minRating = rating.toDouble();
         });
+        // Then update modal state to reflect the change in the popup
+        // This ensures the blue active state updates in the modal
+        if (modalSetState != null) {
+          // Schedule modal state update after current frame to ensure parent state is committed
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            modalSetState(() {});
+          });
+        }
         _filterTutors(); // Apply filter when rating indicator is tapped
       },
       child: Container(
@@ -541,8 +801,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
   Widget _buildTutorCard(Map<String, dynamic> tutor) {
     final name = tutor['full_name'] ?? 'Unknown';
-    final rating = (tutor['rating'] ?? 0.0).toDouble();
-    final totalReviews = tutor['total_reviews'] ?? 0;
+    // Use pre-calculated values from tutor_service (no duplicate calculation)
+    final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
+    final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    
+    // DEBUG: Print values being used
+    print('📊 [FIND_TUTORS] Name: $name');
+    print('   - rating (from service): $rating');
+    print('   - total_reviews (from service): $totalReviews');
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
     
@@ -580,14 +846,19 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => TutorDetailScreen(tutor: tutor),
-              ),
-            );
-          },
+          onTap: _isOffline
+              ? () => OfflineDialog.show(
+                    context,
+                    message: 'Viewing tutor details requires an internet connection. Please check your connection and try again.',
+                  )
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TutorDetailScreen(tutor: tutor),
+                    ),
+                  );
+                },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -772,6 +1043,81 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
+
+  Color _getMatchScoreColor(double percentage) {
+    if (percentage >= 80) return Colors.green;
+    if (percentage >= 60) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildSortChip(String label, String value, IconData icon) {
+    final isSelected = _sortBy == value;
+    return GestureDetector(
+      onTap: () {
+        safeSetState(() {
+          _sortBy = value;
+          _applySorting();
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isSelected ? Colors.white : Colors.grey[700],
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.white : Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _applySorting() {
+    safeSetState(() {
+      _filteredTutors.sort((a, b) {
+        switch (_sortBy) {
+          case 'match':
+            final scoreA = _matchScores[a['id'] as String?]?.totalScore ?? 0.0;
+            final scoreB = _matchScores[b['id'] as String?]?.totalScore ?? 0.0;
+            return scoreB.compareTo(scoreA);
+          case 'rating':
+            final ratingA = (a['rating'] ?? 0.0) as double;
+            final ratingB = (b['rating'] ?? 0.0) as double;
+            return ratingB.compareTo(ratingA);
+          case 'price':
+            final pricingA = PricingService.calculateFromTutorData(a);
+            final pricingB = PricingService.calculateFromTutorData(b);
+            final priceA = (pricingA['perMonth'] ?? 0.0) as double;
+            final priceB = (pricingB['perMonth'] ?? 0.0) as double;
+            return priceA.compareTo(priceB);
+          default:
+            return 0;
+        }
+      });
+    });
+  }
+
+
   Widget _buildSubtleMonthlyEstimate(Map<String, dynamic> tutor) {
     // Calculate monthly pricing but display it subtly
     final pricing = PricingService.calculateFromTutorData(tutor);
@@ -801,6 +1147,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Widget _buildEmptyState() {
+    // Regular empty state
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -920,12 +1267,40 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
+  /// Get human-readable cache age text
+  String _getCacheAgeText(DateTime cacheTime) {
+    final now = DateTime.now();
+    final difference = now.difference(cacheTime);
+    
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${(difference.inDays / 7).floor()}w ago';
+    }
+  }
+
   void _showFilterBottomSheet() {
+    if (_isOffline) {
+      OfflineDialog.show(
+        context,
+        message: 'Filters require an internet connection. Please check your connection and try again.',
+      );
+      return;
+    }
+    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          return Container(
         height: MediaQuery.of(context).size.height * 0.75,
         decoration: const BoxDecoration(
           color: Colors.white,
@@ -1016,7 +1391,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               final isUserPreferred = _userPreferredSubjects.contains(subject);
                         return GestureDetector(
                           onTap: () {
-                            setState(() {
+                            safeSetState(() {
                               _selectedSubject = isSelected ? null : subject;
                             });
                                   _filterTutors(); // Apply filter when subject changes
@@ -1081,7 +1456,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Monthly Price Range',
+                      AppLocalizations.of(context)!.filterMonthlyPriceRange,
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -1092,12 +1467,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: _priceRanges.map((range) {
+                      children: _getPriceRanges(context).map((range) {
                         final label = range['label'] as String;
                         final isSelected = _selectedPriceRange == label;
                         return GestureDetector(
                           onTap: () {
-                            setState(() {
+                            safeSetState(() {
                               _selectedPriceRange = isSelected ? null : label;
                             });
                             _filterTutors(); // Apply filter when price range changes
@@ -1134,7 +1509,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'Minimum Rating',
+                      AppLocalizations.of(context)!.filterMinimumRating,
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -1147,28 +1522,38 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: Slider(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            child: Slider(
                             value: _minRating,
                             min: 0,
                             max: 5,
                             divisions: 5,
-                                label: _minRating == 0 ? 'Any' : '${_minRating.toStringAsFixed(1)} ⭐',
+                                label: _minRating == 0 ? AppLocalizations.of(context)!.filterAny : '${_minRating.toStringAsFixed(1)} ⭐',
                             activeColor: AppTheme.primaryColor,
                                 inactiveColor: Colors.grey[300],
                             onChanged: (value) {
-                              setState(() {
-                                _minRating = value;
+                              // Update parent state first
+                              safeSetState(() {
+                                // Round to nearest integer for proper snapping
+                                _minRating = value.round().toDouble();
+                              });
+                              // Then update modal state to reflect the change
+                              // Schedule modal state update after current frame to ensure parent state is committed
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                setModalState(() {});
                               });
                               _filterTutors(); // Apply filter when rating changes
                             },
                           ),
                         ),
-                            const SizedBox(width: 12),
+                          ),
+                        const SizedBox(width: 12),
                         Container(
                           width: 60,
                           alignment: Alignment.center,
                           child: Text(
-                                _minRating == 0 ? 'Any' : '${_minRating.toStringAsFixed(1)}+',
+                                _minRating == 0 ? AppLocalizations.of(context)!.filterAny : '${_minRating.toStringAsFixed(1)}+',
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
@@ -1183,12 +1568,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            _buildRatingIndicator(0, 'Any'),
-                            _buildRatingIndicator(1, '1'),
-                            _buildRatingIndicator(2, '2'),
-                            _buildRatingIndicator(3, '3'),
-                            _buildRatingIndicator(4, '4'),
-                            _buildRatingIndicator(5, '5'),
+                            _buildRatingIndicator(0, AppLocalizations.of(context)!.filterAny, modalSetState: setModalState),
+                            _buildRatingIndicator(1, '1', modalSetState: setModalState),
+                            _buildRatingIndicator(2, '2', modalSetState: setModalState),
+                            _buildRatingIndicator(3, '3', modalSetState: setModalState),
+                            _buildRatingIndicator(4, '4', modalSetState: setModalState),
+                            _buildRatingIndicator(5, '5', modalSetState: setModalState),
                           ],
                         ),
                       ],
@@ -1218,15 +1603,13 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    elevation: 0,
                   ),
                   child: Text(
-                    'Show ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
+                    'Apply Filters',
                     style: GoogleFonts.poppins(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1237,6 +1620,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             ),
           ],
         ),
+      );
+        },
       ),
     );
   }
@@ -1257,7 +1642,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge),
           errorWidget: (context, url, error) {
             // Log error for debugging
-            print('⚠️ Failed to load avatar image: $url, error: $error');
+            LogService.warning('Failed to load avatar image: $url, error: $error');
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
           fadeInDuration: const Duration(milliseconds: 300),
@@ -1391,5 +1776,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     _searchController.removeListener(_filterTutors);
     _searchController.dispose();
     super.dispose();
-  }
+  
+
+
+  
+}
 }

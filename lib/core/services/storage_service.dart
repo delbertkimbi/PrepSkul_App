@@ -7,6 +7,7 @@ import 'package:mime/mime.dart';
 import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Comprehensive file upload service for PrepSkul
 /// Handles images, documents, and videos for Supabase Storage
@@ -60,10 +61,10 @@ class StorageService {
           .from(profilePhotosBucket)
           .getPublicUrl(storagePath);
 
-      print('✅ Profile photo uploaded: $publicUrl');
+      LogService.success('Profile photo uploaded: $publicUrl');
       return publicUrl;
     } catch (e) {
-      print('❌ Error uploading profile photo: $e');
+      LogService.error('Error uploading profile photo: $e');
       rethrow;
     }
   }
@@ -84,14 +85,14 @@ class StorageService {
           await SupabaseService.client.storage.from(documentsBucket).remove([
             path,
           ]);
-          print('🗑️ [DEBUG] Deleted existing file: $path');
+          LogService.info('[DEBUG] Deleted existing file: $path');
         } catch (e) {
           // File doesn't exist, continue silently
         }
       }
     } catch (e) {
       // Ignore errors - file might not exist
-      print('⚠️ [DEBUG] Could not delete existing file: $e');
+      LogService.warning('[DEBUG] Could not delete existing file: $e');
     }
   }
 
@@ -108,14 +109,14 @@ class StorageService {
       int fileSize;
       dynamic uploadData; // File, XFile, Uint8List, or PlatformFile
 
-      print(
+      LogService.debug(
         '🔍 [DEBUG] uploadDocument called with type: ${documentFile.runtimeType}',
       );
-      print('🔍 [DEBUG] isWeb: $kIsWeb');
+      LogService.debug('[DEBUG] isWeb: $kIsWeb');
 
       // Handle PlatformFile (from file_picker, works on all platforms)
       if (documentFile is PlatformFile) {
-        print('🔍 [DEBUG] Detected PlatformFile: ${documentFile.name}');
+        LogService.debug('[DEBUG] Detected PlatformFile: ${documentFile.name}');
 
         final fileName = documentFile.name;
         fileExtension = path.extension(fileName).isEmpty
@@ -128,7 +129,7 @@ class StorageService {
           if (documentFile.bytes != null) {
             fileSize = documentFile.bytes!.length;
             uploadData = documentFile.bytes!;
-            print(
+            LogService.debug(
               '🔍 [DEBUG] Web: Using PlatformFile bytes (${fileSize} bytes)',
             );
           } else {
@@ -140,7 +141,7 @@ class StorageService {
             final File file = File(documentFile.path!);
             fileSize = await file.length();
             uploadData = file;
-            print(
+            LogService.debug(
               '🔍 [DEBUG] Mobile: Using PlatformFile path (${fileSize} bytes)',
             );
           } else {
@@ -150,7 +151,7 @@ class StorageService {
       }
       // Handle XFile (from image_picker, works on all platforms)
       else if (documentFile is XFile) {
-        print('🔍 [DEBUG] Detected XFile: ${documentFile.name}');
+        LogService.debug('[DEBUG] Detected XFile: ${documentFile.name}');
 
         // Get file name and extension - handle web vs mobile differently
         String fileName = documentFile.name;
@@ -162,26 +163,26 @@ class StorageService {
             fileName = 'upload.jpg';
             fileExtension = '.jpg';
             mimeType = 'image/jpeg';
-            print('🔍 [DEBUG] Web: Using default name and extension');
+            LogService.debug('[DEBUG] Web: Using default name and extension');
           } else {
             fileExtension = path.extension(fileName).isEmpty
                 ? '.jpg'
                 : path.extension(fileName);
             mimeType = lookupMimeType(fileName) ?? 'image/jpeg';
-            print(
+            LogService.debug(
               '🔍 [DEBUG] Web: Using name for extension: $fileExtension, mime: $mimeType',
             );
           }
 
           // Web: Use bytes (NEVER access .path on web)
-          print('🔍 [DEBUG] Web platform: Reading as bytes');
+          LogService.debug('[DEBUG] Web platform: Reading as bytes');
           try {
             final Uint8List bytes = await documentFile.readAsBytes();
             fileSize = bytes.length;
             uploadData = bytes;
-            print('🔍 [DEBUG] Read ${fileSize} bytes');
+            LogService.debug('[DEBUG] Read ${fileSize} bytes');
           } catch (e) {
-            print('❌ [DEBUG] Error reading XFile bytes: $e');
+            LogService.error('[DEBUG] Error reading XFile bytes: $e');
             throw Exception('Failed to read file data: $e');
           }
         } else {
@@ -196,16 +197,16 @@ class StorageService {
                     : path.extension(filePath);
                 mimeType = lookupMimeType(filePath) ?? 'image/jpeg';
                 fileName = path.basename(filePath);
-                print(
+                LogService.debug(
                   '🔍 [DEBUG] Mobile: Using path for extension: $fileExtension',
                 );
               } else {
                 fileExtension = '.jpg';
                 mimeType = 'image/jpeg';
-                print('🔍 [DEBUG] Mobile: Using default extension');
+                LogService.debug('[DEBUG] Mobile: Using default extension');
               }
             } catch (e) {
-              print('⚠️ [DEBUG] Error accessing path, using defaults: $e');
+              LogService.warning('[DEBUG] Error accessing path, using defaults: $e');
               fileExtension = '.jpg';
               mimeType = 'image/jpeg';
             }
@@ -214,13 +215,13 @@ class StorageService {
                 ? '.jpg'
                 : path.extension(fileName);
             mimeType = lookupMimeType(fileName) ?? 'image/jpeg';
-            print(
+            LogService.debug(
               '🔍 [DEBUG] Mobile: Using name for extension: $fileExtension, mime: $mimeType',
             );
           }
 
           // Mobile: Use File path
-          print('🔍 [DEBUG] Mobile platform: Using file path');
+          LogService.debug('[DEBUG] Mobile platform: Using file path');
           try {
             final filePath = documentFile.path;
             if (filePath.isEmpty) {
@@ -229,19 +230,19 @@ class StorageService {
             final File file = File(filePath);
             fileSize = await file.length();
             uploadData = file;
-            print('🔍 [DEBUG] File size: $fileSize bytes');
+            LogService.debug('[DEBUG] File size: $fileSize bytes');
           } catch (e) {
-            print('❌ [DEBUG] Error creating File from path: $e');
+            LogService.error('[DEBUG] Error creating File from path: $e');
             throw Exception('Failed to access file: $e');
           }
         }
       } else if (documentFile is File) {
         // File objects should only come from mobile, but handle safely
-        print('🔍 [DEBUG] Detected File');
+        LogService.debug('[DEBUG] Detected File');
         if (kIsWeb) {
           // On web, File objects are NOT supported
           // File.path will throw NoSuchMethodError on web
-          print('❌ [DEBUG] File object detected on web - not supported');
+          LogService.error('[DEBUG] File object detected on web - not supported');
           throw Exception(
             'File objects are not supported on web. Please use Gallery or Files option to select files.',
           );
@@ -253,20 +254,20 @@ class StorageService {
               ? '.jpg'
               : path.extension(documentFile.path);
           fileSize = await documentFile.length();
-          print(
+          LogService.debug(
             '🔍 [DEBUG] File size: $fileSize bytes, extension: $fileExtension',
           );
         }
       } else if (documentFile is Uint8List) {
-        print('🔍 [DEBUG] Detected Uint8List directly');
+        LogService.debug('[DEBUG] Detected Uint8List directly');
         uploadData = documentFile;
         fileSize = documentFile.length;
         // For Uint8List, we can't determine mime type easily
         mimeType = 'image/jpeg'; // Default
         fileExtension = '.jpg'; // Default
-        print('🔍 [DEBUG] Uint8List size: $fileSize bytes');
+        LogService.debug('[DEBUG] Uint8List size: $fileSize bytes');
       } else {
-        print('❌ [DEBUG] Unsupported file type: ${documentFile.runtimeType}');
+        LogService.error('[DEBUG] Unsupported file type: ${documentFile.runtimeType}');
         throw Exception(
           'Unsupported file type: ${documentFile.runtimeType}. Expected File, XFile, or PlatformFile.',
         );
@@ -294,14 +295,14 @@ class StorageService {
       await _deleteExistingDocument(userId, documentType);
 
       // Upload to Supabase - use uploadBinary on web for Uint8List, upload for mobile File
-      print('🔍 [DEBUG] Uploading to path: $storagePath');
-      print('🔍 [DEBUG] Upload data type: ${uploadData.runtimeType}');
-      print('🔍 [DEBUG] Platform: ${kIsWeb ? "Web" : "Mobile"}');
+      LogService.debug('[DEBUG] Uploading to path: $storagePath');
+      LogService.debug('[DEBUG] Upload data type: ${uploadData.runtimeType}');
+      LogService.debug('[DEBUG] Platform: ${kIsWeb ? "Web" : "Mobile"}');
 
       try {
         if (kIsWeb && uploadData is Uint8List) {
           // Web: use uploadBinary for Uint8List
-          print('🔍 [DEBUG] Using uploadBinary for web upload');
+          LogService.debug('[DEBUG] Using uploadBinary for web upload');
           await SupabaseService.client.storage
               .from(documentsBucket)
               .uploadBinary(
@@ -313,10 +314,10 @@ class StorageService {
                       false, // We deleted the file above, so no need for upsert
                 ),
               );
-          print('✅ [DEBUG] uploadBinary completed successfully');
+          LogService.success('[DEBUG] uploadBinary completed successfully');
         } else {
           // Mobile: use regular upload with File
-          print('🔍 [DEBUG] Using regular upload for mobile');
+          LogService.debug('[DEBUG] Using regular upload for mobile');
           await SupabaseService.client.storage
               .from(documentsBucket)
               .upload(
@@ -327,7 +328,7 @@ class StorageService {
                       false, // We deleted the file above, so no need for upsert
                 ),
               );
-          print('✅ [DEBUG] Regular upload completed successfully');
+          LogService.success('[DEBUG] Regular upload completed successfully');
         }
       } catch (uploadError) {
         // Handle specific upload errors
@@ -351,13 +352,13 @@ class StorageService {
             errorString.contains('409') ||
             errorString.contains('already exists') ||
             errorString.contains('Duplicate')) {
-          print('⚠️ [DEBUG] Duplicate file detected, deleting and retrying...');
+          LogService.warning('[DEBUG] Duplicate file detected, deleting and retrying...');
           // Delete the exact file path and retry
           try {
             await SupabaseService.client.storage.from(documentsBucket).remove([
               storagePath,
             ]);
-            print('🗑️ [DEBUG] Deleted duplicate file: $storagePath');
+            LogService.info('[DEBUG] Deleted duplicate file: $storagePath');
 
             // Retry upload
             if (kIsWeb && uploadData is Uint8List) {
@@ -380,9 +381,9 @@ class StorageService {
                     fileOptions: const FileOptions(upsert: false),
                   );
             }
-            print('✅ [DEBUG] Retry upload successful');
+            LogService.success('[DEBUG] Retry upload successful');
           } catch (retryError) {
-            print('❌ [DEBUG] Retry failed: $retryError');
+            LogService.error('[DEBUG] Retry failed: $retryError');
             throw Exception(
               'Failed to upload document. Please try again or contact support if the issue persists.',
             );
@@ -393,7 +394,7 @@ class StorageService {
             errorString.contains('403') ||
             errorString.contains('row-level security') ||
             errorString.contains('Unauthorized')) {
-          print('❌ [DEBUG] RLS policy error: $uploadError');
+          LogService.error('[DEBUG] RLS policy error: $uploadError');
           throw Exception(
             'Upload failed due to permissions. Please ensure you are logged in and try again. If the issue persists, contact support.',
           );
@@ -409,10 +410,10 @@ class StorageService {
           .from(documentsBucket)
           .createSignedUrl(storagePath, 3600 * 24 * 365); // 1 year
 
-      print('✅ Document uploaded: $documentType');
+      LogService.success('Document uploaded: $documentType');
       return signedUrl;
     } catch (e) {
-      print('❌ Error uploading document: $e');
+      LogService.error('Error uploading document: $e');
       rethrow;
     }
   }
@@ -451,10 +452,10 @@ class StorageService {
           .from(videosBucket)
           .getPublicUrl(storagePath);
 
-      print('✅ Video uploaded: $publicUrl');
+      LogService.success('Video uploaded: $publicUrl');
       return publicUrl;
     } catch (e) {
-      print('❌ Error uploading video: $e');
+      LogService.error('Error uploading video: $e');
       rethrow;
     }
   }
@@ -473,7 +474,7 @@ class StorageService {
 
       return File(image.path);
     } catch (e) {
-      print('❌ Error picking image: $e');
+      LogService.error('Error picking image: $e');
       return null;
     }
   }
@@ -492,7 +493,7 @@ class StorageService {
 
       return File(image.path);
     } catch (e) {
-      print('❌ Error taking photo: $e');
+      LogService.error('Error taking photo: $e');
       return null;
     }
   }
@@ -512,7 +513,7 @@ class StorageService {
 
       return File(filePath);
     } catch (e) {
-      print('❌ Error picking document: $e');
+      LogService.error('Error picking document: $e');
       return null;
     }
   }
@@ -531,7 +532,7 @@ class StorageService {
 
       return File(filePath);
     } catch (e) {
-      print('❌ Error picking video: $e');
+      LogService.error('Error picking video: $e');
       return null;
     }
   }
@@ -544,9 +545,9 @@ class StorageService {
     try {
       await SupabaseService.client.storage.from(bucket).remove([filePath]);
 
-      print('✅ File deleted: $filePath');
+      LogService.success('File deleted: $filePath');
     } catch (e) {
-      print('❌ Error deleting file: $e');
+      LogService.error('Error deleting file: $e');
       rethrow;
     }
   }
@@ -571,7 +572,7 @@ class StorageService {
             );
       }
     } catch (e) {
-      print('❌ Error getting file URL: $e');
+      LogService.error('Error getting file URL: $e');
       rethrow;
     }
   }
@@ -598,7 +599,7 @@ class StorageService {
           .from(bucket)
           .getPublicUrl(storagePath);
     } catch (e) {
-      print('❌ Error uploading with progress: $e');
+      LogService.error('Error uploading with progress: $e');
       rethrow;
     }
   }

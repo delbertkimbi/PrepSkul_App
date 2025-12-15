@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/safe_set_state.dart';
+import '../../../core/widgets/skeletons/student_home_skeleton.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_cache_service.dart';
+import '../../../core/widgets/offline_indicator.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
+// TODO: Fix import path
+// import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
 class StudentHomeScreen extends StatefulWidget {
   const StudentHomeScreen({Key? key}) : super(key: key);
@@ -24,11 +32,53 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   String _userType = 'student';
   bool _surveyCompleted = false;
   bool _showReminderCard = false;
+  bool _isOffline = false;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
+    _initializeConnectivity();
     _loadUserData();
+  }
+
+  /// Initialize connectivity monitoring
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    
+    // Listen to connectivity changes
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        final wasOffline = _isOffline;
+        setState(() {
+          _isOffline = !isOnline;
+        });
+        
+        // If came back online, refresh data
+        if (isOnline && wasOffline) {
+          LogService.info('🌐 Connection restored - refreshing home screen');
+          _loadUserData();
+        }
+      }
+    });
+  }
+
+  /// Check current connectivity status
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      final wasOffline = _isOffline;
+      setState(() {
+        _isOffline = !isOnline;
+      });
+      
+      // If we just came back online, refresh data
+      if (isOnline && wasOffline) {
+        LogService.info('🌐 Connection detected - refreshing home screen');
+        _loadUserData();
+      }
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -37,41 +87,93 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
 
-      // Get user name with priority: profile > stored signup data > session > auth metadata > default
-      var userName = userProfile?['full_name'] != null
-          ? userProfile!['full_name'].toString()
-          : null;
-      if (userName == null || userName.isEmpty || userName == 'User') {
-        // Try stored signup data
-        final storedName = prefs.getString('signup_full_name');
-        if (storedName != null && storedName.isNotEmpty) {
-          userName = storedName;
+      // Get user name with priority: profile > direct Supabase query > stored signup data > session > auth metadata > default
+      // Extract first name from full_name if available
+      String? extractFirstName(String? fullName) {
+        if (fullName == null || fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+          return null;
+        }
+        // Split by space and take first part
+        final parts = fullName.trim().split(' ');
+        final firstName = parts.isNotEmpty ? parts[0] : fullName;
+        // Return null if it's still "Student" or empty
+        if (firstName.isEmpty || firstName == 'Student' || firstName == 'User') {
+          return null;
+        }
+        return firstName;
+      }
+
+      var userName = extractFirstName(userProfile?['full_name']?.toString());
+      LogService.debug('[HOME] Name from getUserProfile: ${userProfile?['full_name']} -> $userName');
+      
+      // If still no name, try direct Supabase query as fallback
+      if (userName == null || userName.isEmpty) {
+        try {
+          final authUser = SupabaseService.currentUser;
+          if (authUser != null) {
+            final directProfile = await SupabaseService.client
+                .from('profiles')
+                .select('full_name')
+                .eq('id', authUser.id)
+                .maybeSingle();
+            
+            final directName = directProfile?['full_name']?.toString();
+            LogService.debug('[HOME] Name from direct Supabase query: $directName');
+            userName = extractFirstName(directName);
+          }
+        } catch (e) {
+          LogService.debug('[HOME] Error querying Supabase directly: $e');
         }
       }
-      if (userName == null || userName.isEmpty || userName == 'User') {
+      
+      if (userName == null || userName.isEmpty) {
+        // Try stored signup data
+        final storedName = prefs.getString('signup_full_name');
+        LogService.debug('[HOME] Name from SharedPreferences: $storedName');
+        if (storedName != null && storedName.isNotEmpty) {
+          userName = extractFirstName(storedName);
+        }
+      }
+      if (userName == null || userName.isEmpty) {
         // Try session data
         final currentUser = await AuthService.getCurrentUser();
         final sessionName = currentUser['fullName']?.toString();
-        if (sessionName != null &&
-            sessionName.isNotEmpty &&
-            sessionName != 'User') {
-          userName = sessionName;
+        LogService.debug('[HOME] Name from session: $sessionName');
+        if (sessionName != null && sessionName.isNotEmpty && sessionName != 'User') {
+          userName = extractFirstName(sessionName);
         }
       }
-      if (userName == null || userName.isEmpty || userName == 'User') {
+      if (userName == null || userName.isEmpty) {
         // Try auth user metadata
         final authUser = SupabaseService.currentUser;
         if (authUser != null && authUser.userMetadata?['full_name'] != null) {
           final metadataName = authUser.userMetadata!['full_name']?.toString();
+          LogService.debug('[HOME] Name from auth metadata: $metadataName');
           if (metadataName != null && metadataName.isNotEmpty) {
-            userName = metadataName;
+            userName = extractFirstName(metadataName);
           }
         }
       }
-      if (userName == null || userName.isEmpty || userName == 'User') {
+      if (userName == null || userName.isEmpty) {
+        // Last resort: try email username
+        final authUser = SupabaseService.currentUser;
+        if (authUser?.email != null) {
+          final email = authUser!.email!;
+          final emailName = email.split('@')[0];
+          // Capitalize first letter
+          if (emailName.isNotEmpty && emailName.length > 1) {
+            userName = emailName[0].toUpperCase() + emailName.substring(1);
+            LogService.debug('[HOME] Using email username: $userName');
+          }
+        }
+      }
+      if (userName == null || userName.isEmpty) {
         // Default fallback
         userName = 'Student';
+        LogService.warning('[HOME] All name sources failed, using default: Student');
       }
+      
+      LogService.success('[HOME] Final userName: $userName');
 
       _userName = userName;
       _userType = userProfile?['user_type'] ?? 'student';
@@ -94,9 +196,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         _showReminderCard = await SurveyReminderCard.shouldShow();
       }
 
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        safeSetState(() {
+          _isLoading = false;
+        });
+      }
 
       // First-time user? Auto-navigate to Find Tutors
       if (_isFirstVisit && mounted) {
@@ -114,297 +218,31 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         });
       }
     } catch (e) {
-      print('Error loading user data: $e');
-      setState(() {
+      LogService.debug('Error loading user data: $e');
+      if (!mounted) return;
+
+      safeSetState(() {
         _userName = 'Student';
         _isLoading = false;
       });
     }
   }
 
-  Widget _buildSkeletonLoader() {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Hero Header skeleton
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.primaryColor,
-                    AppTheme.primaryColor.withOpacity(0.8),
-                  ],
-                ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
-              child: Shimmer.fromColors(
-                baseColor: Colors.white.withOpacity(0.2),
-                highlightColor: Colors.white.withOpacity(0.5),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Greeting skeleton
-                              Container(
-                                width: 120,
-                                height: 16,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              // Name skeleton
-                              Container(
-                                width: 180,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Notification bell skeleton
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Shimmer.fromColors(
-                baseColor: Colors.grey[300]!,
-                highlightColor: Colors.grey[100]!,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Section title skeleton
-                    Container(
-                      width: 150,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Stats cards skeleton
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: 40,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Container(
-                                  width: 80,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[200]!),
-                            ),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  width: 40,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Container(
-                                  width: 80,
-                                  height: 14,
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Section title skeleton
-                    Container(
-                      width: 130,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Action cards skeleton (3 cards)
-                    ...List.generate(3, (index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.grey[200]!),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.03),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: double.infinity,
-                                      height: 16,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      width: 200,
-                                      height: 14,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                width: 16,
-                                height: 16,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return _buildSkeletonLoader();
+      return const StudentHomeSkeleton();
     }
 
     // Get greeting based on time
     final hour = DateTime.now().hour;
-    String greeting = 'Good morning';
+    String greeting = AppLocalizations.of(context)!.goodMorning;
     String greetingEmoji = '☀️';
     if (hour >= 12 && hour < 17) {
-      greeting = 'Good afternoon';
+      greeting = AppLocalizations.of(context)!.goodAfternoon;
       greetingEmoji = '👋';
     } else if (hour >= 17) {
-      greeting = 'Good evening';
+      greeting = AppLocalizations.of(context)!.goodEvening;
       greetingEmoji = '🌙';
     }
 
@@ -489,14 +327,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                     ),
 
                   // Quick Stats
-                  _buildSectionTitle('Your Progress'),
+                  _buildSectionTitle(AppLocalizations.of(context)!.yourProgress),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: _buildStatCard(
                           icon: Icons.school_outlined,
-                          label: 'Active Tutors',
+                          label: AppLocalizations.of(context)!.activeTutors,
                           value: '0',
                           color: AppTheme.primaryColor,
                         ),
@@ -505,7 +343,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Expanded(
                         child: _buildStatCard(
                           icon: Icons.calendar_today_outlined,
-                          label: 'Sessions',
+                          label: AppLocalizations.of(context)!.sessions,
                           value: '0',
                           color: Colors.orange,
                         ),
@@ -515,14 +353,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 24),
 
                   // Quick Actions
-                  _buildSectionTitle('Quick Actions'),
+                  _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.search,
-                    title: 'Find Perfect Tutor',
+                    title: AppLocalizations.of(context)!.findPerfectTutor,
                     subtitle: city != null
-                        ? 'Browse tutors in $city'
-                        : 'Discover tutors near you',
+                        ? AppLocalizations.of(context)!.browseTutorsIn(city ?? '')
+                        : AppLocalizations.of(context)!.discoverTutorsNearYou,
                     color: AppTheme.primaryColor,
                     onTap: () {
                       Navigator.pushReplacementNamed(
@@ -535,7 +373,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.inbox_outlined,
-                    title: 'My Requests',
+                    title: AppLocalizations.of(context)!.myRequests,
                     subtitle: 'View your booking requests',
                     color: Colors.orange,
                     onTap: () {
@@ -549,9 +387,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.calendar_today,
-                    title: 'My Sessions',
+                    title: AppLocalizations.of(context)!.mySessions,
                     subtitle: 'View upcoming and completed sessions',
-                    color: Colors.blue,
+                    color: Colors.purple,
                     onTap: () {
                       Navigator.pushNamed(context, '/my-sessions');
                     },
@@ -559,13 +397,40 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.payment,
-                    title: 'Payment History',
+                    title: AppLocalizations.of(context)!.paymentHistory,
                     subtitle: 'View and manage your payments',
                     color: Colors.green,
                     onTap: () {
                       Navigator.pushNamed(context, '/payment-history');
                     },
                   ),
+                  // Learning Progress (for parents)
+                  if (_userType == 'parent') ...[
+                    const SizedBox(height: 12),
+                    _buildActionCard(
+                      icon: Icons.trending_up,
+                      title: 'Learning Progress',
+                      subtitle: 'Track your child\'s learning journey and improvement',
+                      color: AppTheme.accentGreen,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AlertDialog(
+                              title: Text('Learning Progress'),
+                              content: Text('Feature coming soon'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text('Close'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
 
                   // Removed "Your Goals" section - personal info belongs in profile
                   // This data is used behind the scenes for tutor matching, not for display

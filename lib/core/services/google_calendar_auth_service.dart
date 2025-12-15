@@ -1,4 +1,5 @@
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:googleapis_auth/auth_io.dart' as auth_io;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,14 +30,14 @@ class GoogleCalendarAuthService {
 
       final GoogleSignInAccount? account = await googleSignIn.signIn();
       if (account == null) {
-        print('⚠️ Google Sign-In cancelled by user');
+        LogService.warning('Google Sign-In cancelled by user');
         return false;
       }
 
       final GoogleSignInAuthentication auth = await account.authentication;
 
       if (auth.accessToken == null) {
-        print('❌ No access token received from Google Sign-In');
+        LogService.error('No access token received from Google Sign-In');
         return false;
       }
 
@@ -49,10 +50,10 @@ class GoogleCalendarAuthService {
         expiresIn: 3600, // Default 1 hour
       );
 
-      print('✅ Google Calendar authentication successful');
+      LogService.success('Google Calendar authentication successful');
       return true;
     } catch (e) {
-      print('❌ Error signing in to Google Calendar: $e');
+      LogService.error('Error signing in to Google Calendar: $e');
       return false;
     }
   }
@@ -77,7 +78,7 @@ class GoogleCalendarAuthService {
 
       return true;
     } catch (e) {
-      print('❌ Error checking authentication status: $e');
+      LogService.error('Error checking authentication status: $e');
       return false;
     }
   }
@@ -88,7 +89,7 @@ class GoogleCalendarAuthService {
   static Future<http.Client?> getAuthenticatedClient() async {
     try {
       if (!await isAuthenticated()) {
-        print('⚠️ Not authenticated with Google Calendar');
+        LogService.warning('Not authenticated with Google Calendar');
         return null;
       }
 
@@ -114,7 +115,7 @@ class GoogleCalendarAuthService {
 
       return client;
     } catch (e) {
-      print('❌ Error getting authenticated client: $e');
+      LogService.error('Error getting authenticated client: $e');
       return null;
     }
   }
@@ -126,7 +127,7 @@ class GoogleCalendarAuthService {
       final refreshToken = prefs.getString(_prefsKeyRefreshToken);
 
       if (refreshToken == null) {
-        print('⚠️ No refresh token available');
+        LogService.warning('No refresh token available');
         return false;
       }
 
@@ -138,7 +139,7 @@ class GoogleCalendarAuthService {
       // Try to sign in silently (uses existing session)
       final GoogleSignInAccount? account = await googleSignIn.signInSilently();
       if (account == null) {
-        print('⚠️ Silent sign-in failed, user needs to re-authenticate');
+        LogService.warning('Silent sign-in failed, user needs to re-authenticate');
         return false;
       }
 
@@ -155,10 +156,10 @@ class GoogleCalendarAuthService {
         expiresIn: 3600,
       );
 
-      print('✅ Access token refreshed');
+      LogService.success('Access token refreshed');
       return true;
     } catch (e) {
-      print('❌ Error refreshing token: $e');
+      LogService.error('Error refreshing token: $e');
       return false;
     }
   }
@@ -177,9 +178,9 @@ class GoogleCalendarAuthService {
       await prefs.remove(_prefsKeyRefreshToken);
       await prefs.remove(_prefsKeyTokenExpiry);
 
-      print('✅ Signed out from Google Calendar');
+      LogService.success('Signed out from Google Calendar');
     } catch (e) {
-      print('❌ Error signing out: $e');
+      LogService.error('Error signing out: $e');
     }
   }
 
@@ -211,7 +212,7 @@ class GoogleCalendarAuthService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.getString(_prefsKeyAccessToken);
     } catch (e) {
-      print('❌ Error getting access token: $e');
+      LogService.error('Error getting access token: $e');
       return null;
     }
   }

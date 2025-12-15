@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 
 /// Meet Service
@@ -95,7 +96,7 @@ class MeetService {
 
       return calendarEvent.meetLink;
     } catch (e) {
-      print('❌ Error generating trial Meet link: $e');
+      LogService.error('Error generating trial Meet link: $e');
       rethrow;
     }
   }
@@ -189,7 +190,7 @@ class MeetService {
 
       return calendarEvent.meetLink;
     } catch (e) {
-      print('❌ Error generating recurring Meet link: $e');
+      LogService.error('Error generating recurring Meet link: $e');
       rethrow;
     }
   }
@@ -272,10 +273,10 @@ class MeetService {
           })
           .eq('id', sessionId);
 
-      print('✅ Meet link generated for individual session: $sessionId');
+      LogService.success('Meet link generated for individual session: $sessionId');
       return calendarEvent.meetLink;
     } catch (e) {
-      print('❌ Error generating individual session Meet link: $e');
+      LogService.error('Error generating individual session Meet link: $e');
       rethrow;
     }
   }
@@ -320,7 +321,7 @@ class MeetService {
 
       return false;
     } catch (e) {
-      print('❌ Error checking Meet link access: $e');
+      LogService.error('Error checking Meet link access: $e');
       return false;
     }
   }

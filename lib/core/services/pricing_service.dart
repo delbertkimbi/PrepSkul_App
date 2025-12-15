@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 
 /// Pricing Service - Calculates tutor pricing based on multiple factors
@@ -208,37 +209,99 @@ class PricingService {
     return 2;
   }
 
-  /// Get trial session pricing from database
-  static Future<Map<int, int>> getTrialSessionPricing() async {
+  /// Get trial session pricing from database with full details (price, discount)
+  static Future<Map<int, Map<String, dynamic>>> getTrialSessionPricingWithDetails() async {
     try {
-      final response = await _supabase
-          .from('trial_session_pricing')
-          .select('duration_minutes, price_xaf')
-          .eq('is_active', true);
+      // Fetch pricing with potential discount columns
+      // Note: 'discount_percent' and 'discount_amount' are potential columns based on user feedback
+      // If they don't exist, Supabase might ignore or throw. We handle both cases.
+      List<dynamic> response;
+      try {
+        response = await _supabase
+            .from('trial_session_pricing')
+            .select('duration_minutes, price_xaf, discount_percent, discount_amount')
+            .eq('is_active', true);
+      } catch (e) {
+        LogService.warning('Could not fetch discount columns, falling back to basic pricing: $e');
+        response = await _supabase
+            .from('trial_session_pricing')
+            .select('duration_minutes, price_xaf')
+            .eq('is_active', true);
+      }
 
-      final pricing = <int, int>{};
+      final pricing = <int, Map<String, dynamic>>{};
       for (final row in response) {
-        pricing[row['duration_minutes'] as int] = row['price_xaf'] as int;
+        final duration = row['duration_minutes'] as int;
+        final basePrice = (row['price_xaf'] as num).toDouble();
+        final discountPercent = (row['discount_percent'] as num?)?.toDouble() ?? 0.0;
+        final discountAmount = (row['discount_amount'] as num?)?.toDouble() ?? 0.0;
+        
+        // Calculate final price
+        double finalPrice = basePrice;
+        if (discountPercent > 0) {
+          finalPrice = basePrice * (1 - discountPercent / 100);
+        } else if (discountAmount > 0) {
+          finalPrice = basePrice - discountAmount;
+        }
+
+        // Ensure price doesn't go below zero
+        if (finalPrice < 0) finalPrice = 0;
+
+        // Round to nearest 100
+        finalPrice = (finalPrice / 100).round() * 100.0;
+
+        pricing[duration] = {
+          'basePrice': basePrice,
+          'finalPrice': finalPrice,
+          'discountPercent': discountPercent,
+          'discountAmount': discountAmount,
+          'hasDiscount': discountPercent > 0 || discountAmount > 0,
+        };
       }
 
       // Default fallback if database is empty
       if (pricing.isEmpty) {
-        pricing[30] = 2000;
-        pricing[60] = 3500;
+        pricing[30] = {
+          'basePrice': 2000.0,
+          'finalPrice': 2000.0,
+          'hasDiscount': false,
+        };
+        pricing[60] = {
+          'basePrice': 3500.0,
+          'finalPrice': 3500.0,
+          'hasDiscount': false,
+        };
       }
 
       return pricing;
     } catch (e) {
-      print('⚠️ Error fetching trial session pricing: $e');
+      LogService.warning('Error fetching trial session pricing details: $e');
       // Return defaults on error
-      return {30: 2000, 60: 3500};
+      return {
+        30: {'basePrice': 2000.0, 'finalPrice': 2000.0, 'hasDiscount': false},
+        60: {'basePrice': 3500.0, 'finalPrice': 3500.0, 'hasDiscount': false},
+      };
     }
+  }
+
+  /// Get trial session pricing from database (simple map for backward compatibility)
+  static Future<Map<int, int>> getTrialSessionPricing() async {
+    final details = await getTrialSessionPricingWithDetails();
+    final simplePricing = <int, int>{};
+    details.forEach((duration, data) {
+      simplePricing[duration] = (data['finalPrice'] as double).round();
+    });
+    return simplePricing;
   }
 
   /// Get trial session price for a specific duration
   static Future<int> getTrialSessionPrice(int durationMinutes) async {
-    final pricing = await getTrialSessionPricing();
-    return pricing[durationMinutes] ?? (durationMinutes == 30 ? 2000 : 3500);
+    final details = await getTrialSessionPricingWithDetails();
+    final data = details[durationMinutes];
+    if (data != null) {
+      return (data['finalPrice'] as double).round();
+    }
+    return durationMinutes == 30 ? 2000 : 3500;
   }
 
   /// Calculate pricing for tutor from JSON data (for demo mode)
@@ -246,40 +309,98 @@ class PricingService {
     Map<String, dynamic> tutorData, {
     int? overrideSessionsPerWeek,
   }) {
+    final tutorName = tutorData['full_name'] ?? 'Unknown';
+    
+    // Use pre-calculated effective rate from tutor_service if available (no duplicate calculation)
+    // tutor_service already validates and calculates effectiveRate, so use it directly
+    final effectiveRateFromService = (tutorData['effective_rate'] as num?)?.toDouble() 
+        ?? (tutorData['hourly_rate'] as num?)?.toDouble(); // Fallback to hourly_rate if effective_rate not set
+    
     // Extract pricing data with priority: discounted_price > base_session_price > admin_price_override > hourly_rate
     final discountedPrice = tutorData['discounted_price']?.toDouble();
     final baseSessionPrice = tutorData['base_session_price']?.toDouble();
     final adminPriceOverride = tutorData['admin_price_override']?.toDouble();
-    final hourlyRate = (tutorData['hourly_rate'] ?? 3000).toDouble();
+    final hourlyRateRaw = tutorData['hourly_rate'];
     final perSessionRate = tutorData['per_session_rate']?.toDouble();
     
-    // Check if tutor has discount
+    // DEBUG: Print raw pricing data
+    print('💰 [PRICING_SERVICE] Tutor: $tutorName');
+    print('   - effectiveRateFromService: $effectiveRateFromService');
+    print('   - discounted_price: $discountedPrice');
+    print('   - base_session_price: $baseSessionPrice');
+    print('   - admin_price_override: $adminPriceOverride');
+    print('   - hourly_rate (raw): $hourlyRateRaw');
+    print('   - per_session_rate: $perSessionRate');
+    
+    // Check if tutor has discount (needed for both paths)
     final discountPercent = (tutorData['discount_percent'] ?? 0.0).toDouble();
     final discountAmount = (tutorData['discount_amount_xaf'] ?? 0).toInt();
     final hasDiscount = discountPercent > 0 || discountAmount > 0;
     
-    // Determine effective base rate (priority order)
+    // If tutor_service already calculated effective rate, use it (prevent duplicate calculation)
     double effectiveBaseRate;
-    if (discountedPrice != null && discountedPrice > 0 && hasDiscount) {
-      // Use discounted price if available
-      effectiveBaseRate = discountedPrice;
-    } else if (baseSessionPrice != null && baseSessionPrice > 0) {
-      effectiveBaseRate = baseSessionPrice;
-    } else if (adminPriceOverride != null && adminPriceOverride > 0) {
-      effectiveBaseRate = adminPriceOverride;
-    } else if (perSessionRate != null && perSessionRate > 0) {
-      effectiveBaseRate = perSessionRate;
+    if (effectiveRateFromService != null && effectiveRateFromService > 0 && effectiveRateFromService <= 50000) {
+      effectiveBaseRate = effectiveRateFromService;
+      print('   ✅ Using effectiveRateFromService: $effectiveBaseRate');
     } else {
-      effectiveBaseRate = hourlyRate;
+      // Validate and sanitize hourly_rate (prevent very large numbers)
+      double hourlyRate = 3000.0; // Default fallback
+      if (hourlyRateRaw != null) {
+        final hourlyRateValue = hourlyRateRaw is num ? hourlyRateRaw.toDouble() : double.tryParse(hourlyRateRaw.toString());
+        // Only use if it's a reasonable value (between 1000 and 50000 XAF)
+        if (hourlyRateValue != null && hourlyRateValue >= 1000 && hourlyRateValue <= 50000) {
+          hourlyRate = hourlyRateValue;
+        } else {
+          print('   ⚠️ hourly_rate invalid: $hourlyRateValue (using default 3000)');
+        }
+      }
+      print('   - hourly_rate (validated): $hourlyRate');
+      
+      // Determine effective base rate (priority order)
+      // Validate each rate to prevent very large numbers (max 50000 XAF per session)
+      if (discountedPrice != null && discountedPrice > 0 && discountedPrice <= 50000 && hasDiscount) {
+        // Use discounted price if available and valid
+        effectiveBaseRate = discountedPrice;
+        print('   ✅ Using discounted_price: $effectiveBaseRate');
+      } else if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
+        effectiveBaseRate = baseSessionPrice;
+        print('   ✅ Using base_session_price: $effectiveBaseRate');
+      } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
+        effectiveBaseRate = adminPriceOverride;
+        print('   ✅ Using admin_price_override: $effectiveBaseRate');
+      } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
+        effectiveBaseRate = perSessionRate;
+        print('   ✅ Using per_session_rate: $effectiveBaseRate');
+      } else {
+        effectiveBaseRate = hourlyRate;
+        print('   ✅ Using hourly_rate (fallback): $effectiveBaseRate');
+      }
     }
     
-    final rating = (tutorData['rating'] ?? 4.0).toDouble();
+    // Use effective rating: admin_approved_rating if total_reviews < 3, otherwise calculated rating
+    final totalReviews = (tutorData['total_reviews'] as num?)?.toInt() ?? 0;
+    final adminApprovedRating = (tutorData['admin_approved_rating'] as num?)?.toDouble();
+    final calculatedRating = (tutorData['rating'] as num?)?.toDouble() ?? 0.0;
+    
+    print('   - total_reviews: $totalReviews');
+    print('   - admin_approved_rating: $adminApprovedRating');
+    print('   - calculated_rating: $calculatedRating');
+    
+    final rating = (totalReviews < 3 && adminApprovedRating != null)
+        ? adminApprovedRating
+        : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 4.0));
+    
+    print('   - Final rating used: $rating');
+    
     final qualification = tutorData['tutor_qualification'] ?? 'Professional';
     
     // If admin has set base_session_price or admin_price_override, use it directly
-    final adminOverride = (baseSessionPrice != null && baseSessionPrice > 0)
+    // But only if it's a valid value (not too large)
+    final adminOverride = (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000)
         ? baseSessionPrice
-        : adminPriceOverride;
+        : (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000)
+        ? adminPriceOverride
+        : null;
 
     // Default sessions per week
     final sessionsPerWeek = overrideSessionsPerWeek ?? 2;
@@ -295,6 +416,9 @@ class PricingService {
       hasVisibilitySubscription: tutorData['visibility_subscription'] ?? false,
       hasPrepSkulCertification: tutorData['prepskul_certified'] ?? false,
     );
+    
+    print('   - Final perMonth: ${pricing['perMonth']} (${formatPrice(pricing['perMonth'] as double)})');
+    print('   - Final perSession: ${pricing['perSession']}');
 
     // Add discount information if available
     if (hasDiscount) {

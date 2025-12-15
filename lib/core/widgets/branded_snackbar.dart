@@ -59,8 +59,8 @@ class BrandedSnackBar extends StatelessWidget {
       SnackBar(
         content: BrandedSnackBar(
           message: message,
-          backgroundColor: Colors.red,
-          icon: Icons.error_outline,
+          backgroundColor: AppTheme.primaryColor, // Deep blue instead of red
+          icon: Icons.info_outline,
           iconColor: Colors.white,
         ),
         backgroundColor: Colors.transparent,

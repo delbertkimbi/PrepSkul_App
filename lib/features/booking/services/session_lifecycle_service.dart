@@ -1,9 +1,12 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/services/individual_session_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
+import 'package:prepskul/features/sessions/services/connection_quality_service.dart';
+import 'package:prepskul/features/sessions/services/location_sharing_service.dart';
 
 /// Session Lifecycle Service
 ///
@@ -59,7 +62,9 @@ class SessionLifecycleService {
 
       final now = DateTime.now().toIso8601String();
       final sessionLocation = session['location'] as String;
-      final isSessionOnline = sessionLocation == 'online' || isOnline;
+      // For hybrid sessions, use isOnline parameter to determine mode
+      // For online/onsite, use location directly
+      final isSessionOnline = sessionLocation == 'online' || (sessionLocation == 'hybrid' && isOnline);
 
       // Update session status
       final updateData = <String, dynamic>{
@@ -90,8 +95,23 @@ class SessionLifecycleService {
         userId: userId,
         userType: 'tutor',
         joinedAt: DateTime.now(),
+        isOnline: isSessionOnline,
       );
 
+      // Start connection quality monitoring for online sessions
+      if (isSessionOnline) {
+        ConnectionQualityService.startMonitoring(sessionId);
+      }
+
+      // Start location sharing for onsite sessions (including hybrid in onsite mode)
+      if (!isSessionOnline && (sessionLocation == 'onsite' || sessionLocation == 'hybrid')) {
+        // Start location sharing for tutor
+        await LocationSharingService.startLocationSharing(
+          sessionId: sessionId,
+          userId: userId,
+          userType: 'tutor',
+        );
+      }
       // For online sessions: ensure Meet link exists
       if (isSessionOnline) {
         String? meetLink = session['meeting_link'] as String?;
@@ -108,39 +128,60 @@ class SessionLifecycleService {
           }
         }
 
-        // TODO: Start Fathom recording (when Fathom integration is ready)
-        // await FathomService.startRecording(sessionId, meetLink);
+        // Fathom automatically records this session via calendar monitoring
+        // The PrepSkul VA is already added as an attendee when the calendar event
+        // is created (in GoogleCalendarService.createSessionEvent), so Fathom will:
+        // 1. Detect the calendar event on PrepSkul VA's calendar
+        // 2. Auto-join the meeting when it starts
+        // 3. Automatically start recording and transcribing
+        // 4. Send webhook with summary/transcript when ready
+        LogService.debug('📹 Fathom will automatically record this session via calendar monitoring');
       }
 
-      // Send notifications
-      final studentId = session['learner_id'] ?? session['parent_id'];
-      if (studentId != null) {
-        // Get the final Meet link (either existing or newly generated)
-        String? finalMeetLink;
-        if (isSessionOnline) {
-          finalMeetLink = session['meeting_link'] as String?;
-          // If Meet link was just generated, fetch it from the updated session
-          if (finalMeetLink == null || finalMeetLink.isEmpty) {
-            final updatedSession = await _supabase
-                .from('individual_sessions')
-                .select('meeting_link')
-                .eq('id', sessionId)
-                .maybeSingle();
-            finalMeetLink = updatedSession?['meeting_link'] as String?;
-          }
+      // Send notifications to both learner and parent if applicable
+      final learnerId = session['learner_id'] as String?;
+      final parentId = session['parent_id'] as String?;
+      
+      // Get the final Meet link (either existing or newly generated)
+      String? finalMeetLink;
+      if (isSessionOnline) {
+        finalMeetLink = session['meeting_link'] as String?;
+        // If Meet link was just generated, fetch it from the updated session
+        if (finalMeetLink == null || finalMeetLink.isEmpty) {
+          final updatedSession = await _supabase
+              .from('individual_sessions')
+              .select('meeting_link')
+              .eq('id', sessionId)
+              .maybeSingle();
+          finalMeetLink = updatedSession?['meeting_link'] as String?;
         }
-        
+      }
+      
+      // Send notification to learner (if exists)
+      if (learnerId != null) {
         await _sendSessionStartedNotification(
           sessionId: sessionId,
-          studentId: studentId as String,
+          studentId: learnerId,
           isOnline: isSessionOnline,
           meetLink: finalMeetLink,
+          isParent: false,
+        );
+      }
+      
+      // Send notification to parent (if exists and different from learner)
+      if (parentId != null && parentId != learnerId) {
+        await _sendSessionStartedNotification(
+          sessionId: sessionId,
+          studentId: parentId,
+          isOnline: isSessionOnline,
+          meetLink: finalMeetLink,
+          isParent: true,
         );
       }
 
-      print('✅ Session started: $sessionId');
+      LogService.success('Session started: $sessionId');
     } catch (e) {
-      print('❌ Error starting session: $e');
+      LogService.error('Error starting session: $e');
       rethrow;
     }
   }
@@ -219,11 +260,19 @@ class SessionLifecycleService {
           .eq('id', sessionId);
 
       // Update attendance record
+      // Stop connection quality monitoring
+      ConnectionQualityService.stopMonitoring();
+      
+      // Stop location sharing for onsite sessions (including hybrid)
+      if (session['location'] == 'onsite' || session['location'] == 'hybrid') {
+        await LocationSharingService.stopLocationSharing(sessionId);
+      }
       await _updateAttendanceRecord(
         sessionId: sessionId,
         userId: userId,
         leftAt: now,
         durationMinutes: actualDurationMinutes,
+      isOnline: session['location'] == 'online',
       );
 
       // Create tutor feedback record (if provided)
@@ -255,40 +304,78 @@ class SessionLifecycleService {
       try {
         await SessionPaymentService.createSessionPayment(sessionId);
       } catch (e) {
-        print('⚠️ Error creating session payment: $e');
+        LogService.warning('Error creating session payment: $e');
         // Don't fail the session end if payment creation fails
       }
 
-      // For online sessions: stop Fathom recording
+      // For online sessions: Fathom recording stops automatically when meeting ends
+      // No manual stop needed - Fathom detects meeting end via Google Calendar event
       if (session['location'] == 'online') {
-        // TODO: Stop Fathom recording (when Fathom integration is ready)
-        // await FathomService.stopRecording(sessionId);
+        LogService.debug('Session ended - Fathom will automatically stop recording when meeting ends');
       }
 
-      // Send notifications
-      final studentId = session['learner_id'] ?? session['parent_id'];
-      if (studentId != null) {
+      // Send notifications - handle both learner and parent
+      final learnerId = session['learner_id'] as String?;
+      final parentId = session['parent_id'] as String?;
+      
+      // Get payment ID to include in notification
+      String? paymentId;
+      try {
+        final paymentRecord = await _supabase
+            .from('session_payments')
+            .select('id, session_fee, payment_status')
+            .eq('session_id', sessionId)
+            .maybeSingle();
+        paymentId = paymentRecord?['id'] as String?;
+      } catch (e) {
+        LogService.warning('Could not fetch payment record for notification: $e');
+      }
+      
+      // Send notification to learner (if exists)
+      if (learnerId != null) {
         await _sendSessionCompletedNotification(
           sessionId: sessionId,
-          studentId: studentId as String,
+          studentId: learnerId,
+          paymentId: paymentId,
+          isParent: false,
         );
         
-        // Schedule feedback reminder for 24 hours after session end
+        // Schedule feedback reminder for learner
         try {
           await _scheduleFeedbackReminder(
             sessionId: sessionId,
-            studentId: studentId as String,
+            studentId: learnerId,
             sessionEndTime: now,
           );
         } catch (e) {
-          print('⚠️ Error scheduling feedback reminder: $e');
-          // Don't fail session end if reminder scheduling fails
+          LogService.warning('Error scheduling feedback reminder: $e');
+        }
+      }
+      
+      // Send notification to parent (if exists and different from learner)
+      if (parentId != null && parentId != learnerId) {
+        await _sendSessionCompletedNotification(
+          sessionId: sessionId,
+          studentId: parentId,
+          paymentId: paymentId,
+          isParent: true,
+        );
+        
+        // Schedule feedback reminder for parent too
+        try {
+          await _scheduleFeedbackReminder(
+            sessionId: sessionId,
+            studentId: parentId,
+            sessionEndTime: now,
+          );
+        } catch (e) {
+          LogService.warning('Error scheduling feedback reminder for parent: $e');
         }
       }
 
-      print('✅ Session ended: $sessionId');
+      LogService.success('Session ended: $sessionId');
     } catch (e) {
-      print('❌ Error ending session: $e');
+      LogService.error('Error ending session: $e');
       rethrow;
     }
   }
@@ -385,9 +472,9 @@ class SessionLifecycleService {
         );
       }
 
-      print('✅ Session cancelled: $sessionId');
+      LogService.success('Session cancelled: $sessionId');
     } catch (e) {
-      print('❌ Error cancelling session: $e');
+      LogService.error('Error cancelling session: $e');
       rethrow;
     }
   }
@@ -463,7 +550,7 @@ class SessionLifecycleService {
         }
       }
     } catch (e) {
-      print('❌ Error detecting no-show: $e');
+      LogService.error('Error detecting no-show: $e');
     }
   }
 
@@ -477,18 +564,34 @@ class SessionLifecycleService {
     required String userId,
     required String userType,
     required DateTime joinedAt,
+    bool isOnline = false,
   }) async {
     try {
-      await _supabase.from('session_attendance').insert({
+      final attendanceData = <String, dynamic>{
         'session_id': sessionId,
         'user_id': userId,
         'user_type': userType,
         'joined_at': joinedAt.toIso8601String(),
         'attendance_status': 'present',
         'created_at': DateTime.now().toIso8601String(),
-      });
+      };
+
+      // For online sessions, assess and store connection quality
+      if (isOnline) {
+        try {
+          final connectionQuality = await ConnectionQualityService.assessConnectionQuality();
+          attendanceData['connection_quality'] = connectionQuality;
+          attendanceData['meet_link_used'] = true;
+          LogService.info('Connection quality at join: $connectionQuality');
+        } catch (e) {
+          LogService.warning('Error assessing connection quality: $e');
+          // Continue without connection quality if assessment fails
+        }
+      }
+
+      await _supabase.from('session_attendance').insert(attendanceData);
     } catch (e) {
-      print('⚠️ Error creating attendance record: $e');
+      LogService.warning('Error creating attendance record: $e');
       // Don't fail the session start if attendance fails
     }
   }
@@ -499,6 +602,7 @@ class SessionLifecycleService {
     required String userId,
     required DateTime leftAt,
     int? durationMinutes,
+    bool isOnline = false,
   }) async {
     try {
       final updateData = <String, dynamic>{
@@ -510,13 +614,26 @@ class SessionLifecycleService {
         updateData['duration_minutes'] = durationMinutes;
       }
 
+      // For online sessions, update with final connection quality assessment
+      if (isOnline) {
+        try {
+          // Get best quality from monitoring period
+          final bestQuality = await ConnectionQualityService.getBestQuality();
+          updateData['connection_quality'] = bestQuality;
+          LogService.info('Final connection quality: $bestQuality');
+        } catch (e) {
+          LogService.warning('Error getting final connection quality: $e');
+          // Continue without updating quality if assessment fails
+        }
+      }
+
       await _supabase
           .from('session_attendance')
           .update(updateData)
           .eq('session_id', sessionId)
           .eq('user_id', userId);
     } catch (e) {
-      print('⚠️ Error updating attendance record: $e');
+      LogService.warning('Error updating attendance record: $e');
     }
   }
 
@@ -577,7 +694,7 @@ class SessionLifecycleService {
           .update({'feedback_id': feedback['id']})
           .eq('id', sessionId);
     } catch (e) {
-      print('⚠️ Error creating tutor feedback: $e');
+      LogService.warning('Error creating tutor feedback: $e');
       // Don't fail the session end if feedback fails
     }
   }
@@ -626,24 +743,29 @@ class SessionLifecycleService {
 
       await _supabase.from('tutor_earnings').insert(earningsData);
 
-      print('✅ Earnings calculated for session: $sessionId');
+      LogService.success('Earnings calculated for session: $sessionId');
     } catch (e) {
-      print('⚠️ Error calculating earnings: $e');
+      LogService.warning('Error calculating earnings: $e');
       // Don't fail the session end if earnings calculation fails
     }
   }
 
   /// Send session started notification
+  /// 
+  /// Sends notification to student or parent when session starts
   static Future<void> _sendSessionStartedNotification({
     required String sessionId,
     required String studentId,
     required bool isOnline,
     String? meetLink,
+    bool isParent = false,
   }) async {
     try {
+      final userType = isParent ? 'parent' : 'student';
+      final messagePrefix = isParent ? "Your child's" : 'Your';
       final message = isOnline
-          ? 'Your session has started! ${meetLink != null ? "Join the meeting now: $meetLink" : ""}'
-          : 'Your session has started!';
+          ? '$messagePrefix session has started! ${meetLink != null ? "Join the meeting now: $meetLink" : ""}'
+          : '$messagePrefix session has started!';
 
       // Create in-app notification
       await NotificationService.createNotification(
@@ -659,6 +781,7 @@ class SessionLifecycleService {
           'session_id': sessionId,
           'is_online': isOnline,
           'meet_link': meetLink,
+          'user_type': userType,
         },
       );
 
@@ -672,35 +795,77 @@ class SessionLifecycleService {
           );
         } catch (e) {
           // Silently fail - in-app notification already sent
-          print('⚠️ Could not send email/push notification for session start: $e');
+          LogService.warning('Could not send email/push notification for session start: $e');
         }
       }
     } catch (e) {
-      print('⚠️ Error sending session started notification: $e');
+      LogService.warning('Error sending session started notification: $e');
     }
   }
 
   /// Send session completed notification
+  /// 
+  /// Sends notification to student or parent with payment information if applicable
   static Future<void> _sendSessionCompletedNotification({
     required String sessionId,
     required String studentId,
+    String? paymentId,
+    bool isParent = false,
   }) async {
     try {
+      // Get session details for notification
+      String? sessionFee;
+      String? paymentStatus;
+      if (paymentId != null) {
+        try {
+          final payment = await _supabase
+              .from('session_payments')
+              .select('session_fee, payment_status')
+              .eq('id', paymentId)
+              .maybeSingle();
+          if (payment != null) {
+            sessionFee = (payment['session_fee'] as num?)?.toStringAsFixed(0);
+            paymentStatus = payment['payment_status'] as String?;
+          }
+        } catch (e) {
+          LogService.warning('Could not fetch payment details: $e');
+        }
+      }
+      
+      // Create notification with payment information
+      final userType = isParent ? 'parent' : 'student';
+      final messagePrefix = isParent ? "Your child's" : 'Your';
+      final message = paymentId != null && paymentStatus == 'unpaid'
+          ? '$messagePrefix session has been completed. Payment of ${sessionFee ?? 'N/A'} XAF is due. Please complete payment.'
+          : '$messagePrefix session has been completed. Please provide feedback when ready.';
+      
+      final actionUrl = paymentId != null && paymentStatus == 'unpaid'
+          ? '/payments/session/$paymentId'
+          : '/sessions/$sessionId/feedback';
+      
+      final actionText = paymentId != null && paymentStatus == 'unpaid'
+          ? 'Pay Now'
+          : 'Provide Feedback';
+      
       await NotificationService.createNotification(
         userId: studentId,
         type: 'session_completed',
         title: '✅ Session Completed',
-        message: 'Your session has been completed. Please provide feedback when ready.',
-        priority: 'normal',
-        actionUrl: '/sessions/$sessionId/feedback',
-        actionText: 'Provide Feedback',
+        message: message,
+        priority: paymentId != null && paymentStatus == 'unpaid' ? 'high' : 'normal',
+        actionUrl: actionUrl,
+        actionText: actionText,
         icon: '✅',
         metadata: {
           'session_id': sessionId,
+          'user_type': userType,
+          if (paymentId != null) 'payment_id': paymentId,
+          if (sessionFee != null) 'session_fee': sessionFee,
+          if (paymentStatus != null) 'payment_status': paymentStatus,
         },
       );
     } catch (e) {
-      print('⚠️ Error sending session completed notification: $e');
+      LogService.warning('Error sending session completed notification: $e');
     }
   }
 
@@ -721,9 +886,9 @@ class SessionLifecycleService {
         reminderTime: reminderTime,
       );
       
-      print('✅ Feedback reminder scheduled for session: $sessionId at $reminderTime');
+      LogService.success('Feedback reminder scheduled for session: $sessionId at $reminderTime');
     } catch (e) {
-      print('⚠️ Error scheduling feedback reminder: $e');
+      LogService.warning('Error scheduling feedback reminder: $e');
       // Don't rethrow - reminder scheduling shouldn't fail session end
     }
   }
@@ -754,7 +919,7 @@ class SessionLifecycleService {
         },
       );
     } catch (e) {
-      print('⚠️ Error sending session cancelled notification: $e');
+      LogService.warning('Error sending session cancelled notification: $e');
     }
   }
 
@@ -794,9 +959,9 @@ class SessionLifecycleService {
           .update(updateData)
           .eq('id', recurringSessionId);
 
-      print('✅ Updated recurring session totals: $recurringSessionId');
+      LogService.success('Updated recurring session totals: $recurringSessionId');
     } catch (e) {
-      print('❌ Error updating recurring session totals: $e');
+      LogService.error('Error updating recurring session totals: $e');
       // Don't rethrow - this is a background update
     }
   }

@@ -1,25 +1,27 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 
 /// Fathom AI Service
 /// 
 /// Handles Fathom API interactions for meeting data
 /// Documentation: docs/FATHOM_API_DOCUMENTATION.md
+/// 
+/// Environment is controlled by AppConfig.isProduction
 
 class FathomService {
   static const String _baseUrl = 'https://api.fathom.ai/external/v1';
 
-  /// Get API key from environment
+  /// Get API key from AppConfig
   static String? get _apiKey {
-    // Try to get from environment, or use OAuth client credentials
-    return dotenv.env['FATHOM_API_KEY'];
+    // Fathom uses OAuth, so API key may not be needed
+    // But if available, use it
+    return AppConfig.fathomClientId.isNotEmpty ? AppConfig.fathomClientId : null;
   }
 
-  /// Get PrepSkul VA email
-  static String get _prepskulVAEmail {
-    return dotenv.env['PREPSKUL_VA_EMAIL'] ?? 'deltechhub237@gmail.com';
-  }
+  /// Get PrepSkul VA email from AppConfig
+  static String get _prepskulVAEmail => AppConfig.prepskulVAEmail;
 
   /// Make authenticated API request
   static Future<Map<String, dynamic>> _makeRequest(
@@ -53,7 +55,7 @@ class FathomService {
         throw Exception('Fathom API Error: ${errorBody['message'] ?? 'Unknown error'}');
       }
     } catch (e) {
-      print('❌ Fathom API request error: $e');
+      LogService.error('Fathom API request error: $e');
       rethrow;
     }
   }
@@ -92,7 +94,7 @@ class FathomService {
       
       return items.map((item) => item as Map<String, dynamic>).toList();
     } catch (e) {
-      print('❌ Error fetching PrepSkul sessions: $e');
+      LogService.error('Error fetching PrepSkul sessions: $e');
       rethrow;
     }
   }
@@ -128,7 +130,7 @@ class FathomService {
 
       return meeting;
     } catch (e) {
-      print('❌ Error fetching meeting: $e');
+      LogService.error('Error fetching meeting: $e');
       rethrow;
     }
   }
@@ -144,7 +146,7 @@ class FathomService {
       final response = await _makeRequest('/recordings/$recordingId/summary');
       return response['summary'] as Map<String, dynamic>;
     } catch (e) {
-      print('❌ Error fetching summary: $e');
+      LogService.error('Error fetching summary: $e');
       rethrow;
     }
   }
@@ -162,7 +164,7 @@ class FathomService {
           .map((item) => item as Map<String, dynamic>)
           .toList();
     } catch (e) {
-      print('❌ Error fetching transcript: $e');
+      LogService.error('Error fetching transcript: $e');
       rethrow;
     }
   }

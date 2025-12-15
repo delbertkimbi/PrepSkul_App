@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
@@ -7,6 +9,14 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import 'edit_profile_screen.dart';
+import 'language_settings_screen.dart';
+import 'profile_preview_screen.dart';
+import '../../tutor/screens/tutor_onboarding_screen.dart';
+import '../../discovery/screens/tutor_detail_screen.dart';
+import '../../../core/localization/app_localizations.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+import '../../notifications/screens/notification_preferences_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -19,6 +29,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? _userInfo;
+  Map<String, dynamic>? _tutorProfile;
   String? _profilePhotoUrl;
   bool _isLoading = true;
   Map<String, dynamic>? _surveyData;
@@ -47,7 +58,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // If profile doesn't exist, try to create it from stored signup data or auth user
       if (profileResponse == null) {
-        print('⚠️ Profile not found for user $userId, attempting to create...');
+        LogService.warning('Profile not found for user $userId, attempting to create...');
         try {
           // Get stored signup data as fallback
           final prefs = await SharedPreferences.getInstance();
@@ -113,24 +124,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .eq('id', userId)
               .maybeSingle();
 
-          print('✅ Profile created for user: $userId');
+          LogService.success('Profile created for user: $userId');
         } catch (e) {
-          print('⚠️ Error creating profile: $e');
+          LogService.warning('Error creating profile: $e');
           // Continue with fallback values
         }
       }
 
-      // Load user-specific profile photo
+      // Load user-specific profile photo and full tutor profile
       // For tutors, check tutor_profiles first, then fall back to profiles.avatar_url
       // For students/parents, use profiles.avatar_url
       String? photoUrl;
+      Map<String, dynamic>? tutorProfileData;
       if (widget.userType == 'tutor') {
-        final tutorResponse = await SupabaseService.client
+        tutorProfileData = await SupabaseService.client
             .from('tutor_profiles')
-            .select('profile_photo_url')
+            .select()
             .eq('user_id', userId)
             .maybeSingle();
-        photoUrl = tutorResponse?['profile_photo_url']?.toString();
+        photoUrl = tutorProfileData?['profile_photo_url']?.toString();
       }
       // For all users, also check avatar_url in profiles table
       if (photoUrl == null || photoUrl.isEmpty) {
@@ -241,28 +253,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
           surveyData = await SurveyRepository.getParentSurvey(userId);
         }
       } catch (surveyError, stackTrace) {
-        print('⚠️ Error loading survey data: $surveyError');
-        print('⚠️ Stack trace: $stackTrace');
+        LogService.warning('Error loading survey data: $surveyError');
+        LogService.warning('Stack trace: $stackTrace');
         // Continue without survey data - don't block profile display
         surveyData = null;
       }
 
-      setState(() {
+      if (!mounted) return;
+
+      safeSetState(() {
         _userInfo = {
           ...user,
           'phone': phoneNumber, // Use phone from database
           'email': email, // Use email from auth or database
           'fullName': fullName, // Use name from database (most up-to-date)
         };
+        _tutorProfile = tutorProfileData;
         _profilePhotoUrl =
             photoUrl ?? profileResponse?['avatar_url']?.toString();
         _surveyData = surveyData;
         _isLoading = false;
       });
     } catch (e, stackTrace) {
-      print('❌ Error loading profile: $e');
-      print('❌ Stack trace: $stackTrace');
-      setState(() {
+      LogService.error('Error loading profile: $e');
+      LogService.error('Stack trace: $stackTrace');
+      if (!mounted) return;
+
+      safeSetState(() {
         _isLoading = false;
         // Set safe defaults to prevent crashes
         _userInfo = {
@@ -283,11 +300,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _handleLogout() async {
+    final t = AppLocalizations.of(context)!;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(
-          'Logout',
+          t.profileLogout,
           style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
         ),
         content: Text(
@@ -302,7 +320,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: Text('Logout', style: GoogleFonts.poppins()),
+            child: Text(t.profileLogout, style: GoogleFonts.poppins()),
           ),
         ],
       ),
@@ -318,6 +336,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -325,7 +344,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         backgroundColor: AppTheme.primaryColor, // Deep blue
         elevation: 0,
         title: Text(
-          'Profile',
+          t.profileTitle,
           style: GoogleFonts.poppins(
             color: Colors.white,
             fontWeight: FontWeight.w600,
@@ -506,6 +525,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   const SizedBox(height: 8),
 
+                  
+                  // Survey Completion Card (if not completed)
+                  if ((widget.userType == 'student' || 
+                       widget.userType == 'learner' || 
+                       widget.userType == 'parent') && 
+                      (_surveyData == null || 
+                       (_userInfo?['surveyCompleted'] != true))) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _buildSurveyCompletionCard(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   // Personal Information Section (from survey)
                   if (_surveyData != null &&
                       (widget.userType == 'student' ||
@@ -514,7 +546,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: _buildNeumorphicSection(
-                        title: 'Learning Information',
+                        title: t.profileLearningInformation,
                         icon: Icons.school_outlined,
                         child: _buildLearningInfoSection(),
                       ),
@@ -526,14 +558,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: _buildNeumorphicSection(
-                      title: 'Settings',
+                      title: t.profileSettings,
                       icon: Icons.settings_outlined,
                       child: Column(
                         children: [
                           _buildNeumorphicSettingsItem(
                             icon: Icons.edit_outlined,
-                            title: 'Edit Profile',
-                            subtitle: 'Update your profile information',
+                            title: t.profileEditProfile,
+                            subtitle: t.profileEditProfileSubtitle,
                             onTap: () async {
                               final result = await Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -548,30 +580,89 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             },
                           ),
                           const SizedBox(height: 12),
+                          
+                          if (widget.userType == 'tutor') ...[
+                            _buildNeumorphicSettingsItem(
+                              icon: Icons.school_outlined,
+                              title: t.profileEditTutorInfo,
+                              subtitle: t.profileEditTutorInfoSubtitle,
+                              onTap: () async {
+                                final result = await Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const TutorOnboardingScreen(
+                                      basicInfo: {},
+                                    ),
+                                  ),
+                                );
+                                if (result == true) {
+                                  _loadUserInfo();
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _buildNeumorphicSettingsItem(
+                              icon: Icons.visibility_outlined,
+                              title: t.profilePreviewProfile,
+                              subtitle: t.profilePreviewProfileSubtitle,
+                              onTap: () {
+                                if (_tutorProfile != null) {
+                                  // Merge basic info with tutor profile to ensure completeness
+                                  final mergedProfile = Map<String, dynamic>.from(_tutorProfile!);
+                                  if (mergedProfile['full_name'] == null) {
+                                    mergedProfile['full_name'] = _userInfo?['fullName'];
+                                  }
+                                  // Ensure verified status is visual
+                                  if (mergedProfile['status'] == 'verified' || mergedProfile['status'] == 'approved') {
+                                     mergedProfile['is_verified'] = true;
+                                  }
+                                  
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (context) => ProfilePreviewScreen(
+                                        tutor: mergedProfile,
+                                      ),
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Tutor profile not loaded yet')),
+                                  );
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           _buildNeumorphicSettingsItem(
                             icon: Icons.notifications_outlined,
-                            title: 'Notifications',
-                            subtitle: 'Manage notification preferences',
+                            title: t.profileNotifications,
+                            subtitle: t.profileNotificationsSubtitle,
                             onTap: () {
-                              Navigator.of(
+                              Navigator.push(
                                 context,
-                              ).pushNamed('/notifications/preferences');
+                                MaterialPageRoute(
+                                  builder: (context) => const NotificationPreferencesScreen(),
+                                ),
+                              );
                             },
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
                             icon: Icons.language_outlined,
-                            title: 'Language',
-                            subtitle: 'Change app language',
+                            title: t.profileLanguage,
+                            subtitle: t.profileLanguageSubtitle,
                             onTap: () {
-                              // TODO: Navigate to language settings
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const LanguageSettingsScreen(),
+                                ),
+                              );
                             },
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
                             icon: Icons.help_outline,
-                            title: 'Help & Support',
-                            subtitle: 'Get help and contact support',
+                            title: t.profileHelpSupport,
+                            subtitle: t.profileHelpSupportSubtitle,
                             onTap: () {
                               // TODO: Navigate to help
                             },
@@ -616,7 +707,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Icon(Icons.logout, color: Colors.red, size: 20),
                             const SizedBox(width: 8),
                             Text(
-                              'Logout',
+                              t.profileLogout,
                               style: GoogleFonts.poppins(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
@@ -760,60 +851,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String? subtitle,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        splashColor: AppTheme.primaryColor.withOpacity(0.1),
+        highlightColor: AppTheme.primaryColor.withOpacity(0.05),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: Icon(icon, color: AppTheme.primaryColor, size: 20),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      subtitle,
+                      title,
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.textMedium,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
                       ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            Icon(Icons.chevron_right, color: AppTheme.textLight, size: 20),
-          ],
+              Icon(Icons.chevron_right, color: AppTheme.textLight, size: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -892,8 +988,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (goalsData is List) {
           learningGoals = goalsData;
         } else if (goalsData is String && goalsData.isNotEmpty) {
-          // Handle old data format (comma-separated string)
-          learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+          try {
+            // Try parsing as JSON first
+            final decoded = jsonDecode(goalsData);
+            if (decoded is List) {
+              learningGoals = decoded;
+            } else {
+              // Fallback to comma-separated if not a JSON list
+              learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+            }
+          } catch (e) {
+            // Fallback to comma-separated string if JSON parsing fails
+            learningGoals = goalsData.split(',').map((s) => s.trim()).toList();
+          }
         }
       }
 
@@ -1129,8 +1236,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } catch (e, stackTrace) {
       // Handle any type casting errors gracefully
-      print('❌ Error building learning info section: $e');
-      print('❌ Stack trace: $stackTrace');
+      LogService.error('Error building learning info section: $e');
+      LogService.error('Stack trace: $stackTrace');
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Text(
@@ -1182,6 +1289,93 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSurveyCompletionCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryColor.withOpacity(0.2),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Complete Your Profile Survey',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Help us understand your needs so we can match you with the best tutors.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  '/profile-setup',
+                  arguments: {'userRole': widget.userType},
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Complete Survey',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

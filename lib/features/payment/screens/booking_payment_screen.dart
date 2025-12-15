@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
@@ -6,6 +7,9 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
+import 'package:prepskul/core/utils/error_handler.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
+
 
 /// Booking Payment Screen
 /// 
@@ -54,24 +58,24 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     try {
       final request = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
       if (request != null && mounted) {
-        setState(() {
+        safeSetState(() {
           _paymentRequest = request;
           _isLoading = false;
         });
       } else {
         if (mounted) {
-          setState(() {
+          safeSetState(() {
             _isLoading = false;
             _errorMessage = 'Payment request not found';
           });
         }
       }
     } catch (e) {
-      print('❌ Error loading payment request: $e');
+      LogService.error('Error loading payment request: $e');
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isLoading = false;
-          _errorMessage = 'Failed to load payment request: $e';
+          _errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         });
       }
     }
@@ -84,33 +88,33 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       if (userProfile != null && mounted) {
         final phone = userProfile['phone_number'] as String?;
         if (phone != null && phone.isNotEmpty) {
-          setState(() {
+          safeSetState(() {
             _phoneController.text = phone;
           });
         }
       }
     } catch (e) {
-      print('⚠️ Could not load user phone: $e');
+      LogService.warning('Could not load user phone: $e');
     }
   }
 
   /// Initiate payment
   Future<void> _initiatePayment() async {
     if (_paymentRequest == null) {
-      setState(() {
+      safeSetState(() {
         _errorMessage = 'Payment request not loaded';
       });
       return;
     }
 
     if (_phoneController.text.trim().isEmpty) {
-      setState(() {
+      safeSetState(() {
         _errorMessage = 'Please enter your phone number';
       });
       return;
     }
 
-    setState(() {
+    safeSetState(() {
       _isProcessing = true;
       _errorMessage = null;
       _paymentStatus = 'idle';
@@ -137,7 +141,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         fapshiTransId: paymentResponse.transId,
       );
 
-      setState(() {
+      safeSetState(() {
         _paymentStatus = 'pending';
         _isProcessing = false;
         _isPolling = true;
@@ -146,8 +150,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       // Start polling for payment status
       _pollPaymentStatus(paymentResponse.transId);
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to initiate payment: $e';
+      final friendlyMessage = ErrorHandler.getUserFriendlyMessage(e);
+      safeSetState(() {
+        _errorMessage = friendlyMessage;
         _isProcessing = false;
         _paymentStatus = 'failed';
       });
@@ -164,7 +169,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       );
 
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isPolling = false;
           if (status.isSuccessful) {
             _paymentStatus = 'successful';
@@ -184,7 +189,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _isPolling = false;
           _paymentStatus = 'failed';
           _errorMessage = 'Error checking payment status: $e';
@@ -220,7 +225,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       }
     } catch (e) {
       if (mounted) {
-        setState(() {
+        safeSetState(() {
           _errorMessage = 'Payment completed but failed to update status: $e';
         });
       }

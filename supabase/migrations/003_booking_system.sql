@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS public.recurring_sessions (
   tutor_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
   
   -- Session details (copied from approved request)
+  -- Optional subject/summary (e.g. "Mathematics", "Physics") for display
+  subject TEXT,
   frequency INTEGER NOT NULL CHECK (frequency BETWEEN 1 AND 7),
   days TEXT[] NOT NULL,
   times JSONB NOT NULL,
