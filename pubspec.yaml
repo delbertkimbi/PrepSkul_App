@@ -138,6 +138,8 @@ flutter:
     - lib/data/
     - assets/images/
     - assets/data/
+    - assets/sounds/
+    - assets/characters/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

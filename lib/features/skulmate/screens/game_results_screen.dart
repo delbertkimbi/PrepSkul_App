@@ -134,7 +134,7 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
                   child: _buildStatCard(
                     icon: Icons.check_circle,
                     label: 'Correct',
-                    value: '$score',
+                    value: '${widget.score}',
                     color: AppTheme.accentGreen,
                   ),
                 ),
@@ -143,7 +143,7 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
                   child: _buildStatCard(
                     icon: Icons.cancel,
                     label: 'Incorrect',
-                    value: '${totalQuestions - score}',
+                    value: '${widget.totalQuestions - widget.score}',
                     color: Colors.red,
                   ),
                 ),
@@ -153,7 +153,7 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
             _buildStatCard(
               icon: Icons.timer,
               label: 'Time Taken',
-              value: _formatTime(timeTakenSeconds),
+              value: _formatTime(widget.timeTakenSeconds),
               color: AppTheme.primaryColor,
               fullWidth: true,
             ),

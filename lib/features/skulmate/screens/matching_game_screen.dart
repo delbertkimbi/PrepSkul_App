@@ -114,6 +114,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen> {
         }
       } else {
         // Wrong match
+        _soundService.playIncorrect();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Wrong match. Try again!'),

@@ -1,6 +1,9 @@
 -- 031_update_trial_sessions_policies.sql
 -- Allow learners/parents/requesters to update their trial sessions (for payments, calendar links, etc.)
 
+-- Drop policy if it exists (idempotent)
+DROP POLICY IF EXISTS "Requesters can update their trial sessions" ON public.trial_sessions;
+
 -- Policy: Requesters/participants can update their own trial sessions
 CREATE POLICY "Requesters can update their trial sessions"
   ON public.trial_sessions

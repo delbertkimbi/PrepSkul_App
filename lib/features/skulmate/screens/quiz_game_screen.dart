@@ -5,6 +5,8 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
+import '../services/character_selection_service.dart';
+import '../widgets/skulmate_character_widget.dart';
 import 'game_results_screen.dart';
 
 /// Quiz game screen with multiple choice questions
@@ -25,12 +27,21 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
   final Map<int, bool> _answeredQuestions = {}; // questionIndex -> isCorrect
   DateTime? _startTime;
   final GameSoundService _soundService = GameSoundService();
+  dynamic _character; // Will be SkulMateCharacter
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    _loadCharacter();
+  }
+
+  Future<void> _loadCharacter() async {
+    final character = await CharacterSelectionService.getSelectedCharacter();
+    safeSetState(() {
+      _character = character;
+    });
   }
 
   void _selectAnswer(int optionIndex) {

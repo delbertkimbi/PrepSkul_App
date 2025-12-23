@@ -44,6 +44,7 @@ import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
+import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
 import 'dart:async';
 
 void main() async {
@@ -764,6 +765,11 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             return _createFadeRoute(() => SkulMateUploadScreen());
           case '/skulmate/library':
             return _createFadeRoute(() => GameLibraryScreen());
+          case '/skulmate/character-selection':
+            final args = settings.arguments as Map<String, dynamic>?;
+            return _createFadeRoute(() => CharacterSelectionScreen(
+                  isFirstTime: args?['isFirstTime'] ?? false,
+                ));
         }
 
         // Handle navigation routes with optional initialTab argument

@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
 import '../services/skulmate_service.dart';
+import '../services/game_sound_service.dart';
 import 'game_results_screen.dart';
 
 /// Fill-in-the-blank game screen
