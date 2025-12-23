@@ -35,14 +35,24 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   Future<void> _loadRequests() async {
     safeSetState(() => _isLoading = true);
     try {
-      final requests = await BookingService.getTutorBookingRequests(
-        status: _selectedFilter == 'all' ? null : _selectedFilter,
+      // ALWAYS load ALL requests first (for accurate counts)
+      // Then filter for display based on selected filter
+      final allRequests = await BookingService.getTutorBookingRequests(
+        status: null, // Always get all requests regardless of filter
       );
 
-      // Sort by priority for "all" tab: pending with conflicts first, then pending, then others
-      List<BookingRequest> sortedRequests = requests;
+      // Filter requests based on selected filter
+      List<BookingRequest> filteredRequests;
       if (_selectedFilter == 'all') {
-        sortedRequests = List.from(requests);
+        filteredRequests = List.from(allRequests);
+      } else {
+        filteredRequests = allRequests.where((r) => r.status == _selectedFilter).toList();
+      }
+
+      // Sort by priority for "all" tab: pending with conflicts first, then pending, then others
+      List<BookingRequest> sortedRequests = filteredRequests;
+      if (_selectedFilter == 'all') {
+        sortedRequests = List.from(filteredRequests);
         sortedRequests.sort((a, b) {
           // Pending with conflicts first
           if (a.isPending && a.hasConflict && !(b.isPending && b.hasConflict))
@@ -64,8 +74,8 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
       }
 
       safeSetState(() {
-        _allRequests = requests; // Store all requests
-        _requests = sortedRequests; // Store filtered/sorted requests
+        _allRequests = allRequests; // Store ALL requests for accurate counts
+        _requests = sortedRequests; // Store filtered/sorted requests for display
         _isLoading = false;
       });
     } catch (e) {

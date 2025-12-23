@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -171,8 +172,8 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
             // For tutors, check tutor-specific onboarding status
             try {
               final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(user.id);
-              final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
-              
+            final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(user.id);
+            
               if (onboardingComplete || onboardingSkipped) {
                 // Tutor onboarding complete or skipped - go directly to dashboard
                 LogService.success('Tutor onboarding complete - navigating to dashboard');
@@ -180,13 +181,13 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
               } else {
                 // Check if it's a new tutor (no progress at all)
                 final progress = await TutorOnboardingProgressService.loadProgress(user.id);
-                if (progress == null && !onboardingSkipped) {
+            if (progress == null && !onboardingSkipped) {
                   // New tutor - show choice screen
-                  LogService.success('New tutor signup - navigating to onboarding choice screen');
-                  Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
-                } else {
+              LogService.success('New tutor signup - navigating to onboarding choice screen');
+              Navigator.pushReplacementNamed(context, '/tutor-onboarding-choice');
+            } else {
                   // Has some progress - go to dashboard (they can continue from there)
-                  LogService.success('Tutor with existing progress - navigating to dashboard');
+              LogService.success('Tutor with existing progress - navigating to dashboard');
                   Navigator.pushReplacementNamed(context, '/tutor-nav');
                 }
               }
@@ -310,6 +311,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
@@ -351,7 +353,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                       const SizedBox(height: 15),
                       Center(
                         child: Text(
-                          'Check your email',
+                          t.authCheckEmailTitle,
                           style: GoogleFonts.poppins(
                             fontSize: 32,
                             fontWeight: FontWeight.w700,
@@ -362,7 +364,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                       const SizedBox(height: 3),
                       Center(
                         child: Text(
-                          'We sent you a confirmation link',
+                          t.authCheckEmailSubtitle,
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
@@ -431,7 +433,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'We detected your verification, finishing up...',
+                                  t.authDetectedVerification,
                                   style: GoogleFonts.poppins(
                                     fontSize: 14,
                                     color: AppTheme.textMedium,
@@ -524,8 +526,8 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                                 : const Icon(Icons.refresh_outlined),
                             label: Text(
                               _resendCountdown > 0
-                                  ? 'Resend email ($_resendCountdown)'
-                                  : 'Resend confirmation email',
+                                  ? t.authResendEmail(_resendCountdown)
+                                  : t.authResendEmailButton,
                               style: GoogleFonts.poppins(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -564,7 +566,7 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
 
                         // Help text
                         Text(
-                          'Didn\'t receive the email? Check your spam folder or contact support.',
+                          t.authDidntReceiveEmail,
                           style: GoogleFonts.poppins(
                             fontSize: 13,
                             color: AppTheme.textLight,

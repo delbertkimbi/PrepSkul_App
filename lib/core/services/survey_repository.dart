@@ -97,12 +97,22 @@ class SurveyRepository {
 
       final currentStatus = currentProfile?['status'] as String?;
 
-      // If status is 'rejected' or 'needs_improvement', set to 'pending' when tutor updates
-      if (currentStatus == 'rejected' || currentStatus == 'needs_improvement') {
+      // Handle status changes based on current status:
+      // - 'rejected' or 'needs_improvement' → 'pending' (initial submission or re-submission)
+      // - 'approved' → 'pending' (approved tutor made changes, needs re-approval)
+      // - 'pending' → stays 'pending' (already pending)
+      if (currentStatus == 'rejected' || 
+          currentStatus == 'needs_improvement' || 
+          currentStatus == 'approved') {
         data['status'] = 'pending';
         LogService.debug(
           '🔄 Status changed from $currentStatus to pending due to profile update',
         );
+        if (currentStatus == 'approved') {
+          LogService.info(
+            '📝 Approved tutor made profile changes - status set to pending for re-approval',
+          );
+        }
       }
 
       // Always update the updated_at timestamp
@@ -327,12 +337,22 @@ class SurveyRepository {
 
       final currentStatus = currentProfile?['status'] as String?;
 
-      // If status is 'rejected' or 'needs_improvement', set to 'pending' when tutor updates
-      if (currentStatus == 'rejected' || currentStatus == 'needs_improvement') {
+      // Handle status changes based on current status:
+      // - 'rejected' or 'needs_improvement' → 'pending' (re-submission after feedback)
+      // - 'approved' → 'pending' (approved tutor made changes, needs re-approval)
+      // - 'pending' → stays 'pending' (already pending)
+      if (currentStatus == 'rejected' || 
+          currentStatus == 'needs_improvement' || 
+          currentStatus == 'approved') {
         updates['status'] = 'pending';
         LogService.debug(
           '🔄 Status changed from $currentStatus to pending due to profile update',
         );
+        if (currentStatus == 'approved') {
+          LogService.info(
+            '📝 Approved tutor updated profile - status set to pending for re-approval',
+          );
+        }
       }
 
       // Always update the updated_at timestamp

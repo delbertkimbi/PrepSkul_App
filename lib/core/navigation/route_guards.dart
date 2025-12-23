@@ -292,6 +292,7 @@ class RouteGuard {
         '/beautiful-signup',
         '/email-signup',
         '/email-login',
+        '/email-confirmation', // Allow email confirmation screen during verification
         '/forgot-password',
         '/reset-password',
         '/otp-verification',

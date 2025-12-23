@@ -40,6 +40,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserInfo();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh profile data when screen becomes visible again
+    // This ensures saved phone and profile picture are displayed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadUserInfo();
+      }
+    });
+  }
+
   Future<void> _loadUserInfo() async {
     try {
       final user = await AuthService.getCurrentUser();
@@ -587,10 +599,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               title: t.profileEditTutorInfo,
                               subtitle: t.profileEditTutorInfoSubtitle,
                               onTap: () async {
+                                // Fetch complete tutor profile data before navigating
+                                Map<String, dynamic>? tutorProfileData;
+                                try {
+                                  final user = await AuthService.getCurrentUser();
+                                  final userId = user['userId'] as String;
+                                  final tutorResponse = await SupabaseService.client
+                                      .from('tutor_profiles')
+                                      .select('*')
+                                      .eq('user_id', userId)
+                                      .maybeSingle();
+                                  tutorProfileData = tutorResponse;
+                                } catch (e) {
+                                  LogService.warning('Error fetching tutor profile: $e');
+                                }
+                                
                                 final result = await Navigator.of(context).push(
                                   MaterialPageRoute(
-                                    builder: (context) => const TutorOnboardingScreen(
-                                      basicInfo: {},
+                                    builder: (context) => TutorOnboardingScreen(
+                                      basicInfo: {
+                                        'needsImprovement': true,
+                                        'existingData': tutorProfileData ?? {},
+                                      },
                                     ),
                                   ),
                                 );

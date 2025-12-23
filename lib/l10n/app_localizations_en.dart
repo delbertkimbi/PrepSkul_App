@@ -484,4 +484,248 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get requestTutorDone => 'Done';
+
+  @override
+  String get authLogin => 'Log in';
+
+  @override
+  String get authLoginSubtitle => 'To continue to your account!';
+
+  @override
+  String get authPhoneNumber => 'Phone Number (WhatsApp Number)';
+
+  @override
+  String get authPhoneHint => '6 53 30 19 97';
+
+  @override
+  String get authPassword => 'Password';
+
+  @override
+  String get authPasswordHint => 'Enter your password';
+
+  @override
+  String get authForgotPassword => 'Forgot Password?';
+
+  @override
+  String get authLoginButton => 'Login';
+
+  @override
+  String get authNoAccount => 'Don\'t have an account?';
+
+  @override
+  String get authSignUp => 'Sign Up';
+
+  @override
+  String get authOrContinueWith => 'Or continue with';
+
+  @override
+  String get authEmail => 'Email';
+
+  @override
+  String get authSignUpTitle => 'Sign Up';
+
+  @override
+  String get authSignUpSubtitle => 'Create your account to get started!';
+
+  @override
+  String get authFullName => 'Full Name';
+
+  @override
+  String get authFullNameHint => 'Enter your full name';
+
+  @override
+  String get authConfirmPassword => 'Confirm Password';
+
+  @override
+  String get authConfirmPasswordHint => 'Confirm your password';
+
+  @override
+  String get authHaveAccount => 'Already have an account?';
+
+  @override
+  String get authSelectRole => 'Select Your Role';
+
+  @override
+  String get authSelectRoleSubtitle => 'Choose how you want to use PrepSkul';
+
+  @override
+  String get authIAmStudent => 'I am a Student';
+
+  @override
+  String get authIAmParent => 'I am a Parent';
+
+  @override
+  String get authIAmTutor => 'I am a Tutor';
+
+  @override
+  String get authStudentDesc => 'Find and book tutors for your learning journey';
+
+  @override
+  String get authParentDesc => 'Find tutors for your children\'s education';
+
+  @override
+  String get authTutorDesc => 'Share your knowledge and earn';
+
+  @override
+  String get authContinueWithPhone => 'Continue with Phone';
+
+  @override
+  String get authContinueWithEmail => 'Continue with Email';
+
+  @override
+  String get authInvalidPhone => 'Please enter a valid phone number';
+
+  @override
+  String get authInvalidEmail => 'Please enter a valid email';
+
+  @override
+  String get authInvalidPassword => 'Password must be at least 6 characters';
+
+  @override
+  String get authPasswordsDoNotMatch => 'Passwords do not match';
+
+  @override
+  String get authFieldRequired => 'This field is required';
+
+  @override
+  String get authWelcomeBack => 'Welcome Back';
+
+  @override
+  String get authJoinPrepSkul => 'Join PrepSkul';
+
+  @override
+  String get authSignInToContinue => 'Sign in to continue';
+
+  @override
+  String get authCreateAccount => 'Create an account to get started';
+
+  @override
+  String get authContinueWithGoogle => 'Continue with Google';
+
+  @override
+  String get authOr => 'OR';
+
+  @override
+  String get authSignInWithEmail => 'Sign in with email';
+
+  @override
+  String get authSignUpWithEmail => 'Sign up with email';
+
+  @override
+  String get authSignInWithPhone => 'Sign in with phone';
+
+  @override
+  String get authSignUpWithPhone => 'Sign up with phone';
+
+  @override
+  String get authAgreeToTerms => 'By continuing, you agree to our';
+
+  @override
+  String get authTermsOfService => 'Terms of Service';
+
+  @override
+  String get authAnd => 'and';
+
+  @override
+  String get authPrivacyPolicy => 'Privacy Policy';
+
+  @override
+  String get authTryAnotherMethod => 'Try another auth method';
+
+  @override
+  String get authForgotPasswordTitle => 'Forgot Password';
+
+  @override
+  String get authForgotPasswordSubtitle => 'Enter your phone number to reset';
+
+  @override
+  String get authSendOTP => 'Send OTP';
+
+  @override
+  String get authBackToLogin => 'Back to Login';
+
+  @override
+  String get authResetPasswordTitle => 'Reset Password';
+
+  @override
+  String get authResetPasswordSubtitleEmail => 'Enter your new password';
+
+  @override
+  String authResetPasswordSubtitlePhone(String phone) {
+    return 'Enter the OTP sent to $phone and your new password';
+  }
+
+  @override
+  String get authResetPasswordButton => 'Reset Password';
+
+  @override
+  String get authOTPCode => 'OTP Code';
+
+  @override
+  String get authOTPCodeHint => 'Enter 6-digit code';
+
+  @override
+  String get authNewPassword => 'New Password';
+
+  @override
+  String get authNewPasswordHint => 'Enter new password';
+
+  @override
+  String get authConfirmPasswordRequired => 'Please confirm password';
+
+  @override
+  String get authCheckEmailTitle => 'Check your email';
+
+  @override
+  String get authCheckEmailSubtitle => 'We sent you a confirmation link';
+
+  @override
+  String get authWhatsNext => 'What\'s next?';
+
+  @override
+  String get authWhatsNextTutor => '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Complete your tutor profile!';
+
+  @override
+  String get authWhatsNextStudent => '1. Check your inbox (and spam folder)\n2. Click the confirmation link\n3. Find your perfect tutor!';
+
+  @override
+  String authResendEmail(int count) {
+    return 'Resend email ($count)';
+  }
+
+  @override
+  String get authResendEmailButton => 'Resend confirmation email';
+
+  @override
+  String get authWrongEmailAddress => 'Wrong email address?';
+
+  @override
+  String get authDidntReceiveEmail => 'Didn\'t receive the email? Check your spam folder or contact support.';
+
+  @override
+  String get authDetectedVerification => 'We detected your verification, finishing up...';
+
+  @override
+  String get authPhoneNumberLabel => 'Phone Number';
+
+  @override
+  String get authEnterPhoneNumber => 'Please enter phone number';
+
+  @override
+  String get authPhoneNumberLength => 'Phone number must be 9 digits';
+
+  @override
+  String get authEnterOTP => 'Please enter OTP';
+
+  @override
+  String get authOTPLength => 'OTP must be 6 digits';
+
+  @override
+  String get authEnterPassword => 'Please enter password';
+
+  @override
+  String get authPasswordMinLength => 'Password must be at least 8 characters';
+
+  @override
+  String get authPasswordsDoNotMatchError => 'Passwords do not match';
 }

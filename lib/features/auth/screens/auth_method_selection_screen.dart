@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -38,6 +39,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     final screenHeight = MediaQuery.of(context).size.height;
     final isSmallScreen = screenHeight < 700;
     final isVerySmallScreen = screenHeight < 600;
@@ -95,7 +97,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             return FadeTransition(opacity: animation, child: child);
                           },
                         child: Text(
-                            _isLogin ? 'Welcome Back' : 'Join PrepSkul',
+                            _isLogin ? t.authWelcomeBack : t.authJoinPrepSkul,
                             key: ValueKey<bool>(_isLogin),
                           style: GoogleFonts.poppins(
                             fontSize: titleFontSize,
@@ -110,7 +112,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
                         child: Text(
-                            _isLogin ? 'Sign in to continue' : 'Create an account to get started',
+                            _isLogin ? t.authSignInToContinue : t.authCreateAccount,
                             key: ValueKey<String>(_isLogin ? 'signin-sub' : 'signup-sub'),
                           style: GoogleFonts.poppins(
                             fontSize: subtitleFontSize,
@@ -136,7 +138,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                         // Google Sign In Button - Primary
                         _AuthMethodButton(
                           icon: Icons.g_mobiledata, // Will replace with Google logo asset if available
-                          label: 'Continue with Google',
+                          label: t.authContinueWithGoogle,
                           isPrimary: false, // Changed to false to keep outlined style but distinct
                           onTap: () async {
                             try {
@@ -163,7 +165,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 16),
                               child: Text(
-                                'OR',
+                                t.authOr,
                                 style: GoogleFonts.poppins(
                                   fontSize: subtitleFontSize,
                                   color: AppTheme.textLight,
@@ -185,7 +187,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             children: [
                               _AuthMethodButton(
                                 icon: Icons.email_outlined,
-                                label: _isLogin ? 'Sign in with email' : 'Sign up with email',
+                                label: _isLogin ? t.authSignInWithEmail : t.authSignUpWithEmail,
                           onTap: () async {
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setString('auth_method', 'email');
@@ -207,7 +209,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
 
                         _AuthMethodButton(
                           icon: Icons.phone_outlined,
-                                label: _isLogin ? 'Sign in with phone' : 'Sign up with phone',
+                                label: _isLogin ? t.authSignInWithPhone : t.authSignUpWithPhone,
                           onTap: () async {
                             final prefs = await SharedPreferences.getInstance();
                             await prefs.setString('auth_method', 'phone');
@@ -237,7 +239,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             AnimatedSwitcher(
                               duration: const Duration(milliseconds: 300),
                               child: Text(
-                                _isLogin ? 'Don\'t have an account? ' : 'Already have an account? ',
+                                _isLogin ? '${t.authNoAccount} ' : '${t.authHaveAccount} ',
                                 key: ValueKey<String>(_isLogin ? 'no-account' : 'has-account'),
                               style: GoogleFonts.poppins(
                                 fontSize: subtitleFontSize,
@@ -254,7 +256,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 300),
                               child: Text(
-                                  _isLogin ? 'Sign up' : 'Sign in',
+                                  _isLogin ? t.authSignUp : t.authLogin,
                                   key: ValueKey<String>(_isLogin ? 'signup-btn' : 'signin-btn'),
                                 style: GoogleFonts.poppins(
                                   fontSize: subtitleFontSize,
@@ -285,12 +287,10 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                 ),
                                 children: [
                                   TextSpan(
-                                    text: _isLogin 
-                                        ? 'By signing in, you agree to PrepSkul\'s ' 
-                                        : 'By signing up, you agree to PrepSkul\'s ',
+                                    text: '${t.authAgreeToTerms} ',
                                   ),
                                   TextSpan(
-                                    text: 'Terms of Service',
+                                    text: t.authTermsOfService,
                                     style: GoogleFonts.poppins(
                                       color: AppTheme.primaryColor,
                                       fontWeight: FontWeight.w600,
@@ -299,9 +299,9 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                     recognizer: TapGestureRecognizer()
                                       ..onTap = () => _launchURL('https://prepskul.com/en/terms'),
                                   ),
-                                  const TextSpan(text: ' and '),
+                                  TextSpan(text: ' ${t.authAnd} '),
                                   TextSpan(
-                                    text: 'Privacy Policy',
+                                    text: t.authPrivacyPolicy,
                                     style: GoogleFonts.poppins(
                                       color: AppTheme.primaryColor,
                                       fontWeight: FontWeight.w600,

@@ -119,6 +119,15 @@ class _OnboardingProgressTrackerState
     _loadProgress();
   }
 
+  @override
+  void didUpdateWidget(OnboardingProgressTracker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload progress if userId changed or widget was rebuilt
+    if (oldWidget.userId != widget.userId) {
+      _loadProgress();
+    }
+  }
+
   Future<void> _loadProgress() async {
     try {
       final progress =
@@ -173,6 +182,11 @@ class _OnboardingProgressTrackerState
       // Reload progress after returning
       _loadProgress();
     });
+  }
+
+  // Public method to refresh progress (can be called from parent)
+  void refresh() {
+    _loadProgress();
   }
 
   @override

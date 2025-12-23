@@ -641,13 +641,13 @@ safeSetState(() {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'What subject do you need help with?',
-                  style: GoogleFonts.poppins(
+            'What subject do you need help with?',
+            style: GoogleFonts.poppins(
                     fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textDark,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
                     height: 1.2,
-                  ),
+            ),
                 ),
               ),
             ],
@@ -674,7 +674,7 @@ safeSetState(() {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
+                    color: AppTheme.primaryColor,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: const Icon(
@@ -690,9 +690,9 @@ safeSetState(() {
                       children: [
                         Text(
                           'Pre-filled from your profile',
-                          style: GoogleFonts.poppins(
+                      style: GoogleFonts.poppins(
                             fontSize: 13,
-                            color: AppTheme.primaryColor,
+                        color: AppTheme.primaryColor,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -702,25 +702,25 @@ safeSetState(() {
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             color: AppTheme.textMedium,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],
               ),
             ),
           ],
-          if (_userSubjects.isEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Select all subjects you need tutoring for',
-              style: GoogleFonts.poppins(
-                fontSize: 15,
-                color: AppTheme.textMedium,
-                fontWeight: FontWeight.w500,
               ),
             ),
+          ],
+          if (_userSubjects.isEmpty) ...[
+            const SizedBox(height: 12),
+          Text(
+              'Select all subjects you need tutoring for',
+            style: GoogleFonts.poppins(
+                fontSize: 15,
+              color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+            ),
+          ),
           ],
           const SizedBox(height: 24),
 
@@ -756,7 +756,7 @@ safeSetState(() {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           )
-                        : null,
+                    : null,
                     color: isSelected ? null : Colors.grey[100],
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
@@ -775,7 +775,7 @@ safeSetState(() {
                               offset: const Offset(0, 4),
                             ),
                           ]
-                        : null,
+                    : null,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -821,14 +821,14 @@ safeSetState(() {
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                AppLocalizations.of(context)!.requestTutorEducationLevel,
-                style: GoogleFonts.poppins(
+          Text(
+            AppLocalizations.of(context)!.requestTutorEducationLevel,
+            style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
-              ),
+              color: AppTheme.textDark,
+            ),
+          ),
             ],
           ),
           const SizedBox(height: 16),
@@ -880,7 +880,7 @@ safeSetState(() {
                           ],
                   ),
                   child: Row(
-                    children: [
+                children: [
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
@@ -898,8 +898,8 @@ safeSetState(() {
                       const SizedBox(width: 16),
                       Expanded(
                         child: Text(
-                          level,
-                          style: GoogleFonts.poppins(
+                    level,
+                    style: GoogleFonts.poppins(
                             fontSize: 15,
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                             color: isSelected ? Colors.white : AppTheme.textDark,
@@ -915,12 +915,12 @@ safeSetState(() {
                           ),
                           child: const Icon(
                             Icons.check_rounded,
-                            color: AppTheme.primaryColor,
+                      color: AppTheme.primaryColor,
                             size: 18,
                           ),
-                        ),
-                    ],
-                  ),
+                    ),
+                ],
+              ),
                 ),
               ),
             );
@@ -937,13 +937,13 @@ safeSetState(() {
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                AppLocalizations.of(context)!.requestTutorSpecificRequirements,
-                style: GoogleFonts.poppins(
+          Text(
+            AppLocalizations.of(context)!.requestTutorSpecificRequirements,
+            style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
+              color: AppTheme.textDark,
+            ),
               ),
             ],
           ),
@@ -1005,21 +1005,21 @@ safeSetState(() {
                         : null,
                   ),
                   child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (req['icon'] != null) ...[
-                        Icon(
-                          req['icon'] as IconData,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (req['icon'] != null) ...[
+                      Icon(
+                        req['icon'] as IconData,
                           size: 18,
                           color: isSelected ? Colors.white : AppTheme.primaryColor,
                         ),
                         const SizedBox(width: 8),
-                      ],
-                      Flexible(
-                        child: Text(
-                          req['label'] as String,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
+                    ],
+                    Flexible(
+                      child: Text(
+                        req['label'] as String,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                             color: isSelected ? Colors.white : AppTheme.textDark,
                           ),

@@ -365,7 +365,7 @@ class FapshiWebhookService {
     try {
       final trial = await _supabase
           .from('trial_sessions')
-          .select('learner_id, tutor_id, subject, meet_link')
+          .select('learner_id, tutor_id, subject, meet_link, scheduled_date, scheduled_time, duration_minutes')
           .eq('id', trialSessionId)
           .single();
 
@@ -373,6 +373,9 @@ class FapshiWebhookService {
       final tutorId = trial['tutor_id'] as String;
       final subject = trial['subject'] as String;
       final meetLink = trial['meet_link'] as String?;
+      final scheduledDate = DateTime.parse(trial['scheduled_date'] as String);
+      final scheduledTime = trial['scheduled_time'] as String;
+      final durationMinutes = trial['duration_minutes'] as int? ?? 60;
 
       // Notify learner
       await NotificationHelperService.notifyTrialPaymentCompleted(
@@ -390,6 +393,64 @@ class FapshiWebhookService {
         learnerId: learnerId,
         subject: subject,
       );
+
+      // Schedule session countdown reminders (24h, 1h, 15min before session)
+      // This ensures reminders are scheduled for ALL paid sessions
+      try {
+        // Get names for reminders
+        String tutorName = 'Tutor';
+        String studentName = 'Student';
+        
+        try {
+          final tutorProfile = await _supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', tutorId)
+              .maybeSingle();
+          tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+        } catch (e) {
+          LogService.warning('Could not fetch tutor name for reminders: $e');
+        }
+        
+        try {
+          final studentProfile = await _supabase
+              .from('profiles')
+              .select('full_name')
+              .eq('id', learnerId)
+              .maybeSingle();
+          studentName = studentProfile?['full_name'] as String? ?? 'Student';
+        } catch (e) {
+          LogService.warning('Could not fetch student name for reminders: $e');
+        }
+
+        // Calculate session start datetime
+        final timeParts = scheduledTime.split(':');
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+        final sessionStart = DateTime(
+          scheduledDate.year,
+          scheduledDate.month,
+          scheduledDate.day,
+          hour,
+          minute,
+        );
+
+        await NotificationHelperService.scheduleSessionReminders(
+          tutorId: tutorId,
+          studentId: learnerId,
+          sessionId: trialSessionId,
+          sessionType: 'trial',
+          tutorName: tutorName,
+          studentName: studentName,
+          sessionStart: sessionStart,
+          subject: subject,
+        );
+        
+        LogService.success('Session countdown reminders scheduled after payment: $trialSessionId');
+      } catch (e) {
+        LogService.warning('Failed to schedule session reminders after payment: $e');
+        // Don't fail payment notification if reminder scheduling fails
+      }
     } catch (e) {
       LogService.warning('Error sending trial payment success notifications: $e');
     }

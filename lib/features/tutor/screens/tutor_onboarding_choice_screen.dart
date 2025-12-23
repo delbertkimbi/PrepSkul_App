@@ -68,6 +68,21 @@ class _TutorOnboardingChoiceScreenState
       // Mark onboarding as skipped
       await TutorOnboardingProgressService.skipOnboarding(userId);
 
+      // Verify user is actually a tutor before sending notification
+      final userRole = await AuthService.getUserRole();
+      if (userRole != 'tutor') {
+        LogService.debug('Skipping onboarding notification for non-tutor user: $userId (role: $userRole)');
+        // Still allow navigation but skip notification
+        if (mounted) {
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/tutor-nav',
+            (route) => false,
+          );
+        }
+        return;
+      }
+
       // Mark survey as completed (so they can access the app)
       // But they'll be restricted until they complete onboarding
       await AuthService.saveSession(

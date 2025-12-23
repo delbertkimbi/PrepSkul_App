@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -556,6 +557,10 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
 
       // Get redirect URL for email verification
       final redirectUrl = AuthService.getRedirectUrl();
+      LogService.debug('📧 [SIGNUP] Signing up with email: $email');
+      LogService.debug('📧 [SIGNUP] Using redirect URL: $redirectUrl');
+      LogService.debug('📧 [SIGNUP] Platform: ${kIsWeb ? "Web" : "Mobile"}');
+      
       final response = await SupabaseService.client.auth.signUp(
         email: email,
         password: password,
@@ -563,7 +568,19 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       );
 
       if (response.user == null) {
+        LogService.error('❌ [SIGNUP] SignUp returned null user');
         throw Exception('Failed to create account');
+      }
+      
+      LogService.debug('📧 [SIGNUP] User created: ${response.user!.id}');
+      LogService.debug('📧 [SIGNUP] Email confirmed: ${response.user!.emailConfirmedAt != null}');
+      LogService.debug('📧 [SIGNUP] Session created: ${response.session != null}');
+      
+      // If email is already confirmed, it means email confirmations are disabled
+      if (response.user!.emailConfirmedAt != null) {
+        LogService.info('ℹ️ [SIGNUP] Email already confirmed - email confirmations may be disabled in Supabase');
+      } else {
+        LogService.info('ℹ️ [SIGNUP] Email confirmation required - verification email should be sent');
       }
 
       final prefs = await SharedPreferences.getInstance();

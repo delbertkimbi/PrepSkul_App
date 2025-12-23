@@ -197,10 +197,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       // 3. Filter and sort all sessions
       List<Map<String, dynamic>> filtered = allSessions;
 
-      if (_selectedFilter == 'upcoming') {
+        if (_selectedFilter == 'upcoming') {
         filtered = allSessions.where((s) {
           final sessionType = s['_sessionType'] as String?;
-          final status = s['status'] as String;
+            final status = s['status'] as String;
           
           if (sessionType == 'trial') {
             // For trial sessions: check date+time, must be approved/scheduled, not expired/cancelled
@@ -225,13 +225,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
             
             return sessionDateTime.isAfter(now) &&
-                   (status == 'scheduled' || status == 'in_progress');
+                (status == 'scheduled' || status == 'in_progress');
           }
-        }).toList();
-      } else if (_selectedFilter == 'past') {
+          }).toList();
+        } else if (_selectedFilter == 'past') {
         filtered = allSessions.where((s) {
           final sessionType = s['_sessionType'] as String?;
-          final status = s['status'] as String;
+            final status = s['status'] as String;
           
           if (sessionType == 'trial') {
             // For trial sessions: expired, cancelled, completed, or time passed
@@ -256,8 +256,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             final sessionDateTime = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
             
             return sessionDateTime.isBefore(now) ||
-                   status == 'completed' ||
-                   status == 'cancelled';
+                status == 'completed' ||
+                status == 'cancelled';
           }
         }).toList();
       } else if (_selectedFilter == 'all') {
@@ -290,38 +290,38 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             // For individual sessions, exclude cancelled
             return status != 'cancelled';
           }
-        }).toList();
-      }
+          }).toList();
+        }
 
       // Sort by scheduled date+time
-      filtered.sort((a, b) {
-        final aDate = DateTime.parse(a['scheduled_date'] as String);
+        filtered.sort((a, b) {
+          final aDate = DateTime.parse(a['scheduled_date'] as String);
         final aTime = a['scheduled_time'] as String? ?? '00:00';
         final aTimeParts = aTime.split(':');
         final aHour = int.tryParse(aTimeParts[0]) ?? 0;
         final aMinute = aTimeParts.length > 1 ? (int.tryParse(aTimeParts[1]) ?? 0) : 0;
         final aDateTime = DateTime(aDate.year, aDate.month, aDate.day, aHour, aMinute);
         
-        final bDate = DateTime.parse(b['scheduled_date'] as String);
+          final bDate = DateTime.parse(b['scheduled_date'] as String);
         final bTime = b['scheduled_time'] as String? ?? '00:00';
         final bTimeParts = bTime.split(':');
         final bHour = int.tryParse(bTimeParts[0]) ?? 0;
         final bMinute = bTimeParts.length > 1 ? (int.tryParse(bTimeParts[1]) ?? 0) : 0;
         final bDateTime = DateTime(bDate.year, bDate.month, bDate.day, bHour, bMinute);
         
-        if (_selectedFilter == 'upcoming' || _selectedFilter == 'all') {
+          if (_selectedFilter == 'upcoming' || _selectedFilter == 'all') {
           return aDateTime.compareTo(bDateTime); // Upcoming: earliest first
-        } else {
+          } else {
           return bDateTime.compareTo(aDateTime); // Past: latest first
         }
       });
 
       // If no sessions found, fall back to recurring sessions
       if (filtered.isEmpty) {
-        // Fallback to recurring sessions
-        final sessions = await RecurringSessionService.getTutorRecurringSessions(
-          status: _selectedFilter == 'all' ? null : _selectedFilter,
-        );
+      // Fallback to recurring sessions
+      final sessions = await RecurringSessionService.getTutorRecurringSessions(
+        status: _selectedFilter == 'all' ? null : _selectedFilter,
+      );
 
         // Mark as recurring sessions
         for (var session in sessions) {
@@ -329,55 +329,55 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         }
         allSessions.addAll(sessions);
 
-        // Filter for upcoming/past if needed
+      // Filter for upcoming/past if needed
         List<Map<String, dynamic>> recurringFiltered = sessions;
 
-        if (_selectedFilter == 'upcoming') {
+      if (_selectedFilter == 'upcoming') {
           recurringFiltered = sessions.where((s) {
-            final startDate = DateTime.parse(s['start_date'] as String);
-            return startDate.isAfter(now) && s['status'] == 'active';
-          }).toList();
-        } else if (_selectedFilter == 'past') {
+          final startDate = DateTime.parse(s['start_date'] as String);
+          return startDate.isAfter(now) && s['status'] == 'active';
+        }).toList();
+      } else if (_selectedFilter == 'past') {
           recurringFiltered = sessions.where((s) {
-            final startDate = DateTime.parse(s['start_date'] as String);
-            return startDate.isBefore(now) || s['status'] == 'completed';
-          }).toList();
-        } else if (_selectedFilter == 'all') {
-          // Sort by priority: upcoming first, then active, then past
+          final startDate = DateTime.parse(s['start_date'] as String);
+          return startDate.isBefore(now) || s['status'] == 'completed';
+        }).toList();
+      } else if (_selectedFilter == 'all') {
+        // Sort by priority: upcoming first, then active, then past
           recurringFiltered.sort((a, b) {
-            final aDate = DateTime.parse(a['start_date'] as String);
-            final bDate = DateTime.parse(b['start_date'] as String);
-            final aStatus = a['status'] as String;
-            final bStatus = b['status'] as String;
+          final aDate = DateTime.parse(a['start_date'] as String);
+          final bDate = DateTime.parse(b['start_date'] as String);
+          final aStatus = a['status'] as String;
+          final bStatus = b['status'] as String;
 
-            // Upcoming (active and future date) first
-            final aIsUpcoming = aDate.isAfter(now) && aStatus == 'active';
-            final bIsUpcoming = bDate.isAfter(now) && bStatus == 'active';
-            if (aIsUpcoming && !bIsUpcoming) return -1;
-            if (!aIsUpcoming && bIsUpcoming) return 1;
+          // Upcoming (active and future date) first
+          final aIsUpcoming = aDate.isAfter(now) && aStatus == 'active';
+          final bIsUpcoming = bDate.isAfter(now) && bStatus == 'active';
+          if (aIsUpcoming && !bIsUpcoming) return -1;
+          if (!aIsUpcoming && bIsUpcoming) return 1;
 
-            // Then active (current or past start but still active)
-            if (aStatus == 'active' && bStatus != 'active') return -1;
-            if (aStatus != 'active' && bStatus == 'active') return 1;
+          // Then active (current or past start but still active)
+          if (aStatus == 'active' && bStatus != 'active') return -1;
+          if (aStatus != 'active' && bStatus == 'active') return 1;
 
-            // Then by date (earliest first for upcoming, latest first for past)
-            if (aIsUpcoming || bIsUpcoming) {
-              return aDate.compareTo(bDate); // Upcoming: earliest first
-            } else {
-              return bDate.compareTo(aDate); // Past: latest first
-            }
-          });
-        }
+          // Then by date (earliest first for upcoming, latest first for past)
+          if (aIsUpcoming || bIsUpcoming) {
+            return aDate.compareTo(bDate); // Upcoming: earliest first
+          } else {
+            return bDate.compareTo(aDate); // Past: latest first
+          }
+        });
+      }
 
         safeSetState(() {
           _sessions = recurringFiltered;
           _isLoading = false;
         });
       } else {
-        safeSetState(() {
-          _sessions = filtered;
-          _isLoading = false;
-        });
+      safeSetState(() {
+        _sessions = filtered;
+        _isLoading = false;
+      });
       }
     } catch (e) {
       LogService.error('Error loading sessions: $e');
@@ -487,7 +487,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   int _getCountForFilter(String filter) {
-    final now = DateTime.now();
+      final now = DateTime.now();
     
     if (filter == 'all') {
       // Count sessions excluding expired, cancelled, and unattended past sessions
@@ -522,7 +522,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     } else if (filter == 'upcoming') {
       return _sessions.where((s) {
         final sessionType = s['_sessionType'] as String?;
-        final status = s['status'] as String;
+          final status = s['status'] as String;
         
         if (sessionType == 'trial') {
           // Check date+time for trial sessions
@@ -557,7 +557,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     } else if (filter == 'past') {
       return _sessions.where((s) {
         final sessionType = s['_sessionType'] as String?;
-        final status = s['status'] as String;
+          final status = s['status'] as String;
         
         if (sessionType == 'trial') {
           // Check date+time for trial sessions

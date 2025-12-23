@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulLoginScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -62,7 +64,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                       const SizedBox(height: 15),
                       Center(
                         child: Text(
-                          'Log in',
+                          t.authLogin,
                           style: GoogleFonts.poppins(
                             fontSize: 32,
                             fontWeight: FontWeight.w700,
@@ -74,7 +76,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                       // Subtitle
                       Center(
                         child: Text(
-                          'To continue to your account!',
+                          t.authLoginSubtitle,
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
@@ -102,7 +104,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                             children: [
                               // Phone Number Field
                               Text(
-                                'Phone Number (WhatsApp Number)',
+                                t.authPhoneNumber,
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -196,7 +198,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
 
                               // Password Field
                               Text(
-                                'Password',
+                                t.authPassword,
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -208,7 +210,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                 controller: _passwordController,
                                 obscureText: _obscurePassword,
                                 decoration: InputDecoration(
-                                  hintText: 'Enter Password',
+                                  hintText: t.authPasswordHint,
                                   hintStyle: GoogleFonts.poppins(
                                     color: AppTheme.textLight,
                                     fontSize: 14,
@@ -312,7 +314,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                           ),
                                         )
                                       : Text(
-                                          'Log in',
+                                          t.authLoginButton,
                                           style: GoogleFonts.poppins(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
@@ -325,38 +327,34 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
 
                               // Sign Up Link
                               Center(
-                                child: RichText(
-                                  text: TextSpan(
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      color: AppTheme.textMedium,
-                                    ),
-                                    children: [
-                                      const TextSpan(
-                                        text: "Don't have an account? ",
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '${t.authNoAccount} ',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: AppTheme.textMedium,
                                       ),
-                                      WidgetSpan(
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            Navigator.pushReplacementNamed(
-                                              context,
-                                              '/beautiful-signup',
-                                            );
-                                          },
-                                          child: Text(
-                                            'Sign Up',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 14,
-                                              color: AppTheme.primaryColor,
-                                              fontWeight: FontWeight.w600,
-                                              decoration:
-                                                  TextDecoration.underline,
-                                            ),
-                                          ),
+                                    ),
+                                    GestureDetector(
+                                      onTap: () {
+                                        Navigator.pushReplacementNamed(
+                                          context,
+                                          '/beautiful-signup',
+                                        );
+                                      },
+                                      child: Text(
+                                        t.authSignUp,
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          color: AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w600,
+                                          decoration: TextDecoration.underline,
                                         ),
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
                               ),
 
@@ -373,7 +371,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                                     );
                                   },
                                   child: Text(
-                                    'Try another auth method',
+                                    t.authTryAnotherMethod,
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,

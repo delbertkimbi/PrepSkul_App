@@ -94,6 +94,9 @@ dependencies:
   # HTTP Client
   http: ^1.1.0
   
+  # Audio/Sound Effects
+  audioplayers: ^6.0.0
+  
   # Deep Linking
   app_links: ^6.3.3
   
@@ -135,6 +138,8 @@ flutter:
     - lib/data/
     - assets/images/
     - assets/data/
+    - assets/sounds/
+    - assets/characters/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

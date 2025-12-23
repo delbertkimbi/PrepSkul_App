@@ -10,6 +10,7 @@ import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'forgot_password_email_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
@@ -31,6 +32,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
@@ -110,7 +112,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                             children: [
                               // Email Field
                               Text(
-                                'Email Address',
+                                t.authEmail,
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -123,10 +125,10 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                 keyboardType: TextInputType.emailAddress,
                                 validator: (value) {
                                   if (value == null || value.trim().isEmpty) {
-                                    return 'Please enter your email';
+                                    return t.authFieldRequired;
                                   }
                                   if (!value.contains('@')) {
-                                    return 'Please enter a valid email';
+                                    return t.authInvalidEmail;
                                   }
                                   return null;
                                 },
@@ -249,7 +251,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                     );
                                   },
                                   child: Text(
-                                    'Forgot Password?',
+                                    t.authForgotPassword,
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w500,
@@ -308,7 +310,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                           MainAxisAlignment.center,
                                       children: [
                                         Text(
-                                          'Don\'t have an account? ',
+                                          t.authNoAccount,
                                           style: GoogleFonts.poppins(
                                             fontSize: 14,
                                             color: AppTheme.textMedium,
@@ -322,7 +324,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                             );
                                           },
                                           child: Text(
-                                            'Sign up',
+                                            t.authSignUp,
                                             style: GoogleFonts.poppins(
                                               fontSize: 14,
                                               fontWeight: FontWeight.w600,
@@ -342,7 +344,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                         );
                                       },
                                       child: Text(
-                                        'Try another auth method',
+                                        t.authTryAnotherMethod,
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
                                           color: AppTheme.primaryColor,
@@ -692,6 +694,13 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
   /// Send onboarding notification if needed (only once per day)
   Future<void> _sendOnboardingNotificationIfNeeded(String userId) async {
     try {
+      // Verify user is actually a tutor before sending notification
+      final userRole = await AuthService.getUserRole();
+      if (userRole != 'tutor') {
+        LogService.debug('Skipping onboarding notification for non-tutor user: $userId (role: $userRole)');
+        return;
+      }
+      
       // Check if onboarding is incomplete or skipped
       final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
       final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
