@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({Key? key}) : super(key: key);
@@ -58,6 +59,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -98,7 +100,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       const SizedBox(height: 15),
                       Center(
                         child: Text(
-                          'Forgot Password',
+                          t.authForgotPasswordTitle,
                           style: GoogleFonts.poppins(
                             fontSize: 32,
                             fontWeight: FontWeight.w700,
@@ -110,7 +112,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       // Subtitle
                       Center(
                         child: Text(
-                          'Enter your phone number to reset',
+                          t.authForgotPasswordSubtitle,
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
@@ -225,10 +227,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                       ),
                                       validator: (value) {
                                         if (value == null || value.isEmpty) {
-                                          return 'Please enter phone number';
+                                          return t.authEnterPhoneNumber;
                                         }
                                         if (value.length != 9) {
-                                          return 'Phone number must be 9 digits';
+                                          return t.authPhoneNumberLength;
                                         }
                                         return null;
                                       },
@@ -285,7 +287,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                     Navigator.pop(context);
                                   },
                                   child: Text(
-                                    'Back to Login',
+                                    t.authBackToLogin,
                                     style: GoogleFonts.poppins(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,

@@ -1051,9 +1051,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (!requireReason || reasonController.text.trim().isNotEmpty) {
-                Navigator.pop(context, reasonController.text.trim().isEmpty ? null : reasonController.text.trim());
+              // If reason is required, check it's not empty
+              if (requireReason && reasonController.text.trim().isEmpty) {
+                return; // Don't close dialog if reason is required but empty
               }
+              // Return the reason (or null if empty and not required)
+              final reason = reasonController.text.trim().isEmpty ? null : reasonController.text.trim();
+              Navigator.pop(context, reason);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -1065,11 +1069,22 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       ),
     );
     
-    if (confirmed != null) {
+    // confirmed will be:
+    // - null if user cancelled the dialog
+    // - null if user clicked Delete without reason (for pending sessions)
+    // - non-empty string if user provided a reason
+    // 
+    // For pending sessions (requireReason = false): Delete even if confirmed is null
+    // For approved sessions (requireReason = true): confirmed must be non-null (reason required)
+    final shouldDelete = requireReason 
+        ? (confirmed != null && confirmed.isNotEmpty) 
+        : true; // For pending, always delete (confirmed can be null or a string)
+    
+    if (shouldDelete) {
       try {
         await TrialSessionService.deleteTrialSession(
           sessionId: session.id,
-          reason: confirmed.isEmpty ? null : confirmed,
+          reason: confirmed, // null for pending without reason, or the reason string
         );
         
         if (mounted) {
@@ -1079,15 +1094,16 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context, true); // Return to previous screen
+          Navigator.pop(context, true); // Return to previous screen with refresh flag
         }
       } catch (e) {
         LogService.error('Error deleting session: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error: ${e.toString()}'),
+              content: Text('Error: ${e.toString().replaceFirst('Exception: ', '')}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
             ),
           );
         }

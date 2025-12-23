@@ -4,6 +4,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
 class BeautifulSignupScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
@@ -67,7 +69,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                       const SizedBox(height: 15),
                       Center(
                         child: Text(
-                          'Sign up',
+                          t.authSignUpTitle,
                           style: GoogleFonts.poppins(
                             fontSize: 32,
                             fontWeight: FontWeight.w700,
@@ -107,7 +109,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                             children: [
                               // Full Name Field
                               Text(
-                                'Full Name',
+                                t.authFullName,
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -119,7 +121,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                 controller: _nameController,
                                 validator: (value) {
                                   if (value == null || value.trim().isEmpty) {
-                                    return 'Please enter your full name';
+                                    return t.authFieldRequired;
                                   }
                                   if (value.trim().length < 3) {
                                     return 'Name must be at least 3 characters';
@@ -127,7 +129,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                   return null;
                                 },
                                 decoration: InputDecoration(
-                                  hintText: 'Enter your name',
+                                  hintText: t.authFullNameHint,
                                   hintStyle: GoogleFonts.poppins(
                                     color: AppTheme.textLight,
                                     fontSize: 14,
@@ -275,7 +277,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
 
                               // Password Field
                               Text(
-                                'Password (at least 6 character long)',
+                                t.authPassword,
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -288,15 +290,15 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                                 obscureText: _obscurePassword,
                                 validator: (value) {
                                   if (value == null || value.isEmpty) {
-                                    return 'Please enter password';
+                                    return t.authFieldRequired;
                                   }
                                   if (value.length < 6) {
-                                    return 'Password must be at least 6 characters';
+                                    return t.authInvalidPassword;
                                   }
                                   return null;
                                 },
                                 decoration: InputDecoration(
-                                  hintText: 'Enter Password',
+                                  hintText: t.authPasswordHint,
                                   hintStyle: GoogleFonts.poppins(
                                     color: AppTheme.textLight,
                                     fontSize: 14,

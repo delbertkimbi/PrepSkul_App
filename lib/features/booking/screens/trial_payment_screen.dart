@@ -185,26 +185,26 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           
           if (!status.isPending) {
             // Payment is no longer pending
-            if (mounted) {
-              safeSetState(() {
-                _isPolling = false;
-                if (status.isSuccessful) {
-                  _paymentStatus = 'successful';
-                } else if (status.isFailed) {
-                  _paymentStatus = 'failed';
-                  _errorMessage = 'Payment failed. Please try again.';
+      if (mounted) {
+        safeSetState(() {
+          _isPolling = false;
+          if (status.isSuccessful) {
+            _paymentStatus = 'successful';
+          } else if (status.isFailed) {
+            _paymentStatus = 'failed';
+            _errorMessage = 'Payment failed. Please try again.';
                 } else if (status.status.toUpperCase() == 'EXPIRED') {
                   _paymentStatus = 'failed';
                   _errorMessage = 'Payment link expired. Please initiate a new payment.';
-                }
-              });
+          }
+        });
               
               // Complete payment if successful
-              if (status.isSuccessful) {
-                final success = await _completePayment(transId);
-                if (success && mounted) {
-                  Navigator.pop(context, true);
-                }
+        if (status.isSuccessful) {
+          final success = await _completePayment(transId);
+          if (success && mounted) {
+            Navigator.pop(context, true);
+          }
               }
             }
             return;
@@ -383,7 +383,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         // Small delay to ensure database update is complete
         await Future.delayed(const Duration(milliseconds: 1000));
         
-        if (mounted) {
+          if (mounted) {
           // Navigate directly to sessions screen with the paid session
           Navigator.of(context).pushNamedAndRemoveUntil(
             '/my-sessions',
@@ -887,25 +887,25 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _isProcessing ? null : _forceCompleteSandbox,
+          TextButton(
+            onPressed: _isProcessing ? null : _forceCompleteSandbox,
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     backgroundColor: Colors.orange[100],
                   ),
-                  child: Text(
+            child: Text(
                     'Simulate Payment Success (Testing Only)',
-                    style: GoogleFonts.poppins(
+              style: GoogleFonts.poppins(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w600,
                       color: Colors.orange[900],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
                   '⚠️ This bypasses actual payment. In production, use valid phone numbers (67XXXXXXX or 69XXXXXXX).',
-                  style: GoogleFonts.poppins(
+            style: GoogleFonts.poppins(
                     fontSize: 10,
                     color: Colors.orange[800],
                     fontStyle: FontStyle.italic,

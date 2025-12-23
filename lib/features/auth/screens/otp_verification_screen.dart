@@ -574,6 +574,13 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   /// Send onboarding notification if needed (only once per day)
   Future<void> _sendOnboardingNotificationIfNeeded(String userId) async {
     try {
+      // Verify user is actually a tutor before sending notification
+      final userRole = await AuthService.getUserRole();
+      if (userRole != 'tutor') {
+        LogService.debug('Skipping onboarding notification for non-tutor user: $userId (role: $userRole)');
+        return;
+      }
+      
       // Check if onboarding is incomplete or skipped
       final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
       final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);

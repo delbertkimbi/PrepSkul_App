@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -199,21 +200,12 @@ class _MainNavigationState extends State<MainNavigation> {
             return;
           }
         } else {
-          // On mobile, prevent back navigation that would exit the app
-          // Only show message if we're at the root (can't pop)
+          // On mobile, when at root screen and user tries to exit,
+          // minimize the app to background (like clicking home button)
           if (mounted && !Navigator.of(context).canPop()) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Use the navigation bar to switch screens',
-                  style: GoogleFonts.poppins(),
-                ),
-                duration: const Duration(seconds: 2),
-                backgroundColor: AppTheme.primaryColor,
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.all(16),
-              ),
-            );
+            // Use SystemNavigator to minimize app to background
+            // This is like clicking the home button - app goes to background
+            SystemNavigator.pop();
           }
         }
       },

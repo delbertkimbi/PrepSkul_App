@@ -8,6 +8,7 @@ import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/booking/services/availability_service.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:confetti/confetti.dart';
@@ -94,7 +95,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     if (widget.isReschedule && widget.rescheduleSessionId != null) {
       _loadOriginalSessionData();
     } else {
-      _prefillFromSurvey();
+    _prefillFromSurvey();
     }
     _loadTrialPricing();
     _loadTutorSchedule();
@@ -347,50 +348,64 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     );
 
     try {
-      // If rescheduling, check if session is pending, expired, or cancelled (modify existing)
-      // Only create new request for paid sessions (which can't be modified)
+      // If rescheduling, ALWAYS modify the existing session (don't create new)
+      // This applies to all cases: pending, expired, cancelled, approved unpaid, AND paid sessions that have passed
       if (widget.isReschedule && widget.rescheduleSessionId != null) {
         try {
           final existingSession = await TrialSessionService.getTrialSessionById(widget.rescheduleSessionId!);
           final paymentStatus = existingSession.paymentStatus.toLowerCase();
           final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
+          final isTimePassed = SessionDateUtils.isSessionExpired(existingSession);
           
-          // If paid, cannot modify - must create new request
-          if (isPaid) {
-            // Fall through to createTrialRequest below to create a new reschedule request
-            LogService.debug('Rescheduling paid session - creating new request');
+          // Determine modification reason based on session state
+          String? modificationReason;
+          if (existingSession.status == 'pending') {
+            modificationReason = null; // No reason needed for pending
+          } else if (isPaid && isTimePassed) {
+            modificationReason = 'Request to reschedule a missed paid session';
+          } else if (isPaid && !isTimePassed) {
+            // Paid but not yet passed - this shouldn't happen, but handle it
+            modificationReason = 'Request to reschedule a paid session';
           } else {
-            // For pending, expired, cancelled, or approved unpaid sessions - UPDATE the existing session
-            // This sets it back to pending and notifies tutor as a request to update a missed session
-            await TrialSessionService.modifyTrialSession(
-              sessionId: widget.rescheduleSessionId!,
-              scheduledDate: _selectedDate,
-              scheduledTime: _selectedTime!,
-              durationMinutes: _selectedDuration,
-              location: _selectedLocation,
-              address: _onsiteAddress,
-              locationDescription: _locationDescription,
-              trialGoal: _goalController.text.trim().isNotEmpty ? _goalController.text.trim() : null,
-              learnerChallenges: _challengesController.text.trim().isNotEmpty ? _challengesController.text.trim() : null,
-              modificationReason: existingSession.status == 'pending' 
-                  ? null 
-                  : 'Request to reschedule a missed/expired session', // Reason for expired/cancelled/approved
-            );
-            
-            if (!mounted) return;
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Trial session updated successfully. Waiting for tutor approval.'),
-                backgroundColor: Colors.green,
-              ),
-            );
-            Navigator.pop(context, true); // Return to previous screen
-            return;
+            modificationReason = 'Request to reschedule a missed/expired session';
           }
+          
+          // ALWAYS modify the existing session - never create a new one
+          await TrialSessionService.modifyTrialSession(
+            sessionId: widget.rescheduleSessionId!,
+            scheduledDate: _selectedDate,
+            scheduledTime: _selectedTime!,
+            durationMinutes: _selectedDuration,
+            location: _selectedLocation,
+            address: _onsiteAddress,
+            locationDescription: _locationDescription,
+            trialGoal: _goalController.text.trim().isNotEmpty ? _goalController.text.trim() : null,
+            learnerChallenges: _challengesController.text.trim().isNotEmpty ? _challengesController.text.trim() : null,
+            modificationReason: modificationReason,
+          );
+          
+          if (!mounted) return;
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Trial session updated successfully. Waiting for tutor approval.'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context, true); // Return to previous screen
+          return;
         } catch (e) {
-          LogService.warning('Could not check existing session status, creating new request: $e');
-          // Fall through to createTrialRequest
+          LogService.warning('Could not modify existing session, error: $e');
+          // If modification fails, show error instead of silently creating new request
+          if (!mounted) return;
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update session: ${e.toString().replaceFirst('Exception: ', '')}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
         }
       }
       
@@ -491,43 +506,43 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
             ),
           AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
                     color: hadDiscount 
                         ? Colors.green.withOpacity(0.1)
                         : Colors.green.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
                     hadDiscount ? Icons.celebration : Icons.check_circle,
-                    size: 60,
+                size: 60,
                     color: hadDiscount ? Colors.orange[600] : Colors.green[600],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
                   hadDiscount ? '🎉 Discount Applied!' : 'Trial Request Sent!',
-                  style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Your trial session request has been sent to ${widget.tutor['full_name']}!',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.grey[700],
-                    height: 1.5,
-                  ),
-                ),
+              style: GoogleFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Your trial session request has been sent to ${widget.tutor['full_name']}!',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[700],
+                height: 1.5,
+              ),
+            ),
                 // Show discounted price if discount was applied
                 if (hadDiscount) ...[
                   const SizedBox(height: 16),
@@ -600,40 +615,40 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
                       _confettiController.stop();
-                      Navigator.pop(context);
-                      Navigator.pop(context);
-                      Navigator.pushNamedAndRemoveUntil(
-                        context,
-                        '/student-nav',
-                        (route) => false,
-                        arguments: {'initialTab': 2},
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Text(
-                      'View My Requests',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
+                  Navigator.pop(context);
+                  Navigator.pop(context);
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/student-nav',
+                    (route) => false,
+                    arguments: {'initialTab': 2},
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-              ],
+                child: Text(
+                  'View My Requests',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
             ),
+          ],
+        ),
           ),
         ],
       ),
@@ -769,100 +784,100 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     ],
                   ),
                 ),
-              // Progress indicator
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: (_currentStep + 1) / _totalSteps,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryColor,
+          // Progress indicator
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: (_currentStep + 1) / _totalSteps,
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
+                minHeight: 6,
+              ),
+            ),
+          ),
+          // Content
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildSubjectAndDuration(),
+                _buildDateAndTime(),
+                _buildGoalsAndReview(),
+              ],
+            ),
+          ),
+          // Navigation buttons
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -5),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                if (_currentStep > 0)
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _previousStep,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: BorderSide(color: AppTheme.primaryColor),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'Back',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
                     ),
-                    minHeight: 6,
+                  ),
+                if (_currentStep > 0) const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _canProceed()
+                        ? (_currentStep == _totalSteps - 1
+                              ? _submitTrialRequest
+                              : _nextStep)
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      disabledBackgroundColor: Colors.grey[300],
+                    ),
+                    child: Text(
+                      _currentStep == _totalSteps - 1
+                          ? 'Send Request'
+                          : 'Continue',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              // Content
-              Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _buildSubjectAndDuration(),
-                    _buildDateAndTime(),
-                    _buildGoalsAndReview(),
-                  ],
-                ),
-              ),
-              // Navigation buttons
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, -5),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    if (_currentStep > 0)
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _previousStep,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            side: BorderSide(color: AppTheme.primaryColor),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            'Back',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        ),
-                      ),
-                    if (_currentStep > 0) const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton(
-                        onPressed: _canProceed()
-                            ? (_currentStep == _totalSteps - 1
-                                  ? _submitTrialRequest
-                                  : _nextStep)
-                            : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          disabledBackgroundColor: Colors.grey[300],
-                        ),
-                        child: Text(
-                          _currentStep == _totalSteps - 1
-                              ? 'Send Request'
-                              : 'Continue',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              ],
                 ),
               ),
             ],
@@ -1366,48 +1381,48 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             child: Column(
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Trial Session Fee',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    _isLoadingPrice
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Trial Session Fee',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+                _isLoadingPrice
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
                               // ALWAYS show original price (strikethrough) at top if discount is available
-                              if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
-                                Text(
+                          if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
+                            Text(
                                   PricingService.formatPrice(_basePrice),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.grey[600],
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
-                                ),
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[600],
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
                               if (_pricingDetails[_selectedDuration]?['hasDiscount'] == true)
                                 const SizedBox(height: 4),
                               // Show discounted price if discount available (even before clicking), otherwise show base price
-                              Text(
+                          Text(
                                 PricingService.formatPrice(
                                   _pricingDetails[_selectedDuration]?['hasDiscount'] == true && !_discountApplied
                                       ? (_pricingDetails[_selectedDuration]?['finalPrice'] as double? ?? _basePrice)
                                       : _trialFee
                                 ),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
                                   color: _pricingDetails[_selectedDuration]?['hasDiscount'] == true
                                       ? Colors.green[700]  // Always green if discount available
                                       : AppTheme.primaryColor,
@@ -1426,11 +1441,11 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                                       fontWeight: FontWeight.w600,
                                       color: Colors.green[700],
                                     ),
-                                  ),
-                                ),
-                            ],
+                            ),
                           ),
-                  ],
+                        ],
+                      ),
+              ],
                 ),
                 // Discount button (only show if discount available and not yet applied)
                 if (!_discountApplied && _pricingDetails[_selectedDuration]?['hasDiscount'] == true) ...[
@@ -1666,9 +1681,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
                     color: Colors.green[600],
-                  ),
                 ),
-              ],
+              ),
+            ],
             ] else if (basePrice != null) ...[
               // No discount - show regular price
               Text(
@@ -1681,9 +1696,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
             ] else ...[
               // Fallback to displayPrice if basePrice is null
-              Text(
-                displayPrice,
-                style: GoogleFonts.poppins(
+            Text(
+              displayPrice,
+              style: GoogleFonts.poppins(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: isSelected ? AppTheme.primaryColor : Colors.grey[700],

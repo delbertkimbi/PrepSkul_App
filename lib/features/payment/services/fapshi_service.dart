@@ -102,8 +102,8 @@ class FapshiService {
       // Handle response
       if (response.statusCode == 200) {
         try {
-          final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
-          return FapshiPaymentResponse.fromJson(jsonResponse);
+        final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
+        return FapshiPaymentResponse.fromJson(jsonResponse);
         } on FormatException catch (e) {
           LogService.error('Failed to parse Fapshi success response: $e');
           LogService.error('Response body: ${response.body}');
@@ -113,7 +113,7 @@ class FapshiService {
         // Try to parse error response
         String errorMessage = 'Payment request failed';
         try {
-          final errorResponse = jsonDecode(response.body) as Map<String, dynamic>;
+        final errorResponse = jsonDecode(response.body) as Map<String, dynamic>;
           errorMessage = errorResponse['message'] as String? ?? 
                         errorResponse['error'] as String? ?? 
                         'Payment request failed';
@@ -156,7 +156,7 @@ class FapshiService {
           e.toString().contains('contact support') ||
           e.toString().contains('check your internet') ||
           e.toString().contains('timed out')) {
-        rethrow;
+      rethrow;
       }
       // Otherwise, convert to user-friendly message
       final userFriendlyMessage = _convertToUserFriendlyError(e.toString());

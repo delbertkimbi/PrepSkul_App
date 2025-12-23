@@ -815,20 +815,30 @@ class AuthService {
 
     while (retryCount < 3) {
       try {
+        final redirectUrl = getRedirectUrl();
         LogService.debug(
           '🔍 [DEBUG] Resending verification email to: $email (attempt ${retryCount + 1})',
         );
+        LogService.debug('🔍 [DEBUG] Using redirect URL: $redirectUrl');
 
-        await SupabaseService.client.auth.resend(
+        final result = await SupabaseService.client.auth.resend(
           type: OtpType.signup,
           email: email,
-          emailRedirectTo: getRedirectUrl(),
+          emailRedirectTo: redirectUrl,
         );
+        
+        LogService.debug('📧 [RESEND] Supabase resend result: $result');
+        LogService.debug('📧 [RESEND] Redirect URL used: $redirectUrl');
+        
+        // Check if result indicates success or failure
+        if (result == null) {
+          LogService.warning('⚠️ [RESEND] Supabase resend returned null - email may not have been sent');
+        }
 
         // Success - record email sent and clear retry count
         await EmailRateLimitService.recordEmailSent(normalizedEmail);
 
-        LogService.success('Verification email resent to: $email');
+        LogService.success('✅ Verification email resent to: $email');
         return;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());

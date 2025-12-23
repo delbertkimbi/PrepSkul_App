@@ -154,12 +154,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         });
       } else {
         // For mobile, use YoutubePlayerController with modern settings
-        _youtubeController = YoutubePlayerController(
+          _youtubeController = YoutubePlayerController(
           initialVideoId: _videoId!,
-          flags: const YoutubePlayerFlags(
+            flags: const YoutubePlayerFlags(
             autoPlay: true, // Auto-play when initialized
-            mute: false,
-            enableCaption: true,
+              mute: false,
+              enableCaption: true,
             controlsVisibleAtStart: false, // Hide controls initially for cleaner look
             hideControls: true, // Auto-hide controls after a few seconds
             hideThumbnail: false,
@@ -295,9 +295,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: CustomScrollView(
-              slivers: [
-                // Modern App Bar with Video
-                SliverAppBar(
+        slivers: [
+          // Modern App Bar with Video
+          SliverAppBar(
             expandedHeight: 280,
             pinned: true,
             elevation: 0,
@@ -632,11 +632,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildCertificationsSection(),
-                        const SizedBox(height: 20),
-                        // Reviews Section
-                        _buildReviewsSection(),
-                        const SizedBox(height: 20),
+                      _buildCertificationsSection(),
+                const SizedBox(height: 20),
+                // Reviews Section
+                _buildReviewsSection(),
+                const SizedBox(height: 20),
                       ],
                     ),
                   ),
@@ -655,8 +655,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ],
             ),
           ),
-                ],
-              ),
+        ],
+      ),
     );
   }
 
@@ -889,14 +889,14 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         message: 'Booking a session requires an internet connection. Please check your connection and try again.',
                       )
                   : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              BookTrialSessionScreen(tutor: widget.tutor),
-                        ),
-                      );
-                    },
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        BookTrialSessionScreen(tutor: widget.tutor),
+                  ),
+                );
+              },
               style: OutlinedButton.styleFrom(
                 side: BorderSide(color: AppTheme.primaryColor, width: 2),
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -925,17 +925,17 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         message: 'Booking a tutor requires an internet connection. Please check your connection and try again.',
                       )
                   : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => BookTutorFlowScreen(
-                            tutor: widget.tutor,
-                            // TODO: Pass actual survey data
-                            surveyData: null,
-                          ),
-                        ),
-                      );
-                    },
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BookTutorFlowScreen(
+                      tutor: widget.tutor,
+                      // TODO: Pass actual survey data
+                      surveyData: null,
+                    ),
+                  ),
+                );
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isOffline 
                     ? Colors.grey[400] 
@@ -1359,14 +1359,14 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: YoutubePlayerBuilder(
-                        onExitFullScreen: () {},
-                        player: YoutubePlayer(
-                          controller: _youtubeController!,
+                    onExitFullScreen: () {},
+                    player: YoutubePlayer(
+                      controller: _youtubeController!,
                           showVideoProgressIndicator: true,
-                          progressIndicatorColor: AppTheme.primaryColor,
-                          progressColors: ProgressBarColors(
-                            playedColor: AppTheme.primaryColor,
-                            handleColor: AppTheme.primaryColor,
+                      progressIndicatorColor: AppTheme.primaryColor,
+                      progressColors: ProgressBarColors(
+                        playedColor: AppTheme.primaryColor,
+                        handleColor: AppTheme.primaryColor,
                             bufferedColor: Colors.white.withOpacity(0.3),
                             backgroundColor: Colors.white.withOpacity(0.1),
                           ),
@@ -1413,7 +1413,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       return Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: Colors.black,
+        color: Colors.black,
         ),
         child: Stack(
           children: [
@@ -1422,22 +1422,22 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: CachedNetworkImage(
-                  imageUrl: _getThumbnailUrl()!,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder: (context, url) => Container(
-                    color: Colors.grey[900],
-                    child: const Center(
+                imageUrl: _getThumbnailUrl()!,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                placeholder: (context, url) => Container(
+                  color: Colors.grey[900],
+                  child: const Center(
                       child: CircularProgressIndicator(
                         color: Colors.white,
                         strokeWidth: 2,
                       ),
-                    ),
                   ),
-                  errorWidget: (context, url, error) =>
-                      Container(color: Colors.grey[900]),
                 ),
+                errorWidget: (context, url, error) =>
+                    Container(color: Colors.grey[900]),
+              ),
               ),
             // Modern loading overlay with pulse animation
             Container(
@@ -1470,7 +1470,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         ),
       );
     }
-    
+
     // Default: Show thumbnail preview with play button (lazy load)
     return _buildThumbnailPreview();
   }
@@ -1497,39 +1497,27 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Thumbnail image with caching
-              thumbnailUrl != null
-                  ? CachedNetworkImage(
-                      imageUrl: thumbnailUrl,
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      placeholder: (context, url) => Container(
-                        color: Colors.grey[900],
-                        child: const Center(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Thumbnail image with caching
+          thumbnailUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: thumbnailUrl,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey[900],
+                    child: const Center(
                           child: CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 2,
                           ),
-                        ),
-                      ),
-                      errorWidget: (context, url, error) {
-                        return Container(
-                          color: Colors.grey[900],
-                          child: const Center(
-                            child: Icon(
-                              Icons.video_library_outlined,
-                              size: 80,
-                              color: Colors.white54,
-                            ),
-                          ),
-                        );
-                      },
-                    )
-                  : Container(
+                    ),
+                  ),
+                  errorWidget: (context, url, error) {
+                    return Container(
                       color: Colors.grey[900],
                       child: const Center(
                         child: Icon(
@@ -1538,9 +1526,21 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           color: Colors.white54,
                         ),
                       ),
+                    );
+                  },
+                )
+              : Container(
+                  color: Colors.grey[900],
+                  child: const Center(
+                    child: Icon(
+                      Icons.video_library_outlined,
+                      size: 80,
+                      color: Colors.white54,
                     ),
+                  ),
+                ),
               // Modern play button overlay (smaller, more elegant)
-              Container(
+          Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
@@ -1551,34 +1551,34 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     ],
                   ),
                 ),
-                child: Center(
-                  child: Container(
+            child: Center(
+              child: Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
+                decoration: BoxDecoration(
                       color: Colors.red.withOpacity(0.95),
-                      shape: BoxShape.circle,
-                      boxShadow: [
+                  shape: BoxShape.circle,
+                  boxShadow: [
                         BoxShadow(
                           color: Colors.red.withOpacity(0.5),
                           blurRadius: 20,
                           spreadRadius: 4,
                         ),
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 15,
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 15,
                           spreadRadius: 2,
-                        ),
-                      ],
                     ),
-                    child: const Icon(
-                      Icons.play_arrow,
-                      color: Colors.white,
+                  ],
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
                       size: 32,
-                    ),
-                  ),
                 ),
               ),
-            ],
+            ),
+          ),
+        ],
           ),
         ),
       ),

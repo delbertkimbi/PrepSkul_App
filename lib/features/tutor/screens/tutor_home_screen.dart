@@ -14,9 +14,11 @@ import '../../../core/services/notification_service.dart';
 import '../../../core/models/profile_completion.dart';
 import '../../../core/widgets/profile_completion_widget.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
+import '../../../features/booking/services/session_payment_service.dart';
 import '../widgets/onboarding_progress_tracker.dart';
 import 'tutor_admin_feedback_screen.dart';
 import 'tutor_onboarding_screen.dart';
+import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 
 class TutorHomeScreen extends StatefulWidget {
@@ -36,6 +38,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   bool _hasDismissedApprovalCard = false; // Track if user dismissed approval card
   bool _onboardingSkipped = false;
   bool _onboardingComplete = false;
+  bool _hasSavedProgress = false; // Track if user has any saved progress
+  double _activeBalance = 0.0;
+  double _pendingBalance = 0.0;
 
   @override
   void initState() {
@@ -43,6 +48,20 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     _loadUserInfo();
     _checkDismissedApprovalCard();
     _checkOnboardingStatus();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh data when screen becomes visible again
+    // This ensures progress is updated after saving
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _checkOnboardingStatus();
+        // Also reload user info to get latest progress
+        _loadUserInfo();
+      }
+    });
   }
 
   Future<void> _checkOnboardingStatus() async {
@@ -159,6 +178,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       final onboardingProgress = await TutorOnboardingProgressService.loadProgress(userId);
       final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
       final onboardingComplete = await TutorOnboardingProgressService.isOnboardingComplete(userId);
+      
+      // Check if user has any saved progress (has step_data or completed_steps)
+      final hasProgress = onboardingProgress != null && 
+          ((onboardingProgress['step_data'] as Map? ?? {}).isNotEmpty ||
+           (onboardingProgress['completed_steps'] as List? ?? []).isNotEmpty);
 
       // Calculate completion status
       ProfileCompletionStatus? status;
@@ -201,6 +225,20 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _hasDismissedApprovalCard = true;
       }
 
+      // Load wallet balances if tutor is approved
+      double activeBalance = 0.0;
+      double pendingBalance = 0.0;
+      if (newApprovalStatus == 'approved') {
+        try {
+          final balances = await SessionPaymentService.getTutorWalletBalances(userId);
+          activeBalance = (balances['active_balance'] as num).toDouble();
+          pendingBalance = (balances['pending_balance'] as num).toDouble();
+        } catch (e) {
+          LogService.warning('Error loading wallet balances: $e');
+          // Don't fail user info loading if wallet fails
+        }
+      }
+
       safeSetState(() {
         _userInfo = {
           ...user,
@@ -212,6 +250,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _adminNotes = adminNotes;
         _onboardingSkipped = onboardingSkipped;
         _onboardingComplete = onboardingComplete;
+        _hasSavedProgress = hasProgress;
+        _activeBalance = activeBalance;
+        _pendingBalance = pendingBalance;
         _isLoading = false;
       });
       
@@ -232,6 +273,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
+      
+      // Verify user is actually a tutor before sending notification
+      final userRole = await AuthService.getUserRole();
+      if (userRole != 'tutor') {
+        LogService.debug('Skipping onboarding notification for non-tutor user: $userId (role: $userRole)');
+        return;
+      }
       
       // Check if onboarding is incomplete or skipped
       final onboardingSkipped = await TutorOnboardingProgressService.isOnboardingSkipped(userId);
@@ -352,13 +400,62 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Onboarding Progress Tracker (if incomplete or skipped)
-                  if (_onboardingSkipped || !_onboardingComplete)
+                  // Onboarding Progress Tracker
+                  // Show ONLY if: (skipped OR has saved progress) AND not yet submitted
+                  // Hide after submission - only show Profile Completion widget then
+                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete)
                     OnboardingProgressTracker(
                       userId: _userInfo?['userId'] as String? ?? '',
+                      key: ValueKey('onboarding_tracker_${_onboardingSkipped}_${_onboardingComplete}_${_hasSavedProgress}_${DateTime.now().millisecondsSinceEpoch}'),
                     ),
 
-                  if (_onboardingSkipped || !_onboardingComplete)
+                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete)
+                    const SizedBox(height: 16),
+                    
+                  // Review & Submit Button (only when all steps complete but not yet submitted)
+                  // Hide this button after submission - user should see Profile Completion widget instead
+                  // If _approvalStatus is not null, it means profile has been submitted (pending/approved/rejected/etc)
+                  if (_onboardingComplete && !_onboardingSkipped && _approvalStatus == null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pushNamed(
+                              '/tutor-onboarding',
+                              arguments: {
+                                'userId': _userInfo?['userId'],
+                                'existingData': _tutorProfile,
+                              },
+                            ).then((_) {
+                              // Reload after returning
+                              _loadUserInfo();
+                              _checkOnboardingStatus();
+                            });
+                          },
+                          icon: const Icon(Icons.arrow_forward, size: 20),
+                          label: Text(
+                            'Review & Submit Application',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  if (_onboardingComplete && !_onboardingSkipped)
                     const SizedBox(height: 16),
 
                   // Profile Completion Banner (if not complete)
@@ -836,9 +933,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Widget _buildWalletSection() {
-    // TODO: Replace with actual wallet data when wallet system is implemented
-    const activeBalance = '0';
-    const pendingBalance = '0';
+    // Use actual wallet balances
+    final activeBalanceStr = _activeBalance.toStringAsFixed(0);
+    final pendingBalanceStr = _pendingBalance.toStringAsFixed(0);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -908,7 +1005,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               Expanded(
                 child: _buildWalletBalanceCard(
                   label: 'Active Balance',
-                  amount: activeBalance,
+                  amount: activeBalanceStr,
                   icon: Icons.check_circle,
                   color: Colors.green.shade300,
                 ),
@@ -917,7 +1014,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               Expanded(
                 child: _buildWalletBalanceCard(
                   label: 'Pending Balance',
-                  amount: pendingBalance,
+                  amount: pendingBalanceStr,
                   icon: Icons.pending,
                   color: Colors.orange.shade300,
                 ),
@@ -925,18 +1022,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
+            SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                // TODO: Navigate to wallet/earnings screen when implemented
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Wallet feature coming soon!',
-                      style: GoogleFonts.poppins(),
-                    ),
-                    backgroundColor: AppTheme.primaryColor,
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const TutorEarningsScreen(),
                   ),
                 );
               },

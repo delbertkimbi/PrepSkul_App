@@ -3,6 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/widgets/branded_snackbar.dart';
+import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 
 /// TutorRequestDetailScreen
@@ -30,6 +34,8 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   final TextEditingController _rejectionReasonController =
       TextEditingController();
   bool _isProcessing = false;
+  Map<String, dynamic>? _studentSurvey;
+  bool _isLoadingSurvey = true;
 
   @override
   void initState() {
@@ -38,6 +44,29 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showRejectDialog();
       });
+    }
+    _loadStudentSurvey();
+  }
+
+  Future<void> _loadStudentSurvey() async {
+    try {
+      final studentId = widget.request['student_id'] as String?;
+      if (studentId != null) {
+        final survey = await SurveyRepository.getStudentSurvey(studentId);
+        if (mounted) {
+          safeSetState(() {
+            _studentSurvey = survey;
+            _isLoadingSurvey = false;
+          });
+        }
+      } else {
+        safeSetState(() => _isLoadingSurvey = false);
+      }
+    } catch (e) {
+      LogService.warning('Error loading student survey: $e');
+      if (mounted) {
+        safeSetState(() => _isLoadingSurvey = false);
+      }
     }
   }
 
@@ -211,17 +240,39 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
 
     if (result != null) {
       safeSetState(() => _isProcessing = true);
-      // TODO: Call API to reject
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-      Navigator.pop(context); // Go back to list
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Request declined', style: GoogleFonts.poppins()),
-          backgroundColor: Colors.red,
-        ),
-      );
+      try {
+        final requestId = widget.request['id'] as String;
+        final isTrial = widget.request['is_trial'] == true;
+        
+        if (isTrial) {
+          await BookingService.rejectTrialRequest(
+            requestId,
+            reason: result,
+          );
+        } else {
+          await BookingService.rejectBookingRequest(
+            requestId,
+            reason: result,
+          );
+        }
+        
+        if (!mounted) return;
+        Navigator.pop(context); // Go back to list
+        BrandedSnackBar.show(
+          context,
+          message: 'Request declined',
+          backgroundColor: Colors.orange,
+          icon: Icons.info_outline,
+        );
+      } catch (e) {
+        LogService.error('Error rejecting request: $e');
+        if (!mounted) return;
+        BrandedSnackBar.showError(
+          context,
+          'Failed to decline request: $e',
+        );
+        safeSetState(() => _isProcessing = false);
+      }
     }
   }
 
@@ -308,6 +359,12 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             // Student Card
             _buildStudentCard(student),
             const SizedBox(height: 24),
+
+            // Student Analysis Section (from survey)
+            if (_studentSurvey != null) ...[
+              _buildStudentAnalysisCard(),
+              const SizedBox(height: 24),
+            ],
 
             // Schedule Section
             _buildScheduleCard(),
@@ -431,8 +488,12 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   }
   
   Widget _buildStudentCard(Map<String, dynamic> student) {
+    final isParent = student['user_type'] == 'parent';
+    final studentName = student['full_name'] ?? 'Student';
+    final avatarUrl = student['avatar_url'] as String?;
+    
     return Card(
-      elevation: 0,
+      elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey[200]!, width: 1),
@@ -443,148 +504,246 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              AppTheme.primaryColor.withOpacity(0.08),
-              AppTheme.primaryColor.withOpacity(0.03),
+              (isParent ? Colors.purple[50]! : Colors.blue[50]!),
+              (isParent ? Colors.purple[100]! : Colors.blue[100]!).withOpacity(0.3),
             ],
           ),
           borderRadius: BorderRadius.circular(16),
         ),
         padding: const EdgeInsets.all(20),
         child: Row(
-        children: [
-          CircleAvatar(
-            radius: 36,
-            backgroundColor: AppTheme.primaryColor,
-            backgroundImage: AssetImage(
-              student['avatar_url'] ?? 'assets/images/prepskul_profile.png',
-            ),
-            onBackgroundImageError: (exception, stackTrace) {
-              // Image failed to load, will show fallback
-            },
-            child: student['avatar_url'] == null
-                ? Text(
-                    (student['full_name'] ?? 'S')[0].toUpperCase(),
-                    style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  student['full_name'] ?? 'Student',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
+          children: [
+            // Avatar with better styling
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: (isParent ? Colors.purple : Colors.blue).withOpacity(0.3),
+                  width: 2,
                 ),
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
+                boxShadow: [
+                  BoxShadow(
+                    color: (isParent ? Colors.purple : Colors.blue).withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  decoration: BoxDecoration(
-                    color: student['user_type'] == 'parent'
-                        ? Colors.purple[100]
-                        : Colors.blue[100],
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    student['user_type'] == 'parent'
-                        ? AppLocalizations.of(context)!.parentRequest
-                        : AppLocalizations.of(context)!.studentRequest,
+                ],
+              ),
+              child: CircleAvatar(
+                radius: 36,
+                backgroundColor: isParent ? Colors.purple[400] : Colors.blue[400],
+                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
+                    ? NetworkImage(avatarUrl)
+                    : null,
+                onBackgroundImageError: (exception, stackTrace) {
+                  // Image failed to load, will show fallback
+                },
+                child: avatarUrl == null || avatarUrl.isEmpty
+                    ? Text(
+                        studentName.isNotEmpty
+                            ? studentName[0].toUpperCase()
+                            : 'S',
+                        style: GoogleFonts.poppins(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    studentName,
                     style: GoogleFonts.poppins(
-                      fontSize: 11,
+                      fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: student['user_type'] == 'parent'
-                          ? Colors.purple[700]
-                          : Colors.blue[700],
+                      color: AppTheme.textDark,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isParent
+                          ? Colors.purple[100]
+                          : Colors.blue[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isParent
+                            ? Colors.purple[300]!
+                            : Colors.blue[300]!,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isParent ? Icons.family_restroom : Icons.school,
+                          size: 14,
+                          color: isParent
+                              ? Colors.purple[700]
+                              : Colors.blue[700],
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isParent
+                              ? AppLocalizations.of(context)!.parentRequest
+                              : AppLocalizations.of(context)!.studentRequest,
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isParent
+                                ? Colors.purple[700]
+                                : Colors.blue[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
         ),
       ),
     );
   }
 
   Widget _buildScheduleCard() {
+    final isTrial = widget.request['is_trial'] == true;
     final frequency = widget.request['frequency'] as int? ?? 0;
     final days = widget.request['days'] as List? ?? [];
     final times = widget.request['times'] as Map<String, dynamic>? ?? {};
+    final scheduledDate = widget.request['scheduled_date'] != null
+        ? DateTime.tryParse(widget.request['scheduled_date'].toString())
+        : null;
+    final subject = widget.request['subject'] as String?;
+    final durationMinutes = widget.request['duration_minutes'] as int?;
 
     return Card(
-      elevation: 0,
+      elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey[200]!, width: 1),
       ),
-      child: Padding(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue[50]!,
+              Colors.white,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow(Icons.event_repeat, 'Frequency', '$frequency sessions per week'),
-            if (days.isNotEmpty) ...[
-              _buildDetailRow(Icons.calendar_today, 'Days', days.join(', ')),
-              const SizedBox(height: 8),
-              Text(
-                'Session Times',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textLight,
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.calendar_today, color: Colors.blue[700], size: 20),
                 ),
-              ),
-              const SizedBox(height: 12),
-              ...days.map((day) {
-                final time = times[day] ?? 'Not set';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          '$day',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Schedule Details',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (isTrial) ...[
+              if (scheduledDate != null)
+                _buildDetailRow(
+                  Icons.event,
+                  'Date',
+                  '${scheduledDate.day}/${scheduledDate.month}/${scheduledDate.year}',
+                ),
+              if (subject != null)
+                _buildDetailRow(Icons.menu_book, 'Subject', subject),
+              if (durationMinutes != null)
+                _buildDetailRow(Icons.timer, 'Duration', '$durationMinutes minutes'),
+            ] else ...[
+              _buildDetailRow(Icons.event_repeat, 'Frequency', '$frequency sessions per week'),
+              if (days.isNotEmpty) ...[
+                _buildDetailRow(Icons.calendar_today, 'Days', days.join(', ')),
+                const SizedBox(height: 16),
+                Text(
+                  'Session Times',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...days.map((day) {
+                  final time = times[day] ?? 'Not set';
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.blue[100]!, width: 1),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Colors.blue[400],
+                            shape: BoxShape.circle,
                           ),
                         ),
-                      ),
-                      Text(
-                        time,
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.textMedium,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '$day',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                        Text(
+                          time,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
             ],
           ],
         ),
@@ -597,18 +756,53 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     final address = widget.request['address'] as String?;
 
     return Card(
-      elevation: 0,
+      elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey[200]!, width: 1),
       ),
-      child: Padding(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.green[50]!,
+              Colors.white,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow(Icons.location_on, 'Location', location.toUpperCase()),
-            if (address != null)
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.location_on, color: Colors.green[700], size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Location',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _buildDetailRow(Icons.public, 'Type', location.toUpperCase()),
+            if (address != null && address.isNotEmpty)
               _buildDetailRow(Icons.home, 'Address', address),
           ],
         ),
@@ -619,9 +813,10 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   Widget _buildRevenueCard() {
     final monthlyTotal = widget.request['monthly_total'] as double? ?? 0.0;
     final paymentPlan = widget.request['payment_plan'] as String? ?? 'Not specified';
+    final isTrial = widget.request['is_trial'] == true;
 
     return Card(
-      elevation: 0,
+      elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey[200]!, width: 1),
@@ -640,10 +835,39 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildDetailRow(Icons.attach_money, 'Monthly Revenue', '${monthlyTotal.toStringAsFixed(0)} XAF', iconColor: Colors.green[700]),
-            const SizedBox(height: 8),
-            _buildDetailRow(Icons.payment, 'Payment Plan', paymentPlan.toUpperCase(), iconColor: Colors.green[700]),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.account_balance_wallet, color: Colors.green[700], size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Payment Information',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (isTrial)
+              _buildDetailRow(Icons.money, 'Trial Session', 'FREE', iconColor: Colors.green[700])
+            else ...[
+              _buildDetailRow(Icons.attach_money, 'Monthly Revenue', '${monthlyTotal.toStringAsFixed(0)} XAF', iconColor: Colors.green[700]),
+              const SizedBox(height: 8),
+              _buildDetailRow(Icons.payment, 'Payment Plan', paymentPlan.toUpperCase(), iconColor: Colors.green[700]),
+            ],
           ],
         ),
       ),
@@ -707,6 +931,234 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStudentAnalysisCard() {
+    if (_studentSurvey == null) return const SizedBox.shrink();
+    
+    final survey = _studentSurvey!;
+    
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.blue[200]!, width: 1),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue[50]!,
+              Colors.blue[100]!.withOpacity(0.3),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.psychology, color: Colors.blue[700], size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Student Analysis',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Learning Path
+            if (survey['learning_path'] != null) ...[
+              _buildAnalysisRow(
+                Icons.trending_up,
+                'Learning Path',
+                survey['learning_path'].toString(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            
+            // Education Level
+            if (survey['education_level'] != null) ...[
+              _buildAnalysisRow(
+                Icons.school,
+                'Education Level',
+                survey['education_level'].toString(),
+              ),
+              const SizedBox(height: 12),
+            ],
+            
+            // Subjects of Interest
+            if (survey['subjects_of_interest'] != null) ...[
+              Builder(
+                builder: (context) {
+                  final subjects = survey['subjects_of_interest'];
+                  String subjectsText = '';
+                  if (subjects is List && subjects.isNotEmpty) {
+                    subjectsText = subjects.join(', ');
+                  } else if (subjects is String && subjects.isNotEmpty) {
+                    subjectsText = subjects;
+                  }
+                  if (subjectsText.isNotEmpty) {
+                    return Column(
+                      children: [
+                        _buildAnalysisRow(
+                          Icons.menu_book,
+                          'Subjects of Interest',
+                          subjectsText,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+            
+            // Learning Goals
+            if (survey['learning_goals'] != null) ...[
+              Builder(
+                builder: (context) {
+                  final goals = survey['learning_goals'];
+                  String goalsText = '';
+                  if (goals is List && goals.isNotEmpty) {
+                    goalsText = goals.join(', ');
+                  } else if (goals is String && goals.isNotEmpty) {
+                    goalsText = goals;
+                  }
+                  if (goalsText.isNotEmpty) {
+                    return Column(
+                      children: [
+                        _buildAnalysisRow(
+                          Icons.flag,
+                          'Learning Goals',
+                          goalsText,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+            
+            // Challenges
+            if (survey['challenges'] != null) ...[
+              Builder(
+                builder: (context) {
+                  final challenges = survey['challenges'];
+                  String challengesText = '';
+                  if (challenges is List && challenges.isNotEmpty) {
+                    challengesText = challenges.join(', ');
+                  } else if (challenges is String && challenges.isNotEmpty) {
+                    challengesText = challenges;
+                  }
+                  if (challengesText.isNotEmpty) {
+                    return Column(
+                      children: [
+                        _buildAnalysisRow(
+                          Icons.help_outline,
+                          'Challenges',
+                          challengesText,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+            
+            // Learning Style
+            if (survey['learning_styles'] != null || survey['learning_style'] != null) ...[
+              Builder(
+                builder: (context) {
+                  final styles = survey['learning_styles'] ?? survey['learning_style'];
+                  String stylesText = '';
+                  if (styles is List && styles.isNotEmpty) {
+                    stylesText = styles.join(', ');
+                  } else if (styles is String && styles.isNotEmpty) {
+                    stylesText = styles;
+                  }
+                  if (stylesText.isNotEmpty) {
+                    return _buildAnalysisRow(
+                      Icons.style,
+                      'Learning Style',
+                      stylesText,
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ],
+            
+            // Confidence Level
+            if (survey['confidence_level'] != null) ...[
+              const SizedBox(height: 12),
+              _buildAnalysisRow(
+                Icons.sentiment_satisfied,
+                'Confidence Level',
+                survey['confidence_level'].toString(),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildAnalysisRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: Colors.blue[700],),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.textMedium,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

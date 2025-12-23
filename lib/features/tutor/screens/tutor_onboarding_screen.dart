@@ -168,6 +168,83 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     }
   }
 
+  // Save progress and navigate to dashboard (for Save Progress button)
+  // Similar to skip onboarding, but saves the progress made so far
+  // User can continue later from where they left off
+  Future<void> _saveProgress() async {
+    if (_userId == null) return;
+
+    try {
+      // Cancel any pending debounced saves
+      _saveDebounceTimer?.cancel();
+
+      // Save current step data immediately
+      final stepData = _getCurrentStepData();
+      await TutorOnboardingProgressService.saveStepProgress(
+        _userId!,
+        _currentStep,
+        stepData,
+      );
+
+      // Save all progress data
+      final allStepData = _getAllStepData();
+      final completedSteps = _getCompletedSteps();
+      
+      await TutorOnboardingProgressService.saveAllProgress(
+        _userId!,
+        allStepData,
+        _currentStep,
+        completedSteps,
+      );
+
+      LogService.success('Progress saved successfully');
+
+      // Show success message and navigate to dashboard
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Progress saved successfully!',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: AppTheme.accentGreen,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        
+        // Navigate to tutor dashboard after showing success message
+        // Similar to skip onboarding, but progress is saved
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/tutor-nav',
+              (route) => false,
+            );
+          }
+        });
+      }
+    } catch (e) {
+      LogService.error('Error saving progress: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error saving progress. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   // Save progress and navigate to dashboard
   Future<void> _saveProgressAndExit() async {
     if (_userId == null) return;
@@ -736,11 +813,17 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             data['teaching_duration'] ?? data['experience_duration'];
         _motivationController.text =
             data['motivation']?.toString() ?? data['bio']?.toString() ?? '';
-        // Previous organization
-        if (data['previous_roles'] != null &&
-            (data['previous_roles'] as List).isNotEmpty) {
-          _previousOrganizationController.text =
-              (data['previous_roles'] as List).first.toString();
+        // Previous organization - try multiple field names
+        if (data['previous_organization'] != null) {
+          _previousOrganizationController.text = data['previous_organization'].toString();
+        } else if (data['previous_roles'] != null) {
+          if (data['previous_roles'] is List && (data['previous_roles'] as List).isNotEmpty) {
+            _previousOrganizationController.text = (data['previous_roles'] as List).first.toString();
+          } else if (data['previous_roles'] is String && (data['previous_roles'] as String).isNotEmpty) {
+            _previousOrganizationController.text = data['previous_roles'] as String;
+          }
+        } else if (data['previous_tutoring_organization'] != null) {
+          _previousOrganizationController.text = data['previous_tutoring_organization'].toString();
         }
 
         // Taught levels - handle JSON parsing
@@ -1233,7 +1316,25 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: true, // Enable back button
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          onPressed: () async {
+            // Save progress before navigating back
+            await _saveData(immediate: true);
+            if (mounted) {
+              // Check if we should go to dashboard or previous screen
+              final needsImprovement = widget.basicInfo['needsImprovement'] == true;
+              if (needsImprovement) {
+                // If editing, go back to dashboard
+                Navigator.pushReplacementNamed(context, '/tutor-nav');
+              } else {
+                // If new onboarding, go back normally
+                Navigator.of(context).pop();
+              }
+            }
+          },
+        ),
         title: Text(
           'Tutor Onboarding',
           style: GoogleFonts.poppins(
@@ -1260,29 +1361,38 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         color: AppTheme.primaryColor,
                       ),
                     ),
-                    TextButton.icon(
-                      onPressed: _saveProgressAndExit,
-                      icon: const Icon(
-                        Icons.save_outlined,
-                        size: 16,
-                        color: AppTheme.primaryColor,
-                      ),
-                      label: Text(
-                        'Save Progress',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primaryColor,
-                        ),
-                      ),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
+                    // Check if this is edit mode (needs improvement or existing data)
+                    Builder(
+                      builder: (context) {
+                        final isEditMode = widget.basicInfo['needsImprovement'] == true ||
+                            widget.basicInfo['existingData'] != null;
+                        return TextButton.icon(
+                          onPressed: _saveProgress,
+                          icon: Icon(
+                            isEditMode ? Icons.edit_outlined : Icons.save_outlined,
+                            size: 16,
+                            color: AppTheme.primaryColor,
+                          ),
+                          label: Text(
+                            isEditMode ? 'Save Changes' : 'Save Progress',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppTheme.primaryColor,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -5613,7 +5723,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       'payment_method': _paymentMethod,
       'expected_rate': _expectedRate,
       'hourly_rate': _expectedRate != null
-          ? double.tryParse(_expectedRate!.replaceAll(RegExp(r'[^\d.]'), ''))
+          ? _parseExpectedRate(_expectedRate!)
           : null,
       'payment_details': paymentDetails,
       'payment_agreement': _agreesToPaymentPolicy,
@@ -5644,6 +5754,52 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     return tutorData;
   }
 
+  /// Parse expected rate string (e.g., "3,000 – 4,000 XAF") to a single numeric value
+  /// Returns the first number in the range, or null if parsing fails
+  double? _parseExpectedRate(String rateString) {
+    try {
+      // Remove currency text and extra whitespace
+      String cleaned = rateString.replaceAll('XAF', '').trim();
+      
+      // Handle "Above X" format
+      if (cleaned.toLowerCase().contains('above')) {
+        // Extract the number after "above"
+        final match = RegExp(r'above\s*([\d,]+)', caseSensitive: false).firstMatch(cleaned);
+        if (match != null) {
+          final numberStr = match.group(1)?.replaceAll(',', '') ?? '';
+          return double.tryParse(numberStr);
+        }
+        return null;
+      }
+      
+      // Handle range format (e.g., "3,000 – 4,000" or "3000-4000")
+      // Extract the first number from the range
+      final numbers = RegExp(r'([\d,]+)').allMatches(cleaned);
+      if (numbers.isNotEmpty) {
+        // Get the first number and remove commas
+        final firstNumberStr = numbers.first.group(1)?.replaceAll(',', '') ?? '';
+        final parsed = double.tryParse(firstNumberStr);
+        if (parsed != null && parsed >= 1000 && parsed <= 50000) {
+          return parsed;
+        }
+      }
+      
+      // Fallback: try to parse the entire string after removing non-digits
+      final fallback = cleaned.replaceAll(RegExp(r'[^\d.]'), '');
+      if (fallback.isNotEmpty) {
+        final parsed = double.tryParse(fallback);
+        // Validate the parsed value is within acceptable range
+        if (parsed != null && parsed >= 1000 && parsed <= 50000) {
+          return parsed;
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      LogService.error('Error parsing expected rate: $e');
+      return null;
+    }
+  }
 
   /// Show beautiful completion dialog with confetti
   Future<void> _showCompletionDialog() async {

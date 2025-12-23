@@ -42,6 +42,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
+import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
+import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
 import 'dart:async';
 
 void main() async {
@@ -200,6 +202,229 @@ Future<void> _initializePushNotifications() async {
   }
 }
 
+/// Helper function to handle email confirmation (used by both PrepSkulApp and SplashScreen)
+Future<void> handleEmailConfirmation() async {
+  LogService.debug('🔐 Handling email confirmation...');
+  final user = SupabaseService.currentUser;
+
+  if (user == null) {
+    LogService.warning('No user found after email confirmation');
+    return;
+  }
+
+  // Get stored signup data from SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  final storedRole = prefs.getString('signup_user_role');
+  final storedName = prefs.getString('signup_full_name');
+  final storedEmail = prefs.getString('signup_email');
+
+  // Check if profile already exists
+  var existingProfile = await SupabaseService.client
+      .from('profiles')
+      .select()
+      .eq('id', user.id)
+      .maybeSingle();
+
+  // If profile doesn't exist, create it using stored signup data
+  if (existingProfile == null) {
+    LogService.debug('📝 Profile not found - creating from stored signup data');
+    try {
+      // Create profile using stored signup data
+      await SupabaseService.client.from('profiles').upsert({
+        'id': user.id,
+        'email': storedEmail ?? user.email ?? '',
+        'full_name': storedName ?? 'User',
+        'phone_number': null,
+        'user_type': storedRole ?? 'student',
+        'avatar_url': null,
+        'survey_completed': false,
+        'is_admin': false,
+      }, onConflict: 'id');
+
+      // Fetch the created profile
+      existingProfile = await SupabaseService.client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      // Clear stored signup data
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('signup_email');
+    } catch (e) {
+      LogService.warning('Error creating profile: $e');
+      // Continue anyway - try to use stored data
+    }
+  } else {
+    // Profile exists - update email and name if needed
+    final updates = <String, dynamic>{};
+    bool needsUpdate = false;
+
+    // Update email if it wasn't set
+    if ((existingProfile['email'] == null ||
+            existingProfile['email'] == '') &&
+        (storedEmail != null || user.email != null)) {
+      updates['email'] = storedEmail ?? user.email ?? '';
+      needsUpdate = true;
+    }
+
+    // CRITICAL: Update name if it's missing or default (Student/User)
+    final currentName = existingProfile['full_name']?.toString() ?? '';
+    String? nameToUse;
+
+    // Priority order: storedName > auth metadata > user.email (extract name) > currentName
+    if (storedName != null &&
+        storedName.isNotEmpty &&
+        storedName != 'User' &&
+        storedName != 'Student') {
+      nameToUse = storedName;
+    } else if (user.userMetadata?['full_name'] != null) {
+      final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
+      if (metadataName.isNotEmpty &&
+          metadataName != 'User' &&
+          metadataName != 'Student') {
+        nameToUse = metadataName;
+      }
+    } else if (user.email != null && currentName.isEmpty) {
+      // Extract name from email (before @) as last resort
+      final emailName = user.email!.split('@')[0];
+      if (emailName.isNotEmpty &&
+          emailName != 'user' &&
+          emailName != 'student') {
+        nameToUse = emailName
+            .split('.')
+            .map((s) => s[0].toUpperCase() + s.substring(1))
+            .join(' ');
+      }
+    }
+
+    // Update if we found a valid name and current name is invalid
+    if (nameToUse != null &&
+        (currentName.isEmpty ||
+            currentName == 'Student' ||
+            currentName == 'User')) {
+      updates['full_name'] = nameToUse;
+      needsUpdate = true;
+      LogService.success('Updating profile name from "$currentName" to "$nameToUse"');
+    }
+
+    if (needsUpdate) {
+      try {
+        await SupabaseService.client
+            .from('profiles')
+            .update(updates)
+            .eq('id', user.id);
+
+        // Refresh existingProfile after update
+        existingProfile = await SupabaseService.client
+            .from('profiles')
+            .select()
+            .eq('id', user.id)
+            .maybeSingle();
+
+        LogService.success('Profile updated successfully');
+      } catch (e) {
+        LogService.warning('Error updating profile: $e');
+      }
+    }
+
+    // Only clear stored signup data AFTER we've successfully used it or confirmed it's not needed
+    // Don't clear if profile still has default name and we couldn't update it
+    final finalName = existingProfile?['full_name']?.toString() ?? '';
+    if (finalName != 'User' &&
+        finalName != 'Student' &&
+        finalName.isNotEmpty) {
+      // Profile has a valid name now, safe to clear stored data
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('signup_email');
+    } else {
+      // Profile still has invalid name, keep stored data for next attempt
+      LogService.debug(
+        '⚠️ Profile still has invalid name "$finalName", keeping stored signup data',
+      );
+    }
+  }
+
+  // Get user role from profile or stored data
+  final userRole = existingProfile?['user_type'] ?? storedRole ?? 'student';
+  final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
+
+  // Get name with proper priority - avoid 'User' or 'Student' defaults
+  var fullName = existingProfile?['full_name']?.toString() ?? '';
+
+  // If name is invalid, try other sources
+  if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+    if (storedName != null &&
+        storedName.isNotEmpty &&
+        storedName != 'User' &&
+        storedName != 'Student') {
+      fullName = storedName;
+    } else if (user.userMetadata?['full_name'] != null) {
+      final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
+      if (metadataName.isNotEmpty &&
+          metadataName != 'User' &&
+          metadataName != 'Student') {
+        fullName = metadataName;
+      }
+    } else if (user.email != null) {
+      // Extract name from email as last resort
+      final emailName = user.email!.split('@')[0];
+      if (emailName.isNotEmpty &&
+          emailName != 'user' &&
+          emailName != 'student') {
+        fullName = emailName
+            .split('.')
+            .map(
+              (s) => s.isNotEmpty && s.length > 1
+                  ? s[0].toUpperCase() + s.substring(1)
+                  : s.toUpperCase(),
+            )
+            .where((s) => s.isNotEmpty)
+            .join(' ');
+      }
+    }
+  }
+
+  // Final fallback: use role-based default only if we couldn't find anything
+  if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+    fullName = userRole == 'student'
+        ? 'Student'
+        : userRole == 'parent'
+        ? 'Parent'
+        : userRole == 'tutor'
+        ? 'Tutor'
+        : 'User';
+  }
+
+  final phone = existingProfile?['phone_number'] ?? '';
+
+  // Save session
+  await AuthService.saveSession(
+    userId: user.id,
+    userRole: userRole,
+    phone: phone,
+    fullName: fullName,
+    surveyCompleted: hasCompletedSurvey,
+    rememberMe: true,
+  );
+
+  // Navigate using NavigationService - redirect to role-specific route
+  final navService = NavigationService();
+  if (navService.isReady) {
+    // Use determineInitialRoute to handle all logic (intro screen, onboarding, etc.)
+    final routeResult = await navService.determineInitialRoute();
+    LogService.success('[EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}');
+    
+    await navService.navigateToRoute(
+      routeResult.route,
+      arguments: routeResult.arguments,
+      replace: true,
+    );
+  }
+}
+
 class PrepSkulApp extends StatefulWidget {
   const PrepSkulApp({super.key});
 
@@ -286,23 +511,88 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     
     // Check if this is an email verification link from Supabase
     // Supabase verification links: https://[project].supabase.co/auth/v1/verify?token=...&type=signup
-    if (uri.queryParameters.containsKey('type') && 
-        (uri.queryParameters['type'] == 'signup' || uri.queryParameters['type'] == 'email')) {
+    // OR: https://app.prepskul.com/?code=...&type=signup (redirected from Supabase)
+    final code = uri.queryParameters['code'];
+    final type = uri.queryParameters['type'];
+    final token = uri.queryParameters['token'];
+    
+    if ((code != null || token != null) && 
+        type != null && 
+        (type == 'signup' || type == 'email') &&
+        type != 'recovery') {
       LogService.debug('📧 [DEEP_LINK] Email verification link detected');
-      // Store verification token and redirect to email login
-      final prefs = await SharedPreferences.getInstance();
-      if (uri.queryParameters.containsKey('token')) {
-        await prefs.setString('email_verification_token', uri.queryParameters['token']!);
+      
+      try {
+        // If we have a code, exchange it for a session (web redirect from Supabase)
+        if (code != null) {
+          LogService.debug('📧 [DEEP_LINK] Exchanging code for session...');
+          
+          // Check if user is already on email confirmation screen
+          // If so, let that screen handle the navigation via its auth state listener
+          final navService = NavigationService();
+          final currentRoute = navService.currentRoute;
+          final isOnEmailConfirmationScreen = currentRoute == '/email-confirmation' || 
+                                             currentRoute?.contains('email-confirmation') == true;
+          
+          if (isOnEmailConfirmationScreen) {
+            LogService.debug('📧 [DEEP_LINK] User is on email confirmation screen - letting screen handle navigation');
+            // Just exchange the code - the email confirmation screen's listener will handle navigation
+            await SupabaseService.client.auth.exchangeCodeForSession(code);
+            LogService.success('✅ [DEEP_LINK] Email confirmation code verified! Screen will handle navigation.');
+            return; // Exit early, email confirmation screen will navigate
+          }
+          
+          // User is not on email confirmation screen - handle it here
+          await SupabaseService.client.auth.exchangeCodeForSession(code);
+          LogService.success('✅ [DEEP_LINK] Email confirmation code verified! Session created.');
+          
+          // Handle email confirmation and navigate to appropriate screen
+          Future.microtask(() => handleEmailConfirmation());
+          return; // Exit early, navigation handled by _handleEmailConfirmation
+        } else if (token != null) {
+          // For mobile deep links with token, we need to verify it differently
+          // Store token and let the email confirmation screen handle it
+          LogService.debug('📧 [DEEP_LINK] Token-based verification detected');
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('email_verification_token', token);
+          
+          // Navigate to email confirmation screen which will handle verification
+          final navService = NavigationService();
+          if (navService.isReady) {
+            // Get user email from stored signup data or try to get from auth
+            final storedEmail = prefs.getString('signup_email');
+            final user = SupabaseService.currentUser;
+            final email = storedEmail ?? user?.email ?? '';
+            
+            if (email.isNotEmpty && mounted) {
+              Navigator.of(context).pushReplacementNamed(
+                '/email-confirmation',
+                arguments: {
+                  'email': email,
+                  'fullName': prefs.getString('signup_full_name') ?? 'User',
+                  'userRole': prefs.getString('signup_user_role') ?? 'student',
+                },
+              );
+            } else {
+              // No email found, redirect to email login
+              await navService.navigateToRoute('/email-login', replace: true);
+            }
+          } else {
+            navService.queueDeepLink(Uri.parse('/email-confirmation'));
+          }
+          return;
+        }
+      } catch (e) {
+        LogService.error('❌ [DEEP_LINK] Error verifying email confirmation: $e');
+        // On error, redirect to email login with error message
+        final navService = NavigationService();
+        if (navService.isReady) {
+          await navService.navigateToRoute('/email-login', replace: true);
+        } else {
+          navService.queueDeepLink(Uri.parse('/email-login'));
+        }
+        return;
       }
-      // Navigate to email login screen (not auth method selection)
-      final navService = NavigationService();
-      if (navService.isReady) {
-        await navService.navigateToRoute('/email-login', replace: true);
-      } else {
-        // Queue for when navigation is ready
-        navService.queueDeepLink(Uri.parse('/email-login'));
-      }
-      return; // Exit early, don't process as regular deep link
     }
     
     // Check if this is a protected route
@@ -470,6 +760,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             return _createFadeRoute(() => const EmailLoginScreen());
           case '/forgot-password':
             return _createFadeRoute(() => const ForgotPasswordScreen());
+          case '/skulmate/upload':
+            return _createFadeRoute(() => SkulMateUploadScreen());
+          case '/skulmate/library':
+            return _createFadeRoute(() => GameLibraryScreen());
         }
 
         // Handle navigation routes with optional initialTab argument
@@ -1035,7 +1329,7 @@ class _SplashScreenState extends State<SplashScreen> {
           session != null &&
           session.user.emailConfirmedAt != null) {
         LogService.success('Email confirmed via deep link!');
-        Future.microtask(() => _handleEmailConfirmation());
+        Future.microtask(() => handleEmailConfirmation());
       }
     });
   }
@@ -1063,7 +1357,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
           // The auth state change listener will handle navigation
           // But we can also directly navigate here if needed
-          Future.microtask(() => _handleEmailConfirmation());
+          Future.microtask(() => handleEmailConfirmation());
           return true; // Indicate that navigation was handled
         } catch (e) {
           LogService.error('Error verifying email confirmation code: $e');
@@ -1151,226 +1445,9 @@ class _SplashScreenState extends State<SplashScreen> {
     return false; // No password reset detected, continue normal navigation
   }
 
+  // Use global handleEmailConfirmation helper function
   Future<void> _handleEmailConfirmation() async {
-    LogService.debug('🔐 Handling email confirmation...');
-    final user = SupabaseService.currentUser;
-
-    if (user == null) {
-      LogService.warning('No user found after email confirmation');
-      return;
-    }
-
-    // Get stored signup data from SharedPreferences
-    final prefs = await SharedPreferences.getInstance();
-    final storedRole = prefs.getString('signup_user_role');
-    final storedName = prefs.getString('signup_full_name');
-    final storedEmail = prefs.getString('signup_email');
-
-    // Check if profile already exists
-    var existingProfile = await SupabaseService.client
-        .from('profiles')
-        .select()
-        .eq('id', user.id)
-        .maybeSingle();
-
-    // If profile doesn't exist, create it using stored signup data
-    if (existingProfile == null) {
-      LogService.debug('📝 Profile not found - creating from stored signup data');
-      try {
-        // Create profile using stored signup data
-        await SupabaseService.client.from('profiles').upsert({
-          'id': user.id,
-          'email': storedEmail ?? user.email ?? '',
-          'full_name': storedName ?? 'User',
-          'phone_number': null,
-          'user_type': storedRole ?? 'student',
-          'avatar_url': null,
-          'survey_completed': false,
-          'is_admin': false,
-        }, onConflict: 'id');
-
-        // Fetch the created profile
-        existingProfile = await SupabaseService.client
-            .from('profiles')
-            .select()
-            .eq('id', user.id)
-            .maybeSingle();
-
-        // Clear stored signup data
-        await prefs.remove('signup_user_role');
-        await prefs.remove('signup_full_name');
-        await prefs.remove('signup_email');
-      } catch (e) {
-        LogService.warning('Error creating profile: $e');
-        // Continue anyway - try to use stored data
-      }
-    } else {
-      // Profile exists - update email and name if needed
-      final updates = <String, dynamic>{};
-      bool needsUpdate = false;
-
-      // Update email if it wasn't set
-      if ((existingProfile['email'] == null ||
-              existingProfile['email'] == '') &&
-          (storedEmail != null || user.email != null)) {
-        updates['email'] = storedEmail ?? user.email ?? '';
-        needsUpdate = true;
-      }
-
-      // CRITICAL: Update name if it's missing or default (Student/User)
-      final currentName = existingProfile['full_name']?.toString() ?? '';
-      String? nameToUse;
-
-      // Priority order: storedName > auth metadata > user.email (extract name) > currentName
-      if (storedName != null &&
-          storedName.isNotEmpty &&
-          storedName != 'User' &&
-          storedName != 'Student') {
-        nameToUse = storedName;
-      } else if (user.userMetadata?['full_name'] != null) {
-        final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
-        if (metadataName.isNotEmpty &&
-            metadataName != 'User' &&
-            metadataName != 'Student') {
-          nameToUse = metadataName;
-        }
-      } else if (user.email != null && currentName.isEmpty) {
-        // Extract name from email (before @) as last resort
-        final emailName = user.email!.split('@')[0];
-        if (emailName.isNotEmpty &&
-            emailName != 'user' &&
-            emailName != 'student') {
-          nameToUse = emailName
-              .split('.')
-              .map((s) => s[0].toUpperCase() + s.substring(1))
-              .join(' ');
-        }
-      }
-
-      // Update if we found a valid name and current name is invalid
-      if (nameToUse != null &&
-          (currentName.isEmpty ||
-              currentName == 'Student' ||
-              currentName == 'User')) {
-        updates['full_name'] = nameToUse;
-        needsUpdate = true;
-        LogService.success('Updating profile name from "$currentName" to "$nameToUse"');
-      }
-
-      if (needsUpdate) {
-        try {
-          await SupabaseService.client
-              .from('profiles')
-              .update(updates)
-              .eq('id', user.id);
-
-          // Refresh existingProfile after update
-          existingProfile = await SupabaseService.client
-              .from('profiles')
-              .select()
-              .eq('id', user.id)
-              .maybeSingle();
-
-          LogService.success('Profile updated successfully');
-        } catch (e) {
-          LogService.warning('Error updating profile: $e');
-        }
-      }
-
-      // Only clear stored signup data AFTER we've successfully used it or confirmed it's not needed
-      // Don't clear if profile still has default name and we couldn't update it
-      final finalName = existingProfile?['full_name']?.toString() ?? '';
-      if (finalName != 'User' &&
-          finalName != 'Student' &&
-          finalName.isNotEmpty) {
-        // Profile has a valid name now, safe to clear stored data
-        await prefs.remove('signup_user_role');
-        await prefs.remove('signup_full_name');
-        await prefs.remove('signup_email');
-      } else {
-        // Profile still has invalid name, keep stored data for next attempt
-        LogService.debug(
-          '⚠️ Profile still has invalid name "$finalName", keeping stored signup data',
-        );
-      }
-    }
-
-    // Get user role from profile or stored data
-    final userRole = existingProfile?['user_type'] ?? storedRole ?? 'student';
-    final hasCompletedSurvey = existingProfile?['survey_completed'] ?? false;
-
-    // Get name with proper priority - avoid 'User' or 'Student' defaults
-    var fullName = existingProfile?['full_name']?.toString() ?? '';
-
-    // If name is invalid, try other sources
-    if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
-      if (storedName != null &&
-          storedName.isNotEmpty &&
-          storedName != 'User' &&
-          storedName != 'Student') {
-        fullName = storedName;
-      } else if (user.userMetadata?['full_name'] != null) {
-        final metadataName = user.userMetadata!['full_name']?.toString() ?? '';
-        if (metadataName.isNotEmpty &&
-            metadataName != 'User' &&
-            metadataName != 'Student') {
-          fullName = metadataName;
-        }
-      } else if (user.email != null) {
-        // Extract name from email as last resort
-        final emailName = user.email!.split('@')[0];
-        if (emailName.isNotEmpty &&
-            emailName != 'user' &&
-            emailName != 'student') {
-          fullName = emailName
-              .split('.')
-              .map(
-                (s) => s.isNotEmpty && s.length > 1
-                    ? s[0].toUpperCase() + s.substring(1)
-                    : s.toUpperCase(),
-              )
-              .where((s) => s.isNotEmpty)
-              .join(' ');
-        }
-      }
-    }
-
-    // Final fallback: use role-based default only if we couldn't find anything
-    if (fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
-      fullName = userRole == 'student'
-          ? 'Student'
-          : userRole == 'parent'
-          ? 'Parent'
-          : userRole == 'tutor'
-          ? 'Tutor'
-          : 'User';
-    }
-
-    final phone = existingProfile?['phone_number'] ?? '';
-
-    // Save session
-    await AuthService.saveSession(
-      userId: user.id,
-      userRole: userRole,
-      phone: phone,
-      fullName: fullName,
-      surveyCompleted: hasCompletedSurvey,
-      rememberMe: true,
-    );
-
-    // Navigate using NavigationService - redirect to role-specific route
-    final navService = NavigationService();
-    if (mounted && navService.isReady) {
-      // Use determineInitialRoute to handle all logic (intro screen, onboarding, etc.)
-      final routeResult = await navService.determineInitialRoute();
-      LogService.success('[EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}');
-      
-      await navService.navigateToRoute(
-        routeResult.route,
-        arguments: routeResult.arguments,
-        replace: true,
-      );
-    }
+    await handleEmailConfirmation();
   }
 
   @override

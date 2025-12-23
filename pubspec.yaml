@@ -94,6 +94,9 @@ dependencies:
   # HTTP Client
   http: ^1.1.0
   
+  # Audio/Sound Effects
+  audioplayers: ^6.0.0
+  
   # Deep Linking
   app_links: ^6.3.3
   

@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -34,11 +35,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     // Check if passwords match
+    final t = AppLocalizations.of(context)!;
     if (_passwordController.text != _confirmPasswordController.text) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Passwords do not match',
+            t.authPasswordsDoNotMatchError,
             style: GoogleFonts.poppins(),
           ),
           backgroundColor: AppTheme.primaryColor,
@@ -111,6 +113,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       resizeToAvoidBottomInset: true,
       body: Container(
@@ -161,8 +164,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       keyboardType: TextInputType.number,
                       maxLength: 6,
                       decoration: InputDecoration(
-                        labelText: 'OTP Code',
-                        hintText: 'Enter 6-digit code',
+                        labelText: t.authOTPCode,
+                        hintText: t.authOTPCodeHint,
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(
@@ -172,10 +175,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter OTP';
+                          return t.authEnterOTP;
                         }
                         if (value.length != 6) {
-                          return 'OTP must be 6 digits';
+                          return t.authOTPLength;
                         }
                         return null;
                       },
@@ -186,8 +189,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     controller: _passwordController,
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
-                      labelText: 'New Password',
-                      hintText: 'Enter new password',
+                      labelText: t.authNewPassword,
+                      hintText: t.authNewPasswordHint,
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -209,10 +212,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'Please enter password';
+                        return t.authEnterPassword;
                       }
                       if (value.length < 8) {
-                        return 'Password must be at least 8 characters';
+                        return t.authPasswordMinLength;
                       }
                       return null;
                     },
@@ -271,7 +274,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(
-                            'Reset Password',
+                            t.authResetPasswordButton,
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,

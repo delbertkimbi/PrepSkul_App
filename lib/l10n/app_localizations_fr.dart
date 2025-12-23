@@ -484,4 +484,248 @@ class AppLocalizationsFr extends AppLocalizations {
 
   @override
   String get requestTutorDone => 'Terminé';
+
+  @override
+  String get authLogin => 'Connexion';
+
+  @override
+  String get authLoginSubtitle => 'Pour continuer vers votre compte !';
+
+  @override
+  String get authPhoneNumber => 'Numéro de téléphone (WhatsApp)';
+
+  @override
+  String get authPhoneHint => '6 53 30 19 97';
+
+  @override
+  String get authPassword => 'Mot de passe';
+
+  @override
+  String get authPasswordHint => 'Entrez votre mot de passe';
+
+  @override
+  String get authForgotPassword => 'Mot de passe oublié ?';
+
+  @override
+  String get authLoginButton => 'Se connecter';
+
+  @override
+  String get authNoAccount => 'Vous n\'avez pas de compte ?';
+
+  @override
+  String get authSignUp => 'S\'inscrire';
+
+  @override
+  String get authOrContinueWith => 'Ou continuer avec';
+
+  @override
+  String get authEmail => 'E-mail';
+
+  @override
+  String get authSignUpTitle => 'Inscription';
+
+  @override
+  String get authSignUpSubtitle => 'Créez votre compte pour commencer !';
+
+  @override
+  String get authFullName => 'Nom complet';
+
+  @override
+  String get authFullNameHint => 'Entrez votre nom complet';
+
+  @override
+  String get authConfirmPassword => 'Confirmer le mot de passe';
+
+  @override
+  String get authConfirmPasswordHint => 'Confirmez votre mot de passe';
+
+  @override
+  String get authHaveAccount => 'Vous avez déjà un compte ?';
+
+  @override
+  String get authSelectRole => 'Sélectionnez votre rôle';
+
+  @override
+  String get authSelectRoleSubtitle => 'Choisissez comment vous souhaitez utiliser PrepSkul';
+
+  @override
+  String get authIAmStudent => 'Je suis étudiant';
+
+  @override
+  String get authIAmParent => 'Je suis parent';
+
+  @override
+  String get authIAmTutor => 'Je suis tuteur';
+
+  @override
+  String get authStudentDesc => 'Trouvez et réservez des tuteurs pour votre parcours d\'apprentissage';
+
+  @override
+  String get authParentDesc => 'Trouvez des tuteurs pour l\'éducation de vos enfants';
+
+  @override
+  String get authTutorDesc => 'Partagez vos connaissances et gagnez de l\'argent';
+
+  @override
+  String get authContinueWithPhone => 'Continuer avec le téléphone';
+
+  @override
+  String get authContinueWithEmail => 'Continuer avec l\'e-mail';
+
+  @override
+  String get authInvalidPhone => 'Veuillez entrer un numéro de téléphone valide';
+
+  @override
+  String get authInvalidEmail => 'Veuillez entrer une adresse e-mail valide';
+
+  @override
+  String get authInvalidPassword => 'Le mot de passe doit comporter au moins 6 caractères';
+
+  @override
+  String get authPasswordsDoNotMatch => 'Les mots de passe ne correspondent pas';
+
+  @override
+  String get authFieldRequired => 'Ce champ est obligatoire';
+
+  @override
+  String get authWelcomeBack => 'Bon retour';
+
+  @override
+  String get authJoinPrepSkul => 'Rejoindre PrepSkul';
+
+  @override
+  String get authSignInToContinue => 'Connectez-vous pour continuer';
+
+  @override
+  String get authCreateAccount => 'Créez un compte pour commencer';
+
+  @override
+  String get authContinueWithGoogle => 'Continuer avec Google';
+
+  @override
+  String get authOr => 'OU';
+
+  @override
+  String get authSignInWithEmail => 'Se connecter avec l\'e-mail';
+
+  @override
+  String get authSignUpWithEmail => 'S\'inscrire avec l\'e-mail';
+
+  @override
+  String get authSignInWithPhone => 'Se connecter avec le téléphone';
+
+  @override
+  String get authSignUpWithPhone => 'S\'inscrire avec le téléphone';
+
+  @override
+  String get authAgreeToTerms => 'En continuant, vous acceptez nos';
+
+  @override
+  String get authTermsOfService => 'Conditions d\'utilisation';
+
+  @override
+  String get authAnd => 'et';
+
+  @override
+  String get authPrivacyPolicy => 'Politique de confidentialité';
+
+  @override
+  String get authTryAnotherMethod => 'Essayer une autre méthode';
+
+  @override
+  String get authForgotPasswordTitle => 'Mot de passe oublié';
+
+  @override
+  String get authForgotPasswordSubtitle => 'Entrez votre numéro de téléphone pour réinitialiser';
+
+  @override
+  String get authSendOTP => 'Envoyer le code OTP';
+
+  @override
+  String get authBackToLogin => 'Retour à la connexion';
+
+  @override
+  String get authResetPasswordTitle => 'Réinitialiser le mot de passe';
+
+  @override
+  String get authResetPasswordSubtitleEmail => 'Entrez votre nouveau mot de passe';
+
+  @override
+  String authResetPasswordSubtitlePhone(String phone) {
+    return 'Entrez le code OTP envoyé à $phone et votre nouveau mot de passe';
+  }
+
+  @override
+  String get authResetPasswordButton => 'Réinitialiser le mot de passe';
+
+  @override
+  String get authOTPCode => 'Code OTP';
+
+  @override
+  String get authOTPCodeHint => 'Entrez le code à 6 chiffres';
+
+  @override
+  String get authNewPassword => 'Nouveau mot de passe';
+
+  @override
+  String get authNewPasswordHint => 'Entrez le nouveau mot de passe';
+
+  @override
+  String get authConfirmPasswordRequired => 'Veuillez confirmer le mot de passe';
+
+  @override
+  String get authCheckEmailTitle => 'Vérifiez votre e-mail';
+
+  @override
+  String get authCheckEmailSubtitle => 'Nous vous avons envoyé un lien de confirmation';
+
+  @override
+  String get authWhatsNext => 'Quelle est la prochaine étape ?';
+
+  @override
+  String get authWhatsNextTutor => '1. Vérifiez votre boîte de réception (et le dossier spam)\n2. Cliquez sur le lien de confirmation\n3. Complétez votre profil de tuteur !';
+
+  @override
+  String get authWhatsNextStudent => '1. Vérifiez votre boîte de réception (et le dossier spam)\n2. Cliquez sur le lien de confirmation\n3. Trouvez votre tuteur parfait !';
+
+  @override
+  String authResendEmail(int count) {
+    return 'Renvoyer l\'e-mail ($count)';
+  }
+
+  @override
+  String get authResendEmailButton => 'Renvoyer l\'e-mail de confirmation';
+
+  @override
+  String get authWrongEmailAddress => 'Mauvaise adresse e-mail ?';
+
+  @override
+  String get authDidntReceiveEmail => 'Vous n\'avez pas reçu l\'e-mail ? Vérifiez votre dossier spam ou contactez le support.';
+
+  @override
+  String get authDetectedVerification => 'Nous avons détecté votre vérification, finalisation en cours...';
+
+  @override
+  String get authPhoneNumberLabel => 'Numéro de téléphone';
+
+  @override
+  String get authEnterPhoneNumber => 'Veuillez entrer le numéro de téléphone';
+
+  @override
+  String get authPhoneNumberLength => 'Le numéro de téléphone doit comporter 9 chiffres';
+
+  @override
+  String get authEnterOTP => 'Veuillez entrer le code OTP';
+
+  @override
+  String get authOTPLength => 'Le code OTP doit comporter 6 chiffres';
+
+  @override
+  String get authEnterPassword => 'Veuillez entrer le mot de passe';
+
+  @override
+  String get authPasswordMinLength => 'Le mot de passe doit comporter au moins 8 caractères';
+
+  @override
+  String get authPasswordsDoNotMatchError => 'Les mots de passe ne correspondent pas';
 }
