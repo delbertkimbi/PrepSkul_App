@@ -75,7 +75,14 @@ enum GameType {
   quiz,
   flashcards,
   matching,
-  fillBlank;
+  fillBlank,
+  match3,
+  bubblePop,
+  wordSearch,
+  crossword,
+  diagramLabel,
+  dragDrop,
+  puzzlePieces;
 
   static GameType fromString(String value) {
     switch (value.toLowerCase()) {
@@ -88,6 +95,26 @@ enum GameType {
       case 'fill_blank':
       case 'fillblank':
         return GameType.fillBlank;
+      case 'match3':
+      case 'match_3':
+        return GameType.match3;
+      case 'bubble_pop':
+      case 'bubblepop':
+        return GameType.bubblePop;
+      case 'word_search':
+      case 'wordsearch':
+        return GameType.wordSearch;
+      case 'crossword':
+        return GameType.crossword;
+      case 'diagram_label':
+      case 'diagramlabel':
+        return GameType.diagramLabel;
+      case 'drag_drop':
+      case 'dragdrop':
+        return GameType.dragDrop;
+      case 'puzzle_pieces':
+      case 'puzzlepieces':
+        return GameType.puzzlePieces;
       default:
         return GameType.quiz;
     }
@@ -104,6 +131,20 @@ enum GameType {
         return 'matching';
       case GameType.fillBlank:
         return 'fill_blank';
+      case GameType.match3:
+        return 'match3';
+      case GameType.bubblePop:
+        return 'bubble_pop';
+      case GameType.wordSearch:
+        return 'word_search';
+      case GameType.crossword:
+        return 'crossword';
+      case GameType.diagramLabel:
+        return 'diagram_label';
+      case GameType.dragDrop:
+        return 'drag_drop';
+      case GameType.puzzlePieces:
+        return 'puzzle_pieces';
     }
   }
 }
@@ -119,6 +160,16 @@ class GameItem {
   final String? leftItem; // For matching
   final String? rightItem; // For matching
   final String? blankText; // For fill_blank
+  // New fields for interactive game types
+  final String? imageUrl; // For diagram/image-based games
+  final List<List<String>>? gridData; // For match-3, word search, crossword (2D grid)
+  final List<Map<String, dynamic>>? dragItems; // For drag-drop games
+  final List<Map<String, dynamic>>? dropZones; // For drag-drop target areas
+  final List<Map<String, dynamic>>? puzzlePieces; // For puzzle assembly games
+  final List<Map<String, dynamic>>? diagramLabels; // For diagram labeling (list of label positions)
+  final List<String>? words; // For word search
+  final List<Map<String, dynamic>>? clues; // For crossword
+  final List<Map<String, dynamic>>? bubbles; // For bubble pop
 
   GameItem({
     this.question,
@@ -130,6 +181,15 @@ class GameItem {
     this.leftItem,
     this.rightItem,
     this.blankText,
+    this.imageUrl,
+    this.gridData,
+    this.dragItems,
+    this.dropZones,
+    this.puzzlePieces,
+    this.diagramLabels,
+    this.words,
+    this.clues,
+    this.bubbles,
   });
 
   factory GameItem.fromJson(Map<String, dynamic> json) {
@@ -145,6 +205,41 @@ class GameItem {
       leftItem: json['leftItem'] ?? json['left_item'] as String?,
       rightItem: json['rightItem'] ?? json['right_item'] as String?,
       blankText: json['blankText'] ?? json['blank_text'] as String?,
+      imageUrl: json['imageUrl'] ?? json['image_url'] as String?,
+      gridData: json['gridData'] != null
+          ? (json['gridData'] as List).map((row) => List<String>.from(row as List)).toList()
+          : json['grid_data'] != null
+              ? (json['grid_data'] as List).map((row) => List<String>.from(row as List)).toList()
+              : null,
+      dragItems: json['dragItems'] != null
+          ? List<Map<String, dynamic>>.from(json['dragItems'] as List)
+          : json['drag_items'] != null
+              ? List<Map<String, dynamic>>.from(json['drag_items'] as List)
+              : null,
+      dropZones: json['dropZones'] != null
+          ? List<Map<String, dynamic>>.from(json['dropZones'] as List)
+          : json['drop_zones'] != null
+              ? List<Map<String, dynamic>>.from(json['drop_zones'] as List)
+              : null,
+      puzzlePieces: json['puzzlePieces'] != null
+          ? List<Map<String, dynamic>>.from(json['puzzlePieces'] as List)
+          : json['puzzle_pieces'] != null
+              ? List<Map<String, dynamic>>.from(json['puzzle_pieces'] as List)
+              : null,
+      diagramLabels: json['diagramLabels'] != null
+          ? List<Map<String, dynamic>>.from(json['diagramLabels'] as List)
+          : json['diagram_labels'] != null
+              ? List<Map<String, dynamic>>.from(json['diagram_labels'] as List)
+              : null,
+      words: json['words'] != null
+          ? List<String>.from(json['words'] as List)
+          : null,
+      clues: json['clues'] != null
+          ? List<Map<String, dynamic>>.from(json['clues'] as List)
+          : null,
+      bubbles: json['bubbles'] != null
+          ? List<Map<String, dynamic>>.from(json['bubbles'] as List)
+          : null,
     );
   }
 
@@ -159,6 +254,15 @@ class GameItem {
       if (leftItem != null) 'leftItem': leftItem,
       if (rightItem != null) 'rightItem': rightItem,
       if (blankText != null) 'blankText': blankText,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+      if (gridData != null) 'gridData': gridData,
+      if (dragItems != null) 'dragItems': dragItems,
+      if (dropZones != null) 'dropZones': dropZones,
+      if (puzzlePieces != null) 'puzzlePieces': puzzlePieces,
+      if (diagramLabels != null) 'diagramLabels': diagramLabels,
+      if (words != null) 'words': words,
+      if (clues != null) 'clues': clues,
+      if (bubbles != null) 'bubbles': bubbles,
     };
   }
 }
@@ -254,4 +358,3 @@ class GameSession {
     };
   }
 }
-

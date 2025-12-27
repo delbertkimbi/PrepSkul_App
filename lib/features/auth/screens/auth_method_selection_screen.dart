@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,10 +53,11 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
     final subtitleFontSize = isVerySmallScreen ? 12.0 : 14.0;
     final contentTopSpacing = isVerySmallScreen ? 40.0 : (isSmallScreen ? 60.0 : 90.0);
     
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: Colors.white,
+        body: Stack(
+          children: [
           // Curved wave background at top
           Positioned(
             top: 0,
@@ -323,6 +325,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

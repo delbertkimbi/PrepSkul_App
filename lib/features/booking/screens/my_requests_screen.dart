@@ -10,7 +10,7 @@ import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/widgets/post_trial_dialog.dart';
-import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/booking/screens/post_trial_conversion_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
@@ -275,7 +275,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           .from('trial_sessions')
           .select('*, payment_status, fapshi_trans_id, status')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+      
+      if (response == null) {
+        throw Exception('Trial session not found: $sessionId');
+      }
       
       if (response != null) {
         // Log raw DB values for debugging
@@ -333,7 +337,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             '*, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
           )
           .eq('user_id', trial.tutorId)
-          .single();
+          .maybeSingle();
+      
+      if (tutorData == null) {
+        throw Exception('Tutor profile not found: ${trial.tutorId}');
+      }
 
       // Wait a bit for the screen to be fully built
       await Future.delayed(const Duration(milliseconds: 500));
@@ -2704,3 +2712,4 @@ class _RequestItem {
     this.trial,
   });
 }
+

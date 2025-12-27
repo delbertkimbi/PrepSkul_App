@@ -3548,9 +3548,9 @@ No direct payments should be made to tutors outside the platform.''';
           .from('profiles')
           .select('full_name')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
 
-      final userName = userProfile['full_name'] as String? ?? 'Student';
+      final userName = userProfile?['full_name'] as String? ?? 'Student';
 
       // Notify admins about survey completion
       try {

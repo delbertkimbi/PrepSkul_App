@@ -213,7 +213,11 @@ class IndividualSessionService {
           .from('individual_sessions')
           .select('tutor_id, status')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (session['tutor_id'] != userId) {
         throw Exception('Unauthorized: Not the tutor for this session');
@@ -235,7 +239,11 @@ class IndividualSessionService {
           .from('individual_sessions')
           .select('session_started_at')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (existingSession == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (existingSession['session_started_at'] == null) {
         updateData['session_started_at'] = now;
@@ -268,7 +276,11 @@ class IndividualSessionService {
           .from('individual_sessions')
           .select('tutor_id, status, session_started_at, duration_minutes')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (session['tutor_id'] != userId) {
         throw Exception('Unauthorized: Not the tutor for this session');
@@ -379,7 +391,11 @@ class IndividualSessionService {
             )
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (session['meeting_link'] != null && (session['meeting_link'] as String).isNotEmpty) {
         return session['meeting_link'] as String;
@@ -408,7 +424,11 @@ class IndividualSessionService {
             .from('individual_sessions')
             .select('learner_id, parent_id')
             .eq('id', sessionId)
-            .single();
+            .maybeSingle();
+
+        if (sessionData == null) {
+          throw Exception('Session not found: $sessionId');
+        }
 
         final studentId = sessionData['learner_id'] as String? ?? sessionData['parent_id'] as String?;
         
@@ -452,7 +472,11 @@ class IndividualSessionService {
           .from('individual_sessions')
           .select('tutor_id, status')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (session['status'] == 'completed') {
         throw Exception('Cannot cancel a completed session');

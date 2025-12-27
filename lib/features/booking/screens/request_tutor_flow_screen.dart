@@ -2064,50 +2064,195 @@ safeSetState(() {
 
   Future<void> _sendWhatsAppNotification(String requestId) async {
     final userProfile = await AuthService.getUserProfile();
+    final userId = userProfile?['id'] ?? userProfile?['userId'] ?? 'Unknown';
     final userName = userProfile?['full_name'] ?? 'User';
     final userPhone = userProfile?['phone_number'] ?? 'Not provided';
     
     // Get user type for personalized message
     final userType = userProfile?['user_type']?.toString() ?? 'user';
-      final isParent = userType == 'parent';
-      
-      final greeting = isParent 
-          ? 'Hello PrepSkul Team,\n\nI\'m requesting a tutor for my child.'
-          : 'Hello PrepSkul Team,\n\nI\'m looking for a tutor.';
-      
-      final message = '''\$greeting
-
-*Request Details - Request #$requestId* 
-
-*Request ID:* $requestId
-*From:* $userName ($userPhone)
-
-*Subjects:* ${_selectedSubjects.join(', ')}
-*Level:* $_educationLevel
-*Teaching Mode:* ${_teachingMode?.toUpperCase()}
-*Budget:* $_minBudget - $_maxBudget XAF/month
-
-*Schedule:*
-- Days: ${_preferredDays.join(', ')}
-- Time: $_preferredTime
-
-*Location:* ${_locationController.text}
-
-*Urgency:* ${_urgency.toUpperCase()}
-
-${_selectedRequirements.isNotEmpty ? '*Requirements:*\n${_selectedRequirements.map((r) {
-                final options = _getRequirementOptions();
-                final option = options.firstWhere(
-                  (o) => o['value'] == r,
-                  orElse: () => {'label': r, 'value': r},
-                );
-                return option['label'] as String;
-              }).join(', ')}\n\n' : ''}${_requestReason != null ? '*Reason for Request:*\n${_requestReason == 'other' ? (_customReasonController.text.trim().isNotEmpty ? _customReasonController.text.trim() : 'Other') : _getRequestReasonOptions().firstWhere(
-                  (r) => r['value'] == _requestReason,
-                  orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
-                )['title']}\n\n' : ''}---
-Please find a tutor for this user as soon as possible.
-''';
+    final isParent = userType == 'parent';
+    
+    // Get survey data for additional context
+    Map<String, dynamic>? surveyData;
+    String? childName;
+    String? city;
+    String? quarter;
+    String? learningPath;
+    String? classLevel;
+    String? stream;
+    List<String>? surveySubjects;
+    List<String>? learningGoals;
+    List<String>? challenges;
+    
+    try {
+      if (isParent) {
+        surveyData = await SurveyRepository.getParentSurvey(userId);
+        childName = surveyData?['child_name'] as String?;
+        city = surveyData?['city'] as String?;
+        quarter = surveyData?['quarter'] as String?;
+        learningPath = surveyData?['learning_path'] as String?;
+        classLevel = surveyData?['class'] as String?;
+        stream = surveyData?['stream'] as String?;
+        surveySubjects = (surveyData?['subjects'] as List?)?.cast<String>();
+        learningGoals = (surveyData?['learning_goals'] as List?)?.cast<String>();
+        challenges = (surveyData?['challenges'] as List?)?.cast<String>();
+      } else {
+        surveyData = await SurveyRepository.getStudentSurvey(userId);
+        city = surveyData?['city'] as String?;
+        quarter = surveyData?['quarter'] as String?;
+        learningPath = surveyData?['learning_path'] as String?;
+        classLevel = surveyData?['class'] as String?;
+        stream = surveyData?['stream'] as String?;
+        surveySubjects = (surveyData?['subjects'] as List?)?.cast<String>();
+        learningGoals = (surveyData?['learning_goals'] as List?)?.cast<String>();
+        challenges = (surveyData?['challenges'] as List?)?.cast<String>();
+      }
+    } catch (e) {
+      LogService.debug('Could not load survey data for WhatsApp message: $e');
+    }
+    
+    // Build personalized greeting
+    String greeting;
+    if (isParent && childName != null && childName.isNotEmpty) {
+      greeting = 'Hello PrepSkul,\n\nI am looking for a tutor for my child, $childName.';
+    } else if (isParent) {
+      greeting = 'Hello PrepSkul,\n\nI am looking for a tutor for my child.';
+    } else {
+      greeting = 'Hello PrepSkul,\n\nI am looking for a personal tutor.';
+    }
+    
+    // Build message sections
+    final buffer = StringBuffer();
+    buffer.writeln(greeting);
+    buffer.writeln();
+    buffer.writeln('Here are the details:');
+    buffer.writeln();
+    
+    // Personal Information
+    buffer.writeln('👤 *About Me:*');
+    if (isParent && childName != null && childName.isNotEmpty) {
+      buffer.writeln('• My name: $userName');
+      buffer.writeln('• My child\'s name: $childName');
+    } else {
+      buffer.writeln('• My name: $userName');
+    }
+    buffer.writeln('• Phone: $userPhone');
+    buffer.writeln('• My User ID: $userId');
+    buffer.writeln();
+    
+    // Location (from survey if available)
+    if (city != null || quarter != null || _locationController.text.isNotEmpty) {
+      buffer.writeln('📍 *Location:*');
+      if (city != null) buffer.writeln('• City: $city');
+      if (quarter != null) buffer.writeln('• Quarter: $quarter');
+      if (_locationController.text.isNotEmpty && _locationController.text != city && _locationController.text != quarter) {
+        buffer.writeln('• Preferred location: ${_locationController.text}');
+      }
+      buffer.writeln();
+    }
+    
+    // Learning Details
+    buffer.writeln('📚 *Learning Details:*');
+    if (learningPath != null) {
+      buffer.writeln('• Learning path: $learningPath');
+    }
+    if (_educationLevel != null) {
+      buffer.writeln('• Education level: $_educationLevel');
+    }
+    if (classLevel != null) {
+      buffer.writeln('• Class: $classLevel');
+    }
+    if (stream != null) {
+      buffer.writeln('• Stream: $stream');
+    }
+    if (_selectedSubjects.isNotEmpty) {
+      buffer.writeln('• Subjects needed: ${_selectedSubjects.join(', ')}');
+    } else if (surveySubjects != null && surveySubjects.isNotEmpty) {
+      buffer.writeln('• Subjects: ${surveySubjects.join(', ')}');
+    }
+    if (_selectedRequirements.isNotEmpty) {
+      final requirements = _selectedRequirements.map((r) {
+        final options = _getRequirementOptions();
+        final option = options.firstWhere(
+          (o) => o['value'] == r,
+          orElse: () => {'label': r, 'value': r},
+        );
+        return option['label'] as String;
+      }).join(', ');
+      buffer.writeln('• Specific requirements: $requirements');
+    }
+    buffer.writeln();
+    
+    // Learning Goals & Challenges (from survey)
+    if (learningGoals != null && learningGoals.isNotEmpty) {
+      buffer.writeln('🎯 *Learning Goals:*');
+      for (final goal in learningGoals) {
+        buffer.writeln('• $goal');
+      }
+      buffer.writeln();
+    }
+    
+    if (challenges != null && challenges.isNotEmpty) {
+      buffer.writeln('⚠️ *Challenges:*');
+      for (final challenge in challenges) {
+        buffer.writeln('• $challenge');
+      }
+      buffer.writeln();
+    }
+    
+    // Tutor Preferences
+    buffer.writeln('👨‍🏫 *Tutor Preferences:*');
+    if (_teachingMode != null) {
+      final teachingMode = _teachingMode!;
+      buffer.writeln('• Teaching mode: ${teachingMode.replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}');
+    }
+    buffer.writeln('• Budget: ${_minBudget.toStringAsFixed(0)} - ${_maxBudget.toStringAsFixed(0)} XAF per month');
+    if (_tutorGender != null) {
+      buffer.writeln('• Preferred gender: $_tutorGender');
+    }
+    if (_tutorQualification != null) {
+      buffer.writeln('• Preferred qualification: $_tutorQualification');
+    }
+    buffer.writeln();
+    
+    // Schedule
+    buffer.writeln('📅 *Schedule:*');
+    if (_preferredDays.isNotEmpty) {
+      buffer.writeln('• Preferred days: ${_preferredDays.join(', ')}');
+    }
+    if (_preferredTime != null) {
+      buffer.writeln('• Preferred time: $_preferredTime');
+    }
+    buffer.writeln();
+    
+    // Urgency
+    if (_urgency != 'normal') {
+      buffer.writeln('⚡ *Urgency:*');
+      buffer.writeln('• ${_urgency.replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}');
+      buffer.writeln();
+    }
+    
+    // Additional Notes
+    if (_requestReason != null) {
+      buffer.writeln('💬 *Additional Information:*');
+      final reason = _requestReason == 'other' 
+          ? (_customReasonController.text.trim().isNotEmpty ? _customReasonController.text.trim() : 'Other')
+          : _getRequestReasonOptions().firstWhere(
+              (r) => r['value'] == _requestReason,
+              orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
+            )['title'];
+      buffer.writeln('• $reason');
+      buffer.writeln();
+    }
+    
+    // Request ID
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln('Request ID: $requestId');
+    buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
+    buffer.writeln();
+    buffer.writeln('I would appreciate your help in finding a suitable tutor. Thank you! 🙏');
+    
+    final message = buffer.toString();
 
     final whatsappUrl = Uri.parse(
       'https://wa.me/237653301997?text=${Uri.encodeComponent(message)}',

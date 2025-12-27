@@ -175,7 +175,11 @@ class SessionRescheduleService {
           .from('session_reschedule_requests')
           .insert(requestData)
           .select()
-          .single();
+          .maybeSingle();
+      
+      if (response == null) {
+        throw Exception('Failed to create reschedule request');
+      }
 
       // Update session with reschedule request ID and store original date/time
       await _supabase
@@ -260,7 +264,11 @@ class SessionRescheduleService {
             )
           ''')
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
+
+      if (request == null) {
+        throw Exception('Reschedule request not found: $requestId');
+      }
 
       if (request['status'] != 'pending') {
         throw Exception('Reschedule request is not pending');
@@ -294,7 +302,11 @@ class SessionRescheduleService {
           .from('session_reschedule_requests')
           .select('tutor_approved, student_approved')
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
+
+      if (updatedRequest == null) {
+        throw Exception('Reschedule request not found: $requestId');
+      }
 
       final tutorApproved = updatedRequest['tutor_approved'] as bool;
       final studentApproved = updatedRequest['student_approved'] as bool;
@@ -363,7 +375,11 @@ class SessionRescheduleService {
           .from('session_reschedule_requests')
           .select('*')
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
+
+      if (request == null) {
+        throw Exception('Reschedule request not found: $requestId');
+      }
 
       if (request['status'] != 'pending') {
         throw Exception('Reschedule request is not pending');
@@ -373,20 +389,26 @@ class SessionRescheduleService {
       final sessionId = request['session_id'] as String;
       
       // Get session details based on type
-      Map<String, dynamic> session;
+      Map<String, dynamic>? sessionResponse;
       if (sessionType == 'recurring') {
-        session = await _supabase
+        sessionResponse = await _supabase
             .from('individual_sessions')
             .select('tutor_id, learner_id, parent_id')
             .eq('id', sessionId)
-            .single();
+            .maybeSingle();
       } else {
-        session = await _supabase
+        sessionResponse = await _supabase
             .from('trial_sessions')
             .select('tutor_id, learner_id, parent_id')
             .eq('id', sessionId)
-            .single();
+            .maybeSingle();
       }
+      
+      if (sessionResponse == null) {
+        throw Exception('Session not found: $sessionId');
+      }
+      
+      final session = sessionResponse;
       
       // Check authorization
       final isTutor = session['tutor_id'] == userId;
@@ -580,7 +602,11 @@ class SessionRescheduleService {
           .from('session_reschedule_requests')
           .select('requested_by, status, session_id, session_type')
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
+      
+      if (request == null) {
+        throw Exception('Reschedule request not found: $requestId');
+      }
       
       final sessionType = request['session_type'] as String;
       final sessionId = request['session_id'] as String;

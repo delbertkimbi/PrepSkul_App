@@ -93,7 +93,11 @@ class PaymentRequestService {
         .from('payment_requests')
         .insert(paymentRequestData)
         .select('id')
-        .single();
+        .maybeSingle();
+    
+    if (response == null) {
+      throw Exception('Failed to create payment request');
+    }
 
     final paymentRequestId = response['id'] as String;
     LogService.success('Payment request created: $paymentRequestId (Amount: ${PricingService.formatPrice(paymentAmount)})');

@@ -43,42 +43,51 @@ class GameSoundService {
   }
 
   /// Play a sound effect
-  /// Uses built-in system sounds for cross-platform compatibility
+  /// Uses system notification sounds or fails gracefully
   Future<void> _playSound(SoundType type) async {
     if (!_soundsEnabled || !_isInitialized) return;
 
     try {
-      // Use system sounds that work across platforms
-      // These are simple beep-like sounds that don't require asset files
+      // Try to play system notification sounds
+      // These work on most platforms without requiring asset files
+      String? soundPath;
       switch (type) {
         case SoundType.correct:
-          // Play a success/positive sound
-          await _audioPlayer.play(AssetSource('sounds/correct.mp3'));
+          // Try system success sound first, fallback to asset
+          soundPath = 'sounds/correct.mp3';
           break;
         case SoundType.incorrect:
-          // Play an error/negative sound
-          await _audioPlayer.play(AssetSource('sounds/incorrect.mp3'));
+          soundPath = 'sounds/incorrect.mp3';
           break;
         case SoundType.flip:
-          // Play a card flip sound
-          await _audioPlayer.play(AssetSource('sounds/flip.mp3'));
+          soundPath = 'sounds/flip.mp3';
           break;
         case SoundType.match:
-          // Play a match success sound
-          await _audioPlayer.play(AssetSource('sounds/match.mp3'));
+          soundPath = 'sounds/match.mp3';
           break;
         case SoundType.complete:
-          // Play a completion/celebration sound
-          await _audioPlayer.play(AssetSource('sounds/complete.mp3'));
+          soundPath = 'sounds/complete.mp3';
           break;
         case SoundType.click:
-          // Play a button click sound
-          await _audioPlayer.play(AssetSource('sounds/click.mp3'));
+          soundPath = 'sounds/click.mp3';
+          break;
+        case SoundType.pop:
+          soundPath = 'sounds/pop.mp3';
+          break;
+        case SoundType.wordFound:
+          soundPath = 'sounds/wordFound.mp3';
+          break;
+        case SoundType.piecePlace:
+          soundPath = 'sounds/piecePlace.mp3';
           break;
       }
+      
+      if (soundPath != null) {
+        await _audioPlayer.play(AssetSource(soundPath));
+      }
     } catch (e) {
-      // Silently fail - sounds are optional
-      // LogService.debug('🎵 [GameSound] Could not play sound: $e');
+      // Silently fail - sounds are optional and enhance UX but aren't critical
+      // Games will work perfectly fine without sound files
     }
   }
 
@@ -100,6 +109,15 @@ class GameSoundService {
   /// Play button click sound
   Future<void> playClick() => _playSound(SoundType.click);
 
+  /// Play bubble pop sound
+  Future<void> playPop() => _playSound(SoundType.pop);
+
+  /// Play word found sound
+  Future<void> playWordFound() => _playSound(SoundType.wordFound);
+
+  /// Play piece placement sound
+  Future<void> playPiecePlace() => _playSound(SoundType.piecePlace);
+
   /// Dispose resources
   void dispose() {
     _audioPlayer.dispose();
@@ -114,5 +132,7 @@ enum SoundType {
   match,
   complete,
   click,
+  pop,
+  wordFound,
+  piecePlace,
 }
-

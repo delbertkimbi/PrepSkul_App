@@ -54,7 +54,11 @@ class LocationSharingService {
           .from('individual_sessions')
           .select('location, status, parent_id, learner_id')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (session['location'] != 'onsite') {
         throw Exception('Location sharing only available for onsite sessions');
@@ -78,8 +82,8 @@ class LocationSharingService {
             .from('individual_sessions')
             .select('tutor_id')
             .eq('id', sessionId)
-            .single();
-        if (userId != tutorCheck['tutor_id']) {
+            .maybeSingle();
+        if (tutorCheck == null || userId != tutorCheck['tutor_id']) {
           throw Exception('Unauthorized: Only the tutor can share their location');
         }
       }
@@ -325,4 +329,3 @@ class LocationSharingService {
     return Geolocator.distanceBetween(lat1, lon1, lat2, lon2);
   }
 }
-

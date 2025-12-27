@@ -128,6 +128,12 @@ class _SkulMateCharacterWidgetState extends State<SkulMateCharacterWidget>
       ],
     );
 
+    // Wrap animated content in RepaintBoundary to prevent unnecessary repaints
+    if (widget.animated) {
+      return RepaintBoundary(
+        child: content,
+      );
+    }
     return content;
   }
 }
@@ -184,4 +190,3 @@ class CompactCharacterWidget extends StatelessWidget {
     );
   }
 }
-

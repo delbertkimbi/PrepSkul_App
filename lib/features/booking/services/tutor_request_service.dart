@@ -33,7 +33,11 @@ class TutorRequestService {
           .from('profiles')
           .select('full_name, phone_number, user_type')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
+      
+      if (userProfile == null) {
+        throw Exception('User profile not found: $userId');
+      }
 
       // Build additional_notes with location description if provided
       String? finalAdditionalNotes = additionalNotes;
@@ -73,7 +77,11 @@ class TutorRequestService {
           .from('tutor_requests')
           .insert(requestData)
           .select('id')
-          .single();
+          .maybeSingle();
+      
+      if (response == null) {
+        throw Exception('Failed to create tutor request');
+      }
 
       final requestId = response['id'] as String;
 
@@ -122,7 +130,11 @@ class TutorRequestService {
           .from('tutor_requests')
           .select()
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('Tutor request not found: $requestId');
+      }
 
       return TutorRequest.fromJson(response);
     } catch (e) {
@@ -231,4 +243,3 @@ class TutorRequestService {
     }
   }
 }
-

@@ -8,6 +8,7 @@ import 'package:path/path.dart' as path;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/utils/image_optimizer.dart';
 
 /// Comprehensive file upload service for PrepSkul
 /// Handles images, documents, and videos for Supabase Storage
@@ -32,10 +33,24 @@ class StorageService {
     required String userId,
     required File imageFile,
     String fileName = 'avatar.jpg',
+    bool optimize = true, // Enable optimization by default
   }) async {
     try {
+      // Optimize image before upload if enabled
+      File fileToUpload = imageFile;
+      if (optimize) {
+        final optimized = await ImageOptimizer.optimizeImage(
+          imageFile,
+          maxSize: maxImageSize,
+        );
+        if (optimized != null) {
+          fileToUpload = optimized;
+          LogService.debug('Profile photo optimized before upload');
+        }
+      }
+
       // Validate file size
-      final fileSize = await imageFile.length();
+      final fileSize = await fileToUpload.length();
       if (fileSize > maxImageSize) {
         throw Exception(
           'Image too large. Maximum size is ${maxImageSize ~/ (1024 * 1024)} MB',
@@ -43,7 +58,7 @@ class StorageService {
       }
 
       // Validate file type
-      final mimeType = lookupMimeType(imageFile.path);
+      final mimeType = lookupMimeType(fileToUpload.path);
       if (mimeType == null || !mimeType.startsWith('image/')) {
         throw Exception('Invalid file type. Please select an image file');
       }
@@ -54,7 +69,7 @@ class StorageService {
       // Upload to Supabase
       await SupabaseService.client.storage
           .from(profilePhotosBucket)
-          .upload(storagePath, imageFile);
+          .upload(storagePath, fileToUpload);
 
       // Get public URL
       final publicUrl = SupabaseService.client.storage
@@ -153,8 +168,26 @@ class StorageService {
       else if (documentFile is XFile) {
         LogService.debug('[DEBUG] Detected XFile: ${documentFile.name}');
 
+        // Optimize image if it's an image file (mobile only, web handles bytes)
+        XFile fileToProcess = documentFile;
+        if (!kIsWeb && documentFile.mimeType?.startsWith('image/') == true) {
+          try {
+            final optimized = await ImageOptimizer.optimizeXFile(
+              documentFile,
+              maxSize: maxImageSize,
+            );
+            if (optimized != null && optimized.path != documentFile.path) {
+              fileToProcess = optimized;
+              LogService.debug('XFile image optimized before upload');
+            }
+          } catch (e) {
+            LogService.warning('Failed to optimize XFile, using original: $e');
+            // Continue with original file
+          }
+        }
+
         // Get file name and extension - handle web vs mobile differently
-        String fileName = documentFile.name;
+        String fileName = fileToProcess.name;
 
         if (kIsWeb) {
           // On web: Use name directly, never access .path
@@ -177,7 +210,7 @@ class StorageService {
           // Web: Use bytes (NEVER access .path on web)
           LogService.debug('[DEBUG] Web platform: Reading as bytes');
           try {
-            final Uint8List bytes = await documentFile.readAsBytes();
+            final Uint8List bytes = await fileToProcess.readAsBytes();
             fileSize = bytes.length;
             uploadData = bytes;
             LogService.debug('[DEBUG] Read ${fileSize} bytes');
@@ -190,7 +223,7 @@ class StorageService {
           if (fileName.isEmpty || fileName == '') {
             // Fallback: try to get name from path (mobile only)
             try {
-              final filePath = documentFile.path;
+              final filePath = fileToProcess.path;
               if (filePath.isNotEmpty) {
                 fileExtension = path.extension(filePath).isEmpty
                     ? '.jpg'
@@ -223,7 +256,7 @@ class StorageService {
           // Mobile: Use File path
           LogService.debug('[DEBUG] Mobile platform: Using file path');
           try {
-            final filePath = documentFile.path;
+            final filePath = fileToProcess.path;
             if (filePath.isEmpty) {
               throw Exception('File path is empty. Cannot upload on mobile.');
             }

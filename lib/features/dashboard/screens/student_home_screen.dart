@@ -3,6 +3,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
+import '../../../core/utils/status_bar_utils.dart';
 import '../../../core/widgets/skeletons/student_home_skeleton.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -14,7 +15,7 @@ import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
-import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
+import '../../../features/skulmate/screens/game_library_screen.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -250,19 +251,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     // Extract city for quick actions (only actionable data)
     final city = _surveyData?['city'];
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      floatingActionButton: FloatingActionButton.extended(
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: Colors.white,
+        floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => SkulMateUploadScreen(),
+              builder: (context) => const GameLibraryScreen(),
             ),
           );
         },
         backgroundColor: AppTheme.primaryColor,
-        icon: const Icon(Icons.auto_awesome, color: Colors.white),
         label: Text(
           'skulMate',
           style: GoogleFonts.poppins(
@@ -271,6 +272,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             fontSize: 14,
           ),
         ),
+        icon: const Icon(Icons.auto_awesome, color: Colors.white),
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -462,6 +464,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -483,7 +486,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12), // Reduced from 16
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
@@ -491,20 +494,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 32),
-          const SizedBox(height: 8),
+          Icon(icon, color: color, size: 24), // Reduced from 32
+          const SizedBox(height: 6), // Reduced from 8
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 24,
+              fontSize: 20, // Reduced from 24
               fontWeight: FontWeight.w700,
               color: color,
             ),
           ),
+          const SizedBox(height: 2),
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 11, // Reduced from 12
               color: AppTheme.textMedium,
             ),
           ),
@@ -524,7 +528,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14), // Increased from 12 (adds 2px to height)
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -540,14 +544,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: color, size: 21), // Increased from 20
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -555,7 +559,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: 15, // Increased from 14
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
@@ -564,14 +568,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   Text(
                     subtitle,
                     style: GoogleFonts.poppins(
-                      fontSize: 13,
+                      fontSize: 13, // Increased from 12
                       color: AppTheme.textMedium,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
           ],
         ),
       ),

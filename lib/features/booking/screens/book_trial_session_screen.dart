@@ -6,7 +6,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
-import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:table_calendar/table_calendar.dart';

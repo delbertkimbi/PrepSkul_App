@@ -204,7 +204,9 @@
       if (loader) {
         loader.classList.add('hidden');
         setTimeout(function() {
-          loader.remove();
+          if (loader && loader.parentNode) {
+            loader.remove();
+          }
         }, 400);
       }
     };
@@ -212,17 +214,97 @@
     // Note: We do NOT hide on 'flutter-first-frame' anymore.
     // Flutter will call window.removeSplash() when it is fully ready.
     
-    // Fallback: hide after 10 seconds if Flutter doesn't load/call removeSplash
+    // CRITICAL: Fallback - hide after 5 seconds if Flutter doesn't load/call removeSplash
+    // This prevents the logo from staying stuck on screen after refresh
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        console.warn('Flutter did not call removeSplash within 10s, forcing removal');
+        console.warn('Flutter did not call removeSplash within 5s, forcing removal');
         loader.classList.add('hidden');
         setTimeout(function() {
-          loader.remove();
+          if (loader && loader.parentNode) {
+            loader.remove();
+          }
         }, 400);
       }
-    }, 10000);
+    }, 5000);
+    
+    // Additional safety: Remove on page visibility change (user switches tabs/refreshes)
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) {
+        // Page became visible - ensure splash is removed if it's been more than 2 seconds
+        setTimeout(function() {
+          const loader = document.getElementById('flutter-loading');
+          if (loader && !loader.classList.contains('hidden')) {
+            console.warn('Splash still visible after visibility change, removing');
+            loader.classList.add('hidden');
+            setTimeout(function() {
+              if (loader && loader.parentNode) {
+                loader.remove();
+              }
+            }, 400);
+          }
+        }, 2000);
+      }
+    });
+  </script>
+</head>
+<body>
+  <!-- Immediate Loading Screen -->
+  <div id="flutter-loading">
+    <div class="loader-container">
+      <div class="loader-logo">
+        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
+      </div>
+    </div>
+  </div>
+  
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
+
+          const loader = document.getElementById('flutter-loading');
+          if (loader && !loader.classList.contains('hidden')) {
+            console.warn('Splash still visible after visibility change, removing');
+            loader.classList.add('hidden');
+            setTimeout(function() {
+              if (loader && loader.parentNode) {
+                loader.remove();
+              }
+            }, 400);
+          }
+        }, 2000);
+      }
+    });
+  </script>
+</head>
+<body>
+  <!-- Immediate Loading Screen -->
+  <div id="flutter-loading">
+    <div class="loader-container">
+      <div class="loader-logo">
+        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
+      </div>
+    </div>
+  </div>
+  
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
+
+          const loader = document.getElementById('flutter-loading');
+          if (loader && !loader.classList.contains('hidden')) {
+            console.warn('Splash still visible after visibility change, removing');
+            loader.classList.add('hidden');
+            setTimeout(function() {
+              if (loader && loader.parentNode) {
+                loader.remove();
+              }
+            }, 400);
+          }
+        }, 2000);
+      }
+    });
   </script>
 </head>
 <body>

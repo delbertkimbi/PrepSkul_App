@@ -62,7 +62,11 @@ class RecurringSessionService {
           .from('recurring_sessions')
           .insert(sessionData)
           .select()
-          .single();
+          .maybeSingle();
+      
+      if (response == null) {
+        throw Exception('Failed to create recurring session');
+      }
 
       LogService.success('Recurring session created: ${response['id']}');
 
@@ -288,7 +292,11 @@ class RecurringSessionService {
           .from('recurring_sessions')
           .select()
           .eq('id', recurringSessionId)
-          .single();
+          .maybeSingle();
+      
+      if (recurringSession == null) {
+        throw Exception('Recurring session not found: $recurringSessionId');
+      }
 
       final startDate = DateTime.parse(recurringSession['start_date'] as String);
       final days = (recurringSession['days'] as List).cast<String>();

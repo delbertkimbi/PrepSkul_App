@@ -415,7 +415,11 @@ class TrialSessionService {
           .from('trial_sessions')
           .select()
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+      
+      if (trialResponse == null) {
+        throw Exception('Trial session not found: $sessionId');
+      }
 
       final updateData = {
         'status': 'approved',
@@ -428,7 +432,11 @@ class TrialSessionService {
           .update(updateData)
           .eq('id', sessionId)
           .select()
-          .single();
+          .maybeSingle();
+
+      if (updated == null) {
+        throw Exception('Failed to update trial session: $sessionId');
+      }
 
       final trialSession = TrialSession.fromJson(updated);
 
@@ -543,7 +551,11 @@ class TrialSessionService {
           .update(updateData)
           .eq('id', sessionId)
           .select()
-          .single();
+          .maybeSingle();
+
+      if (updated == null) {
+        throw Exception('Failed to update trial session: $sessionId');
+      }
 
       final trialSession = TrialSession.fromJson(updated);
 
@@ -1118,8 +1130,13 @@ class TrialSessionService {
             'status': 'pending',
           })
           .select('id')
-          .single()
-          .then((result) => result['id'] as String);
+          .maybeSingle()
+          .then((result) {
+            if (result == null) {
+              throw Exception('Failed to create modification request');
+            }
+            return result['id'] as String;
+          });
       
       // Notify learner about modification request
       try {

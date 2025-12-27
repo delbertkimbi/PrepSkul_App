@@ -30,7 +30,11 @@ class BookingService {
           .from('profiles')
           .select('full_name, user_type, avatar_url')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
+      
+      if (userProfile == null) {
+        throw Exception('User profile not found: $userId');
+      }
 
       // Get tutor profile for denormalized data
       final tutorProfile = await SupabaseService.client
@@ -122,15 +126,15 @@ class BookingService {
         
         String message;
         if (trialStatus == 'pending') {
-          message = 'You already have a pending trial session request with this tutor. Please wait for the tutor to respond before creating a regular booking.';
+          message = '⚠️ Cannot book regular sessions yet\n\nYou have a pending trial session request with this tutor. Please wait for the tutor to respond to your trial request before creating a regular booking.';
         } else if (trialStatus == 'approved' || trialStatus == 'scheduled') {
-          message = 'You already have an ${trialStatus == 'approved' ? 'approved' : 'scheduled'} trial session with this tutor';
+          message = '⚠️ Cannot book regular sessions yet\n\nYou already have an ${trialStatus == 'approved' ? 'approved' : 'scheduled'} trial session with this tutor';
           if (scheduledDate != null && scheduledTime != null) {
             message += ' scheduled for $scheduledDate at $scheduledTime';
           }
-          message += '. Please complete this trial before creating a regular booking.';
+          message += '.\n\nPlease complete this trial session before creating a regular booking with this tutor.';
         } else {
-          message = 'You already have an active trial session with this tutor. Please complete it before creating a regular booking.';
+          message = '⚠️ Cannot book regular sessions yet\n\nYou already have an active trial session with this tutor. Please complete it before creating a regular booking.';
         }
         
         throw Exception(message);
@@ -148,7 +152,7 @@ class BookingService {
         final conflictMessages = studentConflict.conflictDetails.values.toList();
         final conflictMessage = conflictMessages.join('\n');
         throw Exception(
-          'Schedule Conflict: You already have a session scheduled at the same time with another tutor.\n\n$conflictMessage\n\nPlease choose a different time slot.'
+          '⏰ Time Slot Conflict\n\nYou already have a session scheduled at the same time with another tutor:\n\n$conflictMessage\n\nPlease choose a different time slot for this booking.'
         );
       }
 
@@ -180,7 +184,11 @@ class BookingService {
             .from('booking_requests')
             .insert(requestData)
             .select()
-            .single();
+            .maybeSingle();
+        
+        if (response == null) {
+          throw Exception('Failed to create booking request');
+        }
 
         final requestId = response['id'] as String;
         final studentName = userProfile['full_name'] as String? ?? 'Student';
@@ -366,7 +374,11 @@ class BookingService {
           .from('booking_requests')
           .select()
           .eq('id', requestId)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('Booking request not found: $requestId');
+      }
 
       return BookingRequest.fromJson(response);
     } catch (e) {
@@ -411,13 +423,17 @@ class BookingService {
           .update(updateData)
           .eq('id', requestId)
           .select()
-          .single();
+          .maybeSingle();
+
+      if (updated == null) {
+        throw Exception('Failed to update booking request: $requestId');
+      }
 
       final bookingRequest = BookingRequest.fromJson(updated);
 
       LogService.success('Booking request approved: $requestId');
 
-      // Create payment request when tutor approves
+      // Create payment request when tutor approves (CRITICAL - must succeed)
       String? paymentRequestId;
       try {
         paymentRequestId =
@@ -426,7 +442,10 @@ class BookingService {
             );
         LogService.success('Payment request created for approved booking', paymentRequestId);
       } catch (e) {
-        LogService.warning('Failed to create payment request: $e');
+        LogService.error('CRITICAL: Failed to create payment request: $e');
+        // Don't fail the approval, but log as error for monitoring
+        // The booking is already approved, payment can be created manually if needed
+        // However, this should be rare and indicates a system issue
       }
 
       // Create recurring session from approved booking
@@ -498,7 +517,11 @@ class BookingService {
           .update(updateData)
           .eq('id', requestId)
           .select()
-          .single();
+          .maybeSingle();
+
+      if (updated == null) {
+        throw Exception('Failed to update booking request: $requestId');
+      }
 
       final bookingRequest = BookingRequest.fromJson(updated);
 
@@ -545,7 +568,11 @@ class BookingService {
           .update(updateData)
           .eq('id', sessionId)
           .select()
-          .single();
+          .maybeSingle();
+
+      if (updatedSession == null) {
+        throw Exception('Failed to update trial session: $sessionId');
+      }
 
       LogService.success('Trial session status updated to approved');
 
@@ -624,7 +651,11 @@ class BookingService {
           .update(updateData)
           .eq('id', sessionId)
           .select()
-          .single();
+          .maybeSingle();
+
+      if (updatedSession == null) {
+        throw Exception('Failed to update trial session: $sessionId');
+      }
 
       LogService.success('Trial session rejected');
 

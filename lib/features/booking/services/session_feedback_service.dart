@@ -36,7 +36,11 @@ class SessionFeedbackService {
           .from('individual_sessions')
           .select('learner_id, parent_id, status, recurring_session_id')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       // Authorization check - must be the student or parent
       final isStudent = session['learner_id'] == userId;
@@ -104,12 +108,14 @@ class SessionFeedbackService {
             .eq('session_id', sessionId)
             .order('created_at', ascending: false)
             .limit(1)
-            .single();
+            .maybeSingle();
 
-        await _supabase
-            .from('individual_sessions')
-            .update({'feedback_id': newFeedback['id']})
-            .eq('id', sessionId);
+        if (newFeedback != null) {
+          await _supabase
+              .from('individual_sessions')
+              .update({'feedback_id': newFeedback['id']})
+              .eq('id', sessionId);
+        }
       }
 
       // Process feedback to update tutor rating
@@ -145,7 +151,11 @@ class SessionFeedbackService {
             )
           ''')
           .eq('session_id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (feedback == null) {
+        throw Exception('Feedback not found for session: $sessionId');
+      }
 
       if (feedback['feedback_processed'] == true) {
         LogService.warning('Feedback already processed for session: $sessionId');
@@ -443,7 +453,11 @@ class SessionFeedbackService {
           .from('individual_sessions')
           .select('learner_id, parent_id, status, session_ended_at')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       // Must be student or parent
       final isStudent = session['learner_id'] == userId;
@@ -523,7 +537,11 @@ class SessionFeedbackService {
           .from('session_feedback')
           .select('id, session_id, individual_sessions!inner(tutor_id)')
           .eq('id', feedbackId)
-          .single();
+          .maybeSingle();
+
+      if (feedback == null) {
+        throw Exception('Feedback not found: $feedbackId');
+      }
 
       final tutorId = feedback['individual_sessions']['tutor_id'] as String;
       if (tutorId != userId) {
@@ -534,7 +552,11 @@ class SessionFeedbackService {
           .from('session_feedback')
           .select('tutor_response')
           .eq('id', feedbackId)
-          .single();
+          .maybeSingle();
+
+      if (existing == null) {
+        throw Exception('Feedback not found: $feedbackId');
+      }
 
       if (existing['tutor_response'] != null) {
         throw Exception('You have already responded');

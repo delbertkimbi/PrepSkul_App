@@ -14,6 +14,8 @@ import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/widgets/empty_state_widget.dart';
+import 'package:prepskul/core/widgets/shimmer_loading.dart';
 
 /// Payment History Screen
 ///
@@ -465,7 +467,26 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
           // Tab content
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? TabBarView(
+                    controller: _tabController,
+                    children: [
+                      ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: 5,
+                        itemBuilder: (context, index) => ShimmerLoading.listTile(),
+                      ),
+                      ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: 5,
+                        itemBuilder: (context, index) => ShimmerLoading.listTile(),
+                      ),
+                      ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: 5,
+                        itemBuilder: (context, index) => ShimmerLoading.listTile(),
+                      ),
+                    ],
+                  )
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -506,12 +527,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       return _buildEmptyState(context, AppLocalizations.of(context)!.noPaymentRequestsFound);
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        return _buildPaymentRequestCard(context, filtered[index]);
-      },
+    return RefreshIndicator(
+      onRefresh: _loadPayments,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          return _buildPaymentRequestCard(context, filtered[index]);
+        },
+      ),
     );
   }
 
@@ -522,12 +546,15 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       return _buildEmptyState(context, 'No trial payments found');
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        return _buildTrialPaymentCard(context, filtered[index]);
-      },
+    return RefreshIndicator(
+      onRefresh: _loadPayments,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          return _buildTrialPaymentCard(context, filtered[index]);
+        },
+      ),
     );
   }
 
@@ -538,41 +565,21 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       return _buildEmptyState(context, 'No session payments found');
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        return _buildSessionPaymentCard(filtered[index]);
-      },
+    return RefreshIndicator(
+      onRefresh: _loadPayments,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: filtered.length,
+        itemBuilder: (context, index) {
+          return _buildSessionPaymentCard(filtered[index]);
+        },
+      ),
     );
   }
 
   Widget _buildEmptyState(BuildContext context, String message) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.payment_outlined,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
+    // Use the reusable empty state widget
+    return EmptyStateWidget.noPayments();
   }
 
   Widget _buildPaymentRequestCard(BuildContext context, Map<String, dynamic> payment) {
@@ -1093,7 +1100,11 @@ Widget _buildStatusBadge(BuildContext context, String status) {
           .from('trial_sessions')
           .select()
           .eq('id', trialId)
-          .single();
+          .maybeSingle();
+
+      if (trialResponse == null) {
+        throw Exception('Trial session not found: $trialId');
+      }
 
       final trial = TrialSession.fromJson(trialResponse);
 

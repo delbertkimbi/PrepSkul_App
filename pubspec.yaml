@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ^3.8.1
@@ -84,6 +84,7 @@ dependencies:
   file_picker: ^8.0.0  # Updated for Flutter 3.35.6 compatibility
   path: ^1.8.3
   mime: ^1.0.4
+  image: ^4.3.0  # For image compression and optimization
   
   # Utilities
   logger: ^2.0.2+1
@@ -96,6 +97,9 @@ dependencies:
   
   # Audio/Sound Effects
   audioplayers: ^6.0.0
+  
+  # Sharing
+  share_plus: ^10.0.0
   
   # Deep Linking
   app_links: ^6.3.3
@@ -140,6 +144,7 @@ flutter:
     - assets/data/
     - assets/sounds/
     - assets/characters/
+    - assets/.env  # Add .env file for web support (must be in assets folder)
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -165,12 +170,6 @@ flutter:
   #         weight: 700
   #
   # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
-
-
-  # see https://flutter.dev/to/font-from-package
-
-
   # see https://flutter.dev/to/font-from-package
 
 l10n:

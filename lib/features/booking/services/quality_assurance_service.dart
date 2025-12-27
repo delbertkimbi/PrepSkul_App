@@ -413,7 +413,11 @@ class QualityAssuranceService {
           .from('individual_sessions')
           .select('learner_id, parent_id, session_payments!inner(session_fee)')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final studentId = session['learner_id'] as String?;
       final parentId = session['parent_id'] as String?;
@@ -502,5 +506,4 @@ class SessionIssues {
 
   bool get hasIssues => isLate || isNoShow || hasPoorRating || hasComplaint;
 }
-
 

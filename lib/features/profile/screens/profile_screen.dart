@@ -8,6 +8,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/widgets/shimmer_loading.dart';
+import '../../../core/utils/status_bar_utils.dart';
 import 'edit_profile_screen.dart';
 import 'language_settings_screen.dart';
 import 'profile_preview_screen.dart';
@@ -349,20 +350,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        automaticallyImplyLeading: false, // No back button in bottom nav
-        backgroundColor: AppTheme.primaryColor, // Deep blue
-        elevation: 0,
-        title: Text(
-          t.profileTitle,
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          automaticallyImplyLeading: false, // No back button in bottom nav
+          backgroundColor: AppTheme.primaryColor, // Deep blue
+          elevation: 0,
+          title: Text(
+            t.profileTitle,
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
-      ),
       body: _isLoading
           ? ShimmerLoading.profileScreen()
           : SingleChildScrollView(
@@ -754,6 +756,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 

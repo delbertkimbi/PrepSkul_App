@@ -21,6 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:prepskul/core/utils/debouncer.dart';
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -31,6 +32,7 @@ class FindTutorsScreen extends StatefulWidget {
 
 class _FindTutorsScreenState extends State<FindTutorsScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final Debouncer _searchDebouncer = Debouncer(milliseconds: 500);
   List<Map<String, dynamic>> _tutors = [];
   List<Map<String, dynamic>> _filteredTutors = [];
   bool _isLoading = true;
@@ -93,8 +95,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     _loadUserSubjects(); // Load user's preferred subjects first
     _loadTutors();
     
-    // Listen to search text changes and filter tutors
-    _searchController.addListener(_filterTutors);
+    // Listen to search text changes with debouncing
+    _searchController.addListener(() {
+      _searchDebouncer.run(() {
+        if (mounted) {
+          _filterTutors();
+        }
+      });
+    });
   }
 
   /// Initialize connectivity monitoring
@@ -805,10 +813,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
     final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     
-    // DEBUG: Print values being used
-    print('📊 [FIND_TUTORS] Name: $name');
-    print('   - rating (from service): $rating');
-    print('   - total_reviews (from service): $totalReviews');
+    // DEBUG: Log values being used (debug mode only)
+    LogService.debug('Find Tutors - Tutor: $name', {
+      'rating': rating,
+      'total_reviews': totalReviews,
+    });
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
     
@@ -1772,9 +1781,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   @override
+  @override
   void dispose() {
     _searchController.removeListener(_filterTutors);
     _searchController.dispose();
+    _searchDebouncer.dispose();
     super.dispose();
   
 
