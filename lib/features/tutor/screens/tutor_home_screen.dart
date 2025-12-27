@@ -1116,7 +1116,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14), // Increased from 12 (adds 2px to height)
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -1132,14 +1132,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 24),
+              child: Icon(icon, color: color, size: 21), // Increased from 20
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1147,7 +1147,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: 15, // Increased from 14
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
@@ -1156,14 +1156,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   Text(
                     subtitle,
                     style: GoogleFonts.poppins(
-                      fontSize: 13,
+                      fontSize: 13, // Increased from 12
                       color: AppTheme.textMedium,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
           ],
         ),
       ),
@@ -1173,7 +1173,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   Widget _buildStatCard(String title, String value, IconData icon) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(12), // Keep same
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
@@ -1188,20 +1188,21 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: AppTheme.primaryColor, size: 20),
+            Icon(icon, color: AppTheme.primaryColor, size: 24), // Match student home
             const SizedBox(height: 6),
             Text(
               value,
               style: GoogleFonts.poppins(
-                fontSize: 20,
+                fontSize: 20, // Keep same
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textDark,
               ),
             ),
+            const SizedBox(height: 2),
             Text(
               title,
               style: GoogleFonts.poppins(
-                fontSize: 12,
+                fontSize: 11, // Reduced from 12 to match student home
                 color: AppTheme.textMedium,
               ),
             ),

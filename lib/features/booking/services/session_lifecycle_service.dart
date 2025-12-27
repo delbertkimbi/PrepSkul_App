@@ -48,7 +48,11 @@ class SessionLifecycleService {
             recurring_session_id
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       // Authorization check
       if (session['tutor_id'] != userId) {
@@ -78,7 +82,11 @@ class SessionLifecycleService {
           .from('individual_sessions')
           .select('session_started_at')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (existingSession == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (existingSession['session_started_at'] == null) {
         updateData['session_started_at'] = now;
@@ -220,7 +228,11 @@ class SessionLifecycleService {
             location
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       // Authorization check
       if (session['tutor_id'] != userId) {
@@ -408,7 +420,11 @@ class SessionLifecycleService {
             recurring_session_id
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       // Authorization check
       final isTutor = session['tutor_id'] == userId;
@@ -497,7 +513,11 @@ class SessionLifecycleService {
             learner_joined_at
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       if (session['status'] != 'scheduled' && session['status'] != 'in_progress') {
         return; // Session already handled
@@ -687,12 +707,14 @@ class SessionLifecycleService {
           .eq('session_id', sessionId)
           .order('created_at', ascending: false)
           .limit(1)
-          .single();
+          .maybeSingle();
 
-      await _supabase
-          .from('individual_sessions')
-          .update({'feedback_id': feedback['id']})
-          .eq('id', sessionId);
+      if (feedback != null) {
+        await _supabase
+            .from('individual_sessions')
+            .update({'feedback_id': feedback['id']})
+            .eq('id', sessionId);
+      }
     } catch (e) {
       LogService.warning('Error creating tutor feedback: $e');
       // Don't fail the session end if feedback fails
@@ -714,7 +736,11 @@ class SessionLifecycleService {
             )
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final recurringData = session['recurring_sessions'] as Map<String, dynamic>;
       final monthlyTotal = recurringData['monthly_total'] as num;

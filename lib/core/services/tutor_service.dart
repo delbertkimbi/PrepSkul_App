@@ -603,10 +603,11 @@ class TutorService {
 
         // DEBUG: Print rating values
         final tutorName = profile?['full_name'] ?? 'Unknown';
-        print('📊 [TUTOR_SERVICE] Name: $tutorName');
-        print('   - total_reviews (raw): $totalReviews');
-        print('   - admin_approved_rating (raw): $adminApprovedRating');
-        print('   - calculated_rating (raw): $calculatedRating');
+        LogService.debug('📊 [TUTOR_SERVICE] Rating details for $tutorName', {
+          'total_reviews': totalReviews,
+          'admin_approved_rating': adminApprovedRating,
+          'calculated_rating': calculatedRating,
+        });
 
         // Use admin rating until we have at least 3 real reviews
         // If admin_approved_rating is null but tutor is approved, use calculated rating or default 3.5
@@ -633,8 +634,10 @@ class TutorService {
             ? 10 // Temporary count until real reviews come in
             : totalReviews;
 
-        print('   - Final effectiveRating: $effectiveRating');
-        print('   - Final effectiveTotalReviews: $effectiveTotalReviews');
+        LogService.debug('📊 [TUTOR_SERVICE] Final rating values', {
+          'effectiveRating': effectiveRating,
+          'effectiveTotalReviews': effectiveTotalReviews,
+        });
 
         // Get pricing: Prioritize base_session_price > admin_price_override > hourly_rate
         final baseSessionPrice = _safeCast<num>(tutor['base_session_price']);
@@ -643,11 +646,12 @@ class TutorService {
         final perSessionRate = _safeCast<num>(tutor['per_session_rate']);
 
         // DEBUG: Print pricing values
-        print('💰 [TUTOR_SERVICE] Name: $tutorName');
-        print('   - base_session_price: $baseSessionPrice');
-        print('   - admin_price_override: $adminPriceOverride');
-        print('   - hourly_rate (raw): $hourlyRateRaw');
-        print('   - per_session_rate: $perSessionRate');
+        LogService.debug('💰 [TUTOR_SERVICE] Pricing details for $tutorName', {
+          'base_session_price': baseSessionPrice,
+          'admin_price_override': adminPriceOverride,
+          'hourly_rate_raw': hourlyRateRaw,
+          'per_session_rate': perSessionRate,
+        });
 
         // Validate and sanitize hourly_rate (prevent very large numbers)
         double hourlyRate = 3000.0; // Default fallback
@@ -659,7 +663,7 @@ class TutorService {
           if (hourlyRateValue != null && hourlyRateValue >= 1000 && hourlyRateValue <= 50000) {
             hourlyRate = hourlyRateValue;
           } else {
-            print('   ⚠️ hourly_rate invalid: $hourlyRateValue (using default 3000)');
+            LogService.warning('💰 [TUTOR_SERVICE] hourly_rate invalid: $hourlyRateValue (using default 3000)');
           }
         }
 
@@ -667,16 +671,16 @@ class TutorService {
         double effectiveRate;
         if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
           effectiveRate = baseSessionPrice.toDouble();
-          print('   ✅ Using base_session_price: $effectiveRate');
+          LogService.debug('💰 [TUTOR_SERVICE] Using base_session_price: $effectiveRate');
         } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
           effectiveRate = adminPriceOverride.toDouble();
-          print('   ✅ Using admin_price_override: $effectiveRate');
+          LogService.debug('💰 [TUTOR_SERVICE] Using admin_price_override: $effectiveRate');
         } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
           effectiveRate = perSessionRate.toDouble();
-          print('   ✅ Using per_session_rate: $effectiveRate');
+          LogService.debug('💰 [TUTOR_SERVICE] Using per_session_rate: $effectiveRate');
         } else {
           effectiveRate = hourlyRate;
-          print('   ✅ Using hourly_rate (fallback): $effectiveRate');
+          LogService.debug('💰 [TUTOR_SERVICE] Using hourly_rate (fallback): $effectiveRate');
         }
 
         // Bio mapping:
@@ -949,7 +953,11 @@ class TutorService {
           .eq('user_id', tutorId)
           .eq('status', 'approved')
           .neq('is_hidden', true)
-          .single();
+          .maybeSingle();
+
+      if (response == null) {
+        throw Exception('Tutor profile not found: $tutorId');
+      }
 
       final profile = response['profiles'];
 

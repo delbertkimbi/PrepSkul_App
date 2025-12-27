@@ -385,6 +385,22 @@ class AuthService {
         }
       } else if (event == AuthChangeEvent.tokenRefreshed) {
         LogService.info('🔄 Auth token refreshed');
+      } else if (event == AuthChangeEvent.userUpdated) {
+        // Handle user updates (e.g., email confirmation)
+        LogService.debug('🔄 User updated');
+      }
+    }, onError: (error) {
+      // Handle auth errors (e.g., refresh token failures)
+      LogService.error('🔐 Auth state error: $error');
+      final errorStr = error.toString().toLowerCase();
+      if (errorStr.contains('refresh_token') || 
+          errorStr.contains('invalid') ||
+          errorStr.contains('expired')) {
+        LogService.warning('🔐 Invalid/expired session detected - clearing auth state');
+        // Clear local auth state
+        SharedPreferences.getInstance().then((prefs) async {
+          await prefs.setBool(_keyIsLoggedIn, false);
+        });
       }
     });
   }

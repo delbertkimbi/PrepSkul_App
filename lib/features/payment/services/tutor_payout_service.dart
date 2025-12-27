@@ -61,7 +61,11 @@ class TutorPayoutService {
           .from('payout_requests')
           .insert(payoutRequest)
           .select()
-          .single();
+          .maybeSingle();
+      
+      if (response == null) {
+        throw Exception('Failed to create payout request');
+      }
 
       // Mark earnings as "requested for payout"
       // This prevents double-withdrawal
@@ -149,7 +153,11 @@ class TutorPayoutService {
           .from('payout_requests')
           .select('*')
           .eq('id', payoutRequestId)
-          .single();
+          .maybeSingle();
+
+      if (payoutRequest == null) {
+        throw Exception('Payout request not found: $payoutRequestId');
+      }
 
       if (payoutRequest['status'] != 'pending') {
         throw Exception('Payout request is not pending');
@@ -253,17 +261,3 @@ class TutorPayoutService {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

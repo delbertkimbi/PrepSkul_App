@@ -9,7 +9,7 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
-import 'package:prepskul/features/booking/services/session_feedback_service.dart';
+import 'package:prepskul/features/booking/services/session_feedback_service.dart' hide LogService;
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/widgets/tutor_response_dialog.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -42,6 +42,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   bool _isVideoInitialized = false;
   bool _isVideoLoading = false;
   String? _videoId; // For web iframe embed
+  bool _isVideoPaused = false; // Track if video is paused
   List<Map<String, dynamic>> _reviews = [];
   Map<String, dynamic>? _ratingStats;
   bool _isLoadingReviews = false;
@@ -178,7 +179,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         
         // Ensure video plays after a short delay to allow UI to update
         Future.delayed(const Duration(milliseconds: 300), () {
-          if (_youtubeController?.value.isReady == true) {
+          if (_youtubeController?.value.isReady == true && !_isVideoPaused) {
             _youtubeController?.play();
           }
         });
@@ -198,16 +199,33 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     return 'https://img.youtube.com/vi/$_videoId/hqdefault.jpg';
   }
 
+  /// Pause video (both mobile and web)
+  void _pauseVideo() {
+    if (_isVideoPaused) return; // Already paused
+    
+    // Pause mobile YouTube player
+    _youtubeController?.pause();
+    
+    // Pause web iframe video
+    if (kIsWeb && _videoId != null) {
+      web_video.pauseYouTubeVideo(_videoId!);
+    }
+    
+    // Mark as paused
+    _isVideoPaused = true;
+  }
+
   @override
   void deactivate() {
     // Pause video when navigating away from this screen
-    _youtubeController?.pause();
+    _pauseVideo();
     super.deactivate();
   }
 
   @override
   void dispose() {
-    _youtubeController?.pause(); // Ensure video is paused before disposing
+    // Ensure video is paused before disposing
+    _pauseVideo();
     _youtubeController?.dispose();
     super.dispose();
   }
@@ -889,6 +907,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         message: 'Booking a session requires an internet connection. Please check your connection and try again.',
                       )
                   : () {
+                // Pause video before navigating
+                _pauseVideo();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -925,6 +945,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                         message: 'Booking a tutor requires an internet connection. Please check your connection and try again.',
                       )
                   : () {
+                // Pause video before navigating
+                _pauseVideo();
                 Navigator.push(
                   context,
                   MaterialPageRoute(

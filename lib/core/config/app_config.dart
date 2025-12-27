@@ -1,5 +1,6 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Centralized App Configuration
 /// 
@@ -45,20 +46,22 @@ class AppConfig {
   // ============================================
   
   /// Base API URL
+  /// Uses www.prepskul.com (Next.js app) instead of app.prepskul.com
   static String get apiBaseUrl {
     if (isProd) {
-      return _safeEnv('API_BASE_URL_PROD', 'https://app.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_PROD', 'https://www.prepskul.com/api');
     } else {
-      return _safeEnv('API_BASE_URL_DEV', 'https://app.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_DEV', 'https://www.prepskul.com/api');
     }
   }
   
   /// App Base URL
+  /// Uses www.prepskul.com (Next.js app) for API calls
   static String get appBaseUrl {
     if (isProd) {
-      return _safeEnv('APP_BASE_URL_PROD', 'https://app.prepskul.com');
+      return _safeEnv('APP_BASE_URL_PROD', 'https://www.prepskul.com');
     } else {
-      return _safeEnv('APP_BASE_URL_DEV', 'https://app.prepskul.com');
+      return _safeEnv('APP_BASE_URL_DEV', 'https://www.prepskul.com');
     }
   }
   
@@ -323,21 +326,22 @@ class AppConfig {
   /// Print current configuration (for debugging)
   static void printConfig() {
     if (kDebugMode) {
-      print('═══════════════════════════════════════');
-      print('📱 PrepSkul App Configuration');
-      print('═══════════════════════════════════════');
-      print('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
-      print('API Base URL: $apiBaseUrl');
-      print('Fapshi Environment: $fapshiEnvironment');
-      print('Fapshi Base URL: $fapshiBaseUrl');
-      print('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      print('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      print('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
-      print('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
-      print('═══════════════════════════════════════');
+      LogService.info('═══════════════════════════════════════');
+      LogService.info('📱 PrepSkul App Configuration');
+      LogService.info('═══════════════════════════════════════');
+      LogService.info('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
+      LogService.info('API Base URL: $apiBaseUrl');
+      LogService.info('Fapshi Environment: $fapshiEnvironment');
+      LogService.info('Fapshi Base URL: $fapshiBaseUrl');
+      LogService.info('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      LogService.info('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      LogService.info('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
+      LogService.info('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
+      LogService.info('═══════════════════════════════════════');
     }
   }
 }
+
 
 
 

@@ -50,10 +50,16 @@ class NavigationService {
       LogService.debug('[NAV_SERVICE] Determining initial route...');
 
       // PRIORITY 1: Check Supabase session (most reliable)
+      // CRITICAL: Verify session is actually valid, not just that currentUser exists
+      // A user object can exist even if the session refresh failed
       final user = SupabaseService.currentUser;
-      if (user != null) {
-        LogService.success('[NAV_SERVICE] User authenticated via Supabase');
+      final session = SupabaseService.client.auth.currentSession;
+      
+      // If user exists but session is null/invalid, user is not actually authenticated
+      if (user != null && session != null) {
+        LogService.success('[NAV_SERVICE] User authenticated via Supabase with valid session');
         try {
+          // Verify session is still valid by making a simple query
           final profile = await SupabaseService.client
               .from('profiles')
               .select('user_type, survey_completed, full_name, phone_number')
@@ -123,12 +129,38 @@ class NavigationService {
           }
         } catch (e) {
           LogService.warning('[NAV_SERVICE] Error fetching profile: $e');
+          
+          // If error is due to invalid session/auth, redirect to login
+          final errorStr = e.toString().toLowerCase();
+          if (errorStr.contains('not authenticated') || 
+              errorStr.contains('invalid') ||
+              errorStr.contains('session') ||
+              errorStr.contains('unauthorized')) {
+            LogService.warning('[NAV_SERVICE] Session invalid - redirecting to login');
+            // Clear invalid session
+            try {
+              await SupabaseService.signOut();
+            } catch (_) {
+              // Ignore sign out errors
+            }
+            return NavigationResult('/auth-method-selection');
+          }
+          
           _analytics.trackNavigationError(
             '/',
             'Error fetching profile: $e',
             metadata: {'step': 'route_determination'},
           );
         }
+      } else if (user != null && session == null) {
+        // User object exists but session is invalid - clear and redirect to login
+        LogService.warning('[NAV_SERVICE] User exists but session is invalid - redirecting to login');
+        try {
+          await SupabaseService.signOut();
+        } catch (_) {
+          // Ignore sign out errors
+        }
+        return NavigationResult('/auth-method-selection');
       }
 
       // PRIORITY 2: Check local storage (Only if Supabase session check failed or returned no user)

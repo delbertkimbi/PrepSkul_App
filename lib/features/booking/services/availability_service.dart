@@ -68,7 +68,11 @@ class AvailabilityService {
           .from('tutor_profiles')
           .select('available_schedule, availability_schedule')
           .eq('user_id', tutorId)
-          .single();
+          .maybeSingle();
+      
+      if (tutorProfile == null) {
+        throw Exception('Tutor profile not found: $tutorId');
+      }
 
       // Parse available_schedule (array of strings like "Weekday evenings")
       final availableSchedule =
@@ -321,7 +325,11 @@ class AvailabilityService {
           .from('tutor_profiles')
           .select('availability_schedule')
           .eq('user_id', tutorId)
-          .single();
+          .maybeSingle();
+      
+      if (tutorProfile == null) {
+        throw Exception('Tutor profile not found: $tutorId');
+      }
           
       List<String> allSlots = [];
       final schedule = tutorProfile['availability_schedule'] as Map<String, dynamic>?;
@@ -465,4 +473,3 @@ class TutorCapacity {
     return (totalSessionsPerWeek / maxSessionsPerWeek * 100).clamp(0, 100);
   }
 }
-

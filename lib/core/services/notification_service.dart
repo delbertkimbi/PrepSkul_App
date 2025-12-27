@@ -2,6 +2,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// NotificationService
 ///
@@ -9,7 +10,6 @@ import 'dart:async';
 /// Supports real-time updates, preferences, and scheduled notifications
 class NotificationService {
   static final _supabase = SupabaseService.client;
-  static StreamSubscription? _notificationStream;
 
   /// Create a notification for a user
   ///
@@ -131,6 +131,90 @@ class NotificationService {
     }
   }
 
+  /// Get notifications for current user with pagination
+  /// 
+  /// [limit] - Number of notifications to fetch (default: 20)
+  /// [offset] - Number of notifications to skip (default: 0)
+  /// [unreadOnly] - Filter to only unread notifications
+  /// 
+  /// Returns a map with 'notifications' list and 'hasMore' boolean
+  static Future<Map<String, dynamic>> getUserNotificationsPaginated({
+    int limit = 20,
+    int offset = 0,
+    bool? unreadOnly,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get user role to filter tutor-specific notifications
+      final userRole = await AuthService.getUserRole();
+
+      var query = _supabase
+          .from('notifications')
+          .select()
+          .eq('user_id', userId);
+
+      if (unreadOnly == true) {
+        query = query.eq('is_read', false);
+      }
+
+      // Apply ordering, limit, and offset
+      final response = await query
+          .order('created_at', ascending: false)
+          .range(offset, offset + limit - 1);
+      
+      var notifications = (response as List).cast<Map<String, dynamic>>();
+
+      // Filter out tutor-specific notifications for non-tutor users
+      if (userRole != 'tutor') {
+        final tutorSpecificTypes = [
+          'profile_approved',
+          'profile_rejected',
+          'profile_improvement',
+          'profile_complete',
+        ];
+        
+        notifications = notifications.where((notification) {
+          final type = notification['type'] as String?;
+          final title = (notification['title'] as String? ?? '').toLowerCase();
+          final message = (notification['message'] as String? ?? '').toLowerCase();
+          
+          if (type != null && tutorSpecificTypes.contains(type)) {
+            return false;
+          }
+          
+          final tutorKeywords = [
+            'tutor profile',
+            'complete your profile to get verified',
+            'connect with students',
+            'become visible',
+            'tutor onboarding',
+          ];
+          
+          final hasTutorKeyword = tutorKeywords.any((keyword) => 
+            title.contains(keyword) || message.contains(keyword)
+          );
+          
+          return !hasTutorKeyword;
+        }).toList();
+      }
+
+      // Check if there are more notifications
+      final hasMore = notifications.length == limit;
+
+      return {
+        'notifications': notifications,
+        'hasMore': hasMore,
+      };
+    } catch (e) {
+      LogService.error('Error fetching notifications: $e');
+      throw Exception('Failed to fetch notifications: $e');
+    }
+  }
+
   /// Mark notification as read
   static Future<void> markAsRead(String notificationId) async {
     try {
@@ -161,8 +245,7 @@ class NotificationService {
     }
   }
 
-  /// Get unread notification count
-  /// Excludes tutor-specific notifications for non-tutor users
+  /// Get unread notification count for current user
   static Future<int> getUnreadCount() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -170,70 +253,22 @@ class NotificationService {
         return 0;
       }
 
-      // Get user role to filter tutor-specific notifications
-      final userRole = await AuthService.getUserRole();
-
       final response = await _supabase
           .from('notifications')
-          .select()
+          .select('id')
           .eq('user_id', userId)
           .eq('is_read', false);
 
-      var notifications = (response as List).cast<Map<String, dynamic>>();
-
-      // Filter out tutor-specific notifications for non-tutor users
-      if (userRole != 'tutor') {
-        final tutorSpecificTypes = [
-          'profile_approved',
-          'profile_rejected',
-          'profile_improvement',
-          'profile_complete',
-        ];
-        
-        notifications = notifications.where((notification) {
-          final type = notification['type'] as String?;
-          final title = (notification['title'] as String? ?? '').toLowerCase();
-          final message = (notification['message'] as String? ?? '').toLowerCase();
-          
-          if (type != null && tutorSpecificTypes.contains(type)) {
-            return false;
-          }
-          
-          final tutorKeywords = [
-            'tutor profile',
-            'complete your profile to get verified',
-            'connect with students',
-            'become visible',
-            'tutor onboarding',
-          ];
-          
-          return !tutorKeywords.any((keyword) => 
-            title.contains(keyword) || message.contains(keyword)
-          );
-        }).toList();
-      }
-
-      return notifications.length;
+      return (response as List).length;
     } catch (e) {
       LogService.error('Error getting unread count: $e');
       return 0;
     }
   }
 
-  /// Delete a notification
-  static Future<void> deleteNotification(String notificationId) async {
-    try {
-      await _supabase.from('notifications').delete().eq('id', notificationId);
-    } catch (e) {
-      LogService.error('Error deleting notification: $e');
-    }
-  }
-
-  /// Get real-time stream of notifications for current user
-  ///
-  /// Automatically updates when new notifications are created or updated
-  /// Remember to cancel the stream when done: stream.cancel()
-  /// Filters out tutor-specific notifications for non-tutor users
+  /// Watch notifications in real-time
+  /// Returns a stream of notifications for the current user
+  /// Uses Realtime subscription to listen for changes
   static Stream<List<Map<String, dynamic>>> watchNotifications({
     bool unreadOnly = false,
   }) {
@@ -242,138 +277,123 @@ class NotificationService {
       return Stream.value([]);
     }
 
-    return _supabase
-        .from('notifications')
-        .stream(primaryKey: ['id'])
-        .eq('user_id', userId)
-        .asyncMap((data) async {
-          final notifications = (data as List).cast<Map<String, dynamic>>();
+    // Create a controller for the stream
+    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
+    
+    // Initial load
+    getUserNotifications(unreadOnly: unreadOnly).then((notifications) {
+      if (!controller.isClosed) {
+        controller.add(notifications);
+      }
+    });
 
-          // Get user role to filter tutor-specific notifications
-          final userRole = await AuthService.getUserRole();
-
-          // Filter by unread if requested
-          var filtered = unreadOnly
-              ? notifications.where((n) => n['is_read'] == false).toList()
-              : notifications;
-
-          // Filter out tutor-specific notifications for non-tutor users
-          if (userRole != 'tutor') {
-            final tutorSpecificTypes = [
-              'profile_approved',
-              'profile_rejected',
-              'profile_improvement',
-              'profile_complete', // Profile completion notifications
-            ];
-            
-            filtered = filtered.where((notification) {
-              final type = notification['type'] as String?;
-              // Check if notification title/message contains tutor-specific content
-              final title = (notification['title'] as String? ?? '').toLowerCase();
-              final message = (notification['message'] as String? ?? '').toLowerCase();
-              
-              // Filter out tutor-specific notification types
-              if (type != null && tutorSpecificTypes.contains(type)) {
-                return false;
-              }
-              
-              // Filter out notifications with tutor-specific keywords
-              final tutorKeywords = [
-                'tutor profile',
-                'complete your profile to get verified',
-                'connect with students',
-                'become visible',
-                'tutor onboarding',
-              ];
-              
-              final hasTutorKeyword = tutorKeywords.any((keyword) => 
-                title.contains(keyword) || message.contains(keyword)
-              );
-              
-              return !hasTutorKeyword;
-            }).toList();
+    // Subscribe to Realtime changes
+    final channel = _supabase.channel('notifications_$userId');
+    
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'notifications',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'user_id',
+        value: userId,
+      ),
+      callback: (payload) {
+        // Refresh notifications when changes occur
+        getUserNotifications(unreadOnly: unreadOnly).then((notifications) {
+          if (!controller.isClosed) {
+            controller.add(notifications);
           }
-
-          // Sort by created_at descending
-          filtered.sort((a, b) {
-            try {
-              final aTime = DateTime.parse(a['created_at'] ?? '');
-              final bTime = DateTime.parse(b['created_at'] ?? '');
-              return bTime.compareTo(aTime);
-            } catch (e) {
-              return 0;
-            }
-          });
-
-          return filtered;
         });
+      },
+    ).subscribe();
+
+    // Clean up when stream is cancelled
+    controller.onCancel = () {
+      channel.unsubscribe();
+    };
+
+    return controller.stream;
   }
 
-  /// Schedule a notification for future delivery
-  ///
-  /// Used for reminders (e.g., session starting in 30 minutes)
-  static Future<void> scheduleNotification({
-    required String userId,
-    required String notificationType,
-    required String title,
-    required String message,
-    required DateTime scheduledFor,
-    String? relatedId,
-    Map<String, dynamic>? metadata,
-  }) async {
+  /// Delete a notification
+  static Future<void> deleteNotification(String notificationId) async {
     try {
-      final scheduledData = {
-        'user_id': userId,
-        'notification_type': notificationType,
-        'title': title,
-        'message': message,
-        'scheduled_for': scheduledFor.toIso8601String(),
-        'status': 'pending',
-        'related_id': relatedId,
-        'metadata': metadata,
-      };
-
-      await _supabase.from('scheduled_notifications').insert(scheduledData);
-      LogService.debug(
-        '✅ Notification scheduled for user: $userId, scheduled for: $scheduledFor',
-      );
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notificationId);
     } catch (e) {
-      LogService.error('Error scheduling notification: $e');
+      LogService.error('Error deleting notification: $e');
+    }
+  }
+
+  /// Delete all notifications for current user
+  static Future<void> deleteAllNotifications() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('user_id', userId);
+    } catch (e) {
+      LogService.error('Error deleting all notifications: $e');
     }
   }
 
   /// Get notification preferences for current user
+  /// Returns a map with preference settings or null if not set
   static Future<Map<String, dynamic>?> getPreferences() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        return null;
+        throw Exception('User not authenticated');
       }
 
-      // Use the database function to get or create preferences
-      final response = await _supabase.rpc(
-        'get_or_create_notification_preferences',
-        params: {'p_user_id': userId},
-      );
+      // Try to get preferences from user_profiles or a preferences table
+      // For now, we'll use user_profiles and add a preferences JSON column
+      // If that doesn't exist, we'll return default preferences
+      try {
+        final response = await _supabase
+            .from('user_profiles')
+            .select('notification_preferences')
+            .eq('id', userId)
+            .maybeSingle();
 
-      return response as Map<String, dynamic>?;
+        if (response != null && response['notification_preferences'] != null) {
+          return Map<String, dynamic>.from(response['notification_preferences'] as Map);
+        }
+      } catch (e) {
+        LogService.debug('Notification preferences not found in user_profiles: $e');
+      }
+
+      // Return default preferences if none found
+      return {
+        'email_enabled': true,
+        'in_app_enabled': true,
+        'push_enabled': true,
+      };
     } catch (e) {
       LogService.error('Error getting notification preferences: $e');
-      return null;
+      // Return default preferences on error
+      return {
+        'email_enabled': true,
+        'in_app_enabled': true,
+        'push_enabled': true,
+      };
     }
   }
 
   /// Update notification preferences for current user
   static Future<void> updatePreferences({
-    bool? emailEnabled,
-    bool? inAppEnabled,
-    bool? pushEnabled,
-    Map<String, dynamic>? typePreferences,
-    String? quietHoursStart,
-    String? quietHoursEnd,
-    bool? digestEnabled,
-    String? digestFrequency,
-    String? digestTime,
+    required bool emailEnabled,
+    required bool inAppEnabled,
+    required bool pushEnabled,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -381,109 +401,33 @@ class NotificationService {
         throw Exception('User not authenticated');
       }
 
-      // Ensure preferences exist
-      await getPreferences();
+      final preferences = {
+        'email_enabled': emailEnabled,
+        'in_app_enabled': inAppEnabled,
+        'push_enabled': pushEnabled,
+      };
 
-      final updates = <String, dynamic>{};
-      if (emailEnabled != null) updates['email_enabled'] = emailEnabled;
-      if (inAppEnabled != null) updates['in_app_enabled'] = inAppEnabled;
-      if (pushEnabled != null) updates['push_enabled'] = pushEnabled;
-      if (typePreferences != null)
-        updates['type_preferences'] = typePreferences;
-      if (quietHoursStart != null)
-        updates['quiet_hours_start'] = quietHoursStart;
-      if (quietHoursEnd != null) updates['quiet_hours_end'] = quietHoursEnd;
-      if (digestEnabled != null) updates['digest_enabled'] = digestEnabled;
-      if (digestFrequency != null)
-        updates['digest_frequency'] = digestFrequency;
-      if (digestTime != null) updates['digest_time'] = digestTime;
-
+      // Try to update in user_profiles
+      try {
       await _supabase
-          .from('notification_preferences')
-          .update(updates)
-          .eq('user_id', userId);
-
-      LogService.success('Notification preferences updated');
+            .from('user_profiles')
+            .update({
+              'notification_preferences': preferences,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', userId);
+        
+        LogService.success('Notification preferences updated for user: $userId');
+      } catch (e) {
+        // If user_profiles doesn't have notification_preferences column,
+        // we'll need to create a separate preferences table or handle it differently
+        LogService.warning('Could not update preferences in user_profiles: $e');
+        // For now, we'll just log - in production, you'd want to create a preferences table
+        throw Exception('Notification preferences update not supported yet. Please create a notification_preferences table or add notification_preferences column to user_profiles.');
+      }
     } catch (e) {
       LogService.error('Error updating notification preferences: $e');
       rethrow;
     }
-  }
-
-  /// Check if a notification should be sent based on user preferences
-  ///
-  /// This is typically called server-side, but can be used client-side for UI hints
-  static Future<bool> shouldSendNotification({
-    required String notificationType,
-    required String channel, // 'email' or 'in_app'
-  }) async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        return true; // Default to sending if not authenticated
-      }
-
-      final response = await _supabase.rpc(
-        'should_send_notification',
-        params: {
-          'p_user_id': userId,
-          'p_notification_type': notificationType,
-          'p_channel': channel,
-        },
-      );
-
-      return response as bool? ?? true;
-    } catch (e) {
-      LogService.error('Error checking notification preference: $e');
-      return true; // Default to sending on error
-    }
-  }
-
-  /// Cancel a scheduled notification
-  static Future<void> cancelScheduledNotification(
-    String scheduledNotificationId,
-  ) async {
-    try {
-      await _supabase
-          .from('scheduled_notifications')
-          .update({'status': 'cancelled'})
-          .eq('id', scheduledNotificationId);
-      LogService.success('Scheduled notification cancelled: $scheduledNotificationId');
-    } catch (e) {
-      LogService.error('Error cancelling scheduled notification: $e');
-    }
-  }
-
-  /// Get scheduled notifications for current user
-  static Future<List<Map<String, dynamic>>> getScheduledNotifications({
-    String? status, // 'pending', 'sent', 'cancelled', 'failed'
-  }) async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        return [];
-      }
-
-      var query = _supabase
-          .from('scheduled_notifications')
-          .select()
-          .eq('user_id', userId);
-
-      if (status != null) {
-        query = query.eq('status', status);
-      }
-
-      final response = await query.order('scheduled_for', ascending: true);
-      return (response as List).cast<Map<String, dynamic>>();
-    } catch (e) {
-      LogService.error('Error getting scheduled notifications: $e');
-      return [];
-    }
-  }
-
-  /// Cleanup: Cancel the notification stream
-  static void dispose() {
-    _notificationStream?.cancel();
-    _notificationStream = null;
   }
 }

@@ -34,7 +34,7 @@ class AppLogoHeader extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: const BorderRadius.all(Radius.circular(12)),
           child: Image.asset(
             'assets/images/app_logo(blue-no-bg).png',
             width: logoSize,
@@ -67,7 +67,7 @@ class AppLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: const BorderRadius.all(Radius.circular(12)),
       child: Image.asset(
         'assets/images/app_logo(blue).png',
         width: size,

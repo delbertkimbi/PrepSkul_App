@@ -18,3 +18,9 @@ CREATE POLICY "Requesters can update their trial sessions"
     auth.uid() = learner_id OR
     auth.uid() = parent_id
   );
+
+    auth.uid() = parent_id
+  );
+
+    auth.uid() = parent_id
+  );

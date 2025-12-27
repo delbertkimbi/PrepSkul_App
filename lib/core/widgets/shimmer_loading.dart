@@ -44,7 +44,7 @@ class ShimmerLoading {
                         height: 16,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: const BorderRadius.all(Radius.circular(4)),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -54,7 +54,7 @@ class ShimmerLoading {
                         height: 14,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: const BorderRadius.all(Radius.circular(4)),
                         ),
                       ),
                     ],
@@ -92,7 +92,7 @@ class ShimmerLoading {
                   height: 24,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: const BorderRadius.all(Radius.circular(12)),
                   ),
                 ),
               ),
@@ -119,7 +119,7 @@ class ShimmerLoading {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: const BorderRadius.all(Radius.circular(16)),
         border: Border.all(color: AppTheme.softBorder),
       ),
       child: Shimmer.fromColors(
@@ -150,7 +150,7 @@ class ShimmerLoading {
                         height: 16,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: const BorderRadius.all(Radius.circular(4)),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -160,7 +160,7 @@ class ShimmerLoading {
                         height: 14,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: const BorderRadius.all(Radius.circular(4)),
                         ),
                       ),
                     ],
@@ -172,7 +172,7 @@ class ShimmerLoading {
                   height: 24,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: const BorderRadius.all(Radius.circular(12)),
                   ),
                 ),
               ],
@@ -184,7 +184,7 @@ class ShimmerLoading {
               height: 14,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: const BorderRadius.all(Radius.circular(4)),
               ),
             ),
           ],
@@ -199,7 +199,7 @@ class ShimmerLoading {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: const BorderRadius.all(Radius.circular(16)),
         border: Border.all(color: AppTheme.softBorder),
       ),
       child: Shimmer.fromColors(
@@ -214,7 +214,7 @@ class ShimmerLoading {
               height: 40,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: const BorderRadius.all(Radius.circular(8)),
               ),
             ),
             const SizedBox(height: 12),
@@ -224,7 +224,7 @@ class ShimmerLoading {
               height: 24,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: const BorderRadius.all(Radius.circular(4)),
               ),
             ),
             const SizedBox(height: 8),
@@ -234,7 +234,61 @@ class ShimmerLoading {
               height: 14,
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: const BorderRadius.all(Radius.circular(4)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Game card shimmer (for Game Library)
+  static Widget gameCard() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+        border: Border.all(color: AppTheme.softBorder),
+      ),
+      child: Shimmer.fromColors(
+        baseColor: Colors.grey[300]!,
+        highlightColor: Colors.grey[100]!,
+        child: Row(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 120,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -250,7 +304,7 @@ class ShimmerLoading {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
         border: Border.all(color: AppTheme.softBorder),
       ),
       child: Shimmer.fromColors(
@@ -492,7 +546,7 @@ class ShimmerLoading {
                         height: 16,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: const BorderRadius.all(Radius.circular(4)),
                         ),
                       ),
                       const SizedBox(height: 8),

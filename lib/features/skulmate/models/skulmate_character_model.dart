@@ -218,4 +218,3 @@ class SkulMateCharacters {
   /// Get default character (middle school, male)
   static SkulMateCharacter get defaultCharacter => middleMale;
 }
-

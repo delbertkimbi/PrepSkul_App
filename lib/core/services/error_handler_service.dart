@@ -55,22 +55,13 @@ class ErrorHandlerService {
       return 'This record already exists. Please refresh and try again.';
     }
 
-    // Schedule conflict errors
-    if (errorString.contains('schedule conflict') ||
-        errorString.contains('already have') ||
-        errorString.contains('conflict')) {
-      final match = RegExp(r'Schedule Conflict: (.+)', caseSensitive: false)
-          .firstMatch(error.toString());
-      if (match != null) {
-        return match.group(1) ?? defaultMsg;
-      }
-      return 'You have a scheduling conflict. Please choose a different time.';
-    }
-
-    // Trial session errors
+    // Trial session errors - check these FIRST before generic conflict errors
+    // This ensures specific trial session messages are preserved
     if (errorString.contains('trial session') ||
         errorString.contains('already have a pending') ||
-        errorString.contains('already have an approved')) {
+        errorString.contains('already have an approved') ||
+        errorString.contains('already have a scheduled') ||
+        errorString.contains('already have an active trial')) {
       final match = RegExp(r'Exception: (.+)').firstMatch(error.toString());
       if (match != null) {
         final message = match.group(1)!;
@@ -79,7 +70,27 @@ class ErrorHandlerService {
           return message;
         }
       }
-      return 'You already have an active trial session with this tutor.';
+      // Fallback message
+      if (errorString.contains('this tutor')) {
+        return 'You already have an active trial session with this tutor. Please complete it before creating a regular booking.';
+      }
+      return 'You already have an active trial session. Please complete it before creating a regular booking.';
+    }
+
+    // Schedule conflict errors (time slot conflicts with other tutors)
+    if (errorString.contains('schedule conflict') ||
+        errorString.contains('conflict')) {
+      final match = RegExp(r'Schedule Conflict: (.+)', caseSensitive: false)
+          .firstMatch(error.toString());
+      if (match != null) {
+        return match.group(1) ?? defaultMsg;
+      }
+      // Check if it's a time conflict with another tutor
+      if (errorString.contains('another tutor') || 
+          errorString.contains('same time')) {
+        return 'You already have a session scheduled at the same time with another tutor. Please choose a different time slot.';
+      }
+      return 'You have a scheduling conflict. Please choose a different time.';
     }
 
     // Payment errors
@@ -90,6 +101,72 @@ class ErrorHandlerService {
       if (errorString.contains('already completed') ||
           errorString.contains('already paid')) {
         return 'This payment has already been completed.';
+      }
+      if (errorString.contains('phone') && (errorString.contains('valid') || 
+          errorString.contains('mtn') || errorString.contains('orange'))) {
+        return 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
+      }
+    }
+
+    // File upload errors
+    if (errorString.contains('file') || errorString.contains('upload')) {
+      if (errorString.contains('too large') || errorString.contains('size')) {
+        return 'File is too large. Please choose a smaller file (max 10MB).';
+      }
+      if (errorString.contains('format') || errorString.contains('type') ||
+          errorString.contains('not supported')) {
+        return 'File format not supported. Please use PDF, JPG, or PNG.';
+      }
+      if (errorString.contains('failed to upload') || 
+          errorString.contains('upload error')) {
+        return 'Failed to upload file. Please check your connection and try again.';
+      }
+    }
+
+    // API errors
+    if (errorString.contains('api') || errorString.contains('server')) {
+      if (errorString.contains('500') || errorString.contains('internal')) {
+        return 'Server error. Our team has been notified. Please try again later.';
+      }
+      if (errorString.contains('503') || errorString.contains('unavailable')) {
+        return 'Service temporarily unavailable. Please try again in a few moments.';
+      }
+      if (errorString.contains('429') || errorString.contains('rate limit')) {
+        return 'Too many requests. Please wait a moment and try again.';
+      }
+      if (errorString.contains('404') || errorString.contains('not found')) {
+        return 'The requested resource was not found. Please refresh and try again.';
+      }
+    }
+
+    // Session errors
+    if (errorString.contains('session')) {
+      if (errorString.contains('not found') || errorString.contains('does not exist')) {
+        return 'Session not found. It may have been cancelled or deleted.';
+      }
+      if (errorString.contains('already started') || errorString.contains('in progress')) {
+        return 'This session has already started.';
+      }
+      if (errorString.contains('already ended') || errorString.contains('completed')) {
+        return 'This session has already ended.';
+      }
+      if (errorString.contains('cannot start') || errorString.contains('cannot join')) {
+        return 'You cannot start or join this session at this time.';
+      }
+    }
+
+    // Game generation errors (skulMate)
+    if (errorString.contains('game') || errorString.contains('generation') ||
+        errorString.contains('skulmate')) {
+      if (errorString.contains('failed to generate') || 
+          errorString.contains('generation error')) {
+        return 'Failed to generate game. Please check your document and try again.';
+      }
+      if (errorString.contains('api') && errorString.contains('down')) {
+        return 'Game generation service is temporarily unavailable. Please try again later.';
+      }
+      if (errorString.contains('invalid') || errorString.contains('format')) {
+        return 'Invalid document format. Please upload a PDF, image, or text file.';
       }
     }
 
@@ -110,15 +187,32 @@ class ErrorHandlerService {
     return defaultMsg;
   }
 
-  /// Show a standardized error dialog
+  /// Check if an error is retryable (network, timeout, server errors)
+  static bool isRetryable(dynamic error) {
+    if (error == null) return false;
+    final errorString = error.toString().toLowerCase();
+    return errorString.contains('network') ||
+        errorString.contains('connection') ||
+        errorString.contains('timeout') ||
+        errorString.contains('failed to fetch') ||
+        errorString.contains('socketexception') ||
+        errorString.contains('503') ||
+        errorString.contains('unavailable') ||
+        errorString.contains('429') ||
+        errorString.contains('rate limit');
+  }
+
+  /// Show a standardized error dialog with optional retry
   static Future<void> showError(
     BuildContext context,
     dynamic error, [
     String? defaultMessage,
+    VoidCallback? onRetry,
   ]) async {
     if (!context.mounted) return;
 
     final message = getUserMessage(error, defaultMessage);
+    final canRetry = onRetry != null && isRetryable(error);
     LogService.error('Showing error to user', error);
 
     await showDialog(
@@ -147,12 +241,26 @@ class ErrorHandlerService {
           style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
         ),
         actions: [
+          if (canRetry)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onRetry();
+              },
+              child: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                  color: AppTheme.primaryColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
               'OK',
               style: GoogleFonts.poppins(
-                color: AppTheme.primaryColor,
+                color: canRetry ? Colors.grey[700] : AppTheme.primaryColor,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -162,15 +270,17 @@ class ErrorHandlerService {
     );
   }
 
-  /// Show a standardized error snackbar
+  /// Show a standardized error snackbar with optional retry
   static void showErrorSnackbar(
     BuildContext context,
     dynamic error, [
     String? defaultMessage,
+    VoidCallback? onRetry,
   ]) {
     if (!context.mounted) return;
 
     final message = getUserMessage(error, defaultMessage);
+    final canRetry = onRetry != null && isRetryable(error);
     LogService.error('Showing error snackbar', error);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -185,12 +295,27 @@ class ErrorHandlerService {
                 style: GoogleFonts.poppins(),
               ),
             ),
+            if (canRetry)
+              TextButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  onRetry();
+                },
+                child: Text(
+                  'RETRY',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
           ],
         ),
         backgroundColor: Colors.red,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 4),
+        duration: Duration(seconds: canRetry ? 6 : 4),
       ),
     );
   }

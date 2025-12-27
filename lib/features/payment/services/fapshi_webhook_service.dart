@@ -131,7 +131,11 @@ class FapshiWebhookService {
               .from('trial_sessions')
               .select('location, tutor_id, learner_id, scheduled_date, scheduled_time, duration_minutes')
               .eq('id', trialSessionId)
-              .single();
+              .maybeSingle();
+          
+          if (trial == null) {
+            throw Exception('Trial session not found: $trialSessionId');
+          }
 
           if (trial['location'] == 'online') {
             // Generate Meet link
@@ -367,7 +371,11 @@ class FapshiWebhookService {
           .from('trial_sessions')
           .select('learner_id, tutor_id, subject, meet_link, scheduled_date, scheduled_time, duration_minutes')
           .eq('id', trialSessionId)
-          .single();
+          .maybeSingle();
+
+      if (trial == null) {
+        throw Exception('Trial session not found: $trialSessionId');
+      }
 
       final learnerId = trial['learner_id'] as String;
       final tutorId = trial['tutor_id'] as String;
@@ -466,7 +474,119 @@ class FapshiWebhookService {
           .from('trial_sessions')
           .select('learner_id, subject')
           .eq('id', trialSessionId)
-          .single();
+          .maybeSingle();
+
+      if (trial == null) {
+        throw Exception('Trial session not found: $trialSessionId');
+      }
+
+      final learnerId = trial['learner_id'] as String;
+      final subject = trial['subject'] as String;
+
+      await NotificationHelperService.notifyTrialPaymentFailed(
+        trialSessionId: trialSessionId,
+        learnerId: learnerId,
+        subject: subject,
+        reason: reason ?? 'Payment failed',
+      );
+    } catch (e) {
+      LogService.warning('Error sending trial payment failure notification: $e');
+    }
+  }
+}
+
+
+
+        await NotificationHelperService.scheduleSessionReminders(
+          tutorId: tutorId,
+          studentId: learnerId,
+          sessionId: trialSessionId,
+          sessionType: 'trial',
+          tutorName: tutorName,
+          studentName: studentName,
+          sessionStart: sessionStart,
+          subject: subject,
+        );
+        
+        LogService.success('Session countdown reminders scheduled after payment: $trialSessionId');
+      } catch (e) {
+        LogService.warning('Failed to schedule session reminders after payment: $e');
+        // Don't fail payment notification if reminder scheduling fails
+      }
+    } catch (e) {
+      LogService.warning('Error sending trial payment success notifications: $e');
+    }
+  }
+
+  /// Send trial payment failure notification
+  static Future<void> _sendTrialPaymentFailureNotification(
+    String trialSessionId,
+    String? reason,
+  ) async {
+    try {
+      final trial = await _supabase
+          .from('trial_sessions')
+          .select('learner_id, subject')
+          .eq('id', trialSessionId)
+          .maybeSingle();
+
+      if (trial == null) {
+        throw Exception('Trial session not found: $trialSessionId');
+      }
+
+      final learnerId = trial['learner_id'] as String;
+      final subject = trial['subject'] as String;
+
+      await NotificationHelperService.notifyTrialPaymentFailed(
+        trialSessionId: trialSessionId,
+        learnerId: learnerId,
+        subject: subject,
+        reason: reason ?? 'Payment failed',
+      );
+    } catch (e) {
+      LogService.warning('Error sending trial payment failure notification: $e');
+    }
+  }
+}
+
+
+
+        await NotificationHelperService.scheduleSessionReminders(
+          tutorId: tutorId,
+          studentId: learnerId,
+          sessionId: trialSessionId,
+          sessionType: 'trial',
+          tutorName: tutorName,
+          studentName: studentName,
+          sessionStart: sessionStart,
+          subject: subject,
+        );
+        
+        LogService.success('Session countdown reminders scheduled after payment: $trialSessionId');
+      } catch (e) {
+        LogService.warning('Failed to schedule session reminders after payment: $e');
+        // Don't fail payment notification if reminder scheduling fails
+      }
+    } catch (e) {
+      LogService.warning('Error sending trial payment success notifications: $e');
+    }
+  }
+
+  /// Send trial payment failure notification
+  static Future<void> _sendTrialPaymentFailureNotification(
+    String trialSessionId,
+    String? reason,
+  ) async {
+    try {
+      final trial = await _supabase
+          .from('trial_sessions')
+          .select('learner_id, subject')
+          .eq('id', trialSessionId)
+          .maybeSingle();
+
+      if (trial == null) {
+        throw Exception('Trial session not found: $trialSessionId');
+      }
 
       final learnerId = trial['learner_id'] as String;
       final subject = trial['subject'] as String;

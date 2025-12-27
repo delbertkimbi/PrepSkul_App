@@ -6,6 +6,8 @@ import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/branded_snackbar.dart';
+import '../../../core/widgets/shimmer_loading.dart';
+import '../../../core/widgets/empty_state_widget.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
@@ -285,7 +287,11 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
           // Requests List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 5,
+                    itemBuilder: (context, index) => ShimmerLoading.listTile(),
+                  )
                 : _requests.isEmpty
                     ? _buildEmptyState()
                     : RefreshIndicator(
@@ -334,36 +340,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.inbox_outlined, size: 64, color: AppTheme.textLight),
-            const SizedBox(height: 16),
-            Text(
-              'No requests yet',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Student requests will appear here',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: AppTheme.textMedium,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
+    return EmptyStateWidget.noRequests();
   }
 
   Widget _buildRequestCard(BookingRequest request) {

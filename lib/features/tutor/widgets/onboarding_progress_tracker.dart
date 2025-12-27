@@ -479,4 +479,3 @@ class _OnboardingProgressTrackerState
     );
   }
 }
-

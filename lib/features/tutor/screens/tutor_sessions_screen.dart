@@ -11,12 +11,17 @@ import '../../../features/booking/services/recurring_session_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/session_lifecycle_service.dart';
 import '../../../features/booking/services/trial_session_service.dart';
+import '../../../features/booking/services/session_reschedule_service.dart';
 import '../../../features/booking/models/trial_session_model.dart';
 import '../../../features/booking/utils/session_date_utils.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../features/sessions/widgets/hybrid_mode_selection_dialog.dart';
 import '../../../core/services/google_calendar_service.dart';
 import '../../../core/services/google_calendar_auth_service.dart';
+import '../../../core/widgets/empty_state_widget.dart';
+import '../../../core/widgets/shimmer_loading.dart';
+import '../../../core/services/error_handler_service.dart';
+
 class TutorSessionsScreen extends StatefulWidget {
   const TutorSessionsScreen({Key? key}) : super(key: key);
 
@@ -383,11 +388,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       LogService.error('Error loading sessions: $e');
       safeSetState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load sessions: $e'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to load sessions',
+          () => _loadSessions(), // Retry callback
         );
       }
     }
@@ -441,7 +446,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           // Sessions List
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 5,
+                    itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
+                  )
                 : _sessions.isEmpty
                 ? _buildEmptyState()
                 : RefreshIndicator(
@@ -595,36 +604,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.event_outlined, size: 64, color: AppTheme.textLight),
-            const SizedBox(height: 16),
-            Text(
-              'No sessions yet',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your sessions will appear here',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: AppTheme.textMedium,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
+    return EmptyStateWidget.noSessions();
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session) {
@@ -1004,6 +984,45 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         ),
                       ),
                     ],
+                    // Reschedule/Cancel options (for scheduled sessions)
+                    if ((isIndividualSession || isTrialSession) &&
+                        (status == 'scheduled' || status == 'approved') &&
+                        !isExpired &&
+                        !isCancelled) ...[
+                      const SizedBox(width: 8),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, size: 20),
+                        onSelected: (value) {
+                          if (value == 'reschedule') {
+                            _handleRescheduleSession(session['id'] as String, isIndividualSession);
+                          } else if (value == 'cancel') {
+                            _handleCancelSession(session['id'] as String, isIndividualSession);
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          PopupMenuItem(
+                            value: 'reschedule',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.edit_calendar, size: 18),
+                                const SizedBox(width: 8),
+                                Text('Reschedule', style: GoogleFonts.poppins(fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'cancel',
+                            child: Row(
+                              children: [
+                                const Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
+                                const SizedBox(width: 8),
+                                Text('Cancel Session', style: GoogleFonts.poppins(fontSize: 14, color: Colors.red)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -1322,7 +1341,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           .from('individual_sessions')
           .select('location, onsite_address, meeting_link')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+      
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final location = session['location'] as String? ?? 'online';
       final address = session['onsite_address'] as String? ?? '';
@@ -1525,6 +1548,441 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => _SessionDetailsSheet(session: session),
+    );
+  }
+
+  Future<void> _handleRescheduleSession(String sessionId, bool isIndividualSession) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _RescheduleSessionDialog(
+        sessionId: sessionId,
+        isIndividualSession: isIndividualSession,
+      ),
+    );
+
+    if (result != null && result['confirmed'] == true) {
+      safeSetState(() {
+        _sessionLoadingStates[sessionId] = true;
+      });
+
+      try {
+        await SessionRescheduleService.requestReschedule(
+          sessionId: sessionId,
+          proposedDate: result['proposedDate'] as DateTime,
+          proposedTime: result['proposedTime'] as String,
+          reason: result['reason'] as String? ?? 'Reschedule requested by tutor',
+          additionalNotes: result['additionalNotes'] as String?,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Reschedule request sent. Waiting for student approval.',
+                      style: GoogleFonts.poppins(),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppTheme.accentGreen,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        _loadSessions(); // Refresh
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to reschedule: $e', style: GoogleFonts.poppins()),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          safeSetState(() {
+            _sessionLoadingStates[sessionId] = false;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _handleCancelSession(String sessionId, bool isIndividualSession) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _CancelSessionDialog(),
+    );
+
+    if (result != null && result['confirmed'] == true) {
+      safeSetState(() {
+        _sessionLoadingStates[sessionId] = true;
+      });
+
+      try {
+        if (isIndividualSession) {
+          await IndividualSessionService.cancelSession(
+            sessionId,
+            reason: result['reason'] as String? ?? 'Cancelled by tutor',
+          );
+        } else {
+          // For trial sessions, use TrialSessionService
+          // TODO: Implement trial session cancellation if needed
+          throw Exception('Trial session cancellation not yet implemented');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Text('Session cancelled', style: GoogleFonts.poppins()),
+                ],
+              ),
+              backgroundColor: AppTheme.accentGreen,
+            ),
+          );
+        }
+        _loadSessions(); // Refresh
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to cancel session: $e', style: GoogleFonts.poppins()),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          safeSetState(() {
+            _sessionLoadingStates[sessionId] = false;
+          });
+        }
+      }
+    }
+  }
+}
+
+// Reschedule Session Dialog
+
+class _RescheduleSessionDialog extends StatefulWidget {
+  final String sessionId;
+  final bool isIndividualSession;
+
+  const _RescheduleSessionDialog({
+    required this.sessionId,
+    required this.isIndividualSession,
+  });
+
+  @override
+  State<_RescheduleSessionDialog> createState() => _RescheduleSessionDialogState();
+}
+
+class _RescheduleSessionDialogState extends State<_RescheduleSessionDialog> {
+  DateTime? _selectedDate;
+  TimeOfDay? _selectedTime;
+  final _reasonController = TextEditingController();
+  final _notesController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessionDetails();
+  }
+
+  Future<void> _loadSessionDetails() async {
+    try {
+      Map<String, dynamic>? session;
+      if (widget.isIndividualSession) {
+        final response = await SupabaseService.client
+            .from('individual_sessions')
+            .select('scheduled_date, scheduled_time')
+            .eq('id', widget.sessionId)
+            .maybeSingle();
+        session = response;
+      } else {
+        final response = await SupabaseService.client
+            .from('trial_sessions')
+            .select('scheduled_date, scheduled_time')
+            .eq('id', widget.sessionId)
+            .maybeSingle();
+        session = response;
+      }
+
+      if (session != null && mounted) {
+        final scheduledDate = DateTime.parse(session['scheduled_date'] as String);
+        final scheduledTime = session['scheduled_time'] as String? ?? '00:00';
+        final timeParts = scheduledTime.split(':');
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+
+        setState(() {
+          _selectedDate = scheduledDate;
+          _selectedTime = TimeOfDay(hour: hour, minute: minute);
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading session details: $e');
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  Future<void> _selectTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime ?? const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (picked != null) {
+      setState(() => _selectedTime = picked);
+    }
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isValid = _selectedDate != null && _selectedTime != null;
+
+    return AlertDialog(
+      title: Text('Reschedule Session', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select a new date and time for this session. The student will need to approve the change.',
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            // Date picker
+            InkWell(
+              onTap: _selectDate,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.softBorder),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today, size: 20, color: AppTheme.primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _selectedDate != null
+                            ? DateFormat('MMM d, y').format(_selectedDate!)
+                            : 'Select date',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: _selectedDate != null ? AppTheme.textDark : AppTheme.textLight,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Time picker
+            InkWell(
+              onTap: _selectTime,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.softBorder),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 20, color: AppTheme.primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _selectedTime != null
+                            ? _selectedTime!.format(context)
+                            : 'Select time',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: _selectedTime != null ? AppTheme.textDark : AppTheme.textLight,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Reason field
+            TextField(
+              controller: _reasonController,
+              decoration: InputDecoration(
+                labelText: 'Reason for reschedule',
+                hintText: 'E.g., "Schedule conflict"',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            // Additional notes
+            TextField(
+              controller: _notesController,
+              decoration: InputDecoration(
+                labelText: 'Additional notes (optional)',
+                hintText: 'Any additional information for the student',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              maxLines: 2,
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context, {'confirmed': false}),
+          child: Text('Cancel', style: GoogleFonts.poppins()),
+        ),
+        ElevatedButton(
+          onPressed: (_isLoading || !isValid)
+              ? null
+              : () async {
+                  setState(() => _isLoading = true);
+                  await Future.delayed(const Duration(milliseconds: 300));
+                  if (mounted) {
+                    final timeString = '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}';
+                    Navigator.pop(context, {
+                      'confirmed': true,
+                      'proposedDate': _selectedDate,
+                      'proposedTime': timeString,
+                      'reason': _reasonController.text.trim(),
+                      'additionalNotes': _notesController.text.trim(),
+                    });
+                  }
+                },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                )
+              : Text('Request Reschedule', style: GoogleFonts.poppins()),
+        ),
+      ],
+    );
+  }
+}
+
+// Cancel Session Dialog
+
+class _CancelSessionDialog extends StatefulWidget {
+  @override
+  State<_CancelSessionDialog> createState() => _CancelSessionDialogState();
+}
+
+class _CancelSessionDialogState extends State<_CancelSessionDialog> {
+  final _reasonController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Cancel Session', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Are you sure you want to cancel this session? This action cannot be undone.',
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reasonController,
+            decoration: InputDecoration(
+              labelText: 'Reason (optional)',
+              hintText: 'Please provide a reason for cancellation',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            maxLines: 3,
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context, {'confirmed': false}),
+          child: Text('Keep Session', style: GoogleFonts.poppins()),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : () async {
+            setState(() => _isLoading = true);
+            await Future.delayed(const Duration(milliseconds: 300));
+            if (mounted) {
+              Navigator.pop(context, {
+                'confirmed': true,
+                'reason': _reasonController.text.trim(),
+              });
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                )
+              : Text('Cancel Session', style: GoogleFonts.poppins()),
+        ),
+      ],
     );
   }
 }

@@ -41,7 +41,11 @@ class SessionPaymentService {
             )
           ''')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final recurringData =
           session['recurring_sessions'] as Map<String, dynamic>;
@@ -75,7 +79,11 @@ class SessionPaymentService {
           .from('session_payments')
           .insert(paymentData)
           .select('id')
-          .single();
+          .maybeSingle();
+      
+      if (paymentResponse == null) {
+        throw Exception('Failed to create session payment');
+      }
 
       final paymentId = paymentResponse['id'] as String;
 
@@ -174,7 +182,11 @@ class SessionPaymentService {
             .from('session_payments')
             .select('session_fee, payment_status')
             .eq('session_id', sessionId)
-            .single();
+            .maybeSingle();
+
+        if (newPayment == null) {
+          throw Exception('Payment not found for session: $sessionId');
+        }
 
         if (newPayment['payment_status'] != 'unpaid') {
           throw Exception('Payment already processed');
@@ -190,7 +202,11 @@ class SessionPaymentService {
           .from('session_payments')
           .select('id, session_fee')
           .eq('session_id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (finalPayment == null) {
+        throw Exception('Payment not found for session: $sessionId');
+      }
 
       final sessionFee = (finalPayment['session_fee'] as num).toDouble();
       final amount = sessionFee.toInt();
@@ -202,7 +218,11 @@ class SessionPaymentService {
               .from('individual_sessions')
               .select('learner_id, parent_id')
               .eq('id', sessionId)
-              .single());
+              .maybeSingle());
+      
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final isStudent = session['learner_id'] == userId;
       final isParent = session['parent_id'] == userId;
@@ -348,7 +368,11 @@ class SessionPaymentService {
           .from('session_payments')
           .select('id, session_fee, fapshi_trans_id, payment_status')
           .eq('session_id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (payment == null) {
+        throw Exception('Payment not found for session: $sessionId');
+      }
 
       if (payment['payment_status'] != 'paid') {
         throw Exception('Cannot refund: Payment not confirmed');
@@ -677,7 +701,11 @@ class SessionPaymentService {
           .from('individual_sessions')
           .select('learner_id, parent_id')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final studentId = session['learner_id'] ?? session['parent_id'];
       if (studentId != null) {
@@ -707,7 +735,11 @@ class SessionPaymentService {
           .from('individual_sessions')
           .select('learner_id, parent_id')
           .eq('id', sessionId)
-          .single();
+          .maybeSingle();
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
 
       final studentId = session['learner_id'] ?? session['parent_id'];
       if (studentId != null) {

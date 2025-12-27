@@ -6,5 +6,10 @@ void registerYouTubeIframe(String viewType, String videoId) {
   // No-op on non-web platforms
 }
 
+/// Stub function - does nothing on non-web platforms
+void pauseYouTubeVideo(String videoId) {
+  // No-op on non-web platforms
+}
+
 
 

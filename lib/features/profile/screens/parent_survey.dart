@@ -2969,9 +2969,20 @@ No direct payments should be made to tutors outside the platform.''';
         ),
       );
 
-      // Get current user
-      final userId = SupabaseService.client.auth.currentUser?.id;
-      if (userId == null) throw Exception('User not authenticated');
+      // Get current user and verify session is valid
+      final user = SupabaseService.client.auth.currentUser;
+      final session = SupabaseService.client.auth.currentSession;
+      
+      if (user == null || session == null) {
+        // Session is invalid - redirect to login
+        if (mounted) {
+          Navigator.of(context).pop(); // Close loading dialog
+          Navigator.of(context).pushReplacementNamed('/auth-method-selection');
+        }
+        throw Exception('User not authenticated. Please log in again.');
+      }
+      
+      final userId = user.id;
 
       // Prepare survey data to save to parent_profiles
       final surveyData = <String, dynamic>{
@@ -3040,9 +3051,9 @@ No direct payments should be made to tutors outside the platform.''';
           .from('profiles')
           .select('full_name')
           .eq('id', userId)
-          .single();
+          .maybeSingle();
 
-      final userName = userProfile['full_name'] as String? ?? 'Parent';
+      final userName = userProfile?['full_name'] as String? ?? 'Parent';
 
       // Notify admins about survey completion
       try {

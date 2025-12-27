@@ -323,14 +323,15 @@ class PricingService {
     final hourlyRateRaw = tutorData['hourly_rate'];
     final perSessionRate = tutorData['per_session_rate']?.toDouble();
     
-    // DEBUG: Print raw pricing data
-    print('💰 [PRICING_SERVICE] Tutor: $tutorName');
-    print('   - effectiveRateFromService: $effectiveRateFromService');
-    print('   - discounted_price: $discountedPrice');
-    print('   - base_session_price: $baseSessionPrice');
-    print('   - admin_price_override: $adminPriceOverride');
-    print('   - hourly_rate (raw): $hourlyRateRaw');
-    print('   - per_session_rate: $perSessionRate');
+    // DEBUG: Log raw pricing data (debug mode only)
+    LogService.debug('Pricing Service - Tutor: $tutorName', {
+      'effectiveRateFromService': effectiveRateFromService,
+      'discounted_price': discountedPrice,
+      'base_session_price': baseSessionPrice,
+      'admin_price_override': adminPriceOverride,
+      'hourly_rate': hourlyRateRaw,
+      'per_session_rate': perSessionRate,
+    });
     
     // Check if tutor has discount (needed for both paths)
     final discountPercent = (tutorData['discount_percent'] ?? 0.0).toDouble();
@@ -341,7 +342,7 @@ class PricingService {
     double effectiveBaseRate;
     if (effectiveRateFromService != null && effectiveRateFromService > 0 && effectiveRateFromService <= 50000) {
       effectiveBaseRate = effectiveRateFromService;
-      print('   ✅ Using effectiveRateFromService: $effectiveBaseRate');
+      LogService.debug('Using effectiveRateFromService', effectiveBaseRate);
     } else {
       // Validate and sanitize hourly_rate (prevent very large numbers)
       double hourlyRate = 3000.0; // Default fallback
@@ -351,29 +352,29 @@ class PricingService {
         if (hourlyRateValue != null && hourlyRateValue >= 1000 && hourlyRateValue <= 50000) {
           hourlyRate = hourlyRateValue;
         } else {
-          print('   ⚠️ hourly_rate invalid: $hourlyRateValue (using default 3000)');
+          LogService.warning('💰 [Pricing] hourly_rate invalid: $hourlyRateValue (using default 3000)');
         }
       }
-      print('   - hourly_rate (validated): $hourlyRate');
+      LogService.debug('💰 [Pricing] hourly_rate (validated): $hourlyRate');
       
       // Determine effective base rate (priority order)
       // Validate each rate to prevent very large numbers (max 50000 XAF per session)
       if (discountedPrice != null && discountedPrice > 0 && discountedPrice <= 50000 && hasDiscount) {
         // Use discounted price if available and valid
         effectiveBaseRate = discountedPrice;
-        print('   ✅ Using discounted_price: $effectiveBaseRate');
+        LogService.debug('💰 [Pricing] Using discounted_price: $effectiveBaseRate');
       } else if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
         effectiveBaseRate = baseSessionPrice;
-        print('   ✅ Using base_session_price: $effectiveBaseRate');
+        LogService.debug('💰 [Pricing] Using base_session_price: $effectiveBaseRate');
       } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
         effectiveBaseRate = adminPriceOverride;
-        print('   ✅ Using admin_price_override: $effectiveBaseRate');
+        LogService.debug('💰 [Pricing] Using admin_price_override: $effectiveBaseRate');
       } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
         effectiveBaseRate = perSessionRate;
-        print('   ✅ Using per_session_rate: $effectiveBaseRate');
+        LogService.debug('💰 [Pricing] Using per_session_rate: $effectiveBaseRate');
       } else {
         effectiveBaseRate = hourlyRate;
-        print('   ✅ Using hourly_rate (fallback): $effectiveBaseRate');
+        LogService.debug('💰 [Pricing] Using hourly_rate (fallback): $effectiveBaseRate');
       }
     }
     
@@ -382,15 +383,17 @@ class PricingService {
     final adminApprovedRating = (tutorData['admin_approved_rating'] as num?)?.toDouble();
     final calculatedRating = (tutorData['rating'] as num?)?.toDouble() ?? 0.0;
     
-    print('   - total_reviews: $totalReviews');
-    print('   - admin_approved_rating: $adminApprovedRating');
-    print('   - calculated_rating: $calculatedRating');
+    LogService.debug('💰 [Pricing] Rating details', {
+      'total_reviews': totalReviews,
+      'admin_approved_rating': adminApprovedRating,
+      'calculated_rating': calculatedRating,
+    });
     
     final rating = (totalReviews < 3 && adminApprovedRating != null)
         ? adminApprovedRating
         : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 4.0));
     
-    print('   - Final rating used: $rating');
+    LogService.debug('💰 [Pricing] Final rating used: $rating');
     
     final qualification = tutorData['tutor_qualification'] ?? 'Professional';
     
@@ -417,8 +420,11 @@ class PricingService {
       hasPrepSkulCertification: tutorData['prepskul_certified'] ?? false,
     );
     
-    print('   - Final perMonth: ${pricing['perMonth']} (${formatPrice(pricing['perMonth'] as double)})');
-    print('   - Final perSession: ${pricing['perSession']}');
+    LogService.debug('💰 [Pricing] Final pricing', {
+      'perMonth': pricing['perMonth'],
+      'perMonthFormatted': formatPrice(pricing['perMonth'] as double),
+      'perSession': pricing['perSession'],
+    });
 
     // Add discount information if available
     if (hasDiscount) {

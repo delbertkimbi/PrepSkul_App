@@ -213,7 +213,10 @@ class LocationCheckInService {
               'updated_at': DateTime.now().toIso8601String(),
             })
             .select()
-            .single();
+            .maybeSingle();
+        if (newRecord == null) {
+          throw Exception('Failed to create attendance record');
+        }
         attendanceId = newRecord['id'] as String;
       } else {
         // Update existing attendance record
@@ -303,4 +306,3 @@ class LocationCheckInService {
     return locationString;
   }
 }
-

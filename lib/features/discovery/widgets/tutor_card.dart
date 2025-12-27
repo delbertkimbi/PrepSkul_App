@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/pricing_service.dart';
+import '../../../core/services/log_service.dart';
+import '../../../core/utils/text_formatter.dart';
 import '../screens/tutor_detail_screen.dart';
 
 class TutorCard extends StatelessWidget {
@@ -24,27 +26,23 @@ class TutorCard extends StatelessWidget {
     final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     final adminApprovedRating = (tutor['admin_approved_rating'] as num?)?.toDouble();
     
-    // DEBUG: Print values being used
-    print('📊 [TUTOR_CARD] Name: $name');
-    print('   - rating (from service): $rating');
-    print('   - total_reviews (from service): $totalReviews');
-    print('   - admin_approved_rating (raw): $adminApprovedRating');
+    // DEBUG: Log values being used (debug mode only)
+    LogService.debug('Tutor Card - Name: $name', {
+      'rating': rating,
+      'total_reviews': totalReviews,
+      'admin_approved_rating': adminApprovedRating,
+    });
 
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
     
-    // Remove "Hello!" from bio if it starts with it (for cards)
-    String displayBio = bio;
-    if (displayBio.toLowerCase().startsWith('hello!')) {
-      displayBio = displayBio.substring(6).trim();
-      // Remove "I am" if it follows
-      if (displayBio.toLowerCase().startsWith('i am')) {
-        displayBio = displayBio.substring(4).trim();
-      }
-    }
+    // Clean bio text for card display
+    final displayBio = TextFormatter.cleanBio(bio);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+    // Wrap in RepaintBoundary to prevent unnecessary repaints when scrolling
+    return RepaintBoundary(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: AppTheme.surfaceColor, // Use theme surface color for neumorphic
         borderRadius: BorderRadius.circular(16),
@@ -134,7 +132,8 @@ class TutorCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              if (tutor['is_verified'] == true)
+                              // Show blue tick for approved tutors
+                              if (tutor['status'] == 'approved' || tutor['is_verified'] == true)
                                 Icon(
                                   Icons.verified,
                                   size: 18,
@@ -259,6 +258,7 @@ class TutorCard extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -269,13 +269,15 @@ class TutorCard extends StatelessWidget {
     final monthlyAmount = pricing['perMonth'] as double;
     final hasDiscount = pricing['hasDiscount'] as bool? ?? false;
     
-    // DEBUG: Print pricing values
-    print('💰 [TUTOR_CARD] Name: $name');
-    print('   - base_session_price: ${tutor['base_session_price']}');
-    print('   - admin_price_override: ${tutor['admin_price_override']}');
-    print('   - hourly_rate: ${tutor['hourly_rate']}');
-    print('   - per_session_rate: ${tutor['per_session_rate']}');
-    print('   - Final monthlyAmount: $monthlyAmount (${PricingService.formatPrice(monthlyAmount)})');
+    // DEBUG: Log pricing values (debug mode only)
+    LogService.debug('Tutor Card Pricing - Name: $name', {
+      'base_session_price': tutor['base_session_price'],
+      'admin_price_override': tutor['admin_price_override'],
+      'hourly_rate': tutor['hourly_rate'],
+      'per_session_rate': tutor['per_session_rate'],
+      'final_monthly_amount': monthlyAmount,
+      'formatted': PricingService.formatPrice(monthlyAmount),
+    });
 
     // On cards, show only discount price if available
     if (hasDiscount) {
@@ -452,4 +454,3 @@ class TutorCard extends StatelessWidget {
     );
   }
 }
-

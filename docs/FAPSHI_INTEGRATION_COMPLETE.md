@@ -182,8 +182,8 @@
 ```env
 # Fapshi Configuration
 FAPSHI_ENVIRONMENT=sandbox  # or 'live'
-FAPSHI_SANDBOX_API_USER=4a148e87-e185-437d-a641-b465e2bd8d17
-FAPSHI_SANDBOX_API_KEY=FAK_TEST_0293bda0f3ef142be85b
+FAPSHI_SANDBOX_API_USER=your-fapshi-sandbox-api-user-here
+FAPSHI_SANDBOX_API_KEY=your-fapshi-sandbox-api-key-here
 FAPSHI_COLLECTION_API_USER_LIVE=<your-live-api-user>
 FAPSHI_COLLECTION_API_KEY_LIVE=<your-live-api-key>
 ```

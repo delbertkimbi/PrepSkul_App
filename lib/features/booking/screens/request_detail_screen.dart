@@ -6,7 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
-import 'package:prepskul/features/booking/services/trial_session_service.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
@@ -1303,16 +1303,358 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Widget _buildTutorRequestDetail(BuildContext context, TutorRequest request) {
-    // TODO: Build tutor request detail view
+    final status = request.status;
+    final statusColor = _getCustomRequestStatusColor(status);
+    final statusIcon = _getCustomRequestStatusIcon(status);
+
     return Scaffold(
+      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
-        title: Text('Custom Request Details'),
         backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Custom Request',
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
+          ),
+        ),
+        centerTitle: false,
       ),
-      body: Center(
-        child: Text('Custom request detail view coming soon'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: statusColor.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(statusIcon, color: statusColor, size: 24),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Status: ${request.statusLabel}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: statusColor,
+                          ),
+                        ),
+                        if (request.matchedAt != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'Matched: ${_formatDate(request.matchedAt!)}',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Subjects & Education Level
+            _buildSectionTitle('Subjects & Level'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('Subjects', request.formattedSubjects),
+                  _buildInfoRow('Education Level', request.educationLevel),
+                  if (request.specificRequirements != null && request.specificRequirements!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    _buildInfoRow('Requirements', request.specificRequirements!),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Teaching Preferences
+            _buildSectionTitle('Teaching Preferences'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('Mode', request.teachingMode),
+                  if (request.tutorGender != null) ...[
+                    const SizedBox(height: 8),
+                    _buildInfoRow('Gender Preference', request.tutorGender!),
+                  ],
+                  if (request.tutorQualification != null) ...[
+                    const SizedBox(height: 8),
+                    _buildInfoRow('Qualification', request.tutorQualification!),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Budget
+            _buildSectionTitle('Budget'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primaryColor.withOpacity(0.05),
+                    AppTheme.primaryColor.withOpacity(0.02),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Budget Range',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                    ),
+                  ),
+                  Text(
+                    request.formattedBudget,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Schedule
+            _buildSectionTitle('Schedule'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildInfoRow('Days', request.formattedDays),
+                  _buildInfoRow('Time', request.preferredTime),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Location
+            _buildSectionTitle('Location'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on, color: AppTheme.primaryColor, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      request.location,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // Urgency
+            if (request.urgency != 'normal') ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: request.urgency == 'urgent' 
+                      ? Colors.orange.withOpacity(0.1)
+                      : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: request.urgency == 'urgent'
+                        ? Colors.orange.withOpacity(0.3)
+                        : Colors.blue.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      request.urgency == 'urgent' ? Icons.priority_high : Icons.schedule,
+                      color: request.urgency == 'urgent' ? Colors.orange : Colors.blue,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Urgency: ${request.urgencyLabel}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: request.urgency == 'urgent' ? Colors.orange[900] : Colors.blue[900],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // Additional Notes
+            if (request.additionalNotes != null && request.additionalNotes!.isNotEmpty) ...[
+              _buildSectionTitle('Additional Notes'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Text(
+                  request.additionalNotes!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textDark,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // Admin Notes (if available)
+            if (request.adminNotes != null && request.adminNotes!.isNotEmpty) ...[
+              _buildSectionTitle('Admin Notes'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Text(
+                  request.adminNotes!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.blue[900],
+                    height: 1.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // Request Info
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Requested on ${_formatDate(request.createdAt)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
+        ),
       ),
     );
+  }
+
+  Color _getCustomRequestStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.orange;
+      case 'in_progress':
+        return Colors.blue;
+      case 'matched':
+        return Colors.green;
+      case 'closed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getCustomRequestStatusIcon(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Icons.access_time;
+      case 'in_progress':
+        return Icons.work_outline;
+      case 'matched':
+        return Icons.check_circle;
+      case 'closed':
+        return Icons.close;
+      default:
+        return Icons.info;
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   Widget _buildBookingRequestDetail(BuildContext context, Map<String, dynamic> request) {
@@ -1895,4 +2237,3 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
   
   
-
