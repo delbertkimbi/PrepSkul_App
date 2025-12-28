@@ -1,6 +1,10 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, kReleaseMode;
 import 'package:prepskul/core/services/log_service.dart';
+
+// Conditional import for web environment variable reading
+import 'web_env_helper_stub.dart'
+    if (dart.library.html) 'web_env_helper.dart';
 
 /// Centralized App Configuration
 /// 
@@ -129,7 +133,21 @@ class AppConfig {
   // ============================================
   
   /// Supabase URL
+  /// Tries multiple variable name patterns for compatibility
   static String get supabaseUrl {
+    // Try Flutter-specific names first (SUPABASE_URL_PROD/DEV)
+    final prodUrl = _safeEnv('SUPABASE_URL_PROD', '');
+    if (prodUrl.isNotEmpty) return prodUrl;
+    
+    final devUrl = _safeEnv('SUPABASE_URL_DEV', '');
+    if (devUrl.isNotEmpty) return devUrl;
+    
+    // Fallback to Next.js variable names (NEXT_PUBLIC_SUPABASE_URL)
+    // This allows sharing the same Vercel environment variables
+    final nextJsUrl = _safeEnv('NEXT_PUBLIC_SUPABASE_URL', '');
+    if (nextJsUrl.isNotEmpty) return nextJsUrl;
+    
+    // If isProd is true, prefer PROD key even if empty (for error messages)
     if (isProd) {
       return _safeEnv('SUPABASE_URL_PROD', '');
     } else {
@@ -138,7 +156,21 @@ class AppConfig {
   }
   
   /// Supabase Anon Key
+  /// Tries multiple variable name patterns for compatibility
   static String get supabaseAnonKey {
+    // Try Flutter-specific names first (SUPABASE_ANON_KEY_PROD/DEV)
+    final prodKey = _safeEnv('SUPABASE_ANON_KEY_PROD', '');
+    if (prodKey.isNotEmpty) return prodKey;
+    
+    final devKey = _safeEnv('SUPABASE_ANON_KEY_DEV', '');
+    if (devKey.isNotEmpty) return devKey;
+    
+    // Fallback to Next.js variable names (NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    // This allows sharing the same Vercel environment variables
+    final nextJsKey = _safeEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', '');
+    if (nextJsKey.isNotEmpty) return nextJsKey;
+    
+    // If isProd is true, prefer PROD key even if empty (for error messages)
     if (isProd) {
       return _safeEnv('SUPABASE_ANON_KEY_PROD', '');
     } else {
@@ -297,15 +329,29 @@ class AppConfig {
   // ============================================
   
   /// Safely read environment variable with fallback
+  /// Tries dotenv first, then window.env (web only), then fallback
   static String _safeEnv(String key, String fallback) {
     try {
+      // First, try dotenv
       final value = dotenv.env[key];
-      if (value == null || value.isEmpty) return fallback;
-      return value;
+      if (value != null && value.isNotEmpty) return value;
     } catch (_) {
-      // dotenv not initialized
-      return fallback;
+      // dotenv not initialized, continue to window.env
     }
+    
+    // On web, try window.env as fallback (for production builds)
+    if (kIsWeb) {
+      try {
+        final windowValue = getWindowEnv(key);
+        if (windowValue != null && windowValue.isNotEmpty) {
+          return windowValue;
+        }
+      } catch (_) {
+        // window.env not available, continue to fallback
+      }
+    }
+    
+    return fallback;
   }
   
   /// Safely read boolean environment variable

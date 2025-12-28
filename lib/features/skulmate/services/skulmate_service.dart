@@ -60,80 +60,40 @@ class SkulMateService {
   }
 
   /// Generate game from file URL or text
+  /// Uses HTTP API endpoint (Next.js API route)
   static Future<GameModel> generateGame({
     String? fileUrl,
+    String? imageUrl,
     String? text,
     String? childId,
     String gameType = 'auto',
+    String? difficulty,
+    String? topic,
+    int? numQuestions,
   }) async {
-    try {
-      LogService.info('🎮 [skulMate] Generating game...');
-
-      final userId = SupabaseService.client.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final requestBody = {
-        if (fileUrl != null) 'fileUrl': fileUrl,
-        if (text != null) 'text': text,
-        'userId': userId,
-        if (childId != null) 'childId': childId,
-        'gameType': gameType,
-      };
-
-      LogService.debug('🎮 [skulMate] Request: ${jsonEncode(requestBody)}');
-
-      final response = await SupabaseService.client.functions.invoke(
-        'skulmate-generate',
-        body: requestBody,
-      );
-
-      if (response.status != 200) {
-        final error = response.data?['error'] ?? 'Unknown error';
-        throw Exception('Failed to generate game: $error');
-      }
-
-      final data = response.data as Map<String, dynamic>;
-      final gameData = data['game'] as Map<String, dynamic>;
-
-      // Convert API response to GameModel
-      final game = GameModel(
-        id: gameData['id'] as String? ?? '',
-        userId: userId,
-        childId: childId,
-        title: gameData['title'] as String,
-        gameType: GameType.fromString(gameData['gameType'] as String),
-        documentUrl: fileUrl,
-        sourceType: fileUrl != null
-            ? (fileUrl.endsWith('.pdf') ? 'pdf' : 'image')
-            : 'text',
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        items: (gameData['items'] as List<dynamic>?)
-                ?.map((item) =>
-                    GameItem.fromJson(item as Map<String, dynamic>))
-                .toList() ??
-            [],
-        metadata: GameMetadata.fromJson(
-          gameData['metadata'] as Map<String, dynamic>? ?? {},
-        ),
-      );
-
-      LogService.success('🎮 [skulMate] Game generated: ${game.title}');
-      return game;
-    } catch (e) {
-      LogService.error('🎮 [skulMate] Error generating game: $e');
-      rethrow;
-    }
+    // Use HTTP endpoint directly (Supabase function doesn't exist)
+    return await generateGameHttp(
+      fileUrl: fileUrl,
+      imageUrl: imageUrl,
+      text: text,
+      childId: childId,
+      gameType: gameType,
+      difficulty: difficulty,
+      topic: topic,
+      numQuestions: numQuestions,
+    );
   }
 
-  /// Generate game using HTTP directly (fallback if Supabase Functions not available)
+  /// Generate game using HTTP directly (primary method)
   static Future<GameModel> generateGameHttp({
     String? fileUrl,
+    String? imageUrl,
     String? text,
     String? childId,
     String gameType = 'auto',
+    String? difficulty,
+    String? topic,
+    int? numQuestions,
   }) async {
     try {
       LogService.info('🎮 [skulMate] Generating game via HTTP...');
@@ -143,12 +103,17 @@ class SkulMateService {
         throw Exception('User not authenticated');
       }
 
+      // API expects fileUrl or text, so send imageUrl as fileUrl if no fileUrl provided
       final requestBody = {
         if (fileUrl != null) 'fileUrl': fileUrl,
+        if (imageUrl != null && fileUrl == null) 'fileUrl': imageUrl, // Send imageUrl as fileUrl
         if (text != null) 'text': text,
         'userId': userId,
         if (childId != null) 'childId': childId,
         'gameType': gameType,
+        if (difficulty != null) 'difficulty': difficulty,
+        if (topic != null && topic.isNotEmpty) 'topic': topic,
+        if (numQuestions != null) 'numQuestions': numQuestions,
       };
 
       final session = SupabaseService.client.auth.currentSession;
@@ -357,10 +322,10 @@ class SkulMateService {
           childId: childId,
           title: gameData['title'] as String,
           gameType: GameType.fromString(gameData['gameType'] as String),
-          documentUrl: fileUrl,
+          documentUrl: fileUrl ?? imageUrl,
           sourceType: fileUrl != null
               ? (fileUrl.endsWith('.pdf') ? 'pdf' : 'image')
-              : 'text',
+              : (imageUrl != null ? 'image' : 'text'),
           createdAt: DateTime.now(),
           updatedAt: DateTime.now(),
           items: (gameData['items'] as List<dynamic>?)

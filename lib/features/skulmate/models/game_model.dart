@@ -273,12 +273,14 @@ class GameMetadata {
   final String generatedAt;
   final String difficulty;
   final int totalItems;
+  final String? topic;
 
   GameMetadata({
     required this.source,
     required this.generatedAt,
     required this.difficulty,
     required this.totalItems,
+    this.topic,
   });
 
   factory GameMetadata.fromJson(Map<String, dynamic> json) {
@@ -287,6 +289,7 @@ class GameMetadata {
       generatedAt: json['generatedAt'] ?? json['generated_at'] as String? ?? '',
       difficulty: json['difficulty'] as String? ?? 'medium',
       totalItems: json['totalItems'] ?? json['total_items'] as int? ?? 0,
+      topic: json['topic'] as String?,
     );
   }
 
@@ -296,6 +299,7 @@ class GameMetadata {
       'generatedAt': generatedAt,
       'difficulty': difficulty,
       'totalItems': totalItems,
+      if (topic != null) 'topic': topic,
     };
   }
 }

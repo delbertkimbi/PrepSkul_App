@@ -38,7 +38,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:prepskul/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/widgets/initial_loading_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
@@ -119,23 +119,25 @@ void main() async {
     final supabaseAnonKey = AppConfig.supabaseAnonKey;
     
     if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-      // On web, try to get from window.env if available
+      LogService.error('❌ Supabase credentials not found');
+      LogService.error('   Environment: ${AppConfig.environment}');
+      LogService.error('   Looking for: ${AppConfig.isProd ? "PROD" : "DEV"} credentials');
       if (kIsWeb) {
-        try {
-          // Try to get from window.env (set at build time)
-          // This is a fallback for web where .env files don't work the same way
-          LogService.warning('Supabase credentials not found in .env file');
-          LogService.info('Web: Make sure to set environment variables at build time');
-          LogService.info('For local development, you may need to set them in index.html or via build config');
-        } catch (e) {
-          LogService.debug('Could not access window.env: $e');
-        }
+        LogService.warning('Tried: 1) assets/.env file, 2) window.env');
+        LogService.info('For web production, set environment variables in:');
+        LogService.info('  - Vercel Dashboard → Environment Variables');
+        LogService.info('Required: ${AppConfig.isProd ? "SUPABASE_URL_PROD, SUPABASE_ANON_KEY_PROD" : "SUPABASE_URL_DEV, SUPABASE_ANON_KEY_DEV"}');
+        LogService.info('Also set: ENVIRONMENT=${AppConfig.isProd ? "production" : "development"}');
+        LogService.info('Build command should include: node scripts/inject-env.js');
+      } else {
+        LogService.warning('Tried: assets/.env file');
+        LogService.info('Make sure .env is in assets/ folder and added to pubspec.yaml');
       }
       
       // Throw error - Supabase is critical and cannot work without credentials
       final errorMsg = kIsWeb
-          ? 'Supabase credentials not found. For web, set SUPABASE_URL_DEV/PROD and SUPABASE_ANON_KEY_DEV/PROD as build-time environment variables or in index.html.'
-          : 'Supabase credentials not found in environment variables. Please set SUPABASE_URL_DEV/PROD and SUPABASE_ANON_KEY_DEV/PROD in .env file.';
+          ? 'Supabase credentials not found. For web production, set ${AppConfig.isProd ? "SUPABASE_URL_PROD and SUPABASE_ANON_KEY_PROD" : "SUPABASE_URL_DEV and SUPABASE_ANON_KEY_DEV"} in Vercel environment variables. Also set ENVIRONMENT=${AppConfig.isProd ? "production" : "development"}. Ensure build command includes: node scripts/inject-env.js'
+          : 'Supabase credentials not found. Please set SUPABASE_URL_DEV/PROD and SUPABASE_ANON_KEY_DEV/PROD in assets/.env file.';
       
       throw Exception(errorMsg);
     }

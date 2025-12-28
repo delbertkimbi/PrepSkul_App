@@ -233,29 +233,27 @@ class _QuizGameScreenState extends State<QuizGameScreen>
               ),
             ),
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Score: $_score/${widget.game.items.length}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                if (_xpEarned > 0)
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppTheme.primaryColor, width: 1.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    '$_xpEarned XP',
+                    '$_score/${widget.game.items.length}',
                     style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.textMedium,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primaryColor,
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -279,13 +277,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'Question ${_currentQuestionIndex + 1} of ${widget.game.items.length}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: AppTheme.textMedium,
-                    ),
-                  ),
+                  // Question number removed - shown in progress bar at top
                   const SizedBox(height: 20),
                   Container(
                     padding: const EdgeInsets.all(20),
@@ -378,11 +370,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
               ),
             ),
           ),
-          if (_character != null)
-            SkulMateCharacterWidget(
-              character: _character,
-              size: 80,
-            ),
+          // Character widget removed - was too prominent
         ],
       ),
     );

@@ -73,6 +73,22 @@ class _GameResultsScreenState extends State<GameResultsScreen>
     return '${secs}s';
   }
 
+  String _getScoreMessage(int percentage) {
+    if (widget.isPerfectScore || percentage == 100) {
+      return 'Perfect Score! 🌟';
+    } else if (percentage >= 80) {
+      return 'Excellent! 🎉';
+    } else if (percentage >= 60) {
+      return 'Good Job! 👍';
+    } else if (percentage >= 40) {
+      return 'Keep Practicing! 💪';
+    } else if (percentage > 0) {
+      return 'Try Again! 🔄';
+    } else {
+      return 'Don\'t Give Up! 💪';
+    }
+  }
+
   Future<void> _shareResults() async {
     try {
       final percentage = ((widget.score / widget.totalQuestions) * 100).round();
@@ -198,7 +214,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  widget.isPerfectScore ? 'Perfect Score! 🌟' : 'Great Job!',
+                  _getScoreMessage(percentage),
                   style: GoogleFonts.poppins(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
