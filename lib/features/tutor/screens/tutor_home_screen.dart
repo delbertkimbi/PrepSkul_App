@@ -36,6 +36,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   String? _approvalStatus; // 'pending', 'approved', 'rejected'
   String? _adminNotes; // Admin review notes (rejection reason, etc.)
   bool _hasDismissedApprovalCard = false; // Track if user dismissed approval card
+  bool _hasPendingUpdate = false; // Track if approved tutor has pending update
   bool _onboardingSkipped = false;
   bool _onboardingComplete = false;
   bool _hasSavedProgress = false; // Track if user has any saved progress
@@ -193,6 +194,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Check if approval status changed (reset dismissal ONLY if status actually changed from non-approved to approved)
       final newApprovalStatus = tutorData?['status'] as String?;
       final adminNotes = tutorData?['admin_review_notes'] as String?;
+      final hasPendingUpdate = tutorData?['has_pending_update'] as bool? ?? false;
       
       // Check dismissal status from database (cross-device)
       final tutorProfileCheck = await SupabaseService.client
@@ -248,6 +250,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _completionStatus = status;
         _approvalStatus = newApprovalStatus;
         _adminNotes = adminNotes;
+        _hasPendingUpdate = hasPendingUpdate;
         _onboardingSkipped = onboardingSkipped;
         _onboardingComplete = onboardingComplete;
         _hasSavedProgress = hasProgress;
@@ -518,10 +521,10 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
                   // Approval Status Card
                   // Show if:
-                  // 1. Status is 'approved' AND not dismissed, OR
+                  // 1. Status is 'approved' AND not dismissed (don't show if pending update - notification sent instead), OR
                   // 2. Profile is complete AND status exists (and not approved), OR
                   // 3. Status is 'needs_improvement', 'rejected', 'blocked', or 'suspended'
-                  if ((_approvalStatus == 'approved' && !_hasDismissedApprovalCard) ||
+                  if ((_approvalStatus == 'approved' && !_hasDismissedApprovalCard && !_hasPendingUpdate) ||
                       (_completionStatus?.isComplete == true &&
                           _approvalStatus != null &&
                           _approvalStatus != 'approved') ||
@@ -531,7 +534,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                           _approvalStatus == 'suspended'))
                     _buildApprovalStatusCard(),
 
-                  if ((_approvalStatus == 'approved' && !_hasDismissedApprovalCard) ||
+                  if ((_approvalStatus == 'approved' && !_hasDismissedApprovalCard && !_hasPendingUpdate) ||
                       (_completionStatus?.isComplete == true &&
                           _approvalStatus != null &&
                           _approvalStatus != 'approved') ||
@@ -542,7 +545,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                     const SizedBox(height: 16),
 
                   // PrepSkul Wallet Section
-                  // Only show after user has dismissed the approval alert
+                  // Show wallet for approved tutors (even with pending update)
                   if (_approvalStatus == 'approved' && _hasDismissedApprovalCard) ...[
                     _buildWalletSection(),
                     const SizedBox(height: 24),
@@ -687,6 +690,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       );
     }
 
+    // Don't show pending update card - notification will be sent instead
     if (_approvalStatus == 'approved') {
       // Approved - show compact success card with dismiss button
       return Container(

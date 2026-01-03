@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
@@ -8,7 +9,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 /// Notification Item Widget
 /// 
 /// Displays a single notification with icon, title, message, timestamp, and actions
-class NotificationItem extends StatelessWidget {
+/// Timestamps update automatically every minute
+class NotificationItem extends StatefulWidget {
   final Map<String, dynamic> notification;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
@@ -19,6 +21,37 @@ class NotificationItem extends StatelessWidget {
     this.onTap,
     this.onDelete,
   });
+
+  @override
+  State<NotificationItem> createState() => _NotificationItemState();
+}
+
+class _NotificationItemState extends State<NotificationItem> {
+  Timer? _timer;
+  
+  @override
+  void initState() {
+    super.initState();
+    // Update timestamp more frequently for new notifications (every 10 seconds)
+    // Then switch to every minute for older notifications
+    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted) {
+        final createdAt = DateTime.tryParse(widget.notification['created_at'] as String? ?? '');
+        if (createdAt != null) {
+          final difference = DateTime.now().difference(createdAt);
+          // For notifications less than 1 hour old, update every 10 seconds
+          // For older notifications, update every minute (but we'll keep 10s for simplicity)
+          setState(() {});
+        }
+      }
+    });
+  }
+  
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   String _getTimeAgo(DateTime dateTime) {
     final now = DateTime.now();
@@ -209,7 +242,7 @@ class NotificationItem extends StatelessWidget {
     }
     
     // For specific notification types, enhance the message
-    final type = notification['type'] as String?;
+    final type = widget.notification['type'] as String?;
     
     // Trial-related notifications
     if (type == 'trial_accepted' && tutorName != null) {
@@ -247,22 +280,22 @@ class NotificationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isRead = notification['is_read'] == true;
-    final icon = notification['icon'] as String? ?? _getIcon(notification['type'] as String?);
-    final title = notification['title'] as String? ?? 'Notification';
-    final message = notification['message'] as String? ?? '';
-    final createdAt = DateTime.parse(notification['created_at'] as String);
+    final isRead = widget.notification['is_read'] == true;
+    final icon = widget.notification['icon'] as String? ?? _getIcon(widget.notification['type'] as String?);
+    final title = widget.notification['title'] as String? ?? 'Notification';
+    final message = widget.notification['message'] as String? ?? '';
+    final createdAt = DateTime.parse(widget.notification['created_at'] as String);
     final timeAgo = _getTimeAgo(createdAt);
-    final priority = notification['priority'] as String? ?? 'normal';
-    final actionText = notification['action_text'] as String?;
+    final priority = widget.notification['priority'] as String? ?? 'normal';
+    final actionText = widget.notification['action_text'] as String?;
 
     // Extract metadata for avatar
-    final metadata = notification['metadata'] as Map<String, dynamic>?;
+    final metadata = widget.notification['metadata'] as Map<String, dynamic>?;
     final senderAvatarUrl = metadata?['sender_avatar_url'] as String?;
     final senderInitials = metadata?['sender_initials'] as String?;
 
     return Dismissible(
-      key: Key(notification['id'] as String),
+      key: Key(widget.notification['id'] as String),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
@@ -277,15 +310,15 @@ class NotificationItem extends StatelessWidget {
         ),
       ),
       onDismissed: (direction) async {
-        await NotificationService.deleteNotification(notification['id'] as String);
-        onDelete?.call();
+        await NotificationService.deleteNotification(widget.notification['id'] as String);
+        widget.onDelete?.call();
       },
       child: GestureDetector(
         onTap: () {
           if (!isRead) {
-            NotificationService.markAsRead(notification['id'] as String);
+            NotificationService.markAsRead(widget.notification['id'] as String);
           }
-          onTap?.call();
+          widget.onTap?.call();
         },
         child: Container(
           padding: const EdgeInsets.all(16),

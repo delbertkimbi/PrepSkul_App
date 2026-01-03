@@ -215,12 +215,13 @@ class SessionRescheduleService {
             title: '📅 Session Reschedule Request',
             message: '$requesterName has requested to reschedule a session. Please review and respond.',
             priority: 'high',
-            actionUrl: '/sessions/$sessionId/reschedule',
+            actionUrl: '/sessions/${response['id']}/reschedule',
             actionText: 'Review Request',
             icon: '📅',
             metadata: {
               'session_id': sessionId,
               'reschedule_request_id': response['id'],
+              'session_type': sessionType,
               'requester_name': requesterName,
               'proposed_date': requestData['proposed_date'],
               'proposed_time': requestData['proposed_time'],
@@ -251,18 +252,10 @@ class SessionRescheduleService {
         throw Exception('User not authenticated');
       }
 
-      // Get reschedule request
+      // Get reschedule request (without join first to get session_type)
       final request = await _supabase
           .from('session_reschedule_requests')
-          .select('''
-            *,
-            individual_sessions!inner(
-              tutor_id,
-              learner_id,
-              parent_id,
-              status
-            )
-          ''')
+          .select('*')
           .eq('id', requestId)
           .maybeSingle();
 
@@ -274,7 +267,28 @@ class SessionRescheduleService {
         throw Exception('Reschedule request is not pending');
       }
 
-      final session = request['individual_sessions'] as Map<String, dynamic>;
+      // Get session details based on session_type
+      final sessionType = request['session_type'] as String;
+      final sessionId = request['session_id'] as String;
+      
+      Map<String, dynamic>? session;
+      if (sessionType == 'recurring') {
+        session = await _supabase
+            .from('individual_sessions')
+            .select('tutor_id, learner_id, parent_id, status')
+            .eq('id', sessionId)
+            .maybeSingle();
+      } else {
+        session = await _supabase
+            .from('trial_sessions')
+            .select('tutor_id, learner_id, parent_id, status')
+            .eq('id', sessionId)
+            .maybeSingle();
+      }
+
+      if (session == null) {
+        throw Exception('Session not found: $sessionId');
+      }
       
       // Determine approver type
       bool isTutor = session['tutor_id'] == userId;
@@ -431,13 +445,43 @@ class SessionRescheduleService {
           .eq('id', requestId);
 
       // Clear reschedule request from session
+      final tableName = sessionType == 'recurring' ? 'individual_sessions' : 'trial_sessions';
       await _supabase
-          .from('individual_sessions')
+          .from(tableName)
           .update({
             'reschedule_request_id': null,
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', request['session_id']);
+          .eq('id', sessionId);
+
+      // CRITICAL: If student rejects, cancel the session
+      // If tutor rejects, just reject the request (session remains)
+      if (isStudent) {
+        LogService.info('Student rejected reschedule request - cancelling session');
+        
+        // Cancel the session
+        if (sessionType == 'recurring') {
+          await _supabase
+              .from('individual_sessions')
+              .update({
+                'status': 'cancelled',
+                'cancellation_reason': 'Session cancelled due to reschedule request rejection',
+                'cancelled_at': DateTime.now().toIso8601String(),
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', sessionId);
+        } else {
+          // Trial session
+          await _supabase
+              .from('trial_sessions')
+              .update({
+                'status': 'cancelled',
+                'rejection_reason': 'Session cancelled due to reschedule request rejection',
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', sessionId);
+        }
+      }
 
       // Send notification to requester
       try {
@@ -450,19 +494,25 @@ class SessionRescheduleService {
 
         final rejecterName = rejecterProfile?['full_name'] as String? ?? 'User';
 
+        // If student rejected, notify tutor that session is cancelled
+        // If tutor rejected, notify student that request was rejected
+        final notificationMessage = isStudent
+            ? '$rejecterName has rejected your reschedule request. The session has been cancelled.${reason != null ? ' Reason: $reason' : ''}'
+            : '$rejecterName has rejected your reschedule request.${reason != null ? ' Reason: $reason' : ''}';
+        
         await _sendNotificationViaAPI(
           userId: requesterId,
-          type: 'session_reschedule_rejected',
-          title: '⚠️ Reschedule Request Rejected',
-          message: '$rejecterName has rejected your reschedule request.${reason != null ? ' Reason: $reason' : ''}',
-          priority: 'normal',
-          actionUrl: '/sessions/${request['session_id']}',
-          actionText: 'View Session',
-          icon: '⚠️',
+          type: isStudent ? 'session_cancelled' : 'session_reschedule_rejected',
+          title: isStudent ? '❌ Session Cancelled' : '⚠️ Reschedule Request Rejected',
+          message: notificationMessage,
+          priority: 'high',
+          icon: isStudent ? '❌' : '⚠️',
           metadata: {
             'session_id': request['session_id'],
+            'session_type': sessionType,
             'reschedule_request_id': requestId,
             'rejection_reason': reason,
+            'cancelled': isStudent,
           },
           sendEmail: true,
         );

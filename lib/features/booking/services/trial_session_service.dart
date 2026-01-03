@@ -37,6 +37,7 @@ class TrialSessionService {
     String? learnerLevel,
     double? overrideTrialFee, // Optional: Use this fee instead of fetching from DB (for discounts)
     String? rescheduleSessionId, // Optional: ID of the session being rescheduled
+    String? learnerId, // Optional: For parents, specify which learner (child) to book for
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -65,10 +66,12 @@ class TrialSessionService {
       );
 
       // Get user profile to determine if parent or student
+      // FIX: Use .limit(1) to handle potential duplicate profiles (from role switching issues)
       final userProfileResponse = await _supabase
           .from('profiles')
           .select('user_type')
           .eq('id', userId)
+          .limit(1)
           .maybeSingle();
       
       if (userProfileResponse == null) {
@@ -79,6 +82,20 @@ class TrialSessionService {
 
       final userType = userProfile['user_type'] as String;
       final isParent = userType == 'parent';
+
+      // FIX: For parents, determine the actual learner (child) ID
+      // If learnerId is provided, use it; otherwise, for parents, we need to handle this
+      String actualLearnerId = learnerId ?? userId;
+      
+      // If parent and no learnerId provided, check if parent has linked learners
+      // For now, if parent books, we'll use parent's ID as learner_id (parent can attend)
+      // TODO: In future, add UI for parents to select which child they're booking for
+      if (isParent && learnerId == null) {
+        // For now, allow parent to book for themselves (they can attend the session)
+        // This is a temporary solution until we add child selection UI
+        actualLearnerId = userId;
+        LogService.info('Parent booking trial session - using parent ID as learner_id (temporary)');
+      }
 
       // DEMO MODE FIX: If tutorId is not a valid UUID (e.g., "tutor_001"),
       // use the current user's ID as a placeholder for testing
@@ -93,12 +110,14 @@ class TrialSessionService {
       // Skip this check if we're rescheduling an existing session (rescheduleSessionId is provided)
       if (rescheduleSessionId == null) {
       // Check for pending, approved, or scheduled trials
+      // FIX: Add .limit(1) to prevent "multiple rows" error if duplicates exist
       final pendingTrials = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
           .eq('tutor_id', validTutorId)
           .eq('requester_id', userId)
           .eq('status', 'pending')
+          .limit(1)
           .maybeSingle();
 
       final approvedTrials = await _supabase
@@ -107,6 +126,7 @@ class TrialSessionService {
           .eq('tutor_id', validTutorId)
           .eq('requester_id', userId)
           .eq('status', 'approved')
+          .limit(1)
           .maybeSingle();
 
       final scheduledTrials = await _supabase
@@ -115,6 +135,7 @@ class TrialSessionService {
           .eq('tutor_id', validTutorId)
           .eq('requester_id', userId)
           .eq('status', 'scheduled')
+          .limit(1)
           .maybeSingle();
 
       Map<String, dynamic>? existingTrial;
@@ -200,9 +221,9 @@ class TrialSessionService {
       // Create trial session data
       final trialData = {
         'tutor_id': validTutorId,
-        'learner_id': userId,
+        'learner_id': actualLearnerId, // Use actual learner ID (child for parents, self for students)
         'parent_id': isParent ? userId : null,
-        'requester_id': userId,
+        'requester_id': userId, // Always the person making the request
         'subject': subject,
         'scheduled_date': scheduledDate.toIso8601String().split('T')[0],
         'scheduled_time': scheduledTime,
@@ -236,10 +257,12 @@ class TrialSessionService {
       final trialSession = TrialSession.fromJson(response);
 
       // Get student name for notification
+      // FIX: Use .limit(1) to handle potential duplicate profiles
       final studentProfile = await _supabase
           .from('profiles')
           .select('full_name, avatar_url')
           .eq('id', userId)
+          .limit(1)
           .maybeSingle();
 
       final studentName = studentProfile?['full_name'] as String? ?? 'Student';
@@ -286,10 +309,12 @@ class TrialSessionService {
         // Get tutor name
         String tutorName = 'Tutor';
         try {
+          // FIX: Use .limit(1) to handle potential duplicate profiles
           final tutorProfile = await _supabase
               .from('profiles')
               .select('full_name')
               .eq('id', validTutorId)
+              .limit(1)
               .maybeSingle();
           tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
         } catch (e) {
@@ -441,10 +466,12 @@ class TrialSessionService {
       final trialSession = TrialSession.fromJson(updated);
 
       // Get tutor name for notification
+      // FIX: Use .limit(1) to handle potential duplicate profiles
       final tutorProfile = await _supabase
           .from('profiles')
           .select('full_name')
           .eq('id', trialSession.tutorId)
+          .limit(1)
           .maybeSingle();
 
       final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
@@ -560,10 +587,12 @@ class TrialSessionService {
       final trialSession = TrialSession.fromJson(updated);
 
       // Get tutor name for notification
+      // FIX: Use .limit(1) to handle potential duplicate profiles
       final tutorProfile = await _supabase
           .from('profiles')
           .select('full_name')
           .eq('id', trialSession.tutorId)
+          .limit(1)
           .maybeSingle();
 
       final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';

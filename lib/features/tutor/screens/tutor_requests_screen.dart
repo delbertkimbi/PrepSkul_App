@@ -12,6 +12,7 @@ import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'tutor_request_detail_full_screen.dart';
 
 
 class TutorRequestsScreen extends StatefulWidget {
@@ -196,12 +197,13 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
     if (result != null && result['reason'] != null && (result['reason'] as String).isNotEmpty) {
       try {
         final reason = result['reason'] as String;
-        final suggestedDate = result['suggestedDate'] as DateTime?;
-        final suggestedTime = result['suggestedTime'] as String?;
+        final suggestTime = result['suggestTime'] as bool? ?? false;
+        final suggestedDate = result['date'] as DateTime?;
+        final suggestedTime = result['time'] as String?;
         
         // Build rejection reason with suggested time if provided
         String rejectionReason = reason;
-        if (suggestedDate != null && suggestedTime != null) {
+        if (suggestTime && suggestedDate != null && suggestedTime != null) {
           final dateStr = '${suggestedDate.day}/${suggestedDate.month}/${suggestedDate.year}';
           rejectionReason = '$reason\n\nSuggested alternative time: $dateStr at $suggestedTime';
         }
@@ -215,7 +217,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         if (mounted) {
           BrandedSnackBar.show(
             context,
-            message: suggestedDate != null 
+            message: suggestTime && suggestedDate != null 
                 ? 'Request rejected with alternative time suggestion'
                 : 'Request rejected',
             backgroundColor: Colors.orange,
@@ -344,237 +346,178 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   Widget _buildRequestCard(BookingRequest request) {
-    final hasConflict = request.hasConflict && request.isPending;
     final typeLower = request.studentType.toLowerCase();
     final isStudent = typeLower == 'learner' || typeLower == 'student';
 
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: hasConflict
-              ? Colors.orange.withOpacity(0.5)
-              : _getStatusColor(request.status).withOpacity(0.3),
-          width: hasConflict ? 2 : 1,
+        border: Border.all(
+          color: AppTheme.softBorder,
+          width: 1,
         ),
       ),
-      child: InkWell(
-        onTap: () => _showRequestDetails(request),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Conflict Warning Banner (top of card like marketing design)
-              if (hasConflict) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.orange[300]!, width: 1.5),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.warning_amber_rounded,
-                        color: Colors.orange[700],
-                        size: 20,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Schedule conflict detected',
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header: Student info + Status
+            Row(
+              children: [
+                // Student Avatar
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                  backgroundImage: request.studentAvatarUrl != null
+                      ? CachedNetworkImageProvider(request.studentAvatarUrl!)
+                      : null,
+                  child: request.studentAvatarUrl == null
+                      ? Text(
+                          request.studentName.isNotEmpty
+                              ? request.studentName[0].toUpperCase()
+                              : 'S',
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 16,
+                            color: AppTheme.primaryColor,
                             fontWeight: FontWeight.w600,
-                            color: Colors.orange[900],
                           ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                // Student Name & Type
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        request.studentName,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isStudent ? 'Student' : 'Parent',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: AppTheme.textMedium,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-              ],
-              // Header: Student info + Status
-              Row(
-                children: [
-                  // Student Avatar
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                    backgroundImage: request.studentAvatarUrl != null
-                        ? CachedNetworkImageProvider(request.studentAvatarUrl!)
-                        : null,
-                    child: request.studentAvatarUrl == null
-                        ? Text(
-                            request.studentName.isNotEmpty
-                                ? request.studentName[0].toUpperCase()
-                                : 'S',
-                            style: GoogleFonts.poppins(
-                              color: AppTheme.primaryColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                        : null,
+                // Status Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
                   ),
-                  const SizedBox(width: 12),
-                  // Student Name & Type badge
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          request.studentName,
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: (isStudent
-                                    ? AppTheme.primaryColor
-                                    : Colors.purple)
-                                .withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            isStudent ? 'STUDENT' : 'PARENT',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color:
-                                  isStudent ? AppTheme.primaryColor : Colors.purple,
-                            ),
-                          ),  
-                        ),
-                      ],
+                  decoration: BoxDecoration(
+                    color: request.status == 'pending'
+                        ? AppTheme.primaryColor.withOpacity(0.1)
+                        : request.status == 'approved'
+                            ? AppTheme.accentGreen.withOpacity(0.1)
+                            : AppTheme.textMedium.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    request.status.toUpperCase(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: request.status == 'pending'
+                          ? AppTheme.primaryColor
+                          : request.status == 'approved'
+                              ? AppTheme.accentGreen
+                              : AppTheme.textMedium,
                     ),
                   ),
-                  // Status Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(request.status).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      request.status.toUpperCase(),
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _getStatusColor(request.status),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Schedule Info
-              if (request.isTrial) ...[
-                _buildInfoRow(
-                  Icons.calendar_today,
-                  'Trial Session • ${request.scheduledDate != null ? '${request.scheduledDate!.day}/${request.scheduledDate!.month}/${request.scheduledDate!.year}' : request.getDaysSummary()}',
-                ),
-                if (request.subject != null) ...[
-                  const SizedBox(height: 8),
-                  _buildInfoRow(Icons.menu_book, 'Subject: ${request.subject}'),
-                ],
-                if (request.durationMinutes != null) ...[
-                  const SizedBox(height: 8),
-                  _buildInfoRow(
-                    Icons.timer,
-                    'Duration: ${request.durationMinutes} minutes',
-                  ),
-                ],
-              ] else ...[
-                _buildInfoRow(
-                  Icons.calendar_today,
-                  '${request.frequency}x per week • ${request.getDaysSummary()}',
                 ),
               ],
-              const SizedBox(height: 8),
-              _buildInfoRow(Icons.access_time, request.getTimeRange()),
-              const SizedBox(height: 8),
-              _buildInfoRow(
-                Icons.location_on,
-                _formatLocation(request.location, request.address),
-              ),
-              const SizedBox(height: 8),
-              _buildInfoRow(
-                Icons.payment,
-                '${_formatPaymentPlan(request.paymentPlan)} • ${_formatCurrency(request.monthlyTotal)}',
-              ),
-              // Action Buttons (only for pending)
-              if (request.isPending) ...[
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _handleReject(request),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.red),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          request.isTrial ? 'Suggest Better Time' : 'Reject',
-                          style: GoogleFonts.poppins(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
+            ),
+            const SizedBox(height: 12),
+            // Simple info display
+            Row(
+              children: [
+                Icon(Icons.calendar_today, size: 14, color: AppTheme.textMedium),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    request.isTrial
+                        ? (request.scheduledDate != null
+                            ? '${request.scheduledDate!.day}/${request.scheduledDate!.month}/${request.scheduledDate!.year}'
+                            : 'Trial Session')
+                        : '${request.frequency}x per week',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: AppTheme.textDark,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton(
-                        onPressed: () => _handleApprove(request),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          'Approve',
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
-            ],
-          ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(Icons.access_time, size: 14, color: AppTheme.textMedium),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    request.getTimeRange(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // View Details Button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => _navigateToRequestDetail(request),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: AppTheme.primaryColor),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  'View Details',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  void _navigateToRequestDetail(BookingRequest request) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TutorRequestDetailFullScreen(request: request),
+      ),
+    );
+    if (result == true) {
+      _loadRequests();
+    }
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
@@ -592,14 +535,113 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
     );
   }
 
+  Widget _buildEnhancedInfoRow(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMedium,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isOutlined,
+    required VoidCallback onPressed,
+  }) {
+    if (isOutlined) {
+      return OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: color, width: 2),
+          foregroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } else {
+      return ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.2,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          elevation: 2,
+          shadowColor: color.withOpacity(0.3),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+  }
+
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
-        return Colors.orange;
+        return AppTheme.primaryColor;
       case 'approved':
         return AppTheme.accentGreen;
       case 'rejected':
-        return Colors.red;
+        return AppTheme.textMedium;
       default:
         return AppTheme.textMedium;
     }
@@ -635,16 +677,6 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
     return '${amount.toStringAsFixed(0)} XAF';
   }
 
-  void _showRequestDetails(BookingRequest request) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => _RequestDetailsSheet(request: request),
-    );
-  }
 }
 
 // Approve Dialog
@@ -664,42 +696,135 @@ class _ApproveDialogState extends State<_ApproveDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Approve Request', style: GoogleFonts.poppins()),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Add an optional message to the student:',
-            style: GoogleFonts.poppins(fontSize: 14),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _notesController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText: 'E.g., "Looking forward to working with you!"',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with icon
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: AppTheme.accentGreen,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'Approve Request',
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Add an optional message to the student:',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textMedium,
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: _notesController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'E.g., "Looking forward to working with you!"',
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                ),
+                contentPadding: const EdgeInsets.all(16),
+              ),
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: () => Navigator.pop(context, _notesController.text.trim()),
+                    icon: const Icon(Icons.check_rounded, size: 20),
+                    label: Text(
+                      'Approve',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accentGreen,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 2,
+                      shadowColor: AppTheme.accentGreen.withOpacity(0.3),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text('Cancel', style: GoogleFonts.poppins()),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, _notesController.text.trim()),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryColor,
-          ),
-          child: Text('Approve', style: GoogleFonts.poppins()),
-        ),
-      ],
     );
   }
 }
@@ -732,9 +857,11 @@ class _RejectDialogState extends State<_RejectDialog> {
     super.initState();
     // Listen to text changes to update button state
     _reasonController.addListener(() {
-      safeSetState(() {
-        _hasText = _reasonController.text.trim().isNotEmpty;
-      });
+      if (mounted) {
+        setState(() {
+          _hasText = _reasonController.text.trim().isNotEmpty;
+        });
+      }
     });
   }
 
@@ -747,203 +874,312 @@ class _RejectDialogState extends State<_RejectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Text(
-        _currentPage == 0 ? 'Reject Request' : 'Suggest Better Time',
-        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
       ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: PageView(
-          controller: _pageController,
-          physics: const NeverScrollableScrollPhysics(),
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Page 1: Reason and suggest time option
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            // Header with icon
+            Row(
               children: [
-                Text(
-                  'Please provide a reason for rejection (required):',
-                  style: GoogleFonts.poppins(fontSize: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _currentPage == 0 ? Icons.close_rounded : Icons.schedule_rounded,
+                    color: Colors.red,
+                    size: 28,
+                  ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _reasonController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'E.g., "Schedule conflict with existing sessions"',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    _currentPage == 0 ? 'Reject Request' : 'Suggest Better Time',
+                    style: GoogleFonts.poppins(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
                     ),
                   ),
-                  autofocus: true,
-                ),
-                const SizedBox(height: 16),
-                // Option to suggest better time
-                CheckboxListTile(
-                  value: _wantsToSuggestTime,
-                  onChanged: (value) {
-                    safeSetState(() {
-                      _wantsToSuggestTime = value ?? false;
-                    });
-                  },
-                  title: Text(
-                    'Suggest a better time',
-                    style: GoogleFonts.poppins(fontSize: 14),
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
                 ),
               ],
             ),
-            // Page 2: Date and time selection
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Select a better date and time:',
-                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 16),
-                // Date picker
-                InkWell(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _suggestedDate ?? DateTime.now().add(const Duration(days: 1)),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime.now().add(const Duration(days: 90)),
-                    );
-                    if (picked != null) {
-                      safeSetState(() {
-                        _suggestedDate = picked;
-                      });
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_today, size: 20, color: AppTheme.primaryColor),
-                        const SizedBox(width: 12),
-                        Text(
-                          _suggestedDate != null
-                              ? '${_suggestedDate!.day}/${_suggestedDate!.month}/${_suggestedDate!.year}'
-                              : 'Select date',
-                          style: GoogleFonts.poppins(fontSize: 14),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.maxFinite,
+              child: PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  // Page 1: Reason and suggest time option
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Please provide a reason for rejection (required):',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textMedium,
                         ),
-                      ],
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _reasonController,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: 'E.g., "Schedule conflict with existing sessions"',
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.red, width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.all(16),
+                        ),
+                        autofocus: true,
+                        style: GoogleFonts.poppins(fontSize: 14),
+                      ),
+                      const SizedBox(height: 16),
+                      // Option to suggest better time
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue[200]!,
+                            width: 1,
+                          ),
+                        ),
+                        child: CheckboxListTile(
+                          value: _wantsToSuggestTime,
+                          onChanged: (value) {
+                            setState(() {
+                              _wantsToSuggestTime = value ?? false;
+                            });
+                          },
+                          title: Text(
+                            'Suggest a better time',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Page 2: Date and time selection
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Select a better date and time:',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Date picker
+                      InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _suggestedDate ?? DateTime.now().add(const Duration(days: 1)),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(const Duration(days: 90)),
+                          );
+                          if (picked != null) {
+                            setState(() {
+                              _suggestedDate = picked;
+                            });
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            border: Border.all(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.calendar_today_rounded, size: 20, color: AppTheme.primaryColor),
+                              const SizedBox(width: 12),
+                              Text(
+                                _suggestedDate != null
+                                    ? '${_suggestedDate!.day}/${_suggestedDate!.month}/${_suggestedDate!.year}'
+                                    : 'Select date',
+                                style: GoogleFonts.poppins(fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Time picker
+                      Text(
+                        'Time:',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _timeSlots.map((time) {
+                          final isSelected = _suggestedTime == time;
+                          return ChoiceChip(
+                            label: Text(time),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setState(() {
+                                _suggestedTime = selected ? time : null;
+                              });
+                            },
+                            selectedColor: AppTheme.primaryColor,
+                            labelStyle: GoogleFonts.poppins(
+                              color: isSelected ? Colors.white : AppTheme.textDark,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      if (_currentPage == 0) {
+                        Navigator.pop(context);
+                      } else {
+                        _pageController.previousPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                        setState(() {
+                          _currentPage = 0;
+                        });
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      side: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    child: Text(
+                      _currentPage == 0 ? 'Cancel' : 'Back',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                // Time picker
-                Text(
-                  'Time:',
-                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _timeSlots.map((time) {
-                    final isSelected = _suggestedTime == time;
-                    return ChoiceChip(
-                      label: Text(time),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        safeSetState(() {
-                          _suggestedTime = selected ? time : null;
-                        });
-                      },
-                      selectedColor: AppTheme.primaryColor,
-                      labelStyle: GoogleFonts.poppins(
-                        color: isSelected ? Colors.white : AppTheme.textDark,
-                        fontSize: 12,
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _currentPage == 0
+                        ? (_hasText
+                            ? () {
+                                if (_wantsToSuggestTime) {
+                                  _pageController.nextPage(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                  );
+                                  setState(() {
+                                    _currentPage = 1;
+                                  });
+                                } else {
+                                  Navigator.pop(context, {
+                                    'reason': _reasonController.text.trim(),
+                                    'suggestTime': false,
+                                  });
+                                }
+                              }
+                            : null)
+                        : ((_suggestedDate != null && _suggestedTime != null)
+                            ? () {
+                                Navigator.pop(context, {
+                                  'reason': _reasonController.text.trim(),
+                                  'suggestTime': true,
+                                  'date': _suggestedDate,
+                                  'time': _suggestedTime,
+                                });
+                              }
+                            : null),
+                    icon: Icon(
+                      _currentPage == 0 ? Icons.close_rounded : Icons.check_rounded,
+                      size: 20,
+                    ),
+                    label: Text(
+                      _currentPage == 0 ? 'Reject' : 'Confirm',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
-                    );
-                  }).toList(),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 2,
+                      shadowColor: Colors.red.withOpacity(0.3),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ],
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            if (_currentPage == 0) {
-              Navigator.pop(context);
-            } else {
-              _pageController.previousPage(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-              );
-              safeSetState(() {
-                _currentPage = 0;
-              });
-            }
-          },
-          child: Text('Cancel', style: GoogleFonts.poppins()),
-        ),
-        if (_currentPage == 0)
-          ElevatedButton(
-            onPressed: _hasText
-                ? () {
-                    if (_wantsToSuggestTime) {
-                      // Go to page 2
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                      safeSetState(() {
-                        _currentPage = 1;
-                      });
-                    } else {
-                      // Reject without suggesting time
-                      Navigator.pop(context, {
-                        'reason': _reasonController.text.trim(),
-                        'suggestedDate': null,
-                        'suggestedTime': null,
-                      });
-                    }
-                  }
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: Colors.grey[300],
-              disabledForegroundColor: Colors.grey[600],
-            ),
-            child: Text('Reject', style: GoogleFonts.poppins()),
-          )
-        else
-          ElevatedButton(
-            onPressed: _suggestedDate != null && _suggestedTime != null
-                ? () {
-                    Navigator.pop(context, {
-                      'reason': _reasonController.text.trim(),
-                      'suggestedDate': _suggestedDate,
-                      'suggestedTime': _suggestedTime,
-                    });
-                  }
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: Colors.grey[300],
-              disabledForegroundColor: Colors.grey[600],
-            ),
-            child: Text('Reject & Suggest', style: GoogleFonts.poppins()),
-          ),
-      ],
     );
   }
 }
@@ -1252,11 +1488,11 @@ class _RequestDetailsSheetState extends State<_RequestDetailsSheet> {
   Color _getStatusColor(String status) {
     switch (status) {
       case 'pending':
-        return Colors.orange;
+        return AppTheme.primaryColor;
       case 'approved':
         return AppTheme.accentGreen;
       case 'rejected':
-        return Colors.red;
+        return AppTheme.textMedium;
       default:
         return AppTheme.textMedium;
     }

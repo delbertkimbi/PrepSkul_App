@@ -8,6 +8,7 @@ import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// TutorRequestDetailScreen
 ///
@@ -36,6 +37,8 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   bool _isProcessing = false;
   Map<String, dynamic>? _studentSurvey;
   bool _isLoadingSurvey = true;
+  Map<String, dynamic>? _requesterProfile; // Store requester profile (who made the booking)
+  bool _isLoadingProfile = true;
 
   @override
   void initState() {
@@ -45,12 +48,90 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
         _showRejectDialog();
       });
     }
+    _loadRequesterProfile(); // Load requester (who made the booking)
     _loadStudentSurvey();
+  }
+
+  /// Load the requester's profile (who made the booking) - this is what tutors should see
+  /// For trial sessions: requester could be parent or student
+  /// For regular bookings: requester is the student
+  Future<void> _loadRequesterProfile() async {
+    try {
+      // Check if this is a trial session request
+      final isTrial = widget.request['is_trial'] == true;
+      
+      // CRITICAL: Get the requester_id (who made the booking), not learner_id
+      // The requester is the one who actually created the request
+      String? requesterId;
+      if (isTrial) {
+        // For trial sessions, get requester_id (who made the booking)
+        requesterId = widget.request['requester_id'] as String?;
+        
+        // If requester_id not in request, fetch from trial_sessions table
+        if (requesterId == null || requesterId.isEmpty) {
+          final requestId = widget.request['id'] as String?;
+          if (requestId != null) {
+            try {
+              final trialSession = await SupabaseService.client
+                  .from('trial_sessions')
+                  .select('requester_id, learner_id')
+                  .eq('id', requestId)
+                  .maybeSingle();
+              
+              if (trialSession != null) {
+                requesterId = trialSession['requester_id'] as String?;
+                LogService.debug('Fetched requester_id from trial_sessions: $requesterId');
+              }
+            } catch (e) {
+              LogService.warning('Error fetching requester_id from trial_sessions: $e');
+            }
+          }
+        }
+      } else {
+        // For regular bookings, student_id is the requester
+        requesterId = widget.request['student_id'] as String?;
+      }
+      
+      if (requesterId != null && requesterId.isNotEmpty) {
+        LogService.debug('Loading requester profile for ID: $requesterId (isTrial: $isTrial)');
+        final profile = await SupabaseService.client
+            .from('profiles')
+            .select('id, full_name, avatar_url, user_type, email')
+            .eq('id', requesterId)
+            .maybeSingle();
+        
+        if (mounted) {
+          safeSetState(() {
+            _requesterProfile = profile as Map<String, dynamic>?;
+            _isLoadingProfile = false;
+          });
+          
+          if (_requesterProfile != null) {
+            LogService.success('✅ Loaded requester profile: ${_requesterProfile!['full_name']} (user_type: ${_requesterProfile!['user_type']})');
+          } else {
+            LogService.warning('⚠️ Requester profile not found for ID: $requesterId');
+          }
+        }
+      } else {
+        LogService.warning('⚠️ No requester_id or student_id found in request');
+        safeSetState(() => _isLoadingProfile = false);
+      }
+    } catch (e) {
+      LogService.error('Error loading requester profile: $e');
+      if (mounted) {
+        safeSetState(() => _isLoadingProfile = false);
+      }
+    }
   }
 
   Future<void> _loadStudentSurvey() async {
     try {
-      final studentId = widget.request['student_id'] as String?;
+      // Use learner_id for trial sessions, student_id for regular bookings
+      final isTrial = widget.request['is_trial'] == true;
+      final studentId = isTrial 
+          ? (widget.request['learner_id'] as String?)
+          : (widget.request['student_id'] as String?);
+      
       if (studentId != null) {
         final survey = await SurveyRepository.getStudentSurvey(studentId);
         if (mounted) {
@@ -278,7 +359,9 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final student = widget.request['student'] as Map<String, dynamic>? ?? {};
+    // CRITICAL: Use requester profile (who made the booking) for display
+    // Priority: 1. Freshly loaded requester profile, 2. Request student data, 3. Empty map
+    final requester = _requesterProfile ?? widget.request['student'] as Map<String, dynamic>? ?? {};
     final status = widget.request['status'] as String? ?? 'pending';
     final hasConflict = widget.request['has_conflict'] == true;
     final isPending = status == 'pending';
@@ -290,7 +373,18 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // Check if we can pop, if not, navigate to tutor requests screen
+            if (Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            } else {
+              // If no previous screen, navigate to tutor requests tab
+              Navigator.of(context).pushReplacementNamed(
+                '/tutor-nav',
+                arguments: {'initialTab': 1}, // Requests tab
+              );
+            }
+          },
         ),
         title: Text(
           'Request Details',
@@ -356,8 +450,11 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
               ),
             if (hasConflict && isPending) const SizedBox(height: 24),
 
-            // Student Card
-            _buildStudentCard(student),
+            // Student Card - Show loading if profile is still loading
+            if (_isLoadingProfile)
+              const Center(child: CircularProgressIndicator())
+            else
+              _buildStudentCard(requester),
             const SizedBox(height: 24),
 
             // Student Analysis Section (from survey)
@@ -487,10 +584,48 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     );
   }
   
-  Widget _buildStudentCard(Map<String, dynamic> student) {
-    final isParent = student['user_type'] == 'parent';
-    final studentName = student['full_name'] ?? 'Student';
-    final avatarUrl = student['avatar_url'] as String?;
+  Widget _buildStudentCard(Map<String, dynamic> requester) {
+    // CRITICAL: This function receives the requester (who made the booking)
+    // Determine if requester is a parent or student/learner
+    final userType = requester['user_type'] as String?;
+    final isParent = userType == 'parent' || userType == 'Parent';
+    
+    // Get the actual name - prefer full_name, fall back to email, then generic
+    // IMPORTANT: Never show "Student" as default - always try to get the actual name
+    String requesterName = isParent ? 'Parent' : 'Student';
+    
+    if (requester['full_name'] != null && 
+        requester['full_name'].toString().trim().isNotEmpty &&
+        requester['full_name'].toString().toLowerCase() != 'user' &&
+        requester['full_name'].toString().toLowerCase() != 'null' &&
+        requester['full_name'].toString().toLowerCase() != 'student') {
+      requesterName = requester['full_name'].toString().trim();
+      LogService.debug('✅ Using requester full_name: $requesterName');
+    } else if (requester['email'] != null && 
+               requester['email'].toString().trim().isNotEmpty) {
+      // Extract name from email as fallback
+      final email = requester['email'].toString().trim();
+      final emailName = email.split('@').first;
+      if (emailName.isNotEmpty && 
+          emailName.toLowerCase() != 'user' &&
+          emailName.toLowerCase() != 'student' &&
+          emailName.toLowerCase() != 'parent') {
+        requesterName = emailName[0].toUpperCase() + emailName.substring(1);
+        LogService.debug('✅ Using requester email name: $requesterName');
+      }
+    }
+    
+    // Log for debugging
+    LogService.info('📋 Displaying requester: $requesterName (user_type: $userType, isParent: $isParent)');
+    
+    // Get avatar URL - try avatar_url first, then profile_photo_url
+    final avatarUrl = requester['avatar_url'] as String? ?? 
+                     requester['profile_photo_url'] as String?;
+    
+    // Get initial for avatar placeholder - use requester's name, not generic "S"
+    final initial = requesterName.isNotEmpty && requesterName != 'Student' && requesterName != 'Parent'
+        ? requesterName[0].toUpperCase()
+        : (isParent ? 'P' : 'S');
     
     return Card(
       elevation: 2,
@@ -529,28 +664,58 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                   ),
                 ],
               ),
-              child: CircleAvatar(
-                radius: 36,
-                backgroundColor: isParent ? Colors.purple[400] : Colors.blue[400],
-                backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty
-                    ? NetworkImage(avatarUrl)
-                    : null,
-                onBackgroundImageError: (exception, stackTrace) {
-                  // Image failed to load, will show fallback
-                },
-                child: avatarUrl == null || avatarUrl.isEmpty
-                    ? Text(
-                        studentName.isNotEmpty
-                            ? studentName[0].toUpperCase()
-                            : 'S',
+              child: avatarUrl != null && avatarUrl.isNotEmpty
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(36),
+                      child: CachedNetworkImage(
+                        imageUrl: avatarUrl,
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          width: 72,
+                          height: 72,
+                          color: isParent ? Colors.purple[400] : Colors.blue[400],
+                          child: Center(
+                            child: Text(
+                              initial,
+                              style: GoogleFonts.poppins(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          width: 72,
+                          height: 72,
+                          color: isParent ? Colors.purple[400] : Colors.blue[400],
+                          child: Center(
+                            child: Text(
+                              initial,
+                              style: GoogleFonts.poppins(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : CircleAvatar(
+                      radius: 36,
+                      backgroundColor: isParent ? Colors.purple[400] : Colors.blue[400],
+                      child: Text(
+                        initial,
                         style: GoogleFonts.poppins(
                           fontSize: 24,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
-                      )
-                    : null,
-              ),
+                      ),
+                    ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -558,7 +723,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    studentName,
+                    requesterName,
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
