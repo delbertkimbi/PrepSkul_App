@@ -969,7 +969,11 @@ Endpoint
 POST /direct-pay
 Send a payment request directly to a user’s mobile device. You are responsible for building your own checkout and verifying payment status.
 Direct payment transactions cannot and do not expire. Consequently, their final state is either SUCCESSFUL or FAILED.
-Direct pay is disabled by default on live environment; Follow the steps in the Activate Direct pay on your Live Fapshi API guide to enable direct pay in live mode.
+
+**Status for PrepSkul Account**: ✅ Direct Pay has been **APPROVED and ACTIVATED** for this account in production. Direct Pay and Disbursements are both operational.
+
+**Note**: Direct pay is disabled by default on live environment for new accounts. For this account, activation has been completed. If you encounter Direct Pay errors, they would be unexpected edge cases.
+
 Handle this endpoint with care; misuse can result in account suspension.
 ​
 Parameters

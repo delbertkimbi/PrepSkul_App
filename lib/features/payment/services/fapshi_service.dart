@@ -109,16 +109,23 @@ class FapshiService {
         try {
         final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
         
-        // Check for Direct Pay not enabled error in message
+        // Check for Direct Pay not enabled error in message (edge case handling)
+        // Note: Direct Pay is approved and active, but handle any unexpected errors
         final message = jsonResponse['message'] as String? ?? '';
         if (message.toLowerCase().contains('direct pay') && 
             (message.toLowerCase().contains('disabled') || 
              message.toLowerCase().contains('not enabled') ||
              message.toLowerCase().contains('not available'))) {
-          LogService.error('Direct Pay is not enabled in production. Please contact Fapshi support to enable it.');
+          LogService.error('⚠️ Unexpected Direct Pay error detected. Direct Pay is approved and active. Error: $message');
+          // This should not happen since Direct Pay is approved, but handle gracefully
           throw Exception(
-            'Direct Pay is not enabled for your account. Please contact support@fapshi.com to enable Direct Pay in production mode.'
+            'Payment processing encountered an unexpected issue. Please try again in a moment, or contact support if the problem persists.'
           );
+        }
+        
+        // Log successful payment initiation in production
+        if (isProduction) {
+          LogService.info('✅ Payment request initiated successfully in production. Transaction ID: ${jsonResponse['transId']}');
         }
         
         return FapshiPaymentResponse.fromJson(jsonResponse);
@@ -272,11 +279,15 @@ class FapshiService {
       return 'The minimum payment amount is 100 XAF. Please try again with a higher amount.';
     }
     
-    // Direct Pay not activated (403 Forbidden) - most common issue
-    if (statusCode == 403 || 
-        (lowerError.contains('forbidden') && lowerError.contains('direct pay')) ||
-        (lowerError.contains('forbidden') && lowerError.contains('activate'))) {
-      return 'Payment processing is temporarily unavailable. Our team has been notified and is working to resolve this. Please try again in a few minutes, or contact support if the issue persists.';
+    // 403 Forbidden errors - handle various scenarios
+    // Note: Direct Pay is approved and active, so 403s would indicate other issues
+    if (statusCode == 403) {
+      if (lowerError.contains('direct pay') || lowerError.contains('activate')) {
+        // Edge case: should not happen since Direct Pay is approved
+        return 'Payment processing encountered an unexpected issue. Please try again in a moment, or contact support if the problem persists.';
+      }
+      // Other 403 errors (authentication, permissions, etc.)
+      return 'We\'re having trouble processing your payment right now. Please try again in a moment. If this continues, contact our support team for assistance.';
     }
     
     // Authentication/configuration errors - don't expose technical details

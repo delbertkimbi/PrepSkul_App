@@ -1724,3 +1724,33 @@ class NotificationHelperService {
       sendEmail: true,
     );
   }
+
+  // ============================================
+  // CREDITS NOTIFICATIONS
+  // ============================================
+
+  /// Notify user when credits balance is low
+  static Future<void> notifyLowCreditsBalance({
+    required String userId,
+    required int balance,
+    required int threshold,
+    String? paymentRequestId,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'low_credits_balance',
+      title: '⚠️ Low Credits Balance',
+      message: 'Your credits balance is low ($balance credits remaining). Consider adding more credits to continue booking sessions.',
+      priority: 'normal',
+      actionUrl: paymentRequestId != null ? '/payments/$paymentRequestId' : '/credits',
+      actionText: 'Add Credits',
+      icon: '⚠️',
+      metadata: {
+        'balance': balance,
+        'threshold': threshold,
+        if (paymentRequestId != null) 'payment_request_id': paymentRequestId,
+      },
+      sendEmail: true,
+    );
+  }
+}
