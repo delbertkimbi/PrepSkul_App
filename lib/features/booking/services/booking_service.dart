@@ -302,27 +302,59 @@ class BookingService {
             
             if (learnerProfileRaw != null && learnerProfileRaw is Map) {
               learnerProfile = Map<String, dynamic>.from(learnerProfileRaw);
-              if (learnerProfile.isEmpty || 
-                  (learnerProfile['full_name'] == null && learnerProfile['email'] == null)) {
+              // Check if profile has meaningful data (not empty, null, or just whitespace)
+              final hasName = learnerProfile['full_name'] != null && 
+                             learnerProfile['full_name'].toString().trim().isNotEmpty &&
+                             learnerProfile['full_name'].toString().toLowerCase() != 'null';
+              final hasEmail = learnerProfile['email'] != null && 
+                              learnerProfile['email'].toString().trim().isNotEmpty &&
+                              learnerProfile['email'].toString().toLowerCase() != 'null';
+              if (learnerProfile.isEmpty || (!hasName && !hasEmail)) {
                 learnerProfile = null;
+              } else {
+                LogService.debug('✅ Learner profile found: ${learnerProfile['full_name']} (ID: ${json['learner_id']})');
               }
             }
             
             if (parentProfileRaw != null && parentProfileRaw is Map) {
               parentProfile = Map<String, dynamic>.from(parentProfileRaw);
-              if (parentProfile.isEmpty || 
-                  (parentProfile['full_name'] == null && parentProfile['email'] == null)) {
+              final hasName = parentProfile['full_name'] != null && 
+                             parentProfile['full_name'].toString().trim().isNotEmpty &&
+                             parentProfile['full_name'].toString().toLowerCase() != 'null';
+              final hasEmail = parentProfile['email'] != null && 
+                              parentProfile['email'].toString().trim().isNotEmpty &&
+                              parentProfile['email'].toString().toLowerCase() != 'null';
+              if (parentProfile.isEmpty || (!hasName && !hasEmail)) {
                 parentProfile = null;
               }
             }
             
-            // Use requester profile if available (shows who actually made the request)
-            // Otherwise fall back to learner profile, then parent
-            final studentProfile = requesterProfile ?? learnerProfile ?? parentProfile ?? {
-              'user_type': json['requester_id'] != null ? 'parent' : 'learner',
-            };
+            // CRITICAL FIX: For display purposes, show the REQUESTER (who made the booking)
+            // The requester is the one who actually created the request (could be parent or student)
+            // The learner is who will attend, but for the tutor's view, we want to see who made the request
+            Map<String, dynamic> requesterDisplayProfile;
+            if (requesterProfile != null && requesterProfile.isNotEmpty) {
+              // Use requester profile (who made the booking) - this is what tutors should see
+              requesterDisplayProfile = requesterProfile;
+              LogService.debug('✅ Using requester profile for display: ${requesterProfile['full_name']} (user_type: ${requesterProfile['user_type']})');
+            } else if (learnerProfile != null && learnerProfile.isNotEmpty) {
+              // Fallback to learner if requester not available
+              requesterDisplayProfile = learnerProfile;
+              LogService.debug('Using learner profile as fallback for display');
+            } else if (parentProfile != null && parentProfile.isNotEmpty) {
+              // Fallback to parent if available
+              requesterDisplayProfile = parentProfile;
+              LogService.debug('Using parent profile as fallback for display');
+            } else {
+              // If no profile found, use defaults
+              LogService.warning('⚠️ No valid profile found for trial session ${json['id']}, requester_id: ${json['requester_id']}');
+              requesterDisplayProfile = {
+                'user_type': 'learner', // Default to learner
+              };
+            }
             
-            return BookingRequest.fromTrialSession(json, studentProfile, null);
+            // Pass requester profile for display (who made the booking)
+            return BookingRequest.fromTrialSession(json, requesterDisplayProfile, null);
           } catch (e) {
             LogService.error('Error parsing trial session: $e');
             return null;

@@ -1,7 +1,20 @@
 # 📹 Google Calendar Approval Video Guide
 
 ## 🎯 **Purpose**
-Record a demo video showing how users connect their Google Calendar to PrepSkul and how sessions are automatically added with Meet links.
+This video is for **Google Cloud Console verification** to get approval for Google Calendar API access. The video demonstrates to Google's review team how PrepSkul uses the Calendar API so they can approve the OAuth scopes for ALL users.
+
+**Important:** 
+- ❌ This is **NOT** a user tutorial or marketing video
+- ✅ This is a **verification video** that will be submitted to Google Cloud Console
+- ✅ The goal is to prove PrepSkul legitimately needs `calendar.events` scope
+- ✅ Once approved, ALL PrepSkul users will be able to connect their Google Calendar
+
+**Where to Submit:**
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Navigate to: **APIs & Services** → **OAuth consent screen**
+3. Find the scope that needs verification (`calendar.events`)
+4. Click "Fix the issue" or "Submit for verification"
+5. Upload this video in the "Video link" field
 
 ---
 
@@ -20,49 +33,54 @@ Record a demo video showing how users connect their Google Calendar to PrepSkul 
 - **What to show:**
   - Tap the "Connect & Add" button
   - Show the Google Sign-In dialog/modal appearing
-  - Explain: "PrepSkul needs permission to add events to your Google Calendar"
+- **Voiceover (say this while showing):** "When the user clicks this button, PrepSkul requests OAuth permission to access their Google Calendar. This is the permission request that requires Google's approval."
 
 #### **Screen 3: Google OAuth Flow**
 - **What to show:**
   - Google account selection screen (if multiple accounts)
-  - Permission request screen showing:
+  - **IMPORTANT:** Zoom in on the permission request screen showing:
     - "See, edit, share, and permanently delete all the calendars you can access using Google Calendar"
     - "Make changes to events"
   - User clicking "Allow" or "Continue"
-  - Explain: "This allows PrepSkul to create calendar events with Meet links automatically"
+- **Voiceover (say this while showing):** "This is the exact permission screen that requires Google's verification. PrepSkul requests these scopes to create calendar events with Google Meet links for tutoring sessions. The user grants permission, and PrepSkul can then create events on their behalf."
 
 #### **Screen 4: Success - Session Added to Calendar**
 - **What to show:**
   - Return to My Sessions screen
   - Show success snackbar: "Session added to calendar with Meet link!"
   - Button now shows "Add to Calendar" (filled icon) or disappears if already added
-  - Explain: "The session is now in your Google Calendar with a Meet link"
+- **Voiceover (say this while showing):** "After permission is granted, PrepSkul uses the Google Calendar API to create a calendar event. The event includes the session details and a Google Meet link for online sessions."
 
-#### **Screen 5: Verify in Google Calendar App**
+#### **Screen 5: Verify in Google Calendar App (CRITICAL - MUST SHOW)**
 - **What to show:**
-  - Open Google Calendar app (or web)
-  - Show the session event in the calendar
-  - Show the Meet link in the event details
-  - Show PrepSkul VA email as attendee
-  - Explain: "The event includes the Meet link and PrepSkul VA for automatic recording"
+  - Open Google Calendar app (or web) - **This is the most important part!**
+  - Show the session event in the calendar with correct date/time
+  - **Zoom in** on the event details showing:
+    - The Meet link (clickable Google Meet URL)
+    - Session title: "Trial Session: [Subject]" or "PrepSkul Session: [Subject]"
+    - Tutor and student emails as attendees
+    - PrepSkul VA email as attendee
+- **Voiceover (say this while showing):** "Here's proof that PrepSkul successfully created a calendar event using the Google Calendar API. The event includes the session details, a Google Meet link for online sessions, and all attendees. This demonstrates that PrepSkul uses the calendar.events scope to create events, not to read or modify existing calendar data."
 
 ---
 
-### **Flow 2: Subsequent Sessions (Already Connected)**
+### **Flow 2: Subsequent Sessions (Already Connected) - OPTIONAL**
+
+**Note:** This flow is optional but shows that once permission is granted, PrepSkul can create events seamlessly.
 
 #### **Screen 1: My Sessions Screen - Already Connected**
 - **What to show:**
   - Navigate to "My Sessions" tab
   - Show a new upcoming session card
   - Point out the "Add to Calendar" button (filled calendar icon)
-  - Explain: "Since we're already connected, it just says 'Add to Calendar'"
+- **Voiceover (say this while showing):** "Once a user has granted permission, PrepSkul can create additional calendar events without re-authentication. This shows the seamless experience after initial OAuth approval."
 
 #### **Screen 2: One-Tap Add**
 - **What to show:**
   - Tap "Add to Calendar" button
   - **NO Google Sign-In dialog** (already authenticated)
   - Direct success message
-  - Explain: "No need to sign in again - it's instant!"
+- **Voiceover (say this while showing):** "The event is created instantly using the stored OAuth token, demonstrating that PrepSkul only creates events when explicitly requested by the user."
 
 ---
 
@@ -125,28 +143,29 @@ Record a demo video showing how users connect their Google Calendar to PrepSkul 
 
 ## 🎬 **Recommended Video Flow**
 
-### **Option A: Complete User Journey (5-7 minutes)**
-1. **Introduction** (10s)
-   - "Today I'll show you how PrepSkul integrates with Google Calendar"
+### **Option A: Complete Verification Demo (3-5 minutes) - RECOMMENDED**
+1. **Introduction** (15s)
+   - "This video demonstrates how PrepSkul uses the Google Calendar API to create calendar events with Meet links for tutoring sessions."
+   - "PrepSkul is an online tutoring platform that connects students with tutors."
 
-2. **Student Flow** (2-3 min)
-   - First-time connection
-   - Adding session to calendar
-   - Verifying in Google Calendar app
+2. **OAuth Permission Request** (30s)
+   - Show the "Connect & Add" button
+   - Show Google OAuth permission screen
+   - **Emphasize:** "PrepSkul requests permission to create calendar events, not to read or modify existing events."
 
-3. **Payment Flow** (1-2 min)
-   - Paying for trial session
-   - Automatic navigation
-   - Meet link generation
+3. **Calendar Event Creation** (1-2 min)
+   - Show user clicking "Allow"
+   - Show success message
+   - **CRITICAL:** Open Google Calendar and show the created event
+   - **Show clearly:** Event title, date/time, Meet link, attendees
 
-4. **Tutor Flow** (1 min)
-   - Tutor calendar connection
-   - Session in tutor's calendar
+4. **Meet Link Generation** (30s)
+   - Show the Meet link in the calendar event
+   - Explain: "PrepSkul uses the Google Calendar API to automatically generate Google Meet links for online sessions."
 
-5. **Key Features** (30s)
-   - PrepSkul VA auto-join
-   - Fathom AI recording
-   - Automatic Meet link generation
+5. **Conclusion** (15s)
+   - "PrepSkul only creates calendar events when users explicitly request it by clicking 'Add to Calendar'."
+   - "We use the calendar.events scope solely to create events for tutoring sessions, not to access other calendar data."
 
 ### **Option B: Quick Demo (2-3 minutes)**
 1. **Quick Intro** (5s)
@@ -168,28 +187,28 @@ Record a demo video showing how users connect their Google Calendar to PrepSkul 
 
 ---
 
-## 📝 **Key Points to Highlight**
+## 📝 **Key Points to Highlight (FOR GOOGLE REVIEW TEAM)**
 
-### **1. One-Time Connection**
-- ✅ "Connect once, never asked again"
-- ✅ "Your calendar connection is saved securely"
+### **1. Explicit User Action Required**
+- ✅ "Users must explicitly click 'Add to Calendar' - PrepSkul never creates events automatically"
+- ✅ "Calendar integration is optional - users can use PrepSkul without connecting their calendar"
 
-### **2. Automatic Meet Links**
-- ✅ "Meet links are generated automatically"
-- ✅ "No need to create links manually"
+### **2. Limited Scope Usage**
+- ✅ "PrepSkul ONLY creates calendar events - we do not read, modify, or delete existing calendar events"
+- ✅ "We use calendar.events scope solely to create events for tutoring sessions booked through PrepSkul"
 
-### **3. PrepSkul VA Integration**
-- ✅ "PrepSkul VA is automatically added as attendee"
-- ✅ "This enables Fathom AI to record sessions automatically"
+### **3. Meet Link Generation**
+- ✅ "PrepSkul uses Google Calendar API to generate Meet links for online tutoring sessions"
+- ✅ "Meet links are created as part of the calendar event, not separately"
 
-### **4. Both Parties**
-- ✅ "Both tutor and student get the same Meet link"
-- ✅ "Both can add to their calendars independently"
+### **4. User Control**
+- ✅ "Users grant permission once and can revoke it anytime through Google Account settings"
+- ✅ "Each calendar event creation requires explicit user action (clicking 'Add to Calendar')"
 
-### **5. Seamless Payment Flow**
-- ✅ "After payment, you're automatically navigated to sessions"
-- ✅ "Countdown timer shows time until session"
-- ✅ "Calendar integration is optional but recommended"
+### **5. Educational Purpose**
+- ✅ "PrepSkul is an educational platform connecting students with tutors"
+- ✅ "Calendar events help students and tutors manage their tutoring sessions"
+- ✅ "This is a legitimate educational use case for the Calendar API"
 
 ---
 
@@ -251,13 +270,17 @@ Record a demo video showing how users connect their Google Calendar to PrepSkul 
 
 ---
 
-## 📊 **Success Metrics**
+## 📊 **Submission Checklist**
 
-After publishing, track:
-- Views
-- Completion rate (watch to end)
-- User questions/comments
-- Feature adoption rate (calendar connections)
+Before submitting to Google Cloud Console:
+- [ ] Video clearly shows OAuth permission request screen
+- [ ] Video shows calendar event being created in Google Calendar
+- [ ] Video shows Meet link in the created event
+- [ ] Video demonstrates user explicitly clicking "Add to Calendar"
+- [ ] Video is 2-5 minutes long
+- [ ] Video is uploaded to YouTube (unlisted) or Google Drive (shareable)
+- [ ] Video link is added to Google Cloud Console verification form
+- [ ] Additional info field explains PrepSkul's use case
 
 ---
 

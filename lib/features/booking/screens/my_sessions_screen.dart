@@ -1085,39 +1085,72 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              // Session in Progress indicator (moved after details for consistency)
+              // Session in Progress indicator (only show if session time has actually arrived)
+              // Don't show if session was started early but scheduled time hasn't arrived yet
               if (status == 'in_progress') ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentGreen.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.accentGreen.withOpacity(0.2),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.play_circle_filled_rounded,
-                        color: AppTheme.accentGreen,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                        'Session is currently in progress',
-                        style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          color: AppTheme.accentGreen,
+                Builder(
+                  builder: (context) {
+                    // Check if session time has actually arrived
+                    try {
+                      final dateParts = scheduledDate.split('T')[0].split('-');
+                      final timeParts = scheduledTime.split(':');
+                      final year = int.parse(dateParts[0]);
+                      final month = int.parse(dateParts[1]);
+                      final day = int.parse(dateParts[2]);
+                      final hour = int.tryParse(timeParts[0]) ?? 0;
+                      final minute = timeParts.length > 1 
+                          ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
+                          : 0;
+                      
+                      final sessionDateTime = DateTime(year, month, day, hour, minute);
+                      final now = DateTime.now();
+                      final hasStarted = now.isAfter(sessionDateTime) || now.isAtSameMomentAs(sessionDateTime);
+                      
+                      // Only show "in progress" if the scheduled time has actually arrived
+                      if (!hasStarted) {
+                        return const SizedBox.shrink();
+                      }
+                    } catch (e) {
+                      // If we can't parse the date/time, show the indicator anyway
+                    }
+                    
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentGreen.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.accentGreen.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.play_circle_filled_rounded,
+                                color: AppTheme.accentGreen,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Session is currently in progress',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.accentGreen,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ],
               const SizedBox(height: 14),
@@ -1246,21 +1279,27 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           onPressed: () => _joinMeeting(meetLink),
                           icon: Icon(
                             status == 'in_progress' ? Icons.video_call : Icons.video_call,
-                            size: 18,
+                            size: status == 'in_progress' ? 20 : 18,
                           ),
                           label: Text(
                             status == 'in_progress' ? 'Join Session' : 'Join Meeting',
-                            style: GoogleFonts.poppins(fontSize: 13),
+                            style: GoogleFonts.poppins(
+                              fontSize: status == 'in_progress' ? 14 : 13,
+                              fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+                            ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: status == 'in_progress' 
                                 ? AppTheme.accentGreen 
                                 : AppTheme.primaryColor,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            padding: EdgeInsets.symmetric(
+                              vertical: status == 'in_progress' ? 14 : 10,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
+                            elevation: status == 'in_progress' ? 2 : 0,
                           ),
                         ),
                       ),
