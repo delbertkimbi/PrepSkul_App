@@ -33,7 +33,9 @@ class QualityAssuranceService {
           .subtract(Duration(hours: qualityAssuranceHours))
           .toIso8601String();
 
-      final pendingEarnings = await _supabase
+      // FIX: Query without relationship join (since FK might not exist)
+      // Fetch tutor_earnings first, then fetch related data separately
+      final pendingEarningsRaw = await _supabase
           .from('tutor_earnings')
           .select('''
             id,
@@ -43,19 +45,57 @@ class QualityAssuranceService {
             tutor_earnings,
             earnings_status,
             pending_balance_added_at,
-            created_at,
-            session_payments!inner(
-              payment_status,
-              payment_confirmed_at,
-              individual_sessions!inner(
-                session_ended_at,
-                status
-              )
-            )
+            created_at
           ''')
           .eq('earnings_status', 'pending')
           .not('pending_balance_added_at', 'is', null)
           .lt('pending_balance_added_at', cutoffTime);
+
+      // Fetch related session_payments and individual_sessions data separately
+      final pendingEarnings = <Map<String, dynamic>>[];
+      for (final earning in pendingEarningsRaw) {
+        final sessionPaymentId = earning['session_payment_id'] as String?;
+        final sessionId = earning['session_id'] as String?;
+        
+        Map<String, dynamic>? sessionPayment;
+        Map<String, dynamic>? individualSession;
+        
+        // Fetch session_payment if payment_id exists
+        if (sessionPaymentId != null) {
+          try {
+            sessionPayment = await _supabase
+                .from('session_payments')
+                .select('payment_status, payment_confirmed_at, session_id')
+                .eq('id', sessionPaymentId)
+                .maybeSingle();
+          } catch (e) {
+            LogService.warning('Could not fetch session_payment: $e');
+          }
+        }
+        
+        // Fetch individual_session if session_id exists
+        if (sessionId != null) {
+          try {
+            individualSession = await _supabase
+                .from('individual_sessions')
+                .select('session_ended_at, status')
+                .eq('id', sessionId)
+                .maybeSingle();
+          } catch (e) {
+            LogService.warning('Could not fetch individual_session: $e');
+          }
+        }
+        
+        // Combine data
+        final combinedEarning = Map<String, dynamic>.from(earning);
+        if (sessionPayment != null) {
+          combinedEarning['session_payments'] = sessionPayment;
+          if (individualSession != null) {
+            sessionPayment['individual_sessions'] = individualSession;
+          }
+        }
+        pendingEarnings.add(combinedEarning);
+      }
 
       if (pendingEarnings.isEmpty) {
         LogService.success('No pending earnings ready for QA processing');

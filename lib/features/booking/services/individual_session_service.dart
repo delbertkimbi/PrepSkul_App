@@ -61,11 +61,18 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
+      // FIX: Don't query non-existent columns, and make join optional (trial sessions don't have recurring_session_id)
+      // Note: recurring_sessions doesn't have 'subject' column, removed it
       var query = _supabase.from('individual_sessions').select('''
             *,
-            recurring_sessions!inner(
-              student_name,
-              student_avatar_url
+            recurring_sessions(
+              id,
+              frequency,
+              days,
+              times,
+              start_date,
+              monthly_total,
+              payment_plan
             )
           ''')
           .eq('tutor_id', userId)
@@ -98,14 +105,20 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = beforeDate ?? now;
 
+      // FIX: Don't query non-existent columns, and make join optional
       var query = _supabase
           .from('individual_sessions')
           .select('''
             *,
-            recurring_sessions!inner(
-              student_name,
-              student_avatar_url,
-              subject
+            recurring_sessions(
+              id,
+              subject,
+              frequency,
+              days,
+              times,
+              start_date,
+              monthly_total,
+              payment_plan
             )
           ''')
           .eq('tutor_id', userId)
@@ -386,8 +399,7 @@ class IndividualSessionService {
             duration_minutes,
             recurring_sessions!inner(
               tutor_id,
-              student_name,
-              subject
+              student_name
             )
           ''')
           .eq('id', sessionId)
@@ -415,9 +427,10 @@ class IndividualSessionService {
         final scheduledDate = DateTime.parse(session['scheduled_date'] as String);
         final scheduledTime = session['scheduled_time'] as String;
         final durationMinutes = session['duration_minutes'] as int;
-        final recurringData = session['recurring_sessions'] as Map<String, dynamic>;
-        final tutorId = recurringData['tutor_id'] as String;
-        final subject = recurringData['subject'] as String? ?? 'Tutoring Session';
+        final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+        final tutorId = recurringData?['tutor_id'] as String;
+        // Note: recurring_sessions doesn't have 'subject' column, use default
+        final subject = 'Tutoring Session';
 
         // Get student ID from individual session (learner_id or parent_id)
         final sessionData = await _supabase

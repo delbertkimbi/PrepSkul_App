@@ -20,6 +20,8 @@ import '../../../core/services/google_calendar_auth_service.dart';
 import '../../../core/widgets/empty_state_widget.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
+import '../../../features/sessions/services/meet_service.dart';
+import 'tutor_session_detail_full_screen.dart';
 
 class TutorSessionsScreen extends StatefulWidget {
   const TutorSessionsScreen({Key? key}) : super(key: key);
@@ -146,25 +148,95 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           }
           
           if (shouldInclude) {
-            // Fetch student name from profile
+            // CRITICAL FIX: For tutor sessions, show the REQUESTER (who made the booking)
+            // This is what the tutor sees - parent name if parent booked, student name if student booked
             String studentName = 'Student';
             String? studentAvatar;
+            String? requesterType;
             try {
-              final learnerId = trial.learnerId;
+              // Priority: Use requester_id (who made the booking) for display
               final requesterId = trial.requesterId;
-              final studentId = requesterId.isNotEmpty ? requesterId : learnerId;
+              final learnerId = trial.learnerId;
               
-              final studentProfile = await SupabaseService.client
-                  .from('profiles')
-                  .select('full_name, avatar_url')
-                  .eq('id', studentId)
-                  .maybeSingle();
-              if (studentProfile != null) {
-                studentName = studentProfile['full_name'] as String? ?? 'Student';
-                studentAvatar = studentProfile['avatar_url'] as String?;
+              // First, try to fetch requester profile (who made the booking)
+              if (requesterId.isNotEmpty) {
+                final requesterProfile = await SupabaseService.client
+                    .from('profiles')
+                    .select('full_name, avatar_url, user_type, email')
+                    .eq('id', requesterId)
+                    .limit(1)
+                    .maybeSingle();
+                    
+                if (requesterProfile != null) {
+                  requesterType = requesterProfile['user_type'] as String?;
+                  
+                  // Extract name with proper fallbacks
+                  final fullName = requesterProfile['full_name'] as String?;
+                  if (fullName != null && fullName.trim().isNotEmpty && 
+                      fullName.toLowerCase() != 'user' && 
+                      fullName.toLowerCase() != 'null' &&
+                      fullName.toLowerCase() != 'student' &&
+                      fullName.toLowerCase() != 'parent') {
+                    studentName = fullName.trim();
+                  } else {
+                    // Try email as fallback
+                    final email = requesterProfile['email'] as String?;
+                    if (email != null && email.trim().isNotEmpty) {
+                      final emailName = email.split('@').first.trim();
+                      if (emailName.isNotEmpty && 
+                          emailName.toLowerCase() != 'user' &&
+                          emailName.toLowerCase() != 'student' &&
+                          emailName.toLowerCase() != 'parent') {
+                        studentName = emailName[0].toUpperCase() + emailName.substring(1);
+                      }
+                    }
+                  }
+                  
+                  // Get avatar URL
+                  studentAvatar = requesterProfile['avatar_url'] as String?;
+                  
+                  LogService.debug('✅ Loaded requester profile: $studentName (user_type: $requesterType, ID: $requesterId)');
+                } else {
+                  LogService.warning('⚠️ Requester profile not found for ID: $requesterId, falling back to learner');
+                }
+              }
+              
+              // Fallback: If requester profile not found, use learner profile
+              if (studentName == 'Student' && learnerId.isNotEmpty) {
+                final learnerProfile = await SupabaseService.client
+                    .from('profiles')
+                    .select('full_name, avatar_url, user_type, email')
+                    .eq('id', learnerId)
+                    .limit(1)
+                    .maybeSingle();
+                    
+                if (learnerProfile != null) {
+                  requesterType = learnerProfile['user_type'] as String?;
+                  
+                  final fullName = learnerProfile['full_name'] as String?;
+                  if (fullName != null && fullName.trim().isNotEmpty && 
+                      fullName.toLowerCase() != 'user' && 
+                      fullName.toLowerCase() != 'null') {
+                    studentName = fullName.trim();
+                  } else {
+                    final email = learnerProfile['email'] as String?;
+                    if (email != null && email.trim().isNotEmpty) {
+                      final emailName = email.split('@').first.trim();
+                      if (emailName.isNotEmpty && emailName.toLowerCase() != 'user') {
+                        studentName = emailName[0].toUpperCase() + emailName.substring(1);
+                      }
+                    }
+                  }
+                  
+                  if (studentAvatar == null) {
+                    studentAvatar = learnerProfile['avatar_url'] as String?;
+                  }
+                  
+                  LogService.debug('✅ Loaded learner profile as fallback: $studentName (ID: $learnerId)');
+                }
               }
             } catch (e) {
-              LogService.warning('Could not fetch student name for trial session: $e');
+              LogService.error('Could not fetch requester/learner profile for trial session: $e');
             }
             
             // Convert TrialSession to Map for consistency
@@ -188,8 +260,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               'rejection_reason': trial.rejectionReason,
               'created_at': trial.createdAt.toIso8601String(),
               'updated_at': trial.updatedAt?.toIso8601String(),
-              'student_name': studentName, // Pre-fetched student name
-              'student_avatar_url': studentAvatar, // Pre-fetched student avatar
+              'student_name': studentName, // Pre-fetched requester/learner name
+              'student_avatar_url': studentAvatar, // Pre-fetched requester/learner avatar
+              'requester_type': requesterType, // Store requester type for display
             };
             allSessions.add(sessionMap);
           }
@@ -198,7 +271,102 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         LogService.debug('⚠️ Could not load trial sessions: $e');
       }
 
-      // 3. Filter and sort all sessions
+      // 3. Deduplicate sessions by ID and improve student name fetching
+      // Also fetch student names for individual sessions that don't have them
+      final Map<String, Map<String, dynamic>> uniqueSessions = {};
+      for (var session in allSessions) {
+        final sessionId = session['id']?.toString();
+        if (sessionId != null && sessionId.isNotEmpty) {
+          // For individual sessions, fetch student name if missing
+          if (session['_sessionType'] == 'individual') {
+            final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+            if (recurringData != null && (session['student_name'] == null || session['student_name'] == 'Student')) {
+              try {
+                // Try to get student name from recurring_sessions or learner_id/parent_id
+                final learnerId = session['learner_id'] as String?;
+                final parentId = session['parent_id'] as String?;
+                final studentId = learnerId ?? parentId;
+                
+                if (studentId != null && studentId.isNotEmpty) {
+                  final studentProfile = await SupabaseService.client
+                      .from('profiles')
+                      .select('full_name, avatar_url')
+                      .eq('id', studentId)
+                      .maybeSingle();
+                  
+                  if (studentProfile != null) {
+                    final fullName = studentProfile['full_name'] as String?;
+                    if (fullName != null && fullName.trim().isNotEmpty && 
+                        fullName.toLowerCase() != 'user' &&
+                        fullName.toLowerCase() != 'student' &&
+                        fullName.toLowerCase() != 'parent') {
+                      session['student_name'] = fullName.trim();
+                      session['student_avatar_url'] = studentProfile['avatar_url'] as String?;
+                      LogService.debug('✅ Fetched student name for individual session: ${fullName.trim()}');
+                    }
+                  }
+                }
+              } catch (e) {
+                LogService.warning('Could not fetch student name for individual session: $e');
+              }
+            }
+          }
+          
+          // Deduplicate: prefer sessions with actual student names over "Student"
+          if (!uniqueSessions.containsKey(sessionId)) {
+            uniqueSessions[sessionId] = session;
+          } else {
+            final existing = uniqueSessions[sessionId]!;
+            final existingName = existing['student_name'] as String? ?? 'Student';
+            final newName = session['student_name'] as String? ?? 'Student';
+            
+            // Prefer the one with a real name (not "Student")
+            if (existingName == 'Student' && newName != 'Student') {
+              uniqueSessions[sessionId] = session;
+            } else if (existingName != 'Student' && newName == 'Student') {
+              // Keep existing (better one)
+              continue;
+            } else {
+              // Both have same quality, prefer the newer one (trial over individual if same ID)
+              if (session['_sessionType'] == 'trial' && existing['_sessionType'] != 'trial') {
+                uniqueSessions[sessionId] = session;
+              }
+            }
+          }
+        }
+      }
+      
+      // Remove any sessions with student_name = 'Student' if there's a better one for the same date/time
+      final filteredSessions = <Map<String, dynamic>>[];
+      for (var session in uniqueSessions.values) {
+        final sessionDate = session['scheduled_date'] as String?;
+        final sessionTime = session['scheduled_time'] as String?;
+        final studentName = session['student_name'] as String? ?? 'Student';
+        
+        // Skip if this is a "Student" session and there's another session with same date/time and real name
+        if (studentName == 'Student' && sessionDate != null && sessionTime != null) {
+          final hasBetterSession = uniqueSessions.values.any((s) {
+            if (s['id'] == session['id']) return false; // Same session
+            final sDate = s['scheduled_date'] as String?;
+            final sTime = s['scheduled_time'] as String?;
+            final sName = s['student_name'] as String? ?? 'Student';
+            return sDate == sessionDate && 
+                   sTime == sessionTime && 
+                   sName != 'Student';
+          });
+          
+          if (hasBetterSession) {
+            LogService.debug('⚠️ Skipping duplicate "Student" session: ${session['id']}');
+            continue; // Skip this one
+          }
+        }
+        
+        filteredSessions.add(session);
+      }
+      
+      allSessions = filteredSessions;
+
+      // 4. Filter and sort all sessions
       List<Map<String, dynamic>> filtered = allSessions;
 
         if (_selectedFilter == 'upcoming') {
@@ -320,12 +488,13 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         }
       });
 
-      // If no sessions found, fall back to recurring sessions
-      if (filtered.isEmpty) {
-      // Fallback to recurring sessions
-      final sessions = await RecurringSessionService.getTutorRecurringSessions(
-        status: _selectedFilter == 'all' ? null : _selectedFilter,
-      );
+      // Only fall back to recurring sessions if there are NO individual or trial sessions at all
+      // Don't add recurring sessions if we already have trial/individual sessions (prevents duplicates)
+      if (filtered.isEmpty && allSessions.isEmpty) {
+        // Fallback to recurring sessions ONLY if no other sessions exist
+        final sessions = await RecurringSessionService.getTutorRecurringSessions(
+          status: _selectedFilter == 'all' ? null : _selectedFilter,
+        );
 
         // Mark as recurring sessions
         for (var session in sessions) {
@@ -632,6 +801,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     String? meetLink;
     bool isExpired = false;
     bool isCancelled = false;
+    String? calendarEventId;
 
     if (isTrialSession) {
       // Trial session data
@@ -647,6 +817,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         subject = trial.subject;
         paymentStatus = trial.paymentStatus;
         meetLink = trial.meetLink;
+        calendarEventId = session['calendar_event_id'] as String?;
         
         // Determine if expired (time passed, not paid, not approved)
         final isTimePassed = SessionDateUtils.isSessionExpired(trial);
@@ -667,10 +838,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       studentName = recurringData?['student_name']?.toString() ?? 'Student';
       studentAvatar = recurringData?['student_avatar_url']?.toString();
       location = session['location'] as String? ?? 'online';
-      address = session['onsite_address'] as String?;
+      // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
+      address = session['address'] as String? ?? session['onsite_address'] as String?;
       subject = session['subject'] as String?;
       sessionDate = DateTime.parse(session['scheduled_date'] as String);
       sessionTime = session['scheduled_time'] as String?;
+      calendarEventId = session['calendar_event_id'] as String?;
 
       // Get recurring session info if available
       if (recurringData != null) {
@@ -697,44 +870,105 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       }
     }
 
+    // Determine if session is upcoming
+    final isUpcoming = _selectedFilter == 'upcoming' || 
+        (sessionDate != null && sessionDate!.isAfter(DateTime.now()));
+
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(
-          color: _getStatusColor(status).withOpacity(0.3),
+          color: isExpired 
+              ? Colors.red.withOpacity(0.2)
+              : Colors.grey.withOpacity(0.1),
           width: 1,
         ),
       ),
       child: InkWell(
         onTap: () => _showSessionDetails(session),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: isExpired 
+                ? Colors.red.withOpacity(0.02)
+                : Colors.white,
+          ),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header: Student info + Status
+              // Header row: Trial badge and status
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Trial Badge
+                  if (isTrialSession)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        'TRIAL',
+                        style: GoogleFonts.poppins(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange[700],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  if (!isTrialSession) const SizedBox.shrink(),
+                  // Status badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _getStatusLabel(status),
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Student info row
               Row(
                 children: [
+                  // Student avatar (slightly larger)
                   CircleAvatar(
-                    radius: 24,
+                    radius: 28,
                     backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                    backgroundImage: studentAvatar != null
+                    backgroundImage: studentAvatar != null && studentAvatar.isNotEmpty
                         ? CachedNetworkImageProvider(studentAvatar)
                         : null,
-                    child: studentAvatar == null
+                    child: studentAvatar == null || studentAvatar.isEmpty
                         ? Text(
-                            studentName[0].toUpperCase(),
+                            studentName.isNotEmpty ? studentName[0].toUpperCase() : 'S',
                             style: GoogleFonts.poppins(
-                              color: AppTheme.primaryColor,
+                              fontSize: 20,
                               fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
                             ),
                           )
                         : null,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
+                  // Student name and subject
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -742,319 +976,207 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         Text(
                           studentName,
                           style: GoogleFonts.poppins(
-                            fontSize: 16,
+                            fontSize: 17,
                             fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
+                            color: Colors.black87,
+                            height: 1.2,
                           ),
                         ),
+                        const SizedBox(height: 3),
                         Text(
-                          isIndividualSession
-                              ? (subject ?? 'Session') +
-                                    (sessionDate != null
-                                        ? ' • ${_formatDate(sessionDate)}'
-                                        : '')
-                              : '${frequency ?? 0}x per week • $totalSessions sessions completed',
+                          subject ?? 'Session',
                           style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppTheme.textMedium,
+                            fontSize: 13,
+                            color: Colors.grey[600],
+                            height: 1.2,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(status).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      status.toUpperCase(),
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _getStatusColor(status),
-                      ),
-                    ),
-                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              // Schedule Info - Different for individual vs recurring
-              if (isIndividualSession) ...[
-                // Individual session info
-                if (sessionDate != null)
-                  _buildInfoRow(Icons.calendar_today, _formatDate(sessionDate)),
-                if (sessionTime != null) ...[
-                  const SizedBox(height: 8),
-                  _buildInfoRow(Icons.access_time, sessionTime),
-                ],
-                if (subject != null) ...[
-                  const SizedBox(height: 8),
-                  _buildInfoRow(Icons.book_outlined, subject),
-                ],
-              ] else ...[
-                // Recurring session info
-                if (days.isNotEmpty)
-                  _buildInfoRow(Icons.calendar_today, days.join(', ')),
-                if (times.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  _buildInfoRow(Icons.access_time, times.values.join(', ')),
-                ],
-                if (startDate != null) ...[
-                  const SizedBox(height: 8),
-                  _buildInfoRow(
-                    Icons.trending_up,
-                    'Started ${_formatDate(startDate)}',
-                  ),
-                ],
-              ],
-              const SizedBox(height: 8),
-              _buildInfoRow(
-                Icons.location_on,
-                _formatLocation(location, address),
-              ),
-              // Countdown timer for upcoming scheduled sessions (individual or trial)
-              if ((isIndividualSession || isTrialSession) && 
-                  (status == 'scheduled' || status == 'approved') && 
-                  sessionDate != null && 
-                  sessionTime != null &&
-                  !isExpired &&
-                  !isCancelled) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.primaryColor.withOpacity(0.2),
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.timer_outlined,
-                        size: 18,
-                        color: AppTheme.primaryColor,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildCountdownText(sessionDate!, sessionTime!),
-                      ),
-                    ],
-                  ),
+              // Session in Progress indicator
+              if (status == 'in_progress') ...[
+                Builder(
+                  builder: (context) {
+                    // Check if session time has actually arrived
+                    try {
+                      if (sessionDate != null && sessionTime != null) {
+                        final timeParts = sessionTime.split(':');
+                        final hour = int.tryParse(timeParts[0]) ?? 0;
+                        final minute = timeParts.length > 1 
+                            ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
+                            : 0;
+                        
+                        final sessionDateTime = DateTime(
+                          sessionDate.year, 
+                          sessionDate.month, 
+                          sessionDate.day, 
+                          hour, 
+                          minute
+                        );
+                        final now = DateTime.now();
+                        final hasStarted = now.isAfter(sessionDateTime) || now.isAtSameMomentAs(sessionDateTime);
+                        
+                        // Only show "in progress" if the scheduled time has actually arrived
+                        if (!hasStarted) {
+                          return const SizedBox.shrink();
+                        }
+                      }
+                    } catch (e) {
+                      // If we can't parse the date/time, show the indicator anyway
+                    }
+                    
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentGreen.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.accentGreen.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.play_circle_filled_rounded,
+                                color: AppTheme.accentGreen,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Session is currently in progress',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.accentGreen,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
-              // Action buttons for trial and individual sessions
-              if ((isTrialSession || isIndividualSession) &&
-                  (status == 'scheduled' || status == 'in_progress' || status == 'approved') &&
-                  !isExpired &&
-                  !isCancelled) ...[
-                const SizedBox(height: 16),
-                Row(
+              const SizedBox(height: 14),
+              // Session details (date, time, location) - more compact
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
                   children: [
-                    // Join Meeting button (if online and has meet link)
-                    if (location == 'online' && 
-                        ((isTrialSession && meetLink != null && meetLink!.isNotEmpty) ||
-                         (isIndividualSession && session['meeting_link'] != null && 
-                          (session['meeting_link'] as String).isNotEmpty))) ...[
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _openMeetLink(
-                            isTrialSession ? meetLink! : session['meeting_link'] as String,
-                          ),
-                          icon: const Icon(Icons.video_call, size: 18),
-                          label: Text(
-                            'Join Meeting',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    // Start/End Session button
-                    if (status == 'scheduled') ...[
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: (_sessionLoadingStates[session['id'] as String] ?? false)
-                              ? null
-                              : () => _handleStartSession(session['id'] as String),
-                          icon: (_sessionLoadingStates[session['id'] as String] ?? false)
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.play_arrow, size: 18),
-                          label: Text(
-                            (_sessionLoadingStates[session['id'] as String] ?? false)
-                                ? 'Starting...'
-                                : 'Start Session',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ] else if (status == 'in_progress') ...[
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: (_sessionLoadingStates[session['id'] as String] ?? false)
-                              ? null
-                              : () => _handleEndSession(session['id'] as String),
-                          icon: (_sessionLoadingStates[session['id'] as String] ?? false)
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.stop, size: 18),
-                          label: Text(
-                            (_sessionLoadingStates[session['id'] as String] ?? false)
-                                ? 'Ending...'
-                                : 'End Session',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    // Add to Calendar button (if no calendar event exists)
-                    if ((isIndividualSession || isTrialSession) && 
-                        (status == 'scheduled' || status == 'approved') &&
-                        !isExpired &&
-                        !isCancelled &&
-                        (session['calendar_event_id'] == null || 
-                         (session['calendar_event_id'] as String? ?? '').isEmpty)) ...[
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => _addSessionToCalendar(session),
-                        icon: Icon(
-                          _isCalendarConnected == true 
-                              ? Icons.calendar_today 
-                              : Icons.calendar_today_outlined,
-                          size: 18,
-                        ),
-                        label: Text(
-                          _isCalendarConnected == true
-                              ? 'Add to Calendar'
-                              : 'Connect & Add',
-                          style: GoogleFonts.poppins(fontSize: 13),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                          side: BorderSide(color: AppTheme.primaryColor),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ],
-                    // Reschedule/Cancel options (for scheduled sessions)
-                    if ((isIndividualSession || isTrialSession) &&
-                        (status == 'scheduled' || status == 'approved') &&
-                        !isExpired &&
-                        !isCancelled) ...[
-                      const SizedBox(width: 8),
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert, size: 20),
-                        onSelected: (value) {
-                          if (value == 'reschedule') {
-                            _handleRescheduleSession(session['id'] as String, isIndividualSession);
-                          } else if (value == 'cancel') {
-                            _handleCancelSession(session['id'] as String, isIndividualSession);
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          PopupMenuItem(
-                            value: 'reschedule',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.edit_calendar, size: 18),
-                                const SizedBox(width: 8),
-                                Text('Reschedule', style: GoogleFonts.poppins(fontSize: 14)),
-                              ],
-                            ),
-                          ),
-                          PopupMenuItem(
-                            value: 'cancel',
-                            child: Row(
-                              children: [
-                                const Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
-                                const SizedBox(width: 8),
-                                Text('Cancel Session', style: GoogleFonts.poppins(fontSize: 14, color: Colors.red)),
-                              ],
+                    // Date and time
+                    if (sessionDate != null && sessionTime != null)
+                      Row(
+                        children: [
+                          Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _formatDateTime(sessionDate!, sessionTime!),
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
                         ],
                       ),
+                    if (sessionDate != null && sessionTime != null)
+                      const SizedBox(height: 8),
+                    // Location
+                    Row(
+                      children: [
+                        Icon(
+                          location == 'online' ? Icons.video_call : Icons.location_on,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            location == 'online' ? 'Online Session' : 'On-site Session',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: Colors.grey[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    // Countdown timer for upcoming sessions
+                    if (isUpcoming && (status == 'scheduled' || status == 'in_progress') && sessionDate != null && sessionTime != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: AppTheme.primaryColor.withOpacity(0.2),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.timer_outlined,
+                              size: 18,
+                              color: AppTheme.primaryColor,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildCountdownText(sessionDate!, sessionTime!),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ],
                 ),
-              ],
-              // Show expired/cancelled status for trial sessions
-              if (isTrialSession && (isExpired || isCancelled)) ...[
+              ),
+              // Expired session indicator
+              if (isExpired) ...[
                 const SizedBox(height: 12),
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
-                    color: (isExpired ? Colors.orange : Colors.red).withOpacity(0.1),
+                    color: Colors.red.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: (isExpired ? Colors.orange : Colors.red).withOpacity(0.3),
+                      color: Colors.red.withOpacity(0.2),
                       width: 1,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        isExpired ? Icons.access_time : Icons.cancel,
+                        Icons.access_time_rounded,
+                        color: Colors.red[600],
                         size: 18,
-                        color: isExpired ? Colors.orange : Colors.red,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          isExpired 
-                              ? 'Session expired - payment not completed'
-                              : 'Session cancelled',
+                          'This session expired and was never attended',
                           style: GoogleFonts.poppins(
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: isExpired ? Colors.orange : Colors.red,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.red[700],
                           ),
                         ),
                       ),
@@ -1062,41 +1184,70 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                   ),
                 ),
               ],
-              // Next Session (if active recurring session)
-              if (!isIndividualSession &&
-                  status == 'active' &&
-                  days.isNotEmpty &&
-                  times.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppTheme.primaryColor.withOpacity(0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.schedule,
-                        color: AppTheme.primaryColor,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
+              // Action buttons
+              if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
                       Expanded(
-                        child: Text(
-                          'Next session: ${_getNextSessionDate(days, times)}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.primaryColor,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _joinMeeting(context, meetLink!),
+                          icon: Icon(
+                            status == 'in_progress' ? Icons.video_call : Icons.video_call,
+                            size: status == 'in_progress' ? 20 : 18,
+                          ),
+                          label: Text(
+                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
+                            style: GoogleFonts.poppins(
+                              fontSize: status == 'in_progress' ? 14 : 13,
+                              fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: status == 'in_progress' 
+                                ? AppTheme.accentGreen 
+                                : AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              vertical: status == 'in_progress' ? 14 : 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            elevation: status == 'in_progress' ? 2 : 0,
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    // Add to Calendar button
+                    if ((calendarEventId == null || calendarEventId.isEmpty))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _addSessionToCalendar(session),
+                          icon: Icon(
+                            _isCalendarConnected == true 
+                                ? Icons.calendar_today 
+                                : Icons.calendar_today_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _isCalendarConnected == true
+                                ? 'Add to Calendar'
+                                : 'Connect & Add',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryColor,
+                            side: BorderSide(color: AppTheme.primaryColor),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ],
@@ -1295,6 +1446,76 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     }
   }
 
+  String _formatDateTime(DateTime date, String time) {
+    try {
+      final formattedDate = DateFormat('MMM d, yyyy').format(date);
+      return '$formattedDate at $time';
+    } catch (e) {
+      return '${date.toString().split(' ')[0]} at $time';
+    }
+  }
+
+  String _getStatusColor(String status) {
+    switch (status) {
+      case 'expired':
+        return '#F44336'; // Red for expired
+      case 'scheduled':
+        return '#4CAF50'; // Green
+      case 'in_progress':
+        return '#2196F3'; // Blue
+      case 'completed':
+        return '#9E9E9E'; // Gray
+      case 'cancelled':
+        return '#F44336'; // Red
+      case 'approved':
+        return '#4CAF50'; // Green
+      default:
+        return '#757575'; // Gray
+    }
+  }
+
+  String _getStatusLabel(String status) {
+    switch (status) {
+      case 'scheduled':
+        return 'Scheduled';
+      case 'in_progress':
+        return 'Session in Progress';
+      case 'completed':
+        return 'Completed';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'expired':
+        return 'Expired';
+      case 'approved':
+        return 'Approved';
+      default:
+        return status;
+    }
+  }
+
+  /// Join Google Meet session
+  Future<void> _joinMeeting(BuildContext context, String meetLink) async {
+    try {
+      final uri = Uri.parse(meetLink);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        LogService.success('Opened Meet link: $meetLink');
+      } else {
+        throw Exception('Could not launch meeting link');
+      }
+    } catch (e) {
+      LogService.error('Error opening meeting: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening meeting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
       children: [
@@ -1310,40 +1531,62 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'active':
-      case 'in_progress':
-        return AppTheme.accentGreen;
-      case 'scheduled':
-      case 'approved':
-        return Colors.blue;
-      case 'pending':
-        return Colors.orange;
-      case 'paused':
-        return Colors.orange;
-      case 'expired':
-        return Colors.orange;
-      case 'completed':
-        return AppTheme.textMedium;
-      case 'cancelled':
-        return Colors.red;
-      default:
-        return AppTheme.textMedium;
-    }
-  }
 
       Future<void> _handleStartSession(String sessionId) async {
-    // Get session details to check if it's hybrid
+    // CRITICAL FIX: Handle both trial sessions and individual sessions
     try {
-      final session = await SupabaseService.client
-          .from('individual_sessions')
-          .select('location, onsite_address, meeting_link')
+      // First, check if this is a trial session by looking in trial_sessions table
+      Map<String, dynamic>? session;
+      String? location;
+      String? address;
+      String? meetLink;
+      bool isTrialSession = false;
+      
+      // Try trial_sessions first
+      final trialSession = await SupabaseService.client
+          .from('trial_sessions')
+          .select('location, onsite_address, meet_link, status, tutor_id')
           .eq('id', sessionId)
           .maybeSingle();
       
-      if (session == null) {
-        throw Exception('Session not found: $sessionId');
+      if (trialSession != null) {
+        // This is a trial session
+        isTrialSession = true;
+        session = trialSession;
+        location = trialSession['location'] as String? ?? 'online';
+        address = trialSession['onsite_address'] as String? ?? '';
+        meetLink = trialSession['meet_link'] as String?;
+        
+        // Check if trial is approved/scheduled
+        final status = trialSession['status'] as String?;
+        if (status != 'approved' && status != 'scheduled') {
+          throw Exception('Trial session cannot be started. Current status: $status');
+        }
+        
+        // Check authorization
+        final userId = SupabaseService.currentUser?.id;
+        if (userId == null) {
+          throw Exception('User not authenticated');
+        }
+        if (trialSession['tutor_id'] != userId) {
+          throw Exception('Unauthorized: Only the tutor can start the session');
+        }
+      } else {
+        // Try individual_sessions
+        final individualSession = await SupabaseService.client
+            .from('individual_sessions')
+            .select('location, address, meeting_link, status, tutor_id')
+            .eq('id', sessionId)
+            .maybeSingle();
+        
+        if (individualSession == null) {
+          throw Exception('Session not found: $sessionId');
+        }
+        
+        session = individualSession;
+        location = individualSession['location'] as String? ?? 'online';
+        address = individualSession['address'] as String? ?? '';
+        meetLink = individualSession['meeting_link'] as String?;
       }
 
       final location = session['location'] as String? ?? 'online';
@@ -1356,11 +1599,16 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         _sessionLoadingStates[sessionId] = true;
       });
 
-      // Use SessionLifecycleService with mode selection
-      await SessionLifecycleService.startSession(
-        sessionId,
-        isOnline: isOnline ?? false,
-      );
+      if (isTrialSession) {
+        // Handle trial session start
+        await _startTrialSession(sessionId, isOnline ?? false);
+      } else {
+        // Use SessionLifecycleService for individual sessions
+        await SessionLifecycleService.startSession(
+          sessionId,
+          isOnline: isOnline ?? false,
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1378,6 +1626,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       }
       _loadSessions(); // Refresh
     } catch (e) {
+      LogService.error('Error starting session: $e');
       if (mounted) {
         safeSetState(() {
           _sessionLoadingStates[sessionId] = false;
@@ -1389,6 +1638,193 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           ),
         );
       }
+    }
+  }
+
+  /// Start a trial session
+  Future<void> _startTrialSession(String trialSessionId, bool isOnline) async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final now = DateTime.now().toIso8601String();
+      
+      // Get trial session details
+      final trial = await SupabaseService.client
+          .from('trial_sessions')
+          .select('''
+            tutor_id,
+            learner_id,
+            parent_id,
+            status,
+            location,
+            meet_link,
+            scheduled_date,
+            scheduled_time,
+            duration_minutes,
+            subject
+          ''')
+          .eq('id', trialSessionId)
+          .maybeSingle();
+
+      if (trial == null) {
+        throw Exception('Trial session not found: $trialSessionId');
+      }
+
+      // Authorization check
+      if (trial['tutor_id'] != userId) {
+        throw Exception('Unauthorized: Only the tutor can start the session');
+      }
+
+      // Status validation
+      if (trial['status'] != 'approved' && trial['status'] != 'scheduled') {
+        throw Exception('Trial session cannot be started. Current status: ${trial['status']}');
+      }
+
+      final sessionLocation = trial['location'] as String;
+      final isSessionOnline = sessionLocation == 'online' || (sessionLocation == 'hybrid' && isOnline);
+
+      // Initialize meetLink variable (will be set below if needed)
+      String? meetLink = trial['meet_link'] as String?;
+
+      // Update trial session status
+      await SupabaseService.client
+          .from('trial_sessions')
+          .update({
+            'tutor_joined_at': now,
+            'status': 'in_progress',
+            'updated_at': now,
+          })
+          .eq('id', trialSessionId);
+
+      // For online sessions: ensure Meet link exists
+      if (isSessionOnline) {
+        if (meetLink == null || meetLink.isEmpty) {
+          // Generate Meet link if it doesn't exist
+          try {
+            final scheduledDate = DateTime.parse(trial['scheduled_date'] as String);
+            final scheduledTime = trial['scheduled_time'] as String;
+            final durationMinutes = trial['duration_minutes'] as int;
+            
+            meetLink = await MeetService.generateTrialMeetLink(
+              trialSessionId: trialSessionId,
+              tutorId: trial['tutor_id'] as String,
+              studentId: trial['learner_id'] as String,
+              scheduledDate: scheduledDate,
+              scheduledTime: scheduledTime,
+              durationMinutes: durationMinutes,
+            );
+            
+            if (meetLink != null && meetLink.isNotEmpty) {
+              await SupabaseService.client
+                  .from('trial_sessions')
+                  .update({'meet_link': meetLink})
+                  .eq('id', trialSessionId);
+              LogService.success('Meet link generated for trial session: $trialSessionId');
+            } else {
+              LogService.warning('Meet link generation returned null or empty');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.warning, color: Colors.white, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Meet link could not be generated. Please connect Google Calendar in settings.',
+                            style: GoogleFonts.poppins(),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: Colors.orange,
+                    duration: const Duration(seconds: 5),
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            LogService.warning('Could not generate Meet link: $e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Row(
+                    children: [
+                      const Icon(Icons.error, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Failed to generate Meet link. Please connect Google Calendar.',
+                          style: GoogleFonts.poppins(),
+                        ),
+                      ),
+                    ],
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+            // Continue - session can still proceed
+          }
+        }
+      }
+
+      // Create or update individual_sessions record for consistency
+      try {
+        // Check if individual_sessions record exists
+        final existingIndividual = await SupabaseService.client
+            .from('individual_sessions')
+            .select('id')
+            .eq('id', trialSessionId)
+            .maybeSingle();
+        
+        if (existingIndividual == null) {
+          // Create individual_sessions record
+          await SupabaseService.client
+              .from('individual_sessions')
+              .insert({
+                'id': trialSessionId, // Use same ID for consistency
+                'recurring_session_id': null,
+                'tutor_id': trial['tutor_id'],
+                'learner_id': trial['learner_id'],
+                'parent_id': trial['parent_id'],
+                'status': 'in_progress',
+                'scheduled_date': trial['scheduled_date'],
+                'scheduled_time': trial['scheduled_time'],
+                'subject': trial['subject'],
+                'duration_minutes': trial['duration_minutes'],
+                'location': trial['location'],
+                'meeting_link': meetLink,
+                'address': null,
+                'location_description': null,
+                'tutor_joined_at': now,
+                'session_started_at': now,
+              });
+        } else {
+          // Update existing individual_sessions record
+          await SupabaseService.client
+              .from('individual_sessions')
+              .update({
+                'status': 'in_progress',
+                'tutor_joined_at': now,
+                'session_started_at': now,
+                'meeting_link': meetLink,
+              })
+              .eq('id', trialSessionId);
+        }
+      } catch (e) {
+        LogService.warning('Could not create/update individual_sessions record: $e');
+        // Continue - trial session is still started
+      }
+
+      LogService.success('Trial session started: $trialSessionId');
+    } catch (e) {
+      LogService.error('Error starting trial session: $e');
+      rethrow;
     }
   }
 
@@ -1521,13 +1957,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   void _showSessionDetails(Map<String, dynamic> session) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TutorSessionDetailFullScreen(session: session),
       ),
-      builder: (context) => _SessionDetailsSheet(session: session),
     );
   }
 
@@ -1613,8 +2047,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           );
         } else {
           // For trial sessions, use TrialSessionService
-          // TODO: Implement trial session cancellation if needed
-          throw Exception('Trial session cancellation not yet implemented');
+          await TrialSessionService.cancelApprovedTrialSession(
+            sessionId: sessionId,
+            cancellationReason: result['reason'] as String? ?? 'Cancelled by tutor',
+          );
         }
 
         if (mounted) {
@@ -2035,6 +2471,29 @@ class _SessionDetailsSheet extends StatelessWidget {
 
   const _SessionDetailsSheet({required this.session});
 
+  /// Join Google Meet session
+  Future<void> _joinMeeting(BuildContext context, String meetLink) async {
+    try {
+      final uri = Uri.parse(meetLink);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        LogService.success('Opened Meet link: $meetLink');
+      } else {
+        throw Exception('Could not launch meeting link');
+      }
+    } catch (e) {
+      LogService.error('Error opening meeting: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening meeting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isIndividualSession =
@@ -2061,8 +2520,8 @@ class _SessionDetailsSheet extends StatelessWidget {
           session['recurring_sessions'] as Map<String, dynamic>?;
       studentName = recurringData?['student_name']?.toString() ?? 'Student';
       location = session['location'] as String? ?? 'online';
-      address = session['onsite_address'] as String?;
-      locationDescription = session['location_description'] as String?;
+      // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
+      address = session['address'] as String? ?? session['onsite_address'] as String?;
       subject = session['subject'] as String?;
       sessionDate = DateTime.parse(session['scheduled_date'] as String);
       sessionTime = session['scheduled_time'] as String?;
@@ -2180,12 +2639,66 @@ class _SessionDetailsSheet extends StatelessWidget {
                 'Status',
                 (session['status'] as String).toUpperCase(),
               ),
+              // Join Session Button (for in_progress sessions with meet link)
+              if ((session['status'] as String) == 'in_progress') ...[
+                const SizedBox(height: 24),
+                Builder(
+                  builder: (context) {
+                    // Get meet link - check both trial and individual session formats
+                    final sessionType = session['_sessionType'] as String?;
+                    final isTrialSession = sessionType == 'trial';
+                    final meetLink = isTrialSession
+                        ? (session['meet_link'] as String?)
+                        : (session['meeting_link'] as String?);
+                    
+                    // Only show join button for online sessions with meet link
+                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty) {
+                      return ElevatedButton.icon(
+                        onPressed: () => _joinMeeting(context, meetLink),
+                        icon: const Icon(Icons.video_call, size: 20),
+                        label: Text(
+                          'Join Session',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accentGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 24,
+                          ),
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+              // Show meet link as text if available but not in progress
               if (isIndividualSession &&
                   session['meeting_link'] != null &&
-                  location == 'online')
+                  location == 'online' &&
+                  (session['status'] as String) != 'in_progress')
                 _buildDetailSection(
                   'Meeting Link',
                   session['meeting_link'] as String,
+                ),
+              // Show meet link for trial sessions if available but not in progress
+              if (session['_sessionType'] == 'trial' &&
+                  session['meet_link'] != null &&
+                  location == 'online' &&
+                  (session['status'] as String) != 'in_progress')
+                _buildDetailSection(
+                  'Meeting Link',
+                  session['meet_link'] as String,
                 ),
             ],
           ),

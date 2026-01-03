@@ -17,6 +17,7 @@ import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
+import 'package:prepskul/features/booking/screens/reschedule_request_review_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -86,7 +87,12 @@ class NotificationNavigationService {
       } else if (pathSegments[0] == 'student') {
         await _navigateToStudentSection(pathSegments, userType);
       } else if (pathSegments[0] == 'sessions') {
-        await _navigateToSession(pathSegments, userType);
+        // Check if it's a reschedule request review
+        if (pathSegments.length >= 3 && pathSegments[2] == 'reschedule') {
+          await _navigateToRescheduleReview(pathSegments, metadata);
+        } else {
+          await _navigateToSession(pathSegments, userType);
+        }
       } else if (pathSegments[0] == 'payments') {
         await _navigateToPayment(pathSegments, userType);
       } else {
@@ -176,12 +182,23 @@ class NotificationNavigationService {
         return;
       }
 
-      // Navigate to request detail screen with trial session
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => RequestDetailScreen(trialSession: trialSession),
-        ),
-      );
+      // FIX: Navigate to appropriate screen based on user type
+      if (userType == 'tutor') {
+        // For tutors, navigate to tutor sessions screen (tab 1) which shows tutor's view
+        // This will display the trial session in the tutor's context with approve/reject options
+        await navService.navigateToRoute(
+          '/tutor-nav',
+          arguments: {'initialTab': 1, 'trialId': trialId},
+          replace: false,
+        );
+      } else {
+        // For students/parents, navigate to request detail screen (student view)
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => RequestDetailScreen(trialSession: trialSession),
+          ),
+        );
+      }
     } catch (e) {
       LogService.error('[NOTIF_NAV] Error navigating to trial session: $e');
       // Fallback: navigate to requests tab
@@ -559,9 +576,93 @@ class NotificationNavigationService {
         await _navigateToProfile(userType: userType);
         break;
 
+      case 'session_reschedule_request':
+        // Navigate to reschedule request review if metadata has request ID
+        if (metadata != null && metadata['reschedule_request_id'] != null) {
+          final requestId = metadata['reschedule_request_id'] as String;
+          await _navigateToRescheduleReview(['sessions', requestId, 'reschedule'], metadata);
+        } else {
+          // Fallback to sessions tab
+          final role = userType == 'tutor'
+              ? 'tutor'
+              : (userType == 'parent' ? 'parent' : 'student');
+          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+          await navService.navigateToRoute(
+            route,
+            arguments: {'initialTab': 2}, // Sessions tab
+            replace: false,
+          );
+        }
+        break;
+
       default:
         // Unknown notification type, do nothing
         break;
+    }
+  }
+}
+
+
+  /// Navigate to reschedule request review screen
+  static Future<void> _navigateToRescheduleReview(
+    List<String> pathSegments,
+    Map<String, dynamic>? metadata,
+  ) async {
+    final navService = NavigationService();
+    final context = navService.context;
+
+    String? requestId;
+    
+    // Get request ID from metadata or path
+    if (metadata != null && metadata['reschedule_request_id'] != null) {
+      requestId = metadata['reschedule_request_id'] as String;
+    } else if (pathSegments.length >= 2) {
+      // Try to extract from path if available
+      requestId = pathSegments[1];
+    }
+
+    if (requestId == null) {
+      LogService.warning('[NOTIF_NAV] No reschedule request ID found');
+      return;
+    }
+
+    if (context == null) {
+      LogService.warning('[NOTIF_NAV] No context for reschedule review navigation, queuing link');
+      navService.queueDeepLink(Uri(path: '/sessions/$requestId/reschedule'));
+      return;
+    }
+
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RescheduleRequestReviewScreen(
+            rescheduleRequestId: requestId!, // Safe to use ! here since we checked null above
+            sessionId: metadata?['session_id'] as String?,
+            sessionType: metadata?['session_type'] as String?,
+          ),
+        ),
+      );
+    } catch (e) {
+      LogService.error('[NOTIF_NAV] Error navigating to reschedule review: $e');
+      // Fallback: navigate to sessions tab
+      final userId = SupabaseService.currentUser?.id;
+      if (userId != null) {
+        final profile = await SupabaseService.client
+            .from('profiles')
+            .select('user_type')
+            .eq('id', userId)
+            .maybeSingle();
+        final userType = profile?['user_type'] as String?;
+        final role = userType == 'tutor'
+            ? 'tutor'
+            : (userType == 'parent' ? 'parent' : 'student');
+        final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+        await navService.navigateToRoute(
+          route,
+          arguments: {'initialTab': 2}, // Sessions tab
+          replace: false,
+        );
+      }
     }
   }
 }

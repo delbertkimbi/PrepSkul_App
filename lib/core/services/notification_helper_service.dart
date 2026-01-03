@@ -825,6 +825,10 @@ class NotificationHelperService {
 
   /// Create fallback session reminders (in-app notifications)
   /// Used when API scheduling fails
+  /// 
+  /// IMPORTANT: This fallback should NOT create future reminders immediately.
+  /// Future reminders (24h, 1h, 15min before) should be scheduled by the backend API.
+  /// This fallback only logs a warning - actual scheduling must be done server-side.
   static Future<void> _createFallbackSessionReminders({
     required String tutorId,
     required String studentId,
@@ -838,139 +842,24 @@ class NotificationHelperService {
     try {
       final now = DateTime.now();
       
-      // 24 hours before (only if session is more than 24h away)
-      final twentyFourHoursBefore = sessionStart.subtract(const Duration(hours: 24));
-      if (twentyFourHoursBefore.isAfter(now)) {
-        final message24h = sessionType == 'trial'
-            ? 'Your trial session with $tutorName is tomorrow!'
-            : 'Your session with $tutorName is tomorrow!';
-        
-        // Notify tutor
-        await NotificationService.createNotification(
-          userId: tutorId,
-          type: 'session_reminder',
-          title: '📅 Session Reminder',
-          message: message24h.replaceAll('Your', 'Your upcoming'),
-          priority: 'normal',
-          actionUrl: '/sessions/$sessionId',
-          actionText: 'View Session',
-          icon: '📅',
-          metadata: {
-            'session_id': sessionId,
-            'session_type': sessionType,
-            'reminder_type': '24_hours',
-            'session_start': sessionStart.toIso8601String(),
-          },
-        );
-        
-        // Notify student
-        await NotificationService.createNotification(
-          userId: studentId,
-          type: 'session_reminder',
-          title: '📅 Session Reminder',
-          message: message24h,
-          priority: 'normal',
-          actionUrl: '/sessions/$sessionId',
-          actionText: 'View Session',
-          icon: '📅',
-          metadata: {
-            'session_id': sessionId,
-            'session_type': sessionType,
-            'reminder_type': '24_hours',
-            'session_start': sessionStart.toIso8601String(),
-          },
-        );
-      }
+      // CRITICAL FIX: Do NOT create future reminders immediately
+      // The fallback should not create notifications that should be sent in the future.
+      // These must be scheduled by the backend API or a proper scheduler.
+      // Creating them now would cause all three notifications to appear at once.
       
-      // 1 hour before (only if session is more than 1h away)
-      final oneHourBefore = sessionStart.subtract(const Duration(hours: 1));
-      if (oneHourBefore.isAfter(now)) {
-        final message1h = sessionType == 'trial'
-            ? 'Your trial session with $tutorName starts in 1 hour!'
-            : 'Your session with $tutorName starts in 1 hour!';
-        
-        // Notify tutor
-        await NotificationService.createNotification(
-          userId: tutorId,
-          type: 'session_reminder',
-          title: '⏰ Session Starting Soon',
-          message: message1h.replaceAll('Your', 'Your upcoming'),
-          priority: 'high',
-          actionUrl: '/sessions/$sessionId',
-          actionText: 'View Session',
-          icon: '⏰',
-          metadata: {
-            'session_id': sessionId,
-            'session_type': sessionType,
-            'reminder_type': '1_hour',
-            'session_start': sessionStart.toIso8601String(),
-          },
-        );
-        
-        // Notify student
-        await NotificationService.createNotification(
-          userId: studentId,
-          type: 'session_reminder',
-          title: '⏰ Session Starting Soon',
-          message: message1h,
-          priority: 'high',
-          actionUrl: '/sessions/$sessionId',
-          actionText: 'View Session',
-          icon: '⏰',
-          metadata: {
-            'session_id': sessionId,
-            'session_type': sessionType,
-            'reminder_type': '1_hour',
-            'session_start': sessionStart.toIso8601String(),
-          },
-        );
-      }
+      // Only log that scheduling failed - don't create future notifications
+      LogService.warning(
+        'Session reminder scheduling failed for session: $sessionId. '
+        'Reminders should be scheduled server-side at: '
+        '24h before (${sessionStart.subtract(const Duration(hours: 24)).toIso8601String()}), '
+        '1h before (${sessionStart.subtract(const Duration(hours: 1)).toIso8601String()}), '
+        'and 15min before (${sessionStart.subtract(const Duration(minutes: 15)).toIso8601String()}).'
+      );
       
-      // 15 minutes before (only if session is more than 15min away)
-      final fifteenMinutesBefore = sessionStart.subtract(const Duration(minutes: 15));
-      if (fifteenMinutesBefore.isAfter(now)) {
-        final message15m = sessionType == 'trial'
-            ? 'Your trial session with $tutorName starts in 15 minutes! Join now.'
-            : 'Your session with $tutorName starts in 15 minutes! Join now.';
-        
-        // Notify tutor
-        await NotificationService.createNotification(
-          userId: tutorId,
-          type: 'session_reminder',
-          title: '🚀 Join Session Now',
-          message: message15m.replaceAll('Your', 'Your upcoming'),
-          priority: 'urgent',
-          actionUrl: '/sessions/$sessionId',
-          actionText: 'Join Now',
-          icon: '🚀',
-          metadata: {
-            'session_id': sessionId,
-            'session_type': sessionType,
-            'reminder_type': '15_minutes',
-            'session_start': sessionStart.toIso8601String(),
-          },
-        );
-        
-        // Notify student
-        await NotificationService.createNotification(
-          userId: studentId,
-          type: 'session_reminder',
-          title: '🚀 Join Session Now',
-          message: message15m,
-          priority: 'urgent',
-          actionUrl: '/sessions/$sessionId',
-          actionText: 'Join Now',
-          icon: '🚀',
-          metadata: {
-            'session_id': sessionId,
-            'session_type': sessionType,
-            'reminder_type': '15_minutes',
-            'session_start': sessionStart.toIso8601String(),
-          },
-        );
-      }
+      // NOTE: The backend API should handle scheduling these reminders.
+      // If the API call fails, we should retry or use a proper scheduling service.
+      // Creating notifications immediately defeats the purpose of timed reminders.
       
-      LogService.success('Fallback session reminders created for session: $sessionId');
     } catch (e) {
       LogService.warning('Could not create fallback session reminders: $e');
     }

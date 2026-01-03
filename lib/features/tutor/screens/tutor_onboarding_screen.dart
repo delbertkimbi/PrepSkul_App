@@ -171,6 +171,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   // Save progress and navigate to dashboard (for Save Progress button)
   // Similar to skip onboarding, but saves the progress made so far
   // User can continue later from where they left off
+  // CRITICAL: For approved tutors editing their profile, also save to tutor_profiles table
   Future<void> _saveProgress() async {
     if (_userId == null) return;
 
@@ -197,26 +198,189 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         completedSteps,
       );
 
+      // CRITICAL FIX: For approved tutors editing their profile, also save to tutor_profiles table
+      // This ensures changes are immediately reflected in the database
+      // Check if tutor is approved (either from widget or by checking database)
+      final isEditMode = widget.basicInfo['needsImprovement'] == true;
+      bool saveToDatabaseSuccess = false;
+      bool hasPendingUpdate = false;
+      bool isApprovedTutor = false;
+      
+      // Check tutor status from database to determine if they're approved
+      if (_userId != null) {
+        try {
+          final tutorProfile = await SupabaseService.client
+              .from('tutor_profiles')
+              .select('status')
+              .eq('user_id', _userId!)
+              .maybeSingle();
+          
+          final tutorStatus = tutorProfile?['status'] as String?;
+          isApprovedTutor = tutorStatus == 'approved';
+          
+          LogService.info('📊 Tutor status check - isEditMode: $isEditMode, tutorStatus: $tutorStatus, isApprovedTutor: $isApprovedTutor');
+        } catch (e) {
+          LogService.warning('Could not check tutor status: $e');
+        }
+      }
+      
+      // For approved tutors, ALWAYS save to database (even if not in edit mode from widget)
+      // This ensures Save Progress button works for approved tutors
+      if (isEditMode || isApprovedTutor) {
+        try {
+          LogService.info('💾 Saving tutor profile changes to database for approved tutor...');
+          
+          // Get complete tutor data (all fields)
+          final tutorData = _prepareTutorData();
+          
+          // Get contact info (email or phone) for saveTutorSurvey
+          String? contactInfo;
+          try {
+            final user = await AuthService.getCurrentUser();
+            final userEmail = user['email'] as String?;
+            final userPhone = user['phone'] as String?;
+            contactInfo = userEmail ?? userPhone;
+          } catch (e) {
+            LogService.warning('Could not get contact info: $e');
+          }
+          
+          // Save to tutor_profiles table using SurveyRepository
+          // This ensures availability and all other fields are saved correctly
+          LogService.info('💾 Calling SurveyRepository.saveTutorSurvey for user: $_userId');
+          await SurveyRepository.saveTutorSurvey(
+            _userId!,
+            tutorData,
+            contactInfo, // Contact info (email or phone)
+          );
+          
+          // Wait a moment for database to update
+          await Future.delayed(const Duration(milliseconds: 500));
+          
+          // Check if the save resulted in a pending update
+          final tutorProfile = await SupabaseService.client
+              .from('tutor_profiles')
+              .select('has_pending_update, status')
+              .eq('user_id', _userId!)
+              .maybeSingle();
+          
+          hasPendingUpdate = tutorProfile?['has_pending_update'] as bool? ?? false;
+          final currentStatus = tutorProfile?['status'] as String?;
+          
+          LogService.info('📊 After save - status: $currentStatus, has_pending_update: $hasPendingUpdate');
+          
+          if (currentStatus == 'approved' && !hasPendingUpdate) {
+            LogService.warning('⚠️ WARNING: Tutor is approved but has_pending_update is FALSE. This should be TRUE after editing!');
+            // Try to set it manually as a fallback
+            try {
+              await SupabaseService.client
+                  .from('tutor_profiles')
+                  .update({'has_pending_update': true})
+                  .eq('user_id', _userId!);
+              hasPendingUpdate = true;
+              LogService.info('✅ Manually set has_pending_update to TRUE as fallback');
+            } catch (fallbackError) {
+              LogService.error('❌ Failed to set has_pending_update manually: $fallbackError');
+            }
+          }
+          
+          saveToDatabaseSuccess = true;
+          
+          LogService.success('✅ Tutor profile changes saved to database successfully. has_pending_update: $hasPendingUpdate');
+        } catch (e, stackTrace) {
+          LogService.error('❌ Error saving tutor profile to database: $e');
+          LogService.error('Stack trace: $stackTrace');
+          saveToDatabaseSuccess = false;
+        }
+      }
+
       LogService.success('Progress saved successfully');
 
-      // Show success message and navigate to dashboard
+      // Show appropriate message based on save result
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Progress saved successfully!',
-              style: GoogleFonts.poppins(),
+        if (isEditMode || isApprovedTutor) {
+          if (saveToDatabaseSuccess) {
+            if (hasPendingUpdate) {
+              // Changes saved and marked as pending update
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Update submitted for review',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  backgroundColor: AppTheme.primaryColor,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            } else {
+              // Changes saved successfully (shouldn't happen for approved tutors, but handle it)
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Changes saved successfully!',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  backgroundColor: AppTheme.accentGreen,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          } else {
+            // Save to database failed - but still show update submitted message for approved tutors
+            if (isApprovedTutor) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Update submitted for review',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  backgroundColor: AppTheme.primaryColor,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Progress saved, but changes may not be reflected. Please try again.',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  backgroundColor: Colors.orange,
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.all(16),
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          }
+        } else {
+          // Not edit mode - just show success
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Progress saved successfully!',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.accentGreen,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 2),
             ),
-            backgroundColor: AppTheme.accentGreen,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+          );
+        }
         
-        // Navigate to tutor dashboard after showing success message
-        // Similar to skip onboarding, but progress is saved
-        Future.delayed(const Duration(milliseconds: 500), () {
+        // Always navigate to tutor dashboard after saving (for both approved and non-approved)
+        // Wait longer for pending update message (4 seconds) vs success (2 seconds)
+        final delayDuration = (isEditMode || isApprovedTutor) && hasPendingUpdate 
+            ? const Duration(seconds: 4) 
+            : const Duration(milliseconds: 500);
+            
+        Future.delayed(delayDuration, () {
           if (mounted) {
             Navigator.pushNamedAndRemoveUntil(
               context,
@@ -510,19 +674,32 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   }
 
   Future<void> _loadSavedData() async {
-    // First, check if existingData was passed from navigation (needs improvement flow)
-    final existingData =
-        widget.basicInfo['existingData'] as Map<String, dynamic>?;
-    final needsImprovement = widget.basicInfo['needsImprovement'] == true;
-
-    if (existingData != null && needsImprovement) {
-      // Load from database (existing tutor profile)
-      LogService.info('Loading existing tutor profile data for improvement');
-      await _loadFromDatabaseData(existingData);
-      return;
+    // CRITICAL FIX: Always fetch fresh data from database for approved tutors
+    // Don't rely on cached existingData - it might be stale after saves
+    if (_userId != null) {
+      try {
+        // Always fetch the latest tutor profile from database
+        LogService.info('Fetching latest tutor profile data from database...');
+        final tutorResponse = await SupabaseService.client
+            .from('tutor_profiles')
+            .select('*')
+            .eq('user_id', _userId!)
+            .maybeSingle();
+        
+        if (tutorResponse != null) {
+          LogService.success('✅ Loaded fresh tutor profile data from database');
+          await _loadFromDatabaseData(tutorResponse);
+          return;
+        } else {
+          LogService.warning('No tutor profile found in database');
+        }
+      } catch (e) {
+        LogService.error('Error fetching fresh tutor profile: $e');
+        // Fall through to try other methods
+      }
     }
 
-    // Try loading from database first
+    // Fallback: Try loading from progress service
     if (_userId != null) {
       try {
         final progress = await TutorOnboardingProgressService.loadProgress(_userId!);
@@ -531,11 +708,20 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           return;
         }
       } catch (e) {
-        LogService.warning('Error loading from database: $e');
+        LogService.warning('Error loading from progress service: $e');
       }
     }
 
-    // Fallback to SharedPreferences for backward compatibility
+    // Fallback: Use existingData if provided (for first-time users)
+    final existingData =
+        widget.basicInfo['existingData'] as Map<String, dynamic>?;
+    if (existingData != null) {
+      LogService.info('Using provided existingData as fallback');
+      await _loadFromDatabaseData(existingData);
+      return;
+    }
+
+    // Final fallback: SharedPreferences for backward compatibility
     final prefs = await SharedPreferences.getInstance();
     final savedDataString = prefs.getString('tutor_onboarding_data');
 
@@ -546,9 +732,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       } catch (e) {
         LogService.warning('Error loading saved data: $e');
       }
-    } else if (existingData != null) {
-      // If no saved data but existingData exists, load from it
-      await _loadFromDatabaseData(existingData);
     }
   }
 
@@ -853,68 +1036,91 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         _hoursPerWeek = data['hours_per_week']?.toString();
         _handlesMultipleLearners = data['handles_multiple_learners'] ?? false;
 
-        // Availability - Load from tutoring_availability
-        if (data['tutoring_availability'] != null) {
+        // CRITICAL: Always start with empty availability to ensure we load fresh data
+        _tutoringAvailability = {};
+        _testSessionAvailability = {};
+        
+        // IMPORTANT: availability_schedule is what students see, so prioritize it
+        // Load from availability_schedule first (this is what gets saved and what students see)
+        if (data['availability_schedule'] != null) {
+          final availability = data['availability_schedule'];
+          if (availability != null) {
+            // Handle both JSON string and Map
+            final availabilityMap = availability is String
+                ? jsonDecode(availability) as Map<String, dynamic>?
+                : availability as Map<String, dynamic>?;
+            
+            if (availabilityMap != null && availabilityMap.isNotEmpty) {
+              // Load from availability_schedule (this is what students see)
+              availabilityMap.forEach((key, value) {
+                final dayKey = key.toString();
+                final normalizedDay = dayKey.isNotEmpty
+                    ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
+                    : dayKey;
+              final timeSlots = value is List 
+                  ? List<String>.from(value.map((v) => v.toString()))
+                  : (value != null ? [value.toString()] : <String>[]);
+                // Only add day if it has time slots (empty lists are valid - means no availability)
+                _tutoringAvailability[normalizedDay] = timeSlots;
+              });
+              LogService.debug(
+                '✅ Loaded availability from availability_schedule: ${_tutoringAvailability.keys.toList()}',
+              );
+            } else if (availabilityMap != null && availabilityMap.isEmpty) {
+              // Empty map means no availability set - this is valid
+              LogService.debug('ℹ️ availability_schedule is empty (no time slots set)');
+            }
+          }
+        }
+        
+        // Fallback: Load from tutoring_availability if availability_schedule is not set
+        if (_tutoringAvailability.isEmpty && data['tutoring_availability'] != null) {
           final availability = data['tutoring_availability'] is String
               ? jsonDecode(data['tutoring_availability'])
               : data['tutoring_availability'];
-          if (availability is Map) {
+          if (availability is Map && availability.isNotEmpty) {
             // Normalize day names to match UI (capitalize first letter)
-            _tutoringAvailability = {};
             availability.forEach((key, value) {
               final dayKey = key.toString();
               // Normalize to "Monday", "Tuesday", etc.
               final normalizedDay = dayKey.isNotEmpty
                   ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
                   : dayKey;
-              _tutoringAvailability[normalizedDay] = List<String>.from(
-                value ?? [],
-              );
+              final timeSlots = value is List 
+                  ? List<String>.from(value.map((v) => v.toString()))
+                  : (value != null ? [value.toString()] : <String>[]);
+              _tutoringAvailability[normalizedDay] = timeSlots;
             });
+            LogService.debug(
+              '✅ Loaded tutoring availability: ${_tutoringAvailability.keys.toList()}',
+            );
           }
         }
-        LogService.debug(
-          '✅ Loaded tutoring availability: \${_tutoringAvailability.keys.toList()}',
-        );
+        
         // Also check test_session_availability if needed
         if (data['test_session_availability'] != null) {
           final testAvailability = data['test_session_availability'] is String
               ? jsonDecode(data['test_session_availability'])
               : data['test_session_availability'];
-          if (testAvailability is Map) {
+          if (testAvailability is Map && testAvailability.isNotEmpty) {
             // Normalize day names to match UI
-            _testSessionAvailability = {};
             testAvailability.forEach((key, value) {
               final dayKey = key.toString();
               final normalizedDay = dayKey.isNotEmpty
                   ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
                   : dayKey;
-              _testSessionAvailability[normalizedDay] = List<String>.from(
-                value ?? [],
-              );
+              final timeSlots = value is List 
+                  ? List<String>.from(value.map((v) => v.toString()))
+                  : (value != null ? [value.toString()] : <String>[]);
+              _testSessionAvailability[normalizedDay] = timeSlots;
             });
           }
         }
-
-        // Also check legacy 'availability_schedule' field for backward compatibility
-        if (_tutoringAvailability.isEmpty &&
-            data['availability_schedule'] != null) {
-          final availability = data['availability_schedule'] is String
-              ? jsonDecode(data['availability_schedule'])
-              : data['availability_schedule'];
-          if (availability is Map) {
-            _tutoringAvailability = {};
-            availability.forEach((key, value) {
-              final dayKey = key.toString();
-              final normalizedDay = dayKey.isNotEmpty
-                  ? dayKey[0].toUpperCase() + dayKey.substring(1).toLowerCase()
-                  : dayKey;
-              _tutoringAvailability[normalizedDay] = List<String>.from(
-                value ?? [],
-              );
-            });
-          }
-        }
+        
+        LogService.info(
+          '📅 Final loaded availability - Days with slots: ${_tutoringAvailability.entries.where((e) => e.value.isNotEmpty).map((e) => e.key).toList()}, '
+          'Days without slots: ${_tutoringAvailability.entries.where((e) => e.value.isEmpty).map((e) => e.key).toList()}',
+        );
 
         // Digital Readiness
         if (data['devices'] != null) {
@@ -5703,6 +5909,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       'handles_multiple_learners': _handlesMultipleLearners,
 
       // Availability - Store BOTH separately for admin dashboard
+      // IMPORTANT: Always save availability_schedule (used by students when booking)
+      // Even if empty, save it to ensure updates work for approved tutors
       'hours_per_week': _hoursPerWeek,
       'tutoring_availability': _tutoringAvailability.isNotEmpty
           ? _tutoringAvailability
@@ -5710,8 +5918,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       'test_session_availability': _testSessionAvailability.isNotEmpty
           ? _testSessionAvailability
           : null,
-      'availability_schedule':
-          _tutoringAvailability, // Legacy field for compatibility
+      // CRITICAL: availability_schedule is what students see when booking
+      // Always save this field, even if empty, to ensure updates work
+      'availability_schedule': _tutoringAvailability.isNotEmpty
+          ? _tutoringAvailability
+          : {}, // Save empty map if no availability (allows clearing)
       'availability': _tutoringAvailability.isNotEmpty
           ? _tutoringAvailability
           : {}, // Also save as 'availability' for completion check
@@ -5906,3 +6117,4 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     );
   }
 }
+

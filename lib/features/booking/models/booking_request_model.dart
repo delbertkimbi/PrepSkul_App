@@ -166,7 +166,7 @@ class BookingRequest {
 
   /// Convert to Supabase JSON
   Map<String, dynamic> toJson() {
-    return {
+    final json = {
       'id': id,
       'student_id': studentId,
       'tutor_id': tutorId,
@@ -192,8 +192,22 @@ class BookingRequest {
       'tutor_avatar_url': tutorAvatarUrl,
       'tutor_rating': tutorRating,
       'tutor_is_verified': tutorIsVerified,
-      // Note: Trial fields are not saved to booking_requests table usually
     };
+    
+    // For trial sessions, include learner_id and trial-specific fields
+    if (isTrial) {
+      json['is_trial'] = true;
+      json['learner_id'] = studentId; // For trial sessions, studentId is the learner_id
+      json['subject'] = subject;
+      json['duration_minutes'] = durationMinutes;
+      json['trial_goal'] = trialGoal;
+      json['learner_challenges'] = learnerChallenges;
+      if (scheduledDate != null) {
+        json['scheduled_date'] = scheduledDate!.toIso8601String().split('T')[0];
+      }
+    }
+    
+    return json;
   }
 
   /// Create a copy with updated fields
@@ -240,24 +254,34 @@ class BookingRequest {
   /// Extract student name from profile, with proper fallbacks
   /// Never returns "User" - always returns meaningful identifier
   static String _extractStudentNameFromProfile(Map<String, dynamic> studentProfile) {
-    // Handle null or empty profile
-    if (studentProfile.isEmpty) {
+    // Handle null or empty profile - check if it has any meaningful data
+    final hasFullName = studentProfile['full_name'] != null && 
+                       studentProfile['full_name'].toString().trim().isNotEmpty &&
+                       studentProfile['full_name'].toString().toLowerCase() != 'user' &&
+                       studentProfile['full_name'].toString().toLowerCase() != 'null';
+    final hasEmail = studentProfile['email'] != null && 
+                    studentProfile['email'].toString().trim().isNotEmpty &&
+                    studentProfile['email'].toString().toLowerCase() != 'null';
+    
+    // If profile is truly empty (no name, no email), return generic based on type
+    if (!hasFullName && !hasEmail) {
       final userType = studentProfile['user_type'] as String? ?? 'learner';
       return userType == 'parent' ? 'Parent' : 'Student';
     }
     
     // Try full_name first
-    final fullName = studentProfile['full_name'] as String?;
-    if (fullName != null && 
-        fullName.trim().isNotEmpty && 
-        fullName.trim().toLowerCase() != 'user' &&
-        fullName.trim().toLowerCase() != 'null') {
-      return fullName.trim();
+    if (hasFullName) {
+      final fullName = studentProfile['full_name'].toString().trim();
+      if (fullName.isNotEmpty && 
+          fullName.toLowerCase() != 'user' &&
+          fullName.toLowerCase() != 'null') {
+        return fullName;
+      }
     }
     
     // Try email as fallback
-    final email = studentProfile['email'] as String?;
-    if (email != null && email.trim().isNotEmpty && email.trim().toLowerCase() != 'null') {
+    if (hasEmail) {
+      final email = studentProfile['email'].toString().trim();
       // Extract name from email if possible (before @)
       final emailName = email.split('@').first.trim();
       if (emailName.isNotEmpty && 
@@ -271,13 +295,9 @@ class BookingRequest {
       }
     }
     
-    // Determine type and return appropriate default
+    // Final fallback - determine type and return appropriate default
     final userType = studentProfile['user_type'] as String? ?? 'learner';
-    if (userType == 'parent') {
-      return 'Parent';
-    } else {
-      return 'Student';
-    }
+    return userType == 'parent' ? 'Parent' : 'Student';
   }
 
   /// Check if request is pending
