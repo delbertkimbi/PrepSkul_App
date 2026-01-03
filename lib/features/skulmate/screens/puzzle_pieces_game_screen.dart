@@ -386,4 +386,3 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     );
   }
 }
-

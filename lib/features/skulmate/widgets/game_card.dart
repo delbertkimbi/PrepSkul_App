@@ -100,6 +100,12 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         return Icons.drag_handle;
       case GameType.puzzlePieces:
         return Icons.extension;
+      case GameType.simulation:
+        return Icons.sim_card;
+      case GameType.mystery:
+        return Icons.search;
+      case GameType.escapeRoom:
+        return Icons.lock;
     }
   }
 
@@ -127,6 +133,12 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         return 'Drag & Drop';
       case GameType.puzzlePieces:
         return 'Puzzle Pieces';
+      case GameType.simulation:
+        return 'Simulation';
+      case GameType.mystery:
+        return 'Mystery';
+      case GameType.escapeRoom:
+        return 'Escape Room';
     }
   }
 
@@ -218,6 +230,38 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                           ),
                         ),
                         const SizedBox(width: 8),
+                        // Difficulty indicator
+                        if (widget.game.metadata.difficulty != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getDifficultyColor(widget.game.metadata.difficulty!).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _getDifficultyIcon(widget.game.metadata.difficulty!),
+                                  size: 10,
+                                  color: _getDifficultyColor(widget.game.metadata.difficulty!),
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  widget.game.metadata.difficulty!.toUpperCase(),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: _getDifficultyColor(widget.game.metadata.difficulty!),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (widget.game.metadata.difficulty != null) const SizedBox(width: 8),
                         Text(
                           '${widget.game.items.length} items',
                           style: GoogleFonts.poppins(
@@ -313,6 +357,32 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         ),
       ),
     );
+  }
+
+  Color _getDifficultyColor(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        return Colors.green;
+      case 'medium':
+        return Colors.orange;
+      case 'hard':
+        return Colors.red;
+      default:
+        return AppTheme.textMedium;
+    }
+  }
+
+  IconData _getDifficultyIcon(String difficulty) {
+    switch (difficulty.toLowerCase()) {
+      case 'easy':
+        return Icons.trending_down;
+      case 'medium':
+        return Icons.trending_flat;
+      case 'hard':
+        return Icons.trending_up;
+      default:
+        return Icons.help_outline;
+    }
   }
 
   String _formatDate(DateTime date) {

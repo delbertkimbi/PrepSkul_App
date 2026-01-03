@@ -182,9 +182,3 @@ class FathomSummaryService {
     return '${summary.substring(0, 100)}...';
   }
 }
-
-
-
-
-
-

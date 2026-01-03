@@ -5,7 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/pricing_service.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/utils/text_formatter.dart';
-import '../screens/tutor_detail_screen.dart';
+import '../screens/tutor_detail_screen.dart' show TutorDetailScreen;
 
 class TutorCard extends StatelessWidget {
   final Map<String, dynamic> tutor;

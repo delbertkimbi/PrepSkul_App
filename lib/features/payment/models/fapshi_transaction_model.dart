@@ -67,13 +67,19 @@ class FapshiPaymentStatus {
     };
   }
 
-  bool get isPending => status == 'PENDING';
-  bool get isSuccessful => status == 'SUCCESSFUL';
-  bool get isFailed => status == 'FAILED';
+  /// Check if payment is pending (CREATED or PENDING status)
+  /// CREATED = Payment not yet attempted (initial state for direct pay)
+  /// PENDING = User is in process of payment
+  bool get isPending {
+    final upperStatus = status.toUpperCase();
+    return upperStatus == 'PENDING' || upperStatus == 'CREATED';
+  }
+  bool get isSuccessful {
+    final upperStatus = status.toUpperCase();
+    return upperStatus == 'SUCCESS' || upperStatus == 'SUCCESSFUL';
+  }
+  bool get isFailed {
+    final upperStatus = status.toUpperCase();
+    return upperStatus == 'FAILED' || upperStatus == 'FAILURE';
+  }
 }
-
-
-
-
-
-

@@ -82,8 +82,3 @@ class _OfflineIndicatorState extends State<OfflineIndicator> {
     );
   }
 }
-
-
-
-
-

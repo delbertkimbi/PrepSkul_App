@@ -246,10 +246,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 width: double.infinity,
                                 height: 56,
                                 child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _handleSendOTP,
+                                  onPressed: _isLoading ? () {} : _handleSendOTP,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppTheme.primaryColor,
                                     foregroundColor: Colors.white,
+                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
+                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
                                     elevation: 0,
                                     shadowColor: Colors.transparent,
                                     shape: RoundedRectangleBorder(

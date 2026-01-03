@@ -5,6 +5,8 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/booking/services/availability_service.dart';
+import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 
 class BookingService {
   /// Create a booking request in the database
@@ -77,6 +79,20 @@ class BookingService {
 
       LogService.debug('Booking request', 'user_type: "$rawUserType" → student_type: "$studentType"');
 
+      // Check for duplicate approved bookings (tutor accepted twice)
+      final approvedBookingsQuery = SupabaseService.client
+          .from('booking_requests')
+          .select('id')
+          .eq('student_id', userId)
+          .eq('tutor_id', tutorUserId)
+          .eq('status', 'approved');
+      
+      final approvedBookings = await approvedBookingsQuery;
+      
+      if (approvedBookings.length >= 2) {
+        throw Exception('TRIAL_SESSION_BLOCK:trialId=null:You cannot book this tutor again. You already have multiple approved bookings with this tutor.');
+      }
+
       // Check for existing pending/active booking requests with this tutor
       final existingRequestsQuery = SupabaseService.client
           .from('booking_requests')
@@ -106,38 +122,58 @@ class BookingService {
         throw Exception(message);
       }
 
-      // Also check for pending/approved trial sessions with this tutor
+      // Check for upcoming trial sessions with this tutor (only approved/scheduled, not pending)
+      // Only block if trial is upcoming (not expired/completed)
       final existingTrialsQuery = SupabaseService.client
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
           .eq('requester_id', userId)
           .eq('tutor_id', tutorUserId)
-          .or('status.eq.pending,status.eq.approved,status.eq.scheduled')
-          .order('created_at', ascending: false)
-          .limit(1);
+          .or('status.eq.approved,status.eq.scheduled')
+          .order('created_at', ascending: false);
       
       final existingTrials = await existingTrialsQuery;
 
       if (existingTrials.isNotEmpty) {
-        final existingTrial = existingTrials[0];
-        final trialStatus = existingTrial['status'] as String;
-        final scheduledDate = existingTrial['scheduled_date'] as String?;
-        final scheduledTime = existingTrial['scheduled_time'] as String?;
-        
-        String message;
-        if (trialStatus == 'pending') {
-          message = '⚠️ Cannot book regular sessions yet\n\nYou have a pending trial session request with this tutor. Please wait for the tutor to respond to your trial request before creating a regular booking.';
-        } else if (trialStatus == 'approved' || trialStatus == 'scheduled') {
-          message = '⚠️ Cannot book regular sessions yet\n\nYou already have an ${trialStatus == 'approved' ? 'approved' : 'scheduled'} trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' scheduled for $scheduledDate at $scheduledTime';
+        // Check each trial to see if it's upcoming
+        for (final trialData in existingTrials) {
+          final trialId = trialData['id'] as String;
+          final trialStatus = trialData['status'] as String;
+          final scheduledDateStr = trialData['scheduled_date'] as String?;
+          final scheduledTimeStr = trialData['scheduled_time'] as String?;
+          
+          // Only block if trial has scheduled date/time and is upcoming
+          if (scheduledDateStr != null && scheduledTimeStr != null) {
+            try {
+              // Parse scheduled date and time
+              final scheduledDate = DateTime.parse(scheduledDateStr);
+              final timeParts = scheduledTimeStr.split(':');
+              final hour = int.tryParse(timeParts[0]) ?? 0;
+              final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+              final sessionDateTime = DateTime(
+                scheduledDate.year,
+                scheduledDate.month,
+                scheduledDate.day,
+                hour,
+                minute,
+              );
+              
+              // Check if session is upcoming (in the future)
+              final isUpcoming = sessionDateTime.isAfter(DateTime.now());
+              
+              if (isUpcoming) {
+                // Block booking - trial is upcoming
+                final message = 'TRIAL_SESSION_BLOCK:trialId=$trialId:You cannot book a regular session with this tutor since you have an upcoming trial session (if the trial session passes, booking tutor is possible).';
+                throw Exception(message);
+              }
+              // If trial is expired, don't block - continue to next trial
+            } catch (e) {
+              // If parsing fails, assume it's not upcoming and continue
+              LogService.warning('Error parsing trial session date/time: $e');
+            }
           }
-          message += '.\n\nPlease complete this trial session before creating a regular booking with this tutor.';
-        } else {
-          message = '⚠️ Cannot book regular sessions yet\n\nYou already have an active trial session with this tutor. Please complete it before creating a regular booking.';
         }
-        
-        throw Exception(message);
+        // If we get here, no upcoming trials were found - allow booking
       }
 
       // Check for schedule conflicts on student/parent side

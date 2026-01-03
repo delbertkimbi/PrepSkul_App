@@ -60,7 +60,10 @@ class LocationSharingService {
         throw Exception('Session not found: $sessionId');
       }
 
-      if (session['location'] != 'onsite') {
+      // Allow location sharing for onsite sessions only
+      final sessionLocation = session['location'] as String?;
+      // If location is 'hybrid' (legacy data), default to allowing it (treat as onsite)
+      if (sessionLocation != 'onsite' && sessionLocation != 'hybrid') {
         throw Exception('Location sharing only available for onsite sessions');
       }
 
@@ -186,6 +189,7 @@ class LocationSharingService {
   }
 
   /// Update location in database
+  /// Also stores location history for safety records
   static Future<void> _updateLocation({
     required String sessionId,
     required String userId,
@@ -230,6 +234,24 @@ class LocationSharingService {
           'updated_at': DateTime.now().toIso8601String(),
         });
       }
+
+      // Store location history for safety records (append-only)
+      // This creates a permanent record of all location updates
+      try {
+        await _supabase.from('session_location_history').insert({
+          'session_id': sessionId,
+          'user_id': userId,
+          'user_type': userType,
+          'latitude': latitude,
+          'longitude': longitude,
+          'accuracy': accuracy,
+          'recorded_at': timestamp.toIso8601String(),
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } catch (e) {
+        // If history table doesn't exist, log warning but don't fail
+        LogService.debug('Location history table may not exist: $e');
+      }
     } catch (e) {
       LogService.warning('Error updating location: $e');
       // Don't throw - location updates are best effort
@@ -239,6 +261,7 @@ class LocationSharingService {
   /// Get current location for a session
   ///
   /// Returns the latest location update for the session
+  /// If multiple users are tracking (tutor and learner), returns the most recent
   static Future<Map<String, dynamic>?> getSessionLocation(String sessionId) async {
     try {
       final response = await _supabase
@@ -267,12 +290,49 @@ class LocationSharingService {
         'longitude': response['longitude'] as double,
         'accuracy': response['accuracy'] as double?,
         'user_type': response['user_type'] as String,
+        'user_id': response['user_id'] as String,
         'last_updated_at': response['last_updated_at'] as String,
         'timestamp': DateTime.parse(response['last_updated_at'] as String),
       };
     } catch (e) {
       LogService.error('Error getting session location: $e');
       return null;
+    }
+  }
+
+  /// Get all active location trackers for a session
+  ///
+  /// Returns locations for both tutor and learner if both are tracking
+  static Future<List<Map<String, dynamic>>> getAllSessionLocations(String sessionId) async {
+    try {
+      final response = await _supabase
+          .from('session_location_tracking')
+          .select('''
+            id,
+            user_id,
+            user_type,
+            latitude,
+            longitude,
+            accuracy,
+            last_updated_at
+          ''')
+          .eq('session_id', sessionId)
+          .order('last_updated_at', ascending: false);
+
+      return (response as List).cast<Map<String, dynamic>>().map((location) {
+        return {
+          'latitude': location['latitude'] as double,
+          'longitude': location['longitude'] as double,
+          'accuracy': location['accuracy'] as double?,
+          'user_type': location['user_type'] as String,
+          'user_id': location['user_id'] as String,
+          'last_updated_at': location['last_updated_at'] as String,
+          'timestamp': DateTime.parse(location['last_updated_at'] as String),
+        };
+      }).toList();
+    } catch (e) {
+      LogService.error('Error getting all session locations: $e');
+      return [];
     }
   }
 
@@ -316,6 +376,36 @@ class LocationSharingService {
     final sessionIds = _activeTrackers.keys.toList();
     for (final sessionId in sessionIds) {
       await stopLocationSharing(sessionId);
+    }
+  }
+
+  /// Share location with emergency contact
+  ///
+  /// Starts location sharing for a session to enable emergency contact monitoring
+  /// This is called by SessionSafetyService when user requests to share location
+  static Future<bool> shareWithEmergencyContact({
+    required String sessionId,
+    required String userId,
+    required String userType,
+  }) async {
+    try {
+      // Start location sharing for the session
+      // This will begin real-time location tracking that emergency contacts can monitor
+      final success = await startLocationSharing(
+        sessionId: sessionId,
+        userId: userId,
+        userType: userType,
+        updateInterval: const Duration(seconds: 30),
+      );
+
+      if (success) {
+        LogService.success('Location sharing started for emergency contact monitoring: $sessionId');
+      }
+
+      return success;
+    } catch (e) {
+      LogService.error('Error sharing location with emergency contact: $e');
+      return false;
     }
   }
 

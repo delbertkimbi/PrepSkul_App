@@ -18,6 +18,9 @@ import 'crossword_game_screen.dart';
 import 'diagram_label_game_screen.dart';
 import 'drag_drop_game_screen.dart';
 import 'puzzle_pieces_game_screen.dart';
+import 'simulation_game_screen.dart';
+import 'mystery_game_screen.dart';
+import 'escape_room_game_screen.dart';
 import 'skulmate_upload_screen.dart';
 import 'leaderboard_screen.dart';
 import 'friends_screen.dart';
@@ -448,6 +451,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
         return 'Drag & Drop';
       case GameType.puzzlePieces:
         return 'Puzzle Pieces';
+      case GameType.simulation:
+        return 'Simulation';
+      case GameType.mystery:
+        return 'Mystery';
+      case GameType.escapeRoom:
+        return 'Escape Room';
     }
   }
 
@@ -479,13 +488,23 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
         gameScreen = CrosswordGameScreen(game: game);
         break;
       case GameType.diagramLabel:
-        gameScreen = DiagramLabelGameScreen(game: game);
+        // TODO: Implement DiagramLabelGameScreen - using fallback for now
+        gameScreen = MysteryGameScreen(game: game);
         break;
       case GameType.dragDrop:
         gameScreen = DragDropGameScreen(game: game);
         break;
       case GameType.puzzlePieces:
         gameScreen = PuzzlePiecesGameScreen(game: game);
+        break;
+      case GameType.simulation:
+        gameScreen = SimulationGameScreen(game: game);
+        break;
+      case GameType.mystery:
+        gameScreen = MysteryGameScreen(game: game);
+        break;
+      case GameType.escapeRoom:
+        gameScreen = EscapeRoomGameScreen(game: game);
         break;
       default:
         gameScreen = QuizGameScreen(game: game);

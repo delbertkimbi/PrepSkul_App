@@ -79,6 +79,38 @@ class Friendship {
   }
 }
 
+/// Leaderboard type (custom vs platform)
+enum LeaderboardType {
+  custom,
+  platform,
+  combined;
+  
+  static LeaderboardType fromString(String value) {
+    switch (value.toLowerCase()) {
+      case 'custom':
+        return LeaderboardType.custom;
+      case 'platform':
+        return LeaderboardType.platform;
+      case 'combined':
+        return LeaderboardType.combined;
+      default:
+        return LeaderboardType.custom;
+    }
+  }
+  
+  @override
+  String toString() {
+    switch (this) {
+      case LeaderboardType.custom:
+        return 'custom';
+      case LeaderboardType.platform:
+        return 'platform';
+      case LeaderboardType.combined:
+        return 'combined';
+    }
+  }
+}
+
 /// Leaderboard period
 enum LeaderboardPeriod {
   daily,
@@ -354,3 +386,5 @@ class Challenge {
   bool get isAccepted => status == ChallengeStatus.accepted;
   bool get isCompleted => status == ChallengeStatus.completed;
 }
+
+

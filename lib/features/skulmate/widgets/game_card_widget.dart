@@ -83,14 +83,26 @@ class _GameCardState extends State<GameCard> {
         return Icons.compare_arrows;
       case GameType.fillBlank:
         return Icons.edit;
-      case GameType.wordScramble:
-        return Icons.text_rotation_angleup;
       case GameType.bubblePop:
         return Icons.bubble_chart;
-      case GameType.speedChallenge:
-        return Icons.speed;
-      case GameType.dragSequence:
+      case GameType.dragDrop:
         return Icons.drag_indicator;
+      case GameType.wordSearch:
+        return Icons.search;
+      case GameType.crossword:
+        return Icons.grid_on;
+      case GameType.match3:
+        return Icons.apps;
+      case GameType.diagramLabel:
+        return Icons.label;
+      case GameType.puzzlePieces:
+        return Icons.extension;
+      case GameType.simulation:
+        return Icons.play_circle;
+      case GameType.mystery:
+        return Icons.help_outline;
+      case GameType.escapeRoom:
+        return Icons.lock;
     }
   }
 
@@ -104,14 +116,26 @@ class _GameCardState extends State<GameCard> {
         return 'Matching';
       case GameType.fillBlank:
         return 'Fill in Blank';
-      case GameType.wordScramble:
-        return 'Word Scramble';
       case GameType.bubblePop:
         return 'Bubble Pop';
-      case GameType.speedChallenge:
-        return 'Speed Challenge';
-      case GameType.dragSequence:
+      case GameType.dragDrop:
         return 'Drag & Drop';
+      case GameType.wordSearch:
+        return 'Word Search';
+      case GameType.crossword:
+        return 'Crossword';
+      case GameType.match3:
+        return 'Match-3';
+      case GameType.diagramLabel:
+        return 'Diagram Label';
+      case GameType.puzzlePieces:
+        return 'Puzzle';
+      case GameType.simulation:
+        return 'Simulation';
+      case GameType.mystery:
+        return 'Mystery';
+      case GameType.escapeRoom:
+        return 'Escape Room';
     }
   }
 

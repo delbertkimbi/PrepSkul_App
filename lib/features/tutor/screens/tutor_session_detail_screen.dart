@@ -82,6 +82,7 @@ class _TutorSessionDetailScreenState extends State<TutorSessionDetailScreen> {
     String studentName = _getStudentName();
     String location = widget.session['location'] as String? ?? 'online';
     String? address = widget.session['onsite_address'] as String? ?? widget.session['address'] as String?;
+    String? locationDescription = widget.session['location_description'] as String?;
     DateTime? sessionDate;
     String? sessionTime;
     String? subject = widget.session['subject'] as String?;
@@ -187,7 +188,11 @@ class _TutorSessionDetailScreenState extends State<TutorSessionDetailScreen> {
             const SizedBox(height: 20),
 
             // Location Card
-            _buildLocationCard(location: location, address: address),
+            _buildLocationCard(
+              location: location, 
+              address: address,
+              locationDescription: locationDescription,
+            ),
             const SizedBox(height: 20),
 
             // Subject Card (if available)
@@ -586,7 +591,11 @@ class _TutorSessionDetailScreenState extends State<TutorSessionDetailScreen> {
     );
   }
 
-  Widget _buildLocationCard({required String location, String? address}) {
+  Widget _buildLocationCard({
+    required String location, 
+    String? address,
+    String? locationDescription,
+  }) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -602,6 +611,52 @@ class _TutorSessionDetailScreenState extends State<TutorSessionDetailScreen> {
             if (address != null) ...[
               const SizedBox(height: 12),
               _buildDetailRow(Icons.home, 'Address', address),
+            ],
+            if (locationDescription != null && locationDescription.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 18,
+                      color: Colors.blue[700],
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Location Details',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.blue[900],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            locationDescription,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: Colors.blue[800],
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ],
         ),

@@ -20,37 +20,26 @@ class CharacterSelectionScreen extends StatefulWidget {
 }
 
 class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
-  List<SkulMateCharacter> _characters = [];
+  AgeGroup? _selectedAgeGroup;
   SkulMateCharacter? _selectedCharacter;
-  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadCharacters();
-    _loadSelectedCharacter();
+    _loadCurrentCharacter();
   }
 
-  Future<void> _loadCharacters() async {
-    final characters = SkulMateCharacters.all;
+  Future<void> _loadCurrentCharacter() async {
+    final character = await CharacterSelectionService.getSelectedCharacter();
     safeSetState(() {
-      _characters = characters;
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _loadSelectedCharacter() async {
-    final selected = await CharacterSelectionService.getSelectedCharacter();
-    safeSetState(() {
-      _selectedCharacter = selected;
+      _selectedCharacter = character;
+      _selectedAgeGroup = character.ageGroup;
     });
   }
 
   Future<void> _selectCharacter(SkulMateCharacter character) async {
+    safeSetState(() => _selectedCharacter = character);
     await CharacterSelectionService.selectCharacter(character);
-    safeSetState(() {
-      _selectedCharacter = character;
-    });
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -59,114 +48,146 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
           backgroundColor: AppTheme.accentGreen,
         ),
       );
-      Navigator.pop(context);
+      
+      if (widget.isFirstTime) {
+        Navigator.pop(context);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
+        title: Text(
+          widget.isFirstTime ? 'Choose Your Companion' : 'Change Character',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          'Choose Your Character',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (widget.isFirstTime)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Welcome! Choose a character to help you learn!',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.primaryColor,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 24),
-                  ..._characters.map((character) {
-                    final isSelected = _selectedCharacter?.id == character.id;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: InkWell(
-                        onTap: () => _selectCharacter(character),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.primaryColor.withOpacity(0.1)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected
-                                  ? AppTheme.primaryColor
-                                  : Colors.grey[300]!,
-                              width: isSelected ? 2 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              SkulMateCharacterWidget(
-                                character: character,
-                                size: 60,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      character.name,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppTheme.textDark,
-                                      ),
-                                    ),
-                                    Text(
-                                      character.description,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: AppTheme.textMedium,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (isSelected)
-                                Icon(
-                                  Icons.check_circle,
-                                  color: AppTheme.primaryColor,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.isFirstTime) ...[
+              Text(
+                'Welcome to skulMate!',
+                style: GoogleFonts.poppins(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choose a companion to help you learn',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
+            Text(
+              'Select Age Group',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
               ),
             ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildAgeGroupButton(AgeGroup.elementary, 'Elementary\n(5-10)'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildAgeGroupButton(AgeGroup.middle, 'Middle School\n(11-14)'),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildAgeGroupButton(AgeGroup.high, 'High School\n(15-18)'),
+                ),
+              ],
+            ),
+            if (_selectedAgeGroup != null) ...[
+              const SizedBox(height: 32),
+              Text(
+                'Select Character',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 16),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: 0.8,
+                ),
+                itemCount: SkulMateCharacters.getByAgeGroup(_selectedAgeGroup!).length,
+                itemBuilder: (context, index) {
+                  final character = SkulMateCharacters.getByAgeGroup(_selectedAgeGroup!)[index];
+                  final isSelected = _selectedCharacter?.id == character.id;
+                  
+                  return InkWell(
+                    onTap: () => _selectCharacter(character),
+                    child: Card(
+                      elevation: isSelected ? 4 : 1,
+                      color: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.white,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SkulMateCharacterWidget(
+                            character: character,
+                            size: 80,
+                            animated: true,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            character.name,
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.w600,
+                              color: isSelected ? AppTheme.primaryColor : Colors.black,
+                            ),
+                          ),
+                          if (isSelected)
+                            Icon(Icons.check_circle, color: AppTheme.primaryColor),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAgeGroupButton(AgeGroup ageGroup, String label) {
+    final isSelected = _selectedAgeGroup == ageGroup;
+    return ElevatedButton(
+      onPressed: () => safeSetState(() => _selectedAgeGroup = ageGroup),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: isSelected ? AppTheme.primaryColor : Colors.grey[200],
+        padding: EdgeInsets.symmetric(vertical: 16),
+      ),
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.poppins(
+          color: isSelected ? Colors.white : Colors.black,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      ),
     );
   }
 }

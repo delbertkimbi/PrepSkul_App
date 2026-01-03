@@ -571,4 +571,3 @@ class PushNotificationService {
   /// Check if initialized
   bool get isInitialized => _initialized;
 }
-

@@ -113,6 +113,33 @@ class SessionPaymentService {
           .update({'payment_id': paymentId})
           .eq('id', sessionId);
 
+      // Check if credits were deducted (via credit_deductions table)
+      // If credits deducted, mark payment as paid automatically
+      try {
+        final creditDeduction = await _supabase
+            .from('credit_deductions')
+            .select('id')
+            .eq('session_id', sessionId)
+            .maybeSingle();
+        
+        if (creditDeduction != null) {
+          // Credits were deducted - mark payment as paid
+          await _supabase
+              .from('session_payments')
+              .update({
+                'payment_status': 'paid',
+                'payment_confirmed_at': now.toIso8601String(),
+                'updated_at': now.toIso8601String(),
+              })
+              .eq('id', paymentId);
+          
+          LogService.success('Session payment marked as paid (credits deducted): $paymentId');
+        }
+      } catch (e) {
+        LogService.warning('Error checking credit deduction: $e');
+        // Continue with normal flow if check fails
+      }
+
       // Add to pending balance
       await _addToPendingBalance(
         session['tutor_id'] as String,

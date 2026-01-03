@@ -103,10 +103,3 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
     );
   }
 }
-
-
-/// Initial Loading Screen
-/// 
-/// Shows an animated PrepSkul logo on a white background
-/// during the initial app load. This appears before the splash screen
-/// to provide immediate visual feedback to users.

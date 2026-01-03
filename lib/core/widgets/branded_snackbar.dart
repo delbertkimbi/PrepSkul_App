@@ -212,4 +212,3 @@ class BrandedSnackBar extends StatelessWidget {
     );
   }
 }
-

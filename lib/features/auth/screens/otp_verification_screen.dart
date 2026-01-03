@@ -420,10 +420,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                           width: double.infinity,
                           height: 56,
                           child: ElevatedButton(
-                            onPressed: _isVerifying ? null : _verifyOTP,
+                            onPressed: _isVerifying ? () {} : _verifyOTP,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.primaryColor,
                               foregroundColor: Colors.white,
+                              disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
+                              disabledForegroundColor: Colors.white, // Keep white text when disabled
                               elevation: 2,
                               shadowColor: AppTheme.primaryColor.withOpacity(
                                 0.3,
@@ -438,7 +440,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                     height: 24,
                                     child: CircularProgressIndicator(
                                       color: Colors.white,
-                                      strokeWidth: 2,
+                                      strokeWidth: 2.5,
                                     ),
                                   )
                                 : Text(

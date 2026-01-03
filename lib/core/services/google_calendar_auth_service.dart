@@ -14,9 +14,9 @@ class GoogleCalendarAuthService {
   static const String _prefsKeyTokenExpiry = 'google_calendar_token_expiry';
 
   // Scopes required for Calendar API
+  // Note: 'calendar' scope includes 'calendar.events', so we only need 'calendar'
   static const List<String> _scopes = [
-    'https://www.googleapis.com/auth/calendar',
-    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar', // This includes calendar.events
   ];
 
   /// Sign in with Google and request Calendar permissions

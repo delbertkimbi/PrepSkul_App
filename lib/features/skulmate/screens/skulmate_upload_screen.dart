@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -7,7 +8,9 @@ import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'dart:io' show File;
 import '../services/skulmate_service.dart';
+import '../widgets/game_customization_dialog.dart';
 import 'game_generation_screen.dart';
 import 'game_library_screen.dart';
 
@@ -22,9 +25,10 @@ class SkulMateUploadScreen extends StatefulWidget {
 }
 
 class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
-  final _textController = TextEditingController();
+  final TextEditingController _textController = TextEditingController();
   String? _fileUrl;
-  bool _isUploading = false;
+  String? _imageUrl;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -35,196 +39,230 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'docx', 'jpg', 'png'],
+        type: FileType.any,
       );
 
       if (result != null && result.files.single.path != null) {
-        safeSetState(() => _isUploading = true);
-        
         final filePath = result.files.single.path!;
-        final fileName = result.files.single.name;
-        
-        final userId = SupabaseService.client.auth.currentUser?.id;
-        if (userId == null) {
-          throw Exception('User not authenticated');
+        LogService.info('📄 [Upload] Selected file: $filePath');
+
+        setState(() => _isLoading = true);
+
+        // Upload to Supabase Storage
+        final file = result.files.single;
+        final fileName = file.name;
+        final fileBytes = file.bytes;
+        if (fileBytes == null) {
+          throw Exception('Failed to read file bytes');
         }
 
-        final uploadedUrl = await StorageService.uploadDocument(
-          userId: userId,
-          documentFile: result.files.single,
-          documentType: 'skulmate_game',
-        );
+        final supabase = SupabaseService.client;
+        final userId = supabase.auth.currentUser?.id ?? 'anonymous';
+        final storagePath = 'skulmate/uploads/$userId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-        safeSetState(() {
-          _fileUrl = uploadedUrl;
-          _isUploading = false;
+        if (kIsWeb) {
+          // Web: use uploadBinary for Uint8List
+          await supabase.storage
+              .from('skulmate_files')
+              .uploadBinary(storagePath, fileBytes);
+        } else {
+          // Mobile: convert bytes to File
+          final tempFile = File(file.path!);
+          await supabase.storage
+              .from('skulmate_files')
+              .upload(storagePath, tempFile);
+        }
+
+        final publicUrl = supabase.storage
+            .from('skulmate_files')
+            .getPublicUrl(storagePath);
+
+        setState(() {
+          _fileUrl = publicUrl;
+          _isLoading = false;
         });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('File uploaded: $fileName'),
-              backgroundColor: AppTheme.accentGreen,
-            ),
-          );
-        }
+        LogService.success('✅ [Upload] File uploaded: $publicUrl');
       }
     } catch (e) {
-      LogService.error('Error picking file: $e');
-      safeSetState(() => _isUploading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error uploading file: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      LogService.error('❌ [Upload] Error picking file: $e');
+      setState(() => _isLoading = false);
     }
   }
 
-  void _generateGame() {
-    if (_fileUrl == null && _textController.text.trim().isEmpty) {
+  Future<void> _pickImage() async {
+    try {
+      final picker = ImagePicker();
+      final image = await picker.pickImage(source: ImageSource.gallery);
+
+      if (image != null) {
+        LogService.info('🖼️ [Upload] Selected image: ${image.path}');
+
+        setState(() => _isLoading = true);
+
+        // Upload to Supabase Storage
+        final fileBytes = await image.readAsBytes();
+        final supabase = SupabaseService.client;
+        final userId = supabase.auth.currentUser?.id ?? 'anonymous';
+        final storagePath = 'skulmate/images/$userId/${DateTime.now().millisecondsSinceEpoch}_${image.name}';
+
+        if (kIsWeb) {
+          // Web: use uploadBinary for Uint8List
+          await supabase.storage
+              .from('skulmate_files')
+              .uploadBinary(storagePath, fileBytes);
+        } else {
+          // Mobile: convert XFile to File
+          final tempFile = File(image.path);
+          await supabase.storage
+              .from('skulmate_files')
+              .upload(storagePath, tempFile);
+        }
+
+        final publicUrl = supabase.storage
+            .from('skulmate_files')
+            .getPublicUrl(storagePath);
+
+        setState(() {
+          _imageUrl = publicUrl;
+          _isLoading = false;
+        });
+
+        LogService.success('✅ [Upload] Image uploaded: $publicUrl');
+      }
+    } catch (e) {
+      LogService.error('❌ [Upload] Error picking image: $e');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showCustomizationDialog() async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => GameCustomizationDialog(),
+    );
+
+    if (result != null && mounted) {
+      _generateGame(
+        difficulty: result['difficulty'] as String?,
+        topic: result['topic'] as String?,
+        numQuestions: result['numQuestions'] as int?,
+      );
+    }
+  }
+
+  Future<void> _generateGame({
+    String? difficulty,
+    String? topic,
+    int? numQuestions,
+  }) async {
+    if (_fileUrl == null && _imageUrl == null && _textController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please upload a file or enter text'),
-          backgroundColor: Colors.orange,
+        SnackBar(
+          content: Text('Please provide a file, image, or text to generate a game'),
+          backgroundColor: AppTheme.primaryColor,
         ),
       );
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GameGenerationScreen(
-          fileUrl: _fileUrl,
-          text: _textController.text.trim().isNotEmpty ? _textController.text.trim() : null,
-          childId: widget.childId,
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GameGenerationScreen(
+            fileUrl: _fileUrl,
+            imageUrl: _imageUrl,
+            text: _textController.text.trim().isNotEmpty ? _textController.text.trim() : null,
+            childId: widget.childId,
+            difficulty: difficulty,
+            topic: topic,
+            numQuestions: numQuestions,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
+        title: Text(
+          'Create New Game',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          'Create Game',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Upload a document or enter text to create a game',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                color: AppTheme.textMedium,
-              ),
-            ),
-            const SizedBox(height: 24),
-            // File upload button
-            ElevatedButton.icon(
-              onPressed: _isUploading ? null : _pickFile,
-              icon: _isUploading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.upload_file),
-              label: Text(_isUploading ? 'Uploading...' : 'Upload File'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            if (_fileUrl != null) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentGreen.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.accentGreen),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle, color: AppTheme.accentGreen),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'File uploaded successfully',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.accentGreen,
-                          fontWeight: FontWeight.w500,
-                        ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Upload Content',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: _pickFile,
+                    icon: Icon(Icons.upload_file),
+                    label: Text('Upload File'),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: _pickImage,
+                    icon: Icon(Icons.image),
+                    label: Text('Pick Image'),
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Or Enter Text',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _textController,
+                    maxLines: 10,
+                    decoration: InputDecoration(
+                      hintText: 'Enter your content here...',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  ElevatedButton(
+                    onPressed: _showCustomizationDialog,
+                    style: ElevatedButton.styleFrom(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: AppTheme.primaryColor,
+                    ),
+                    child: Text(
+                      'Generate Game',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ],
-            const SizedBox(height: 24),
-            Text(
-              'Or enter text:',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _textController,
-              maxLines: 10,
-              decoration: InputDecoration(
-                hintText: 'Enter your notes or text here...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _generateGame,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'Generate Game',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

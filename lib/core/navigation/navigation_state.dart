@@ -89,5 +89,3 @@ class NavigationState {
     return null;
   }
 }
-
-

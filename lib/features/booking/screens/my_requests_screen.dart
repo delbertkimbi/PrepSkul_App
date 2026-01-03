@@ -2712,4 +2712,3 @@ class _RequestItem {
     this.trial,
   });
 }
-

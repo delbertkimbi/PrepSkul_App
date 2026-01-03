@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
 
 /// Centralized error handling service
 /// 
@@ -215,6 +217,17 @@ class ErrorHandlerService {
     final canRetry = onRetry != null && isRetryable(error);
     LogService.error('Showing error to user', error);
 
+    // Check if error contains trial session ID for "View Session" button
+    String? trialSessionId;
+    final errorString = error.toString();
+    final trialIdMatch = RegExp(r'TRIAL_SESSION_BLOCK:trialId=([^:]+):').firstMatch(errorString);
+    if (trialIdMatch != null) {
+      trialSessionId = trialIdMatch.group(1);
+      if (trialSessionId == 'null') {
+        trialSessionId = null;
+      }
+    }
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -241,6 +254,44 @@ class ErrorHandlerService {
           style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
         ),
         actions: [
+          if (trialSessionId != null)
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                // Navigate to trial session details
+                try {
+                  final trialSession = await TrialSessionService.getTrialSessionById(trialSessionId!);
+                  if (context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RequestDetailScreen(trialSession: trialSession),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  LogService.error('Error fetching trial session: $e');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Could not load trial session details'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(
+                'View Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           if (canRetry)
             TextButton(
               onPressed: () {

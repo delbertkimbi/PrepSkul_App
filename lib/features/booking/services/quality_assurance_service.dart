@@ -546,4 +546,3 @@ class SessionIssues {
 
   bool get hasIssues => isLate || isNoShow || hasPoorRating || hasComplaint;
 }
-

@@ -268,9 +268,3 @@ class _NotificationPreferencesScreenState
     );
   }
 }
-
-
-
-
-
-

@@ -64,6 +64,11 @@ class FapshiService {
         throw Exception('Please enter a valid phone number. Use format: 67XXXXXXX or 69XXXXXXX (MTN or Orange Cameroon)');
       }
 
+      // Warn if using sandbox test number (they auto-succeed without sending payment requests)
+      if (!isProduction && _isSandboxTestNumber(normalizedPhone)) {
+        LogService.warning('⚠️ Using sandbox test number: $normalizedPhone. Payment will auto-succeed/fail without sending actual payment request.');
+      }
+
       // Prepare request body
       final requestBody = <String, dynamic>{
         'amount': amount,
@@ -103,6 +108,26 @@ class FapshiService {
       if (response.statusCode == 200) {
         try {
         final jsonResponse = jsonDecode(response.body) as Map<String, dynamic>;
+        
+        // Check for Direct Pay not enabled error in message (edge case handling)
+        // Note: Direct Pay is approved and active, but handle any unexpected errors
+        final message = jsonResponse['message'] as String? ?? '';
+        if (message.toLowerCase().contains('direct pay') && 
+            (message.toLowerCase().contains('disabled') || 
+             message.toLowerCase().contains('not enabled') ||
+             message.toLowerCase().contains('not available'))) {
+          LogService.error('⚠️ Unexpected Direct Pay error detected. Direct Pay is approved and active. Error: $message');
+          // This should not happen since Direct Pay is approved, but handle gracefully
+          throw Exception(
+            'Payment processing encountered an unexpected issue. Please try again in a moment, or contact support if the problem persists.'
+          );
+        }
+        
+        // Log successful payment initiation in production
+        if (isProduction) {
+          LogService.info('✅ Payment request initiated successfully in production. Transaction ID: ${jsonResponse['transId']}');
+        }
+        
         return FapshiPaymentResponse.fromJson(jsonResponse);
         } on FormatException catch (e) {
           LogService.error('Failed to parse Fapshi success response: $e');
@@ -139,7 +164,7 @@ class FapshiService {
         }
         
         // Convert Fapshi error messages to user-friendly messages
-        final userFriendlyMessage = _convertToUserFriendlyError(errorMessage);
+        final userFriendlyMessage = _convertToUserFriendlyError(errorMessage, response.statusCode);
         throw Exception(userFriendlyMessage);
       }
     } on http.ClientException catch (e) {
@@ -159,11 +184,47 @@ class FapshiService {
       rethrow;
       }
       // Otherwise, convert to user-friendly message
-      final userFriendlyMessage = _convertToUserFriendlyError(e.toString());
+      final userFriendlyMessage = _convertToUserFriendlyError(e.toString(), null);
       throw Exception(userFriendlyMessage);
     }
   }
   
+  /// Detect phone provider (MTN or Orange) based on phone number prefix
+  /// 
+  /// Returns 'mtn' for MTN numbers (67, 65, 66, 68) or 'orange' for Orange (69)
+  /// Returns null if provider cannot be determined
+  static String? detectPhoneProvider(String phone) {
+    final normalized = _normalizePhoneNumber(phone);
+    if (normalized == null) return null;
+    
+    // MTN prefixes: 67, 65, 66, 68
+    if (normalized.startsWith('67') || 
+        normalized.startsWith('65') || 
+        normalized.startsWith('66') || 
+        normalized.startsWith('68')) {
+      return 'mtn';
+    }
+    
+    // Orange prefix: 69
+    if (normalized.startsWith('69')) {
+      return 'orange';
+    }
+    
+    return null;
+  }
+
+  /// Check if phone number is a sandbox test number
+  /// Sandbox test numbers auto-succeed/fail without sending actual payment requests
+  static bool _isSandboxTestNumber(String phone) {
+    final testNumbers = [
+      '670000000', '670000002', '650000000', // MTN success
+      '690000000', '690000002', '656000000', // Orange success
+      '670000001', '670000003', '650000001', // MTN failure
+      '690000001', '690000003', '656000001', // Orange failure
+    ];
+    return testNumbers.contains(phone);
+  }
+
   /// Normalize phone number to Fapshi format
   /// 
   /// Accepts formats:
@@ -204,35 +265,59 @@ class FapshiService {
   }
   
   /// Convert Fapshi API error messages to user-friendly messages
-  static String _convertToUserFriendlyError(String errorMessage) {
+  /// Similar to Stripe's approach: clear, actionable, non-technical
+  static String _convertToUserFriendlyError(String errorMessage, [int? statusCode]) {
     final lowerError = errorMessage.toLowerCase();
     
+    // Phone number validation errors - provide clear format guidance
     if (lowerError.contains('phone') && (lowerError.contains('valid') || lowerError.contains('mtn') || lowerError.contains('orange'))) {
-      return 'Please enter a valid phone number. Use format: 67XXXXXXX (MTN) or 69XXXXXXX (Orange).';
+      return 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
     }
     
+    // Amount validation errors
     if (lowerError.contains('amount') && lowerError.contains('minimum')) {
-      return 'Payment amount must be at least 100 XAF.';
+      return 'The minimum payment amount is 100 XAF. Please try again with a higher amount.';
     }
     
-    if (lowerError.contains('credentials') || lowerError.contains('authentication') || lowerError.contains('forbidden')) {
-      return 'Payment service configuration error. Please contact support.';
+    // 403 Forbidden errors - handle various scenarios
+    // Note: Direct Pay is approved and active, so 403s would indicate other issues
+    if (statusCode == 403) {
+      if (lowerError.contains('direct pay') || lowerError.contains('activate')) {
+        // Edge case: should not happen since Direct Pay is approved
+        return 'Payment processing encountered an unexpected issue. Please try again in a moment, or contact support if the problem persists.';
+      }
+      // Other 403 errors (authentication, permissions, etc.)
+      return 'We\'re having trouble processing your payment right now. Please try again in a moment. If this continues, contact our support team for assistance.';
     }
     
-    if (lowerError.contains('network') || lowerError.contains('connection') || lowerError.contains('timeout')) {
-      return 'Network error. Please check your internet connection and try again.';
+    // Authentication/configuration errors - don't expose technical details
+    if (lowerError.contains('credentials') || 
+        lowerError.contains('authentication') || 
+        lowerError.contains('forbidden') ||
+        statusCode == 401 ||
+        statusCode == 403) {
+      return 'We\'re having trouble processing your payment right now. Please try again in a moment. If this continues, contact our support team for assistance.';
     }
     
+    // Network/connection errors - actionable guidance
+    if (lowerError.contains('network') || 
+        lowerError.contains('connection') || 
+        lowerError.contains('timeout')) {
+      return 'Connection issue detected. Please check your internet connection and try again.';
+    }
+    
+    // Expired payment links
     if (lowerError.contains('expired')) {
-      return 'Payment link has expired. Please initiate a new payment.';
+      return 'This payment link has expired. Please start a new payment to continue.';
     }
     
+    // Generic payment failures - provide actionable next steps
     if (lowerError.contains('failed') || lowerError.contains('error')) {
-      return 'Payment request failed. Please check your phone number and try again.';
+      return 'We couldn\'t process your payment. Please check your phone number and try again.';
     }
     
-    // Default user-friendly message
-    return 'Unable to process payment. Please check your phone number and try again. If the problem persists, contact support.';
+    // Default user-friendly message - clear, helpful, actionable
+    return 'We couldn\'t process your payment. Please check your phone number and try again.\n\nIf the problem continues, contact our support team for help.';
   }
 
   /// Get payment transaction status
@@ -303,19 +388,64 @@ class FapshiService {
   /// - [transId]: Transaction ID to poll
   /// - [maxAttempts]: Maximum number of polling attempts (default: 40)
   /// - [interval]: Time between polling attempts (default: 3 seconds)
+  /// - [minWaitTime]: Minimum time to wait before accepting success
+  ///                   - Sandbox: 10 seconds (to detect auto-success)
+  ///                   - Production: 5 seconds (to ensure request was sent)
   static Future<FapshiPaymentStatus> pollPaymentStatus(
     String transId, {
     int maxAttempts = 40,
     Duration interval = const Duration(seconds: 3),
+    Duration? minWaitTime,
   }) async {
     int attempts = 0;
+    final startTime = DateTime.now();
+    
+    // Use longer wait time in sandbox to detect auto-success
+    // In production, wait longer to ensure payment request was actually sent
+    final effectiveMinWaitTime = minWaitTime ?? 
+        (isProduction 
+            ? const Duration(seconds: 10) // Production: wait 10s to ensure request was sent
+            : const Duration(seconds: 10)); // Sandbox: also 10s to detect auto-success
 
     while (attempts < maxAttempts) {
       try {
         final status = await getPaymentStatus(transId);
 
-        // If payment is no longer pending, return status
+        LogService.debug('📊 Payment status check (attempt ${attempts + 1}/$maxAttempts): ${status.status}');
+
+        // If payment is no longer pending (SUCCESSFUL or FAILED)
         if (!status.isPending) {
+          // For SUCCESSFUL payments, ensure minimum wait time has passed
+          // This prevents false positives from sandbox auto-success
+          // and ensures user has time to receive payment request
+          if (status.isSuccessful) {
+            final elapsed = DateTime.now().difference(startTime);
+            if (elapsed < effectiveMinWaitTime) {
+              final remainingWait = effectiveMinWaitTime - elapsed;
+              LogService.warning(
+                '⚠️ Payment marked as SUCCESSFUL too quickly (${elapsed.inSeconds}s). '
+                'In sandbox, this usually means auto-success without sending payment request. '
+                'Waiting ${remainingWait.inSeconds}s before accepting...'
+              );
+              await Future.delayed(remainingWait);
+              // Re-check status after wait - if still successful, it's likely real
+              final recheckedStatus = await getPaymentStatus(transId);
+              LogService.info('✅ Payment status after wait: ${recheckedStatus.status}');
+              
+              // In sandbox, if it succeeded immediately, warn user
+              if (!isProduction && recheckedStatus.isSuccessful) {
+                LogService.warning(
+                  '⚠️ SANDBOX: Payment succeeded without phone notification. '
+                  'This is normal in sandbox - payments auto-succeed. '
+                  'In production, you will receive a payment request on your phone.'
+                );
+              }
+              
+              return recheckedStatus;
+            }
+          }
+          
+          LogService.info('✅ Payment status finalized: ${status.status}');
           return status;
         }
 
@@ -333,7 +463,9 @@ class FapshiService {
     }
 
     // If max attempts reached, get final status
+    LogService.info('⏱️ Max polling attempts reached, getting final status...');
     final finalStatus = await getPaymentStatus(transId);
+    LogService.info('📊 Final payment status: ${finalStatus.status}');
     return finalStatus;
   }
 
@@ -366,4 +498,3 @@ class FapshiService {
     }
   }
 }
-

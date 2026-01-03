@@ -5,7 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import '../../../core/widgets/skeletons/student_home_skeleton.dart';
-import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/connectivity_service.dart';
@@ -16,6 +16,8 @@ import '../../../features/profile/widgets/survey_reminder_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import '../../../features/skulmate/screens/game_library_screen.dart';
+import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
+import '../../../features/skulmate/services/skulmate_service.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -255,13 +257,38 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
       Scaffold(
         backgroundColor: Colors.white,
         floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
+        onPressed: () async {
+          // Check if user has any games
+          try {
+            final result = await SkulMateService.getGamesPaginated(limit: 1);
+            final games = result['games'] as List;
+            
+            if (games.isEmpty) {
+              // No games yet, navigate to create game screen
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SkulMateUploadScreen(),
+                ),
+              );
+            } else {
+              // Has games, navigate to game library
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GameLibraryScreen(),
+                ),
+              );
+            }
+          } catch (e) {
+            // On error, default to create game screen
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => const GameLibraryScreen(),
+                builder: (context) => const SkulMateUploadScreen(),
             ),
           );
+          }
         },
         backgroundColor: AppTheme.primaryColor,
         label: Text(

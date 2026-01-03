@@ -11,7 +11,7 @@ import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/tutor_matching_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
@@ -345,13 +345,16 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         return;
       }
 
-      // Determine user type
-      final userType = await _getUserType(currentUserData['id']?.toString() ?? '');
+      // Determine user type - only if we have a valid user ID
+      final userId = currentUserData['id']?.toString();
+      final userType = userId != null && userId.isNotEmpty 
+          ? await _getUserType(userId)
+          : 'student'; // Default to student if no valid ID
       
       // Use matching algorithm if user has preferences
       try {
         final matchedTutors = await TutorMatchingService.matchTutorsForUser(
-          userId: currentUserData['id']?.toString() ?? '',
+          userId: userId ?? '',
           userType: userType,
           filters: {
             if (_selectedSubject != null) 'subject': _selectedSubject,
@@ -431,6 +434,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
   Future<String> _getUserType(String userId) async {
     try {
+      // Validate userId - must not be empty for UUID queries
+      if (userId.isEmpty || userId.trim().isEmpty) {
+        LogService.warning('Empty userId provided to _getUserType, defaulting to student');
+        return 'student';
+      }
+      
       // Check if user is a parent
       final parentProfile = await SupabaseService.client
           .from('parent_profiles')

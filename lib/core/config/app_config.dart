@@ -1,6 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart';
-import 'package:prepskul/core/services/log_service.dart';
 
 /// Centralized App Configuration
 /// 
@@ -17,22 +16,38 @@ class AppConfig {
   // 🔄 CHANGE THIS ONE LINE TO SWITCH ENVIRONMENTS
   // ============================================
   /// Set to `true` for production, `false` for sandbox/development
-  static const bool isProduction = false; // ← CHANGE THIS LINE
+  /// 
+  /// IMPORTANT: For production deployment, set this to `true`
+  /// This controls:
+  /// - Fapshi API endpoints (live vs sandbox)
+  /// - API credentials (production vs development)
+  /// - All payment processing
+  /// 
+  /// ⚠️ Always verify environment variables are set correctly:
+  /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
+  /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
+  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // Environment Detection
   // ============================================
   
   /// Get environment from .env file or use isProduction flag
+  /// Code-level flag takes precedence over env var
   static bool get _envIsProduction {
+    // Code-level flag takes precedence
+    if (isProduction) return true;
+    
+    // Then check env var as override
     try {
       final envValue = dotenv.env['ENVIRONMENT']?.toLowerCase();
       if (envValue == 'production' || envValue == 'prod') return true;
       if (envValue == 'development' || envValue == 'dev') return false;
     } catch (_) {
-      // dotenv not loaded, use flag
+      // dotenv not loaded
     }
-    return isProduction;
+    
+    return false; // Default to sandbox if nothing set
   }
   
   /// Current environment (production or sandbox)
@@ -46,22 +61,20 @@ class AppConfig {
   // ============================================
   
   /// Base API URL
-  /// Uses www.prepskul.com (Next.js app) instead of app.prepskul.com
   static String get apiBaseUrl {
     if (isProd) {
-      return _safeEnv('API_BASE_URL_PROD', 'https://www.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_PROD', 'https://app.prepskul.com/api');
     } else {
-      return _safeEnv('API_BASE_URL_DEV', 'https://www.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_DEV', 'https://app.prepskul.com/api');
     }
   }
   
   /// App Base URL
-  /// Uses www.prepskul.com (Next.js app) for API calls
   static String get appBaseUrl {
     if (isProd) {
-      return _safeEnv('APP_BASE_URL_PROD', 'https://www.prepskul.com');
+      return _safeEnv('APP_BASE_URL_PROD', 'https://app.prepskul.com');
     } else {
-      return _safeEnv('APP_BASE_URL_DEV', 'https://www.prepskul.com');
+      return _safeEnv('APP_BASE_URL_DEV', 'https://app.prepskul.com');
     }
   }
   
@@ -326,22 +339,21 @@ class AppConfig {
   /// Print current configuration (for debugging)
   static void printConfig() {
     if (kDebugMode) {
-      LogService.info('═══════════════════════════════════════');
-      LogService.info('📱 PrepSkul App Configuration');
-      LogService.info('═══════════════════════════════════════');
-      LogService.info('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
-      LogService.info('API Base URL: $apiBaseUrl');
-      LogService.info('Fapshi Environment: $fapshiEnvironment');
-      LogService.info('Fapshi Base URL: $fapshiBaseUrl');
-      LogService.info('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      LogService.info('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      LogService.info('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
-      LogService.info('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
-      LogService.info('═══════════════════════════════════════');
+      print('═══════════════════════════════════════');
+      print('📱 PrepSkul App Configuration');
+      print('═══════════════════════════════════════');
+      print('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
+      print('API Base URL: $apiBaseUrl');
+      print('Fapshi Environment: $fapshiEnvironment');
+      print('Fapshi Base URL: $fapshiBaseUrl');
+      print('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      print('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      print('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
+      print('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
+      print('═══════════════════════════════════════');
     }
   }
 }
-
 
 
 

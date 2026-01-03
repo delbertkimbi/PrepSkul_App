@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
@@ -34,6 +34,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   bool _isProcessing = false;
   bool _isPolling = false;
   String? _errorMessage;
+  String? _phoneError; // Phone number validation error
   String _paymentStatus = 'idle'; // idle, pending, successful, failed
   String? _lastTransactionId; // Used to retry Meet link generation
 
@@ -67,11 +68,57 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       return;
   }
 
+  /// Validate phone number using same logic as FapshiService
+  String? _validatePhoneNumber(String phone) {
+    // Remove all non-digit characters
+    final digitsOnly = phone.replaceAll(RegExp(r'[^\d]'), '');
+    
+    // Handle different formats
+    String normalized;
+    if (digitsOnly.startsWith('237')) {
+      // International format: 23767XXXXXXX -> 67XXXXXXX
+      normalized = digitsOnly.substring(3);
+    } else if (digitsOnly.startsWith('67') || 
+                digitsOnly.startsWith('69') || 
+                digitsOnly.startsWith('65') || 
+                digitsOnly.startsWith('66') ||
+                digitsOnly.startsWith('68')) {
+      // Already in correct format: 67XXXXXXX or 69XXXXXXX
+      normalized = digitsOnly;
+    } else {
+      return null; // Invalid format
+    }
+    
+    // Validate length (should be 9 digits for Cameroon)
+    if (normalized.length != 9) {
+      return null;
+    }
+    
+    // Validate it starts with valid Cameroon mobile prefix
+    final validPrefixes = ['67', '69', '65', '66', '68'];
+    if (!validPrefixes.any((prefix) => normalized.startsWith(prefix))) {
+      return null;
+    }
+    
+    return normalized;
+  }
+
   /// Initiate payment
   Future<void> _initiatePayment() async {
-    if (_phoneController.text.trim().isEmpty) {
+    final phone = _phoneController.text.trim();
+    
+    if (phone.isEmpty) {
       safeSetState(() {
-        _errorMessage = 'Please enter your phone number';
+        _phoneError = 'Please enter your phone number';
+      });
+      return;
+    }
+    
+    // Validate phone number format
+    final normalizedPhone = _validatePhoneNumber(phone);
+    if (normalizedPhone == null) {
+      safeSetState(() {
+        _phoneError = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
       });
       return;
     }
@@ -79,6 +126,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     safeSetState(() {
       _isProcessing = true;
       _errorMessage = null;
+      _phoneError = null;
       _paymentStatus = 'idle';
     });
 
@@ -87,7 +135,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       // Pass trial session to avoid unnecessary fetch
       final transId = await TrialSessionService.initiatePayment(
         sessionId: widget.trialSession.id,
-        phoneNumber: _phoneController.text.trim(),
+        phoneNumber: normalizedPhone, // Use validated and normalized phone number
         trialSession: widget.trialSession,
       );
 
@@ -100,37 +148,17 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       // Start polling for payment status
       _pollPaymentStatus(transId);
     } catch (e) {
-      String userMessage = 'Failed to initiate payment';
-      final errorString = e.toString().toLowerCase();
+      // FapshiService already provides user-friendly messages, so use them directly
+      // Remove "Exception: " prefix if present
+      String userMessage = e.toString().replaceFirst('Exception: ', '').trim();
       
-      // Extract user-friendly message if already provided by FapshiService
-      if (e.toString().contains('Please enter') || 
-          e.toString().contains('valid phone') ||
-          e.toString().contains('check your phone number')) {
-        userMessage = e.toString().replaceFirst('Exception: ', '');
-      } else if (errorString.contains('phone') && (errorString.contains('valid') || errorString.contains('mtn') || errorString.contains('orange'))) {
-        userMessage = 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
-      } else if (errorString.contains('failed to fetch') || 
-          errorString.contains('clientexception') ||
-          errorString.contains('network') ||
-          errorString.contains('connection')) {
-        userMessage = 'Network error: Please check your internet connection and try again.';
-      } else if (errorString.contains('not authenticated') || 
-                 errorString.contains('unauthorized')) {
-        userMessage = 'Please sign in again to continue.';
-      } else if (errorString.contains('already completed') ||
-                 errorString.contains('already paid')) {
-        userMessage = 'This payment has already been completed.';
-      } else if (errorString.contains('approved') || 
-                 errorString.contains('tutor')) {
-        userMessage = 'Please wait for the tutor to approve this trial session before paying.';
-      } else if (errorString.contains('amount') && errorString.contains('minimum')) {
-        userMessage = 'Payment amount must be at least 100 XAF.';
-      } else if (errorString.contains('unable to process') || 
-                 errorString.contains('check your phone')) {
-        userMessage = e.toString().replaceFirst('Exception: ', '');
-      } else {
-        userMessage = 'Unable to process payment. Please check your phone number and try again.\n\nIf the problem persists, contact support.';
+      // If message is already user-friendly (contains helpful guidance), use as-is
+      // Otherwise, provide a generic helpful message
+      if (userMessage.isEmpty || 
+          userMessage.toLowerCase().contains('exception') ||
+          userMessage.toLowerCase().contains('error:') ||
+          userMessage.toLowerCase().contains('failed:')) {
+        userMessage = 'We couldn\'t process your payment. Please check your phone number and try again.\n\nIf this continues, contact our support team for assistance.';
       }
       
       safeSetState(() {
@@ -664,11 +692,28 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
+          onChanged: (value) {
+            // Validate phone number as user types
+            safeSetState(() {
+              if (value.trim().isEmpty) {
+                _phoneError = null; // Don't show error for empty field
+              } else {
+                // Use FapshiService validation logic
+                final normalized = _validatePhoneNumber(value.trim());
+                if (normalized == null) {
+                  _phoneError = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+                } else {
+                  _phoneError = null; // Valid phone number
+                }
+              }
+            });
+          },
           decoration: InputDecoration(
             hintText: '670000000',
             prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor),
             filled: true,
             fillColor: Colors.white,
+            errorText: _phoneError,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -681,6 +726,14 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
             ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.red, width: 2),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.red, width: 2),
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -689,15 +742,6 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           style: GoogleFonts.poppins(
             fontSize: 12,
             color: Colors.grey[600],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Format: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            color: Colors.grey[500],
-            fontStyle: FontStyle.italic,
           ),
         ),
       ],
@@ -939,4 +983,3 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       );
   }
 }
-

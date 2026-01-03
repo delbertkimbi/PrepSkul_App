@@ -1446,8 +1446,9 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   bool _isValidYouTubeUrl(String url) {
     if (url.isEmpty) return true; // Optional field
+    // Accept all YouTube URL formats including Shorts
     final youtubeRegex = RegExp(
-      r'^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/)|youtu\.be\/).+$',
+      r'^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|shorts\/)|youtu\.be\/).+$',
       caseSensitive: false,
     );
     return youtubeRegex.hasMatch(url);
@@ -1473,11 +1474,13 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   bool _isValidUrl(String url) {
     if (url.isEmpty) return true; // Optional field
-    final urlRegex = RegExp(
-      r'^(https?:\/\/)?([\w\-]+(\.[\w\-]+)+)(\/[\w\-\.\/]*)?$',
-      caseSensitive: false,
-    );
-    return urlRegex.hasMatch(url);
+    // Use Uri.parse for robust URL validation that handles query parameters, fragments, etc.
+    try {
+      final uri = Uri.parse(url);
+      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+    } catch (e) {
+      return false;
+    }
   }
 
   String? _getUrlError(String url, String platform) {
@@ -4471,7 +4474,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               return null; // Optional field
             }
             if (!_isValidYouTubeUrl(value)) {
-              return 'Please enter a valid YouTube URL (e.g., youtube.com/watch?v=...)';
+              return 'Please enter a valid YouTube URL (e.g., youtube.com/watch?v=... or youtube.com/shorts/...)';
             }
             return null;
           },
@@ -5944,6 +5947,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       'id_card_front_url': idCardFrontUrl,
       'id_card_back_url': idCardBackUrl,
       'id_card_url': idCardFrontUrl, // Legacy field for compatibility
+      'video_url': _videoLinkController.text, // Primary field
       'video_link': _videoLinkController.text,
       'video_intro': _videoLinkController.text,
       'social_media_links': _socialMediaLinks,

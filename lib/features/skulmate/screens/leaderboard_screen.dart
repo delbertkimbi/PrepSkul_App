@@ -4,8 +4,10 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:flutter/foundation.dart';
 import '../models/social_models.dart';
 import '../services/social_service.dart';
+import '../services/games_services_controller.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 
@@ -20,11 +22,23 @@ class LeaderboardScreen extends StatefulWidget {
 class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry> _entries = [];
   bool _isLoading = true;
+  final GamesServicesController _gamesServices = GamesServicesController();
+  bool _platformAvailable = false;
 
   @override
   void initState() {
     super.initState();
+    _checkPlatformAvailability();
     _loadLeaderboard();
+  }
+
+  Future<void> _checkPlatformAvailability() async {
+    if (!kIsWeb) {
+      final available = _gamesServices.isAvailable;
+      safeSetState(() {
+        _platformAvailable = available;
+      });
+    }
   }
 
   Future<void> _loadLeaderboard() async {
@@ -64,6 +78,28 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
             color: AppTheme.textDark,
           ),
         ),
+        actions: [
+          if (_platformAvailable)
+            IconButton(
+              icon: const Icon(Icons.leaderboard),
+              tooltip: 'Show Platform Leaderboard',
+              onPressed: () async {
+                try {
+                  await _gamesServices.showLeaderboard();
+                } catch (e) {
+                  LogService.error('Error showing platform leaderboard: $e');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Could not open platform leaderboard'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

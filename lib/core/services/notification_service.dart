@@ -1,6 +1,6 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

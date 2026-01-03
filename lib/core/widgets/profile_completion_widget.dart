@@ -279,4 +279,3 @@ class ProfileCompletionBanner extends StatelessWidget {
     );
   }
 }
-

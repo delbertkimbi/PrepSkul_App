@@ -198,6 +198,32 @@
   </script>
   
   <script>
+    // ============================================
+    // Environment Variables (Production)
+    // ============================================
+    // For production builds, inject environment variables here
+    // These are set at build time by your CI/CD or hosting platform
+    // Example for Vercel: Use environment variables and inject via build script
+    // window.env = window.env || {};
+    window.env = {
+    NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
+  };
+    // Supabase Configuration
+    // These will be injected at build time or set via hosting platform
+    // For local development, these can be set manually or loaded from a config file
+    // For production (Vercel), set these in Vercel Dashboard → Environment Variables
+    // and inject them here via a build script or server-side rendering
+    
+    // Example injection (replace with actual values or build-time injection):
+    // window.env.SUPABASE_URL_PROD = 'your-supabase-url';
+    // window.env.SUPABASE_ANON_KEY_PROD = 'your-supabase-anon-key';
+    // window.env.SUPABASE_URL_DEV = 'your-dev-supabase-url';
+    // window.env.SUPABASE_ANON_KEY_DEV = 'your-dev-supabase-anon-key';
+    
+    // ============================================
+    // Splash Screen Management
+    // ============================================
     // Expose function to remove splash screen from Flutter
     window.removeSplash = function() {
       const loader = document.getElementById('flutter-loading');
@@ -215,6 +241,7 @@
     // Flutter will call window.removeSplash() when it is fully ready.
     
     // CRITICAL: Fallback - hide after 5 seconds if Flutter doesn't load/call removeSplash
+    // Reduced from 10s to 5s for faster removal on refresh
     // This prevents the logo from staying stuck on screen after refresh
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
@@ -229,69 +256,45 @@
       }
     }, 5000);
     
+    // Additional aggressive removal: Check every 500ms after 2 seconds
+    // This ensures the splash is removed quickly on refresh
+    let checkCount = 0;
+    const maxChecks = 20; // 20 * 500ms = 10 seconds max
+    const checkInterval = setInterval(function() {
+      checkCount++;
+      const loader = document.getElementById('flutter-loading');
+      if (loader && !loader.classList.contains('hidden')) {
+        // After 2 seconds (4 checks), start checking if Flutter is loaded
+        if (checkCount >= 4) {
+          // Check if Flutter has loaded by looking for Flutter app container
+          const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
+          if (flutterApp) {
+            console.log('Flutter app detected, removing splash');
+            loader.classList.add('hidden');
+            setTimeout(function() {
+              if (loader && loader.parentNode) {
+                loader.remove();
+              }
+            }, 400);
+            clearInterval(checkInterval);
+          }
+        }
+      } else {
+        // Splash already hidden, stop checking
+        clearInterval(checkInterval);
+      }
+      
+      // Stop checking after max attempts
+      if (checkCount >= maxChecks) {
+        clearInterval(checkInterval);
+      }
+    }, 500);
+    
     // Additional safety: Remove on page visibility change (user switches tabs/refreshes)
     document.addEventListener('visibilitychange', function() {
       if (!document.hidden) {
         // Page became visible - ensure splash is removed if it's been more than 2 seconds
         setTimeout(function() {
-          const loader = document.getElementById('flutter-loading');
-          if (loader && !loader.classList.contains('hidden')) {
-            console.warn('Splash still visible after visibility change, removing');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400);
-          }
-        }, 2000);
-      }
-    });
-  </script>
-</head>
-<body>
-  <!-- Immediate Loading Screen -->
-  <div id="flutter-loading">
-    <div class="loader-container">
-      <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
-      </div>
-    </div>
-  </div>
-  
-  <script src="flutter_bootstrap.js" async></script>
-</body>
-</html>
-
-          const loader = document.getElementById('flutter-loading');
-          if (loader && !loader.classList.contains('hidden')) {
-            console.warn('Splash still visible after visibility change, removing');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400);
-          }
-        }, 2000);
-      }
-    });
-  </script>
-</head>
-<body>
-  <!-- Immediate Loading Screen -->
-  <div id="flutter-loading">
-    <div class="loader-container">
-      <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
-      </div>
-    </div>
-  </div>
-  
-  <script src="flutter_bootstrap.js" async></script>
-</body>
-</html>
-
           const loader = document.getElementById('flutter-loading');
           if (loader && !loader.classList.contains('hidden')) {
             console.warn('Splash still visible after visibility change, removing');
