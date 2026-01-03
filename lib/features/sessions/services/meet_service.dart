@@ -75,7 +75,10 @@ class MeetService {
 
       final subject = trialSession?['subject'] as String? ?? 'Trial Session';
 
-      // Create calendar event with Meet link
+      // Create calendar event with Meet link (requires OAuth verification)
+      // Note: Meet links MUST be created through Calendar API - random links don't work
+      // If Calendar API fails, we cannot generate valid Meet links
+      // Alternative: Use Fathom video (see FATHOM_API_DOCUMENTATION.md)
       final calendarEvent = await GoogleCalendarService.createSessionEvent(
         title: 'Trial Session: $subject',
         startTime: startTime,
@@ -83,18 +86,21 @@ class MeetService {
         attendeeEmails: [tutorEmail, studentEmail],
         description: 'PrepSkul trial tutoring session',
       );
+      
+      final meetLink = calendarEvent.meetLink;
+      final calendarEventId = calendarEvent.id;
 
       // Update trial session with Meet link and calendar event ID
       await _supabase
           .from('trial_sessions')
           .update({
-            'meet_link': calendarEvent.meetLink,
-            'calendar_event_id': calendarEvent.id,
+            'meet_link': meetLink,
+            'calendar_event_id': calendarEventId,
             'meet_link_generated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', trialSessionId);
 
-      return calendarEvent.meetLink;
+      return meetLink;
     } catch (e) {
       LogService.error('Error generating trial Meet link: $e');
       rethrow;
@@ -170,7 +176,10 @@ class MeetService {
       // Default duration: 60 minutes for recurring sessions
       const durationMinutes = 60;
 
-      // Create calendar event with Meet link
+      // Create calendar event with Meet link (requires OAuth verification)
+      // Note: Meet links MUST be created through Calendar API - random links don't work
+      // If Calendar API fails, we cannot generate valid Meet links
+      // Alternative: Use Fathom video (see FATHOM_API_DOCUMENTATION.md)
       final calendarEvent = await GoogleCalendarService.createSessionEvent(
         title: 'PrepSkul Tutoring Session',
         startTime: startTime,
@@ -178,17 +187,20 @@ class MeetService {
         attendeeEmails: [tutorEmail, studentEmail],
         description: 'Regular PrepSkul tutoring session',
       );
+      
+      final meetLink = calendarEvent.meetLink;
+      final calendarEventId = calendarEvent.id;
 
       // Update recurring session with Meet link
       await _supabase
           .from('recurring_sessions')
           .update({
-            'meet_link': calendarEvent.meetLink,
-            'calendar_event_id': calendarEvent.id,
+            'meet_link': meetLink,
+            'calendar_event_id': calendarEventId,
           })
           .eq('id', recurringSessionId);
 
-      return calendarEvent.meetLink;
+      return meetLink;
     } catch (e) {
       LogService.error('Error generating recurring Meet link: $e');
       rethrow;
@@ -253,7 +265,10 @@ class MeetService {
         minute,
       );
 
-      // Create calendar event with Meet link
+      // Create calendar event with Meet link (requires OAuth verification)
+      // Note: Meet links MUST be created through Calendar API - random links don't work
+      // If Calendar API fails, we cannot generate valid Meet links
+      // Alternative: Use Fathom video (see FATHOM_API_DOCUMENTATION.md)
       final calendarEvent = await GoogleCalendarService.createSessionEvent(
         title: 'PrepSkul Session: $subject',
         startTime: startTime,
@@ -261,20 +276,23 @@ class MeetService {
         attendeeEmails: [tutorEmail, studentEmail],
         description: 'PrepSkul tutoring session - $subject',
       );
+      
+      final meetLink = calendarEvent.meetLink;
+      final calendarEventId = calendarEvent.id;
 
       // Update individual session with Meet link and calendar event ID
       await _supabase
           .from('individual_sessions')
           .update({
-            'meeting_link': calendarEvent.meetLink,
-            'calendar_event_id': calendarEvent.id,
+            'meeting_link': meetLink,
+            'calendar_event_id': calendarEventId,
             'meet_link_generated_at': DateTime.now().toIso8601String(),
             'updated_at': DateTime.now().toIso8601String(),
           })
           .eq('id', sessionId);
 
       LogService.success('Meet link generated for individual session: $sessionId');
-      return calendarEvent.meetLink;
+      return meetLink;
     } catch (e) {
       LogService.error('Error generating individual session Meet link: $e');
       rethrow;
@@ -326,9 +344,3 @@ class MeetService {
     }
   }
 }
-
-
-
-
-
-

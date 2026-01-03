@@ -5,6 +5,7 @@ import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/services/individual_session_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
+import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/sessions/services/connection_quality_service.dart';
 import 'package:prepskul/features/sessions/services/location_sharing_service.dart';
 
@@ -66,9 +67,10 @@ class SessionLifecycleService {
 
       final now = DateTime.now().toIso8601String();
       final sessionLocation = session['location'] as String;
-      // For hybrid sessions, use isOnline parameter to determine mode
-      // For online/onsite, use location directly
-      final isSessionOnline = sessionLocation == 'online' || (sessionLocation == 'hybrid' && isOnline);
+      // Location should only be 'online' or 'onsite' (hybrid is a preference only)
+      // If somehow 'hybrid' exists, default to online
+      final actualLocation = sessionLocation == 'hybrid' ? 'online' : sessionLocation;
+      final isSessionOnline = actualLocation == 'online';
 
       // Update session status
       final updateData = <String, dynamic>{
@@ -111,14 +113,26 @@ class SessionLifecycleService {
         ConnectionQualityService.startMonitoring(sessionId);
       }
 
-      // Start location sharing for onsite sessions (including hybrid in onsite mode)
-      if (!isSessionOnline && (sessionLocation == 'onsite' || sessionLocation == 'hybrid')) {
-        // Start location sharing for tutor
-        await LocationSharingService.startLocationSharing(
-          sessionId: sessionId,
-          userId: userId,
-          userType: 'tutor',
-        );
+      // Start location sharing for onsite sessions
+      // Location sharing helps parents track session location for safety
+      if (!isSessionOnline && actualLocation == 'onsite') {
+        // Start location sharing for tutor automatically when session starts
+        try {
+          await LocationSharingService.startLocationSharing(
+            sessionId: sessionId,
+            userId: userId,
+            userType: 'tutor',
+            updateInterval: const Duration(seconds: 30),
+          );
+          LogService.success('Location sharing started for tutor');
+        } catch (e) {
+          LogService.warning('Failed to start location sharing: $e');
+          // Don't fail session start if location sharing fails
+        }
+        
+        // Also start location sharing for learner if they join
+        // This will be triggered when learner joins the session
+        // For now, tutor location is the primary tracking point
       }
       // For online sessions: ensure Meet link exists
       if (isSessionOnline) {
@@ -244,6 +258,10 @@ class SessionLifecycleService {
         throw Exception('Session is not in progress. Current status: ${session['status']}');
       }
 
+      // Extract learner_id and parent_id early for use in credit deduction
+      final learnerId = session['learner_id'] as String?;
+      final parentId = session['parent_id'] as String?;
+
       // Calculate actual duration
       int? actualDurationMinutes;
       if (session['session_started_at'] != null) {
@@ -313,11 +331,79 @@ class SessionLifecycleService {
       }
 
       // Create payment record (includes earnings calculation)
+      double? sessionCostXaf;
       try {
         await SessionPaymentService.createSessionPayment(sessionId);
+        
+        // Get session cost for credit deduction
+        if (session['recurring_session_id'] != null) {
+          final recurringSession = await _supabase
+              .from('recurring_sessions')
+              .select('monthly_total, frequency')
+              .eq('id', session['recurring_session_id'])
+              .maybeSingle();
+          
+          if (recurringSession != null) {
+            final monthlyTotal = (recurringSession['monthly_total'] as num).toDouble();
+            final frequency = recurringSession['frequency'] as int;
+            // Calculate session cost: monthlyTotal / (frequency * 4)
+            sessionCostXaf = monthlyTotal / (frequency * 4);
+          }
+        }
       } catch (e) {
         LogService.warning('Error creating session payment: $e');
         // Don't fail the session end if payment creation fails
+      }
+
+      // Deduct credits for completed session
+      if (sessionCostXaf != null) {
+        try {
+          final creditsDeducted = await UserCreditsService.deductCreditsForSession(
+            sessionId,
+            sessionCostXaf,
+          );
+          
+          if (creditsDeducted) {
+            LogService.success('Credits deducted for session: $sessionId');
+            
+            // Check for low balance after deduction
+            if (session['recurring_session_id'] != null) {
+              final recurringSession = await _supabase
+                  .from('recurring_sessions')
+                  .select('monthly_total, student_id')
+                  .eq('id', session['recurring_session_id'])
+                  .maybeSingle();
+              
+              if (recurringSession != null) {
+                final monthlyTotal = (recurringSession['monthly_total'] as num).toDouble();
+                final studentUserId = recurringSession['student_id'] as String? ?? learnerId ?? parentId;
+                
+                if (studentUserId != null) {
+                  // Check and notify if balance is low
+                  await UserCreditsService.checkAndNotifyLowBalance(
+                    studentUserId,
+                    monthlyTotal,
+                  );
+                }
+              }
+            }
+          } else {
+            // Insufficient credits - mark session as payment_pending
+            LogService.warning('Insufficient credits for session: $sessionId');
+            await _supabase
+                .from('individual_sessions')
+                .update({'status': 'payment_pending'})
+                .eq('id', sessionId);
+            
+            // Create payment request for missing amount
+            // Note: This will be handled by the payment service
+            // For now, just log the issue
+            LogService.warning('Session marked as payment_pending due to insufficient credits');
+          }
+        } catch (e) {
+          LogService.warning('Error deducting credits for session: $e');
+          // Don't fail the session end if credit deduction fails
+        }
       }
 
       // For online sessions: Fathom recording stops automatically when meeting ends
@@ -326,10 +412,6 @@ class SessionLifecycleService {
         LogService.debug('Session ended - Fathom will automatically stop recording when meeting ends');
       }
 
-      // Send notifications - handle both learner and parent
-      final learnerId = session['learner_id'] as String?;
-      final parentId = session['parent_id'] as String?;
-      
       // Get payment ID to include in notification
       String? paymentId;
       try {

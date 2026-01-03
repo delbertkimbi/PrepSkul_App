@@ -207,8 +207,8 @@ class NotificationHelperService {
 
     await _sendNotificationViaAPI(
       userId: studentId,
-      type: 'booking_accepted',
-      title: '✅ Booking Accepted!',
+      type: 'booking_approved', // Changed from 'booking_accepted' to match plan
+      title: '✅ Booking Approved!',
       message: message,
       priority: 'high',
       actionUrl: actionUrl,
@@ -1724,5 +1724,3 @@ class NotificationHelperService {
       sendEmail: true,
     );
   }
-}
-

@@ -2,7 +2,7 @@
 // ///
 // /// Validates user permissions before navigation
 // import 'package:shared_preferences/shared_preferences.dart';
-// import 'package:prepskul/core/services/auth_service.dart';
+// import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 // import 'package:prepskul/core/services/supabase_service.dart';
 
 // class RouteGuard {
@@ -269,7 +269,7 @@
 
 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 

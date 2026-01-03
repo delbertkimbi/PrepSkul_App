@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:async';
 import 'supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'push_notification_service.dart';
 import 'email_rate_limit_service.dart';
 import 'notification_helper_service.dart';
@@ -589,11 +590,77 @@ class AuthService {
   static String parseAuthError(dynamic error) {
     if (error == null) return 'An unexpected error occurred';
 
-    LogService.debug('[DEBUG] parseAuthError called with: ${error.runtimeType}');
-    LogService.debug('[DEBUG] Error toString: ${error.toString()}');
+    LogService.error('[ERROR] parseAuthError called with: ${error.runtimeType}');
+    LogService.error('[ERROR] Error toString: ${error.toString()}');
+    
+    // Convert error to lowercase string for easier matching
+    final errorStr = error.toString().toLowerCase();
+    
+    // Handle PostgrestException (database errors from Supabase)
+    if (error.toString().contains('PostgrestException') || 
+        error.runtimeType.toString().contains('Postgrest')) {
+      LogService.error('[ERROR] PostgrestException detected: $errorStr');
+      
+      // Check for specific database errors
+      if (errorStr.contains('permission denied') || 
+          errorStr.contains('row-level security') ||
+          errorStr.contains('rls')) {
+        return 'Access denied. Please contact support if this persists.';
+      }
+      
+      if (errorStr.contains('relation') && errorStr.contains('does not exist')) {
+        return 'Database error. Please contact support.';
+      }
+      
+      if (errorStr.contains('network') || errorStr.contains('connection')) {
+        return 'Connection error. Please check your internet connection.';
+      }
+    }
+    
+    // Handle HTML response errors (CORS or wrong endpoint)
+    // This happens when Supabase returns HTML instead of JSON
+    // Usually means Supabase URL is empty/wrong or CORS issue
+    if (errorStr.contains('<!doctype') || 
+        (errorStr.contains('formatexception') && errorStr.contains('unexpected token')) ||
+        (errorStr.contains('syntaxerror') && errorStr.contains('<!doctype'))) {
+      LogService.error('🚨 [ERROR] HTML response detected - Supabase returned HTML instead of JSON');
+      LogService.error('🚨 [ERROR] This usually means Supabase URL is empty or wrong');
+      
+      // Try to get current Supabase URL for diagnosis
+      try {
+        final supabaseUrl = AppConfig.supabaseUrl;
+        LogService.error('🚨 [ERROR] Current Supabase URL: ${supabaseUrl.isEmpty ? "EMPTY" : supabaseUrl}');
+        if (supabaseUrl.isEmpty) {
+          LogService.error('🚨 [ERROR] ⚠️ SUPABASE URL IS EMPTY - credentials not loaded from window.env!');
+          LogService.error('🚨 [ERROR] For production web, check that window.env is defined in index.html');
+        } else if (!supabaseUrl.contains('cpzaxdfxbamdsshdgjyg')) {
+          LogService.error('🚨 [ERROR] ⚠️ WRONG SUPABASE URL DETECTED!');
+        }
+      } catch (e) {
+        LogService.error('🚨 [ERROR] Could not get Supabase URL: $e');
+      }
+      
+      // Return user-friendly message
+      return 'Unable to connect to authentication service. Please refresh the page and try again.';
+    }
+    
+    // Handle CORS errors (common in production)
+    if (errorStr.contains('cors') || 
+        errorStr.contains('cross-origin') ||
+        errorStr.contains('access-control-allow-origin')) {
+      LogService.error('[ERROR] CORS error detected');
+      return 'Connection error. Please check your internet connection and try again.';
+    }
+    
+    // Handle "Failed to fetch" errors (common in production web)
+    if (errorStr.contains('failed to fetch') ||
+        errorStr.contains('networkerror') ||
+        errorStr.contains('network request failed')) {
+      LogService.error('[ERROR] Network fetch error detected');
+      return 'Connection error. Please check your internet connection and try again.';
+    }
 
     // If error is already a friendly Exception we created, extract the message
-    final errorStr = error.toString();
     LogService.debug('[DEBUG] Checking if friendly exception: $errorStr');
 
     // Check for friendly messages we created (Exception: message format)

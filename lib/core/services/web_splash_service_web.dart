@@ -11,16 +11,3 @@ class SplashServiceImplementation {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

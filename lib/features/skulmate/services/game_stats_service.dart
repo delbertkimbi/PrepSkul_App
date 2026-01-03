@@ -2,7 +2,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_stats_model.dart';
+import '../models/achievement_mapping.dart';
 import 'social_service.dart';
+import 'games_services_controller.dart';
 
 /// Service for managing game statistics (XP, levels, streaks, achievements)
 class GameStatsService {
@@ -189,6 +191,20 @@ class GameStatsService {
       if (earned) {
         newAchievements.add(achievement.id);
         LogService.success('🏆 [Achievement] Unlocked: ${achievement.name}');
+        
+        // Unlock platform achievement if available
+        // TODO: Implement AchievementMapping
+        // final platformId = AchievementMapping.getPlatformAchievementId(achievement.id);
+        final platformId = null; // Placeholder until AchievementMapping is implemented
+        if (platformId != null) {
+          try {
+            await GamesServicesController().awardAchievement(platformId);
+            LogService.info('🎮 [GamesServices] Platform achievement unlocked: $platformId');
+          } catch (e) {
+            LogService.warning('🎮 [GamesServices] Error unlocking platform achievement: $e');
+            // Don't fail - platform achievements are optional
+          }
+        }
       }
     }
     
@@ -266,5 +282,41 @@ class GameStatsService {
   static Future<void> resetStreak() async {
     final stats = await getStats();
     await _saveStats(stats.copyWith(currentStreak: 0));
+  }
+
+  /// Record game completion (used by new game types)
+  static Future<void> recordGameCompletion({
+    required String gameId,
+    required int score,
+    required int totalItems,
+    required int xpEarned,
+    required Duration duration,
+    required int streak,
+  }) async {
+    try {
+      final isPerfectScore = score == totalItems;
+      final timeTakenSeconds = duration.inSeconds;
+      
+      await addGameResult(
+        correctAnswers: score,
+        totalQuestions: totalItems,
+        timeTakenSeconds: timeTakenSeconds,
+        isPerfectScore: isPerfectScore,
+      );
+      
+      // Submit to platform leaderboard (non-blocking)
+      try {
+        final gamesServices = GamesServicesController();
+        if (await gamesServices.initialize()) {
+          // Submit XP as score to default leaderboard
+          await gamesServices.submitLeaderboardScore('default_leaderboard', xpEarned);
+        }
+      } catch (e) {
+        LogService.warning('🎮 [GamesServices] Error submitting to leaderboard: $e');
+        // Don't fail - platform leaderboard is optional
+      }
+    } catch (e) {
+      LogService.error('📊 [GameStats] Error recording game completion: $e');
+    }
   }
 }

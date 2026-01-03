@@ -5,7 +5,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';

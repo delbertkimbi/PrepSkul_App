@@ -28,6 +28,7 @@ class ChallengesScreen extends StatefulWidget {
 class _ChallengesScreenState extends State<ChallengesScreen> {
   List<Challenge> _challenges = [];
   bool _isLoading = true;
+  String _selectedTab = 'all'; // 'all', 'sent', 'received'
 
   @override
   void initState() {
@@ -36,8 +37,8 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
   }
 
   Future<void> _loadChallenges() async {
+    safeSetState(() => _isLoading = true);
     try {
-      safeSetState(() => _isLoading = true);
       final challenges = await SocialService.getChallenges();
       safeSetState(() {
         _challenges = challenges;
@@ -46,136 +47,148 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
     } catch (e) {
       LogService.error('Error loading challenges: $e');
       safeSetState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading challenges: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 
-  Future<void> _createChallenge() async {
-    final result = await showDialog(
-      context: context,
-      builder: (context) => const CreateChallengeDialog(),
-    );
-    if (result == true) {
-      _loadChallenges();
-    }
-  }
+  List<Challenge> get _filteredChallenges {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) return [];
 
-  Future<void> _acceptChallenge(Challenge challenge) async {
-    try {
-      await SocialService.acceptChallenge(challenge.id);
-      _loadChallenges();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Challenge accepted!'),
-            backgroundColor: AppTheme.accentGreen,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error accepting challenge: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    switch (_selectedTab) {
+      case 'sent':
+        return _challenges.where((c) => c.challengerId == userId).toList();
+      case 'received':
+        return _challenges.where((c) => c.challengeeId == userId).toList();
+      default:
+        return _challenges;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
+        title: Text('Challenges', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text(
-          'Challenges',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
+      ),
+      body: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _buildTabButton('all', 'All'),
+              ),
+              Expanded(
+                child: _buildTabButton('sent', 'Sent'),
+              ),
+              Expanded(
+                child: _buildTabButton('received', 'Received'),
+              ),
+            ],
           ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'Create Challenge',
-            onPressed: _createChallenge,
+          Expanded(
+            child: _isLoading
+                ? ShimmerLoading() as Widget
+                : _filteredChallenges.isEmpty
+                    ? EmptyStateWidget(
+                        icon: Icons.emoji_events,
+                        title: 'No Challenges',
+                        message: _selectedTab == 'sent'
+                            ? 'You haven\'t sent any challenges yet'
+                            : _selectedTab == 'received'
+                                ? 'You don\'t have any pending challenges'
+                                : 'No challenges found',
+                      ) as Widget
+                    : RefreshIndicator(
+                        onRefresh: _loadChallenges,
+                        child: ListView.builder(
+                          itemCount: _filteredChallenges.length,
+                          itemBuilder: (context, index) {
+                            final challenge = _filteredChallenges[index];
+                            return _buildChallengeCard(challenge);
+                          },
+                        ),
+                      ) as Widget,
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _challenges.isEmpty
-              ? EmptyStateWidget(
-                  icon: Icons.sports_esports,
-                  title: 'No Challenges',
-                  message: 'Create a challenge or wait for friends to challenge you!',
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _challenges.length,
-                  itemBuilder: (context, index) {
-                    final challenge = _challenges[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 10,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  challenge.gameTitle ?? 'Game Challenge',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textDark,
-                                  ),
-                                ),
-                              ),
-                              if (challenge.status == ChallengeStatus.pending)
-                                ElevatedButton(
-                                  onPressed: () => _acceptChallenge(challenge),
-                                  child: const Text('Accept'),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'From: ${challenge.challengerName}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final result = await showDialog(
+            context: context,
+            builder: (context) => CreateChallengeDialog(),
+          );
+          if (result == true) {
+            _loadChallenges();
+          }
+        },
+        child: Icon(Icons.add),
+        backgroundColor: AppTheme.primaryColor,
+      ),
+    );
+  }
+
+  Widget _buildTabButton(String tab, String label) {
+    final isSelected = _selectedTab == tab;
+    return InkWell(
+      onTap: () => safeSetState(() => _selectedTab = tab),
+      child: Container(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: GoogleFonts.poppins(
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChallengeCard(Challenge challenge) {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    final isChallenger = challenge.challengerId == userId;
+    final opponentName = isChallenger ? challenge.challengeeName : challenge.challengerName;
+
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: ListTile(
+        title: Text(
+          isChallenger ? 'Challenge to $opponentName' : 'Challenge from ${challenge.challengerName}',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          challenge.gameTitle ?? 'Game Challenge',
+          style: GoogleFonts.poppins(),
+        ),
+        trailing: Text(
+          challenge.status.toString().toUpperCase(),
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: challenge.status == ChallengeStatus.completed
+                ? AppTheme.accentGreen
+                : challenge.status == ChallengeStatus.pending
+                    ? Colors.orange
+                    : AppTheme.textMedium,
+          ),
+        ),
+        onTap: () {
+          // Navigate to challenge details or game
+          if (challenge.gameId != null) {
+            // Could navigate to game details
+          }
+        },
+      ),
     );
   }
 }

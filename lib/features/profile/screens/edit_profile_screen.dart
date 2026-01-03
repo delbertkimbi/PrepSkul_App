@@ -3,7 +3,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/storage_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';

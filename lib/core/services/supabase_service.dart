@@ -13,12 +13,18 @@ class SupabaseService {
     }
   }
 
+  /// Check if Supabase client is available (public method)
+  static bool get isClientAvailable {
+    return _clientSafe != null;
+  }
+
   // Get the Supabase client instance (throws if not initialized)
   static SupabaseClient get client {
     final client = _clientSafe;
     if (client == null) {
+      // Provide a more helpful error message
       throw Exception(
-        'Supabase is not initialized yet. Call Supabase.initialize() first.',
+        'Unable to connect to the server. Please check your internet connection and try again. If the problem persists, the app may need to be updated.',
       );
     }
     return client;

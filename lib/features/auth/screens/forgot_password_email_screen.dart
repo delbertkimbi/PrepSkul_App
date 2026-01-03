@@ -282,11 +282,13 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                             height: 56,
                             child: ElevatedButton(
                               onPressed: _isLoading
-                                  ? null
+                                  ? () {}
                                   : _handleSendResetEmail,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryColor,
                                 foregroundColor: Colors.white,
+                                disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
+                                disabledForegroundColor: Colors.white, // Keep white text when disabled
                                 elevation: 2,
                                 shadowColor: AppTheme.primaryColor.withOpacity(
                                   0.3,
@@ -300,7 +302,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                                       height: 20,
                                       width: 20,
                                       child: CircularProgressIndicator(
-                                        strokeWidth: 2,
+                                        strokeWidth: 2.5,
                                         valueColor:
                                             AlwaysStoppedAnimation<Color>(
                                               Colors.white,

@@ -94,17 +94,3 @@ class OfflineDialog {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-

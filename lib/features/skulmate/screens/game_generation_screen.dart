@@ -273,50 +273,51 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                     ),
                   ),
                 ] else if (_error != null) ...[
-                Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: Colors.red[300],
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  _error!,
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.red,
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red[300],
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  const SizedBox(height: 24),
+                  Text(
+                    _error!,
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  child: const Text('Go Back'),
-                ),
-              ] else ...[
-                Icon(
-                  Icons.check_circle,
-                  size: 64,
-                  color: AppTheme.accentGreen,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  _status,
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    ),
+                    child: const Text('Go Back'),
+                  ),
+                ] else ...[
+                  Icon(
+                    Icons.check_circle,
+                    size: 64,
                     color: AppTheme.accentGreen,
                   ),
-                  textAlign: TextAlign.center,
-                ),
+                  const SizedBox(height: 24),
+                  Text(
+                    _status,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.accentGreen,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

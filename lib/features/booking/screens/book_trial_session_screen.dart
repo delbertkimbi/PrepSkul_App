@@ -3,9 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
@@ -903,8 +904,8 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   // STEP 1: Subject & Duration
   Widget _buildSubjectAndDuration() {
-    final tutorSubjects = widget.tutor['subjects'] as List? ?? [];
-    final subjects = tutorSubjects.map((s) => s.toString()).toList();
+    // Use the helper function to normalize subjects (handles subjects/specializations, JSON strings, etc.)
+    final subjects = TutorService.normalizeTutorSubjects(widget.tutor);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -930,40 +931,64 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: subjects.map((subject) {
-              final isSelected = _selectedSubject == subject;
-              return GestureDetector(
-                onTap: () => safeSetState(() => _selectedSubject = subject),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+          subjects.isEmpty
+              ? Container(
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isSelected ? AppTheme.primaryColor : Colors.white,
+                    color: Colors.orange.shade50,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppTheme.primaryColor
-                          : Colors.grey[300]!,
-                      width: isSelected ? 2 : 1,
-                    ),
+                    border: Border.all(color: Colors.orange.shade200),
                   ),
-                  child: Text(
-                    subject,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? Colors.white : Colors.black,
-                    ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'This tutor has not specified any subjects yet. Please contact the tutor directly or try booking a different tutor.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                )
+              : Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: subjects.map((subject) {
+                    final isSelected = _selectedSubject == subject;
+                    return GestureDetector(
+                      onTap: () => safeSetState(() => _selectedSubject = subject),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected ? AppTheme.primaryColor : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppTheme.primaryColor
+                                : Colors.grey[300]!,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Text(
+                          subject,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: isSelected ? Colors.white : Colors.black,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              );
-            }).toList(),
-          ),
           const SizedBox(height: 32),
 
           // Duration selection

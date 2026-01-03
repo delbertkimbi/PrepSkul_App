@@ -2,6 +2,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/social_models.dart';
 import '../models/game_stats_model.dart';
+import 'games_services_controller.dart';
 
 /// Service for managing social features (friendships, leaderboards, challenges)
 class SocialService {
@@ -285,9 +286,27 @@ class SocialService {
       }
 
       LogService.success('🎮 [Social] Leaderboard updated');
+      
+      // Submit to platform leaderboard (non-blocking)
+      await submitToPlatformLeaderboard(xpEarned: xpEarned);
     } catch (e) {
       LogService.error('🎮 [Social] Error updating leaderboard: $e');
       // Don't throw - leaderboard update is not critical
+    }
+  }
+
+  /// Submit score to platform leaderboard (Game Center/Play Games)
+  static Future<void> submitToPlatformLeaderboard({required int xpEarned}) async {
+    try {
+      final gamesServices = GamesServicesController();
+      if (await gamesServices.initialize()) {
+        // Submit XP as score to default leaderboard
+        await gamesServices.submitLeaderboardScore('default_leaderboard', xpEarned);
+        LogService.info('🎮 [Social] Platform leaderboard updated');
+      }
+    } catch (e) {
+      LogService.warning('🎮 [Social] Error submitting to platform leaderboard: $e');
+      // Don't throw - platform leaderboard is optional
     }
   }
 

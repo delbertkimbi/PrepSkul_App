@@ -2,6 +2,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
+import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
@@ -194,23 +195,38 @@ class FapshiWebhookService {
     try {
       LogService.info('Processing payment request payment: $paymentRequestId');
 
+      // Get payment request first to check current status (idempotency check)
+      final paymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
+      if (paymentRequest == null) {
+        LogService.warning('Payment request not found: $paymentRequestId');
+        return;
+      }
+
+      final currentStatus = paymentRequest['status'] as String?;
+      
+      // Idempotency: If already paid, skip processing (webhook may be called multiple times)
+      if (currentStatus == 'paid' && status == 'SUCCESS') {
+        LogService.info('Payment request already processed as paid: $paymentRequestId. Skipping duplicate webhook.');
+        return;
+      }
+
       if (status == 'SUCCESS') {
-        // Payment successful
+        // Payment successful - update status first
         await PaymentRequestService.updatePaymentRequestStatus(
           paymentRequestId,
           'paid',
           fapshiTransId: transactionId,
         );
 
-        // Get payment request details for notifications and scheduling
-        final paymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
-        if (paymentRequest != null) {
-          final bookingRequestId = paymentRequest['booking_request_id'] as String?;
-          final studentId = paymentRequest['student_id'] as String;
-          final tutorId = paymentRequest['tutor_id'] as String;
-          final recurringSessionId = paymentRequest['recurring_session_id'] as String?;
-          final paymentPlan = paymentRequest['payment_plan'] as String?;
-          final monthlyTotal = paymentRequest['original_amount'] as num?;
+        // Reload payment request to get latest data
+        final updatedPaymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
+        if (updatedPaymentRequest != null) {
+          final bookingRequestId = updatedPaymentRequest['booking_request_id'] as String?;
+          final studentId = updatedPaymentRequest['student_id'] as String;
+          final tutorId = updatedPaymentRequest['tutor_id'] as String;
+          final recurringSessionId = updatedPaymentRequest['recurring_session_id'] as String?;
+          final paymentPlan = updatedPaymentRequest['payment_plan'] as String?;
+          final monthlyTotal = updatedPaymentRequest['original_amount'] as num?;
 
           // Ensure recurring session is active (in case it was paused)
           if (recurringSessionId != null) {
@@ -235,34 +251,54 @@ class FapshiWebhookService {
             LogService.debug('Recurring session payment confirmed: $recurringSessionId. Next payment requests already exist.');
           }
 
+          // Convert payment to credits (with idempotency check inside)
+          try {
+            final amount = (updatedPaymentRequest['amount'] as num).toDouble();
+            final credits = await UserCreditsService.convertPaymentToCredits(
+              paymentRequestId,
+              amount,
+            );
+            LogService.success('Payment converted to credits: ${amount}XAF = $credits credits');
+          } catch (e) {
+            // Check if error is due to duplicate conversion (idempotency)
+            if (e.toString().contains('already converted') || 
+                e.toString().contains('duplicate')) {
+              LogService.info('Credits already converted for payment request: $paymentRequestId');
+            } else {
+              LogService.warning('Error converting payment to credits: $e');
+              // Don't fail the payment if credit conversion fails
+            }
+          }
+
           // Send success notifications
           await NotificationHelperService.notifyPaymentRequestPaid(
             paymentRequestId: paymentRequestId,
             bookingRequestId: bookingRequestId,
             studentId: studentId,
             tutorId: tutorId,
-            amount: (paymentRequest['amount'] as num).toDouble(),
+            amount: (updatedPaymentRequest['amount'] as num).toDouble(),
           );
         }
 
         LogService.success('Payment request payment confirmed: $paymentRequestId');
       } else if (status == 'FAILED' || status == 'EXPIRED') {
-        // Payment failed
-        await PaymentRequestService.updatePaymentRequestStatus(
-          paymentRequestId,
-          'failed',
-          fapshiTransId: transactionId,
-        );
-
-        // Send failure notification
-        final paymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
-        if (paymentRequest != null) {
-          final studentId = paymentRequest['student_id'] as String;
-          await NotificationHelperService.notifyPaymentRequestFailed(
-            paymentRequestId: paymentRequestId,
-            studentId: studentId,
-            reason: failureReason ?? 'Payment failed',
+        // Payment failed - only update if not already failed (idempotency)
+        if (currentStatus != 'failed') {
+          await PaymentRequestService.updatePaymentRequestStatus(
+            paymentRequestId,
+            'failed',
+            fapshiTransId: transactionId,
           );
+
+          // Send failure notification
+          if (paymentRequest != null) {
+            final studentId = paymentRequest['student_id'] as String;
+            await NotificationHelperService.notifyPaymentRequestFailed(
+              paymentRequestId: paymentRequestId,
+              studentId: studentId,
+              reason: failureReason ?? 'Payment failed',
+            );
+          }
         }
 
         LogService.warning('Payment request payment failed: $paymentRequestId');
@@ -494,112 +530,3 @@ class FapshiWebhookService {
     }
   }
 }
-
-
-
-        await NotificationHelperService.scheduleSessionReminders(
-          tutorId: tutorId,
-          studentId: learnerId,
-          sessionId: trialSessionId,
-          sessionType: 'trial',
-          tutorName: tutorName,
-          studentName: studentName,
-          sessionStart: sessionStart,
-          subject: subject,
-        );
-        
-        LogService.success('Session countdown reminders scheduled after payment: $trialSessionId');
-      } catch (e) {
-        LogService.warning('Failed to schedule session reminders after payment: $e');
-        // Don't fail payment notification if reminder scheduling fails
-      }
-    } catch (e) {
-      LogService.warning('Error sending trial payment success notifications: $e');
-    }
-  }
-
-  /// Send trial payment failure notification
-  static Future<void> _sendTrialPaymentFailureNotification(
-    String trialSessionId,
-    String? reason,
-  ) async {
-    try {
-      final trial = await _supabase
-          .from('trial_sessions')
-          .select('learner_id, subject')
-          .eq('id', trialSessionId)
-          .maybeSingle();
-
-      if (trial == null) {
-        throw Exception('Trial session not found: $trialSessionId');
-      }
-
-      final learnerId = trial['learner_id'] as String;
-      final subject = trial['subject'] as String;
-
-      await NotificationHelperService.notifyTrialPaymentFailed(
-        trialSessionId: trialSessionId,
-        learnerId: learnerId,
-        subject: subject,
-        reason: reason ?? 'Payment failed',
-      );
-    } catch (e) {
-      LogService.warning('Error sending trial payment failure notification: $e');
-    }
-  }
-}
-
-
-
-        await NotificationHelperService.scheduleSessionReminders(
-          tutorId: tutorId,
-          studentId: learnerId,
-          sessionId: trialSessionId,
-          sessionType: 'trial',
-          tutorName: tutorName,
-          studentName: studentName,
-          sessionStart: sessionStart,
-          subject: subject,
-        );
-        
-        LogService.success('Session countdown reminders scheduled after payment: $trialSessionId');
-      } catch (e) {
-        LogService.warning('Failed to schedule session reminders after payment: $e');
-        // Don't fail payment notification if reminder scheduling fails
-      }
-    } catch (e) {
-      LogService.warning('Error sending trial payment success notifications: $e');
-    }
-  }
-
-  /// Send trial payment failure notification
-  static Future<void> _sendTrialPaymentFailureNotification(
-    String trialSessionId,
-    String? reason,
-  ) async {
-    try {
-      final trial = await _supabase
-          .from('trial_sessions')
-          .select('learner_id, subject')
-          .eq('id', trialSessionId)
-          .maybeSingle();
-
-      if (trial == null) {
-        throw Exception('Trial session not found: $trialSessionId');
-      }
-
-      final learnerId = trial['learner_id'] as String;
-      final subject = trial['subject'] as String;
-
-      await NotificationHelperService.notifyTrialPaymentFailed(
-        trialSessionId: trialSessionId,
-        learnerId: learnerId,
-        subject: subject,
-        reason: reason ?? 'Payment failed',
-      );
-    } catch (e) {
-      LogService.warning('Error sending trial payment failure notification: $e');
-    }
-  }
-}
-

@@ -377,6 +377,10 @@ class RecurringSessionService {
           }
 
           // Create session data
+          // Note: location should never be 'hybrid' - hybrid is a preference only
+          // If location is 'hybrid', default to 'online' (shouldn't happen, but safety check)
+          final sessionLocation = location == 'hybrid' ? 'online' : location;
+          
           final sessionData = <String, dynamic>{
             'recurring_session_id': recurringSessionId,
             'tutor_id': tutorId,
@@ -386,8 +390,8 @@ class RecurringSessionService {
             'scheduled_date': dateFormatted,
             'scheduled_time': timeFormatted,
             'duration_minutes': durationMinutes,
-            'location': location, // Supports 'online', 'onsite', or 'hybrid'
-            'onsite_address': location == 'onsite' || location == 'hybrid' ? address : null,
+            'location': sessionLocation, // Only 'online' or 'onsite'
+            'onsite_address': sessionLocation == 'onsite' ? address : null,
             'status': 'scheduled',
             'created_at': DateTime.now().toIso8601String(),
           };

@@ -15,6 +15,7 @@ import 'package:prepskul/features/booking/services/session_feedback_service.dart
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:convert';
@@ -50,6 +51,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   String? _currentUserId; // Current user ID to check if viewing own profile
   bool _isOffline = false;
   final ConnectivityService _connectivity = ConnectivityService();
+  Map<String, dynamic>? _refreshedTutorData; // Store refreshed tutor data
 
   @override
   void initState() {
@@ -57,10 +59,147 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     _currentUserId = SupabaseService.client.auth.currentUser?.id;
     _initializeConnectivity();
     _loadReviews(); // Load tutor reviews
-    _extractVideoId(); // Only extract ID, don't initialize player yet
+    
+    // CRITICAL: Refresh tutor data FIRST to get latest video URL from database
+    // This ensures we show the updated approved video, not the stale cached one
+    // Note: _refreshTutorData() will call _extractVideoIdFromData() internally,
+    // so we don't need to call _extractVideoId() again here
+    _refreshTutorData().catchError((e) {
+      // If refresh fails, fall back to widget.tutor data
+      LogService.warning('Refresh failed, using widget.tutor data: $e');
+      if (mounted) {
+        // Only extract from widget.tutor if refresh completely failed
+        _extractVideoId();
+      }
+    });
     
     // Cache tutor details when loaded
     _cacheTutorDetails();
+  }
+
+  /// Refresh tutor data from database to get latest video URL
+  /// Uses direct Supabase query (same as dashboard) to get exact data
+  Future<void> _refreshTutorData() async {
+    try {
+      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      if (tutorId == null) {
+        LogService.warning('Cannot refresh tutor data: no tutor ID found');
+        return;
+      }
+
+      // Fetch directly from Supabase (same method as dashboard) - no status filter
+      // This ensures we get the latest data including video_url
+      LogService.debug('🔄 Refreshing tutor data for ID: $tutorId');
+      
+      // Use specific relationship to avoid ambiguity: profiles!tutor_profiles_user_id_fkey
+      // This explicitly uses the user_id foreign key relationship
+      var response = await SupabaseService.client
+          .from('tutor_profiles')
+          .select('''
+            *,
+            profiles!tutor_profiles_user_id_fkey(
+              full_name,
+              avatar_url,
+              email
+            )
+          ''')
+          .eq('user_id', tutorId)
+          .maybeSingle();
+      
+      // If not found by user_id, try by id (in case tutorId is actually tutor_profiles.id)
+      if (response == null) {
+        LogService.debug('Not found by user_id, trying by id...');
+        response = await SupabaseService.client
+            .from('tutor_profiles')
+            .select('''
+              *,
+              profiles!tutor_profiles_user_id_fkey(
+                full_name,
+                avatar_url,
+                email
+              )
+            ''')
+            .eq('id', tutorId)
+            .maybeSingle();
+      }
+
+      if (response != null && mounted) {
+        // Handle profiles data - it might be a Map or List
+        Map<String, dynamic>? profile;
+        final profilesData = response['profiles'];
+        if (profilesData is Map) {
+          profile = Map<String, dynamic>.from(profilesData);
+        } else if (profilesData is List && profilesData.isNotEmpty) {
+          profile = Map<String, dynamic>.from(profilesData[0]);
+        }
+        
+        // Get video: Use video_url (primary), fallback to video_link or video_intro
+        final videoUrl = response['video_url']?.toString();
+        final videoLink = response['video_link']?.toString();
+        final videoIntro = response['video_intro']?.toString();
+        final effectiveVideoUrl = videoUrl ?? videoLink ?? videoIntro;
+        
+        LogService.debug('📹 Video URLs from database:');
+        LogService.debug('   video_url: ${videoUrl ?? "null"}');
+        LogService.debug('   video_link: ${videoLink ?? "null"}');
+        LogService.debug('   video_intro: ${videoIntro ?? "null"}');
+        LogService.debug('   effectiveVideoUrl: ${effectiveVideoUrl ?? "null"}');
+        
+        // Compare with widget.tutor to see if video changed
+        final oldVideoUrl = widget.tutor['video_url'] ?? widget.tutor['video_link'] ?? widget.tutor['video_intro'];
+        if (oldVideoUrl != effectiveVideoUrl) {
+          LogService.info('✅ Video URL changed! Old: $oldVideoUrl → New: $effectiveVideoUrl');
+        } else {
+          LogService.debug('ℹ️ Video URL unchanged: $effectiveVideoUrl');
+        }
+        
+        // Get profile photo: Use profile_photo_url first, then avatar_url
+        final profilePhotoUrl = response['profile_photo_url']?.toString();
+        final avatarUrl = profile?['avatar_url']?.toString();
+        final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+            ? profilePhotoUrl
+            : (avatarUrl != null && avatarUrl.isNotEmpty)
+            ? avatarUrl
+            : null;
+
+        // Build refreshed data map (same structure as TutorService)
+        // Merge with original tutor data to preserve all fields, then override with refreshed values
+        final refreshedData = {
+          ...widget.tutor, // Preserve all original fields
+          // Override with refreshed values
+          'id': response['user_id']?.toString() ?? tutorId,
+          'user_id': response['user_id']?.toString() ?? tutorId,
+          'full_name': profile?['full_name']?.toString() ?? widget.tutor['full_name'] ?? 'Tutor',
+          'avatar_url': effectiveAvatarUrl,
+          'profile_photo_url': profilePhotoUrl,
+          'video_url': effectiveVideoUrl,
+          'video_link': videoLink,
+          'video_intro': videoIntro,
+          // Include other important fields
+          'rating': response['rating'] ?? widget.tutor['rating'] ?? 0.0,
+          'admin_approved_rating': response['admin_approved_rating'],
+          'total_reviews': response['total_reviews'] ?? widget.tutor['total_reviews'] ?? 0,
+          'status': response['status'],
+          // CRITICAL: Include subjects and specializations from database
+          'subjects': response['subjects'] ?? widget.tutor['subjects'],
+          'specializations': response['specializations'] ?? widget.tutor['specializations'],
+        };
+        
+        safeSetState(() {
+          _refreshedTutorData = refreshedData;
+        });
+        
+        // Log the video URLs for debugging
+        LogService.debug('Refreshed tutor data - video_url: $videoUrl, video_link: $videoLink, video_intro: $videoIntro');
+        LogService.debug('Effective video URL: $effectiveVideoUrl');
+        
+        // Re-extract video ID from refreshed data (will re-initialize if video changed)
+        _extractVideoIdFromData(refreshedData);
+      }
+    } catch (e) {
+      LogService.warning('Error refreshing tutor data: $e');
+      // Continue with widget.tutor data if refresh fails
+    }
   }
 
   /// Initialize connectivity monitoring
@@ -114,29 +253,82 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   void _extractVideoId() {
+    // Use refreshed data if available, otherwise fall back to widget.tutor
+    final tutorData = _refreshedTutorData ?? widget.tutor;
+    _extractVideoIdFromData(tutorData);
+  }
+
+  void _extractVideoIdFromData(Map<String, dynamic> tutorData) {
     try {
       // Use video_url (primary), fallback to video_intro or video_link
-      _videoUrl =
-          widget.tutor['video_url'] ??
-          widget.tutor['video_intro'] ??
-          widget.tutor['video_link'] ??
+      final newVideoUrl =
+          tutorData['video_url'] ??
+          tutorData['video_intro'] ??
+          tutorData['video_link'] ??
           '';
-      if (_videoUrl!.isNotEmpty) {
-        final videoId = YoutubePlayer.convertUrlToId(_videoUrl!);
-        if (videoId != null && videoId.isNotEmpty) {
+      
+      if (newVideoUrl.isNotEmpty) {
+        final newVideoId = YoutubePlayer.convertUrlToId(newVideoUrl);
+        if (newVideoId != null && newVideoId.isNotEmpty) {
+          // Check if video ID has changed or if this is the first time setting it
+          final oldVideoId = _videoId;
+          final videoIdChanged = oldVideoId != null && oldVideoId != newVideoId;
+          final isFirstTime = oldVideoId == null;
+          
+          LogService.debug('📹 Video ID: old=$oldVideoId, new=$newVideoId, changed=$videoIdChanged, firstTime=$isFirstTime');
+          
           safeSetState(() {
-            _videoId = videoId;
+            _videoUrl = newVideoUrl;
+            _videoId = newVideoId;
+            
+            // If video ID changed OR this is the first time, reset video initialization
+            if (videoIdChanged || isFirstTime) {
+              if (videoIdChanged) {
+                LogService.info('🔄 Video ID changed from $oldVideoId to $newVideoId - resetting player');
+              } else {
+                LogService.info('🎬 Initializing video player with ID: $newVideoId');
+              }
+              _isVideoInitialized = false;
+              _isVideoLoading = false;
+              // Dispose old controller if exists
+              _youtubeController?.dispose();
+              _youtubeController = null;
+            }
           });
+          
+          // If video ID changed OR this is the first time, initialize the video player
+          if ((videoIdChanged || isFirstTime) && mounted) {
+            // Wait a bit for state to update, then initialize
+            Future.delayed(const Duration(milliseconds: 150), () {
+              if (mounted && _videoId == newVideoId) {
+                LogService.debug('🎥 Calling _initializeVideo() for video ID: $newVideoId');
+                _initializeVideo();
+              }
+            });
+          }
         } else {
-          LogService.warning('Could not extract video ID from URL: $_videoUrl');
+          LogService.warning('Could not extract video ID from URL: $newVideoUrl');
         }
       } else {
         LogService.info('No video URL provided for tutor');
+        safeSetState(() {
+          _videoUrl = '';
+          _videoId = null;
+          // Reset video if URL is empty
+          if (_isVideoInitialized) {
+            _isVideoInitialized = false;
+            _youtubeController?.dispose();
+            _youtubeController = null;
+          }
+        });
       }
     } catch (e) {
       LogService.error('Error extracting video ID: $e');
     }
   }
+
+  /// Get current tutor data (refreshed if available, otherwise from widget)
+  Map<String, dynamic> get _currentTutorData => _refreshedTutorData ?? widget.tutor;
 
   void _initializeVideo() {
     if (_isVideoInitialized || _isVideoLoading || _videoId == null) return;
@@ -909,11 +1101,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   : () {
                 // Pause video before navigating
                 _pauseVideo();
+                // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
+                final tutorData = _currentTutorData;
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) =>
-                        BookTrialSessionScreen(tutor: widget.tutor),
+                        BookTrialSessionScreen(tutor: tutorData),
                   ),
                 );
               },
@@ -947,11 +1141,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   : () {
                 // Pause video before navigating
                 _pauseVideo();
+                // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
+                final tutorData = _currentTutorData;
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => BookTutorFlowScreen(
-                      tutor: widget.tutor,
+                      tutor: tutorData,
                       // TODO: Pass actual survey data
                       surveyData: null,
                     ),
@@ -1350,6 +1546,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     // If no video URL, show placeholder
     if (_videoId == null) {
       return Container(
+        key: const ValueKey('video-placeholder'),
         color: Colors.grey[200],
         child: Center(
           child: Icon(
@@ -1361,12 +1558,16 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       );
     }
 
+    // Use video ID as key to force rebuild when video changes
+    final videoKey = ValueKey('video-$_videoId');
+
     // If video is initialized, show player
     if (_isVideoInitialized) {
       return kIsWeb && _videoId != null
-          ? _buildWebVideoPlayer(_videoId!)
+          ? _buildWebVideoPlayer(_videoId!, key: videoKey)
           : (_youtubeController != null
                 ? Container(
+                    key: videoKey, // Force rebuild when video ID changes
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
@@ -1608,7 +1809,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   /// Build web-compatible YouTube video player using iframe
-  Widget _buildWebVideoPlayer(String videoId) {
+  Widget _buildWebVideoPlayer(String videoId, {Key? key}) {
     if (kIsWeb) {
       // Use HtmlElementView for web
       final String viewType = 'youtube-iframe-$videoId';
@@ -1622,6 +1823,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       }
 
       return Container(
+        key: key, // Use key to force rebuild when video changes
         color: Colors.black,
         child: HtmlElementView(viewType: viewType),
       );

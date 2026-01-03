@@ -4,7 +4,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/widgets/shimmer_loading.dart';

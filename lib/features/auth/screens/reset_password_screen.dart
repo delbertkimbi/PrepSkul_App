@@ -258,10 +258,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                   const SizedBox(height: 32),
                   ElevatedButton(
-                    onPressed: _isLoading ? null : _handleResetPassword,
+                    onPressed: _isLoading ? () {} : _handleResetPassword,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       foregroundColor: AppTheme.primaryColor,
+                      disabledBackgroundColor: Colors.white, // Keep white when disabled
+                      disabledForegroundColor: AppTheme.primaryColor, // Keep blue text when disabled
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -271,7 +273,12 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                AppTheme.primaryColor,
+                              ),
+                            ),
                           )
                         : Text(
                             t.authResetPasswordButton,

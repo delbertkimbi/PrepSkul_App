@@ -39,6 +39,3 @@ void pauseYouTubeVideo(String videoId) {
     // If JavaScript execution fails, that's okay - the iframe will be removed anyway
   }
 }
-
-
-

@@ -280,4 +280,3 @@ class PostTrialDialog extends StatelessWidget {
     );
   }
 }
-

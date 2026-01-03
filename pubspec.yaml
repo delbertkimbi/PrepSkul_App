@@ -71,6 +71,9 @@ dependencies:
   
   # Maps and Location
   geolocator: ^11.0.0
+  geocoding: ^2.1.1  # For address to coordinates conversion
+  flutter_map: ^6.1.0  # Leaflet for Flutter (open-source, privacy-friendly)
+  latlong2: ^0.9.0  # Coordinates for flutter_map
   
   # Video Conferencing
   url_launcher: ^6.2.5
@@ -113,6 +116,9 @@ dependencies:
   
   # Confetti Celebration
   confetti: ^0.7.0
+  
+  # Platform Achievements & Leaderboards
+  games_services: ^5.0.0
 
 dev_dependencies:
   flutter_test:
@@ -144,7 +150,7 @@ flutter:
     - assets/data/
     - assets/sounds/
     - assets/characters/
-    - assets/.env  # Add .env file for web support (must be in assets folder)
+    - .env  # Root .env file (bundled for web, used for all platforms)
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

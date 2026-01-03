@@ -5,7 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import '../../../core/widgets/skeletons/student_home_skeleton.dart';
-import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/connectivity_service.dart';
@@ -282,12 +282,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             }
           } catch (e) {
             // On error, default to create game screen
-            Navigator.push(
-              context,
-              MaterialPageRoute(
+          Navigator.push(
+            context,
+            MaterialPageRoute(
                 builder: (context) => const SkulMateUploadScreen(),
-              ),
-            );
+            ),
+          );
           }
         },
         backgroundColor: AppTheme.primaryColor,

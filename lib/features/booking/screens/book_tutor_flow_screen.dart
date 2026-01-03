@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';

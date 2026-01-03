@@ -7,6 +7,8 @@ import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
+import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
 
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
@@ -38,6 +40,10 @@ class RequestDetailScreen extends StatefulWidget {
 class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _isCanceling = false;
   bool _hasCheckedExpired = false; // Prevent infinite loop
+  
+  // Refreshed tutor data (to override stale request data)
+  Map<String, dynamic>? _refreshedTutorData;
+  bool _isLoadingTutorData = false;
 
   Future<void> _cancelRequest() async {
     final confirm = await showDialog<bool>(
@@ -85,6 +91,125 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           backgroundColor: Colors.green,
         ),
       );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh tutor data if we have a booking request
+    if (widget.request != null) {
+      _refreshTutorData();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh tutor data when screen becomes visible again
+    if (widget.request != null && _refreshedTutorData == null && !_isLoadingTutorData) {
+      _refreshTutorData();
+    }
+  }
+
+  /// Refresh tutor data from database to get latest information
+  Future<void> _refreshTutorData() async {
+    if (widget.request == null) return;
+    
+    final tutorId = widget.request!['tutor_id'] as String?;
+    if (tutorId == null) return;
+
+    setState(() {
+      _isLoadingTutorData = true;
+    });
+
+    try {
+      // Fetch fresh tutor data directly from Supabase (bypass status filter)
+      // This ensures we get the latest data even if status changes
+      final supabase = SupabaseService.client;
+      
+      final tutorProfile = await supabase
+          .from('tutor_profiles')
+          .select('''
+            *,
+            profiles!tutor_profiles_user_id_fkey(
+              full_name,
+              avatar_url,
+              email
+            )
+          ''')
+          .eq('user_id', tutorId)
+          .maybeSingle();
+
+      if (tutorProfile != null) {
+        final profile = tutorProfile['profiles'];
+        Map<String, dynamic>? profileData;
+        if (profile is Map) {
+          profileData = Map<String, dynamic>.from(profile);
+        } else if (profile is List && profile.isNotEmpty) {
+          profileData = Map<String, dynamic>.from(profile[0]);
+        }
+
+        // Get avatar: prioritize profile_photo_url, then avatar_url
+        final profilePhotoUrl = tutorProfile['profile_photo_url']?.toString();
+        final avatarUrl = profileData?['avatar_url']?.toString();
+        final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+            ? profilePhotoUrl
+            : (avatarUrl != null && avatarUrl.isNotEmpty)
+            ? avatarUrl
+            : null;
+
+        // Get rating: use admin_approved_rating if total_reviews < 3, otherwise calculated rating
+        final totalReviews = (tutorProfile['total_reviews'] ?? 0) as int;
+        final adminApprovedRating = tutorProfile['admin_approved_rating'] as double?;
+        final calculatedRating = (tutorProfile['rating'] ?? 0.0) as double;
+        final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+            ? adminApprovedRating
+            : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
+
+        // Build refreshed tutor data
+        final refreshedData = {
+          'full_name': profileData?['full_name']?.toString() ?? 'Tutor',
+          'avatar_url': effectiveAvatarUrl,
+          'profile_photo_url': profilePhotoUrl,
+          'rating': effectiveRating,
+          'is_verified': tutorProfile['status'] == 'approved',
+        };
+
+        if (mounted) {
+          setState(() {
+            _refreshedTutorData = refreshedData;
+            _isLoadingTutorData = false;
+          });
+          LogService.success('Tutor data refreshed for booking request: ${refreshedData['full_name']}');
+        }
+      } else {
+        // Fallback: try TutorService (might filter by status)
+        try {
+          final tutorData = await TutorService.fetchTutorById(tutorId);
+          if (tutorData != null && mounted) {
+            setState(() {
+              _refreshedTutorData = tutorData;
+              _isLoadingTutorData = false;
+            });
+            LogService.success('Tutor data refreshed via TutorService');
+          } else {
+            setState(() {
+              _isLoadingTutorData = false;
+            });
+          }
+        } catch (e2) {
+          LogService.warning('Error refreshing tutor data via TutorService: $e2');
+          setState(() {
+            _isLoadingTutorData = false;
+          });
+        }
+      }
+    } catch (e) {
+      LogService.warning('Error refreshing tutor data: $e');
+      setState(() {
+        _isLoadingTutorData = false;
+      });
     }
   }
 
@@ -791,46 +916,53 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            // Modify button (requires reason) - secondary action
-            ElevatedButton.icon(
-              onPressed: () => _showModifyDialog(context, session, requireReason: true),
-              icon: const Icon(Icons.edit, size: 20),
-              label: Text(
-                'Modify Session',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
+            // Edit and Delete buttons in a row below Pay Now
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _showModifyDialog(context, session, requireReason: true),
+                    icon: const Icon(Icons.edit, size: 18),
+                    label: Text(
+                      'Modify Session',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey[200],
+                      foregroundColor: Colors.grey[700],
+                      minimumSize: const Size(0, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.grey[200],
-                foregroundColor: Colors.grey[700],
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showDeleteDialog(context, session, requireReason: true),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: Text(
+                      'Delete Session',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: BorderSide(color: Colors.red, width: 1.5),
+                      minimumSize: const Size(0, 50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            // Delete button (requires reason) - secondary action
-            OutlinedButton.icon(
-              onPressed: () => _showDeleteDialog(context, session, requireReason: true),
-              icon: const Icon(Icons.delete_outline, size: 20),
-              label: Text(
-                'Delete Session',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: BorderSide(color: Colors.red, width: 1.5),
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
+              ],
             ),
           ],
         ),
@@ -1658,11 +1790,17 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
   Widget _buildBookingRequestDetail(BuildContext context, Map<String, dynamic> request) {
-    // Get tutor data from individual fields (toJson() doesn't include tutor map)
-    final tutorName = request['tutor_name'] as String? ?? 'Tutor';
-    final tutorAvatarUrl = request['tutor_avatar_url'] as String?;
-    final tutorRating = request['tutor_rating'] as double?;
-    final tutorIsVerified = request['tutor_is_verified'] as bool? ?? false;
+    // Use refreshed tutor data if available, otherwise fall back to request data
+    final tutorName = _refreshedTutorData?['full_name']?.toString() ?? 
+                      request['tutor_name'] as String? ?? 'Tutor';
+    final tutorAvatarUrl = _refreshedTutorData?['avatar_url']?.toString() ?? 
+                           _refreshedTutorData?['profile_photo_url']?.toString() ??
+                           request['tutor_avatar_url'] as String?;
+    final tutorRating = _refreshedTutorData?['rating'] != null 
+                        ? (_refreshedTutorData!['rating'] as num).toDouble()
+                        : (request['tutor_rating'] as double?);
+    final tutorIsVerified = _refreshedTutorData?['is_verified'] as bool? ?? 
+                            request['tutor_is_verified'] as bool? ?? false;
     final status = request['status'] as String;
     final statusColor = _getStatusColor(status);
 
@@ -1807,36 +1945,106 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ),
             ],
             if (status == 'approved') ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    // TODO: Navigate to messaging
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Messaging coming soon!',
-                          style: GoogleFonts.poppins(),
+              // Check if payment request exists and is pending
+              FutureBuilder<String?>(
+                future: PaymentRequestService.getPaymentRequestIdByBookingRequestId(
+                  request['id'] as String,
+                ),
+                builder: (context, snapshot) {
+                  final paymentRequestId = snapshot.data;
+                  final hasPaymentRequest = paymentRequestId != null;
+                  
+                  return Column(
+                    children: [
+                      // Pay button (primary action if payment request exists and is pending)
+                      if (hasPaymentRequest)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              // Navigate to payment screen
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => BookingPaymentScreen(
+                                    paymentRequestId: paymentRequestId!,
+                                    bookingRequestId: request['id'] as String,
+                                  ),
+                                ),
+                              );
+                              
+                              // Refresh if payment was successful
+                              if (result == true && mounted) {
+                                safeSetState(() {
+                                  // Refresh the screen
+                                });
+                                // Show success message
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Payment successful! Your booking is confirmed.',
+                                      style: GoogleFonts.poppins(),
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.payment),
+                            label: Text(
+                              'Pay Now',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (hasPaymentRequest) const SizedBox(height: 12),
+                      // Message Tutor button (secondary action)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            // TODO: Navigate to messaging
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Messaging coming soon!',
+                                  style: GoogleFonts.poppins(),
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.message),
+                          label: Text(
+                            'Message Tutor',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryColor,
+                            side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
                       ),
-                    );
-                  },
-                  icon: const Icon(Icons.message),
-                  label: Text(
-                    'Message Tutor',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
+                    ],
+                  );
+                },
               ),
             ],
           ],
@@ -2168,6 +2376,38 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     );
   }
 
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              '$label:',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textMedium,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textDark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'pending':
@@ -2203,37 +2443,3 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   }
 
 }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: AppTheme.textMedium,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              value,
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: AppTheme.textDark,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  

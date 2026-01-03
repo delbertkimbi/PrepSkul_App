@@ -1,8 +1,0 @@
-{
-  "buildCommand": "node scripts/inject-env.js && flutter build web --release",
-  "outputDirectory": "build/web",
-  "framework": null,
-  "installCommand": "cd prepskul_app && flutter pub get",
-  "devCommand": "cd prepskul_app && flutter run -d chrome"
-}
-

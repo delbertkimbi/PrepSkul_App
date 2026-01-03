@@ -16,22 +16,22 @@ import 'http_client_stub.dart' if (dart.library.html) 'http_client_web.dart';
 class SkulMateService {
   /// Get API base URL with smart fallback
   /// In debug mode: tries localhost:3000 first, then falls back to production
-  /// In production: always uses www.prepskul.com
+  /// In production: always uses production URL from AppConfig
   static String get _apiBaseUrl {
     if (kDebugMode) {
       // In debug mode, prefer localhost if available
       // Will fall back to production if localhost fails
       return 'http://localhost:3000/api';
     } else {
-      // Production: always use www.prepskul.com
+      // Production: use AppConfig which respects environment variables
       return AppConfig.apiBaseUrl;
     }
   }
 
   /// Production API base URL (fallback)
-  /// Always uses www.prepskul.com regardless of env vars
+  /// Uses AppConfig for consistency with environment variables
   static String get _productionApiBaseUrl {
-    return 'https://www.prepskul.com/api';
+    return AppConfig.apiBaseUrl;
   }
 
   // Endpoint is relative to apiBaseUrl (which already includes /api)
@@ -123,12 +123,14 @@ class SkulMateService {
       String url = '$_apiBaseUrl$_generateEndpoint';
       String? fallbackUrl;
       
-      if (kDebugMode && _apiBaseUrl.contains('localhost')) {
+      // In debug mode, always set up fallback to production
+      // This ensures the app works even if localhost is not running
+      if (kDebugMode) {
         fallbackUrl = '$_productionApiBaseUrl$_generateEndpoint';
-        LogService.debug('🎮 [skulMate] Trying localhost first: $url');
-        LogService.debug('🎮 [skulMate] Fallback URL: $fallbackUrl');
+        LogService.info('🎮 [skulMate] Debug mode: Trying localhost first: $url');
+        LogService.info('🎮 [skulMate] Fallback to production if localhost fails: $fallbackUrl');
       } else {
-        LogService.debug('🎮 [skulMate] Calling API: $url');
+        LogService.info('🎮 [skulMate] Production mode: Calling API: $url');
       }
       
       try {
@@ -145,9 +147,9 @@ class SkulMateService {
             },
             jsonEncode(requestBody),
           ).timeout(
-            const Duration(seconds: 10), // Shorter timeout for localhost check
+            const Duration(seconds: 15), // Reasonable timeout for localhost check
             onTimeout: () {
-              throw Exception('Connection timeout');
+              throw Exception('Connection timeout - localhost not responding');
             },
           );
 
@@ -672,3 +674,5 @@ class SkulMateService {
     }
   }
 }
+
+

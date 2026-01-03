@@ -691,8 +691,3 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     );
   }
 }
-
-
-
-
-

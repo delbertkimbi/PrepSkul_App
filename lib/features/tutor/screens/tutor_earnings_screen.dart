@@ -3,7 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
-import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/services/session_payment_service.dart';
@@ -1061,10 +1061,3 @@ class _PayoutRequestDialogState extends State<_PayoutRequestDialog> {
     );
   }
 }
-
-
-
-
-
-
-

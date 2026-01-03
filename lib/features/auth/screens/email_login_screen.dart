@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'forgot_password_email_screen.dart';
 
@@ -257,10 +259,12 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                 width: double.infinity,
                                 height: 56,
                                 child: ElevatedButton(
-                                  onPressed: _isLoading ? null : _handleLogin,
+                                  onPressed: _isLoading ? () {} : _handleLogin,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppTheme.primaryColor,
                                     foregroundColor: Colors.white,
+                                    disabledBackgroundColor: AppTheme.primaryColor, // Keep blue when disabled
+                                    disabledForegroundColor: Colors.white, // Keep white text when disabled
                                     elevation: 2,
                                     shadowColor: AppTheme.primaryColor
                                         .withOpacity(0.3),
@@ -273,7 +277,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                           height: 20,
                                           width: 20,
                                           child: CircularProgressIndicator(
-                                            strokeWidth: 2,
+                                            strokeWidth: 2.5,
                                             valueColor:
                                                 AlwaysStoppedAnimation<Color>(
                                                   Colors.white,
@@ -285,6 +289,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                           style: GoogleFonts.poppins(
                                             fontSize: 16,
                                             fontWeight: FontWeight.w600,
+                                            color: Colors.white,
                                           ),
                                         ),
                                 ),
@@ -368,6 +373,23 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
     try {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
+
+      // Check if Supabase is initialized before attempting sign in
+      if (!SupabaseService.isClientAvailable) {
+        LogService.error('❌ [LOGIN] Supabase client not available');
+        throw Exception(
+          'Unable to connect to the server. Please check your internet connection and try again.',
+        );
+      }
+
+      // Log Supabase configuration for debugging
+      try {
+        final supabaseUrl = AppConfig.supabaseUrl;
+        LogService.debug('🔍 [LOGIN] Attempting login with Supabase URL: $supabaseUrl');
+        LogService.debug('🔍 [LOGIN] Email: $email');
+      } catch (e) {
+        LogService.warning('⚠️ [LOGIN] Could not log Supabase URL: $e');
+      }
 
       // Sign in with email/password
       final response = await SupabaseService.client.auth.signInWithPassword(
@@ -469,8 +491,27 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
           );
         }
       }
-    } catch (e) {
-      print('❌ Email login error: $e');
+    } catch (e, stackTrace) {
+      // Log detailed error information for debugging
+      LogService.error('❌ Email login error: $e');
+      LogService.error('❌ Error type: ${e.runtimeType}');
+      LogService.error('❌ Stack trace: $stackTrace');
+      LogService.error('❌ Error toString: ${e.toString()}');
+      
+      // Check if it's the HTML response error
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('<!doctype') || 
+          (errorStr.contains('formatexception') && errorStr.contains('unexpected token'))) {
+        LogService.error('🔍 [DIAGNOSIS] HTML Response Error Detected');
+        LogService.error('   This means Supabase returned HTML instead of JSON');
+        LogService.error('   Possible causes:');
+        LogService.error('   1. Production domain not in Supabase allowed origins');
+        LogService.error('   2. Wrong Supabase URL in root .env (check SUPABASE_URL_PROD)');
+        LogService.error('   3. Root .env not bundled (check pubspec.yaml has .env in assets)');
+        LogService.error('   4. Supabase project paused or deleted');
+        LogService.error('   Current Supabase URL: ${AppConfig.supabaseUrl}');
+      }
+      
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
         ScaffoldMessenger.of(context).showSnackBar(

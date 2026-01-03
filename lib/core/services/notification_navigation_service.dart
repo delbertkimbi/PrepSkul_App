@@ -461,18 +461,51 @@ class NotificationNavigationService {
     switch (notificationType) {
       case 'booking_request':
       case 'booking_accepted':
+      case 'booking_approved': // New: booking approved notification
       case 'booking_rejected':
-        // Navigate to requests/bookings tab
-        final role = userType == 'tutor'
-            ? 'tutor'
-            : (userType == 'parent' ? 'parent' : 'student');
-        final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
-        final tab = userType == 'tutor' ? 1 : 2; // Requests tab
-        await navService.navigateToRoute(
-          route,
-          arguments: {'initialTab': tab},
-          replace: false,
-        );
+        // Check if payment request ID is in metadata - if so, navigate to payment
+        final paymentRequestId = metadata?['payment_request_id'] as String?;
+        if (paymentRequestId != null && notificationType == 'booking_approved') {
+          // Navigate directly to payment screen
+          await navService.navigateToRoute(
+            '/payments/$paymentRequestId',
+            replace: false,
+          );
+        } else {
+          // Navigate to requests/bookings tab
+          final role = userType == 'tutor'
+              ? 'tutor'
+              : (userType == 'parent' ? 'parent' : 'student');
+          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+          final tab = userType == 'tutor' ? 1 : 2; // Requests tab
+          await navService.navigateToRoute(
+            route,
+            arguments: {'initialTab': tab},
+            replace: false,
+          );
+        }
+        break;
+
+      case 'low_credits_balance':
+        // Navigate to payment screen if payment request ID is in metadata
+        final paymentRequestId = metadata?['payment_request_id'] as String?;
+        if (paymentRequestId != null) {
+          await navService.navigateToRoute(
+            '/payments/$paymentRequestId',
+            replace: false,
+          );
+        } else {
+          // Navigate to payments tab
+          final role = userType == 'tutor'
+              ? 'tutor'
+              : (userType == 'parent' ? 'parent' : 'student');
+          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+          await navService.navigateToRoute(
+            route,
+            arguments: {'initialTab': 2}, // Requests/Payments tab
+            replace: false,
+          );
+        }
         break;
 
       case 'trial_request':

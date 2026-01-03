@@ -55,11 +55,12 @@ class _GameCustomizationDialogState extends State<GameCustomizationDialog> {
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
             // Header
             Row(
               children: [
@@ -140,14 +141,28 @@ class _GameCustomizationDialogState extends State<GameCustomizationDialog> {
             ),
             const SizedBox(height: 24),
             
-            // Number of Questions
-            Text(
-              'Number of Questions',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
-              ),
+            // Number of Items (works for all game types)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Number of Items',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This applies to all game types: questions (quiz), pairs (matching), words (word search), bubbles (bubble pop), etc.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textMedium,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
@@ -193,6 +208,51 @@ class _GameCustomizationDialogState extends State<GameCustomizationDialog> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 24),
+            // Game Type Preview
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.2),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.auto_awesome,
+                    color: AppTheme.primaryColor,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Interactive Game Type',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'AI will create an INTERACTIVE game (word search, bubble pop, match-3, crossword, etc.) - NOT just a quiz! The game type will match your content for maximum engagement.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: 32),
             
@@ -259,7 +319,8 @@ class _GameCustomizationDialogState extends State<GameCustomizationDialog> {
                 ),
               ],
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -298,4 +359,3 @@ class _GameCustomizationDialogState extends State<GameCustomizationDialog> {
     );
   }
 }
-

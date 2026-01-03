@@ -38,7 +38,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:prepskul/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/widgets/initial_loading_screen.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
@@ -100,15 +100,14 @@ void main() async {
     }
 
     // Load environment variables (if .env file exists)
-    // On both web and mobile, .env must be in assets folder (bundled with app)
+    bool envLoaded = false;
     try {
-      await dotenv.load(fileName: "assets/.env");
-      LogService.success('Environment variables loaded from assets/.env');
+      await dotenv.load(fileName: ".env");
+      envLoaded = true;
+      LogService.success('✅ Environment variables loaded from .env');
     } catch (e) {
-      LogService.debug('No .env file found or error loading: $e');
-      LogService.warning('⚠️ Environment variables not loaded - some features may not work');
-      LogService.info('Make sure .env is in assets/ folder and added to pubspec.yaml assets');
-      LogService.info('For mobile: Copy .env from project root to assets/.env');
+      LogService.error('❌ Failed to load .env file: $e');
+      LogService.warning('⚠️ App will continue but Supabase may not initialize');
     }
 
     // Print current configuration
@@ -118,39 +117,27 @@ void main() async {
     final supabaseUrl = AppConfig.supabaseUrl;
     final supabaseAnonKey = AppConfig.supabaseAnonKey;
     
-    if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
-      LogService.error('❌ Supabase credentials not found');
-      LogService.error('   Environment: ${AppConfig.environment}');
-      LogService.error('   Looking for: ${AppConfig.isProd ? "PROD" : "DEV"} credentials');
-      if (kIsWeb) {
-        LogService.warning('Tried: 1) assets/.env file, 2) window.env');
-        LogService.info('For web production, set environment variables in:');
-        LogService.info('  - Vercel Dashboard → Environment Variables');
-        LogService.info('Required: ${AppConfig.isProd ? "SUPABASE_URL_PROD, SUPABASE_ANON_KEY_PROD" : "SUPABASE_URL_DEV, SUPABASE_ANON_KEY_DEV"}');
-        LogService.info('Also set: ENVIRONMENT=${AppConfig.isProd ? "production" : "development"}');
-        LogService.info('Build command should include: node scripts/inject-env.js');
-      } else {
-        LogService.warning('Tried: assets/.env file');
-        LogService.info('Make sure .env is in assets/ folder and added to pubspec.yaml');
-      }
-      
-      // Throw error - Supabase is critical and cannot work without credentials
-      final errorMsg = kIsWeb
-          ? 'Supabase credentials not found. For web production, set ${AppConfig.isProd ? "SUPABASE_URL_PROD and SUPABASE_ANON_KEY_PROD" : "SUPABASE_URL_DEV and SUPABASE_ANON_KEY_DEV"} in Vercel environment variables. Also set ENVIRONMENT=${AppConfig.isProd ? "production" : "development"}. Ensure build command includes: node scripts/inject-env.js'
-          : 'Supabase credentials not found. Please set SUPABASE_URL_DEV/PROD and SUPABASE_ANON_KEY_DEV/PROD in assets/.env file.';
-      
-      throw Exception(errorMsg);
+    if (supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
+      await Supabase.initialize(
+        url: supabaseUrl,
+        anonKey: supabaseAnonKey,
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
+      );
+      LogService.success('✅ Supabase initialized (${AppConfig.environment})');
+    } else {
+      // Fallback to hardcoded values if env not set (for backward compatibility)
+      await Supabase.initialize(
+        url: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
+        anonKey:
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU',
+        authOptions: const FlutterAuthClientOptions(
+          authFlowType: AuthFlowType.pkce,
+        ),
+      );
+      LogService.warning('Supabase initialized with fallback values (set SUPABASE_URL_DEV/PROD in .env)');
     }
-    
-    // Initialize Supabase
-    await Supabase.initialize(
-      url: supabaseUrl,
-      anonKey: supabaseAnonKey,
-      authOptions: const FlutterAuthClientOptions(
-        authFlowType: AuthFlowType.pkce,
-      ),
-    );
-    LogService.success('Supabase initialized (${AppConfig.environment})');
 
     // Initialize LanguageService - make resilient to module loading failures
     try {
@@ -190,12 +177,26 @@ void main() async {
     LogService.success('App initialization complete');
   } catch (e) {
     LogService.error('Error initializing app: $e');
-    // Even if initialization fails, run the app so user sees error screen
-  }
+      // Even if initialization fails, run the app so user sees error screen
+    }
 
-  // Run app AFTER all critical initialization is complete
-  runApp(const PrepSkulApp());
-}
+    // Run app AFTER all critical initialization is complete
+    runApp(const PrepSkulApp());
+    
+    // CRITICAL: Remove HTML splash screen immediately after Flutter starts (web only)
+    // This ensures the splash is removed even if navigation is delayed
+    if (kIsWeb) {
+      // Use a small delay to ensure Flutter is ready to call JavaScript
+      Future.delayed(const Duration(milliseconds: 500), () {
+        try {
+          WebSplashService.removeSplash();
+          LogService.debug('✅ HTML splash screen removed (early)');
+        } catch (e) {
+          LogService.debug('⚠️ Could not remove splash early: $e');
+        }
+      });
+    }
+  }
 
 /// Initialize push notifications
 Future<void> _initializePushNotifications() async {
@@ -525,13 +526,74 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     ];
 
     
-    // Check if this is an email verification link from Supabase
-    // Supabase verification links: https://[project].supabase.co/auth/v1/verify?token=...&type=signup
-    // OR: https://app.prepskul.com/?code=...&type=signup (redirected from Supabase)
+    // Check if this is a Google OAuth callback
+    // Google OAuth redirects: https://app.prepskul.com/?code=...&provider=google
+    final provider = uri.queryParameters['provider'];
     final code = uri.queryParameters['code'];
     final type = uri.queryParameters['type'];
     final token = uri.queryParameters['token'];
     
+    // Handle Google OAuth callback
+    if (code != null && provider == 'google') {
+      LogService.debug('🔐 [DEEP_LINK] Google OAuth callback detected');
+      
+      try {
+        // Exchange OAuth code for session
+        await SupabaseService.client.auth.exchangeCodeForSession(code);
+        LogService.success('✅ [DEEP_LINK] Google OAuth code verified! Session created.');
+        
+        // Check if user has user_type set - if not, navigate to role selection
+        final user = SupabaseService.currentUser;
+        if (user != null) {
+          final profile = await SupabaseService.client
+              .from('profiles')
+              .select('user_type')
+              .eq('id', user.id)
+              .maybeSingle();
+          
+          final userType = profile?['user_type'] as String?;
+          
+          if (userType == null || userType.isEmpty) {
+            // User doesn't have a role yet - navigate to role selection
+            LogService.debug('🔐 [DEEP_LINK] User has no role, navigating to role selection');
+            final navService = NavigationService();
+            if (navService.isReady) {
+              await navService.navigateToRoute('/role-selection', replace: true);
+            } else {
+              navService.queueDeepLink(Uri.parse('/role-selection'));
+            }
+            return;
+          } else {
+            // User has a role - use normal navigation flow
+            LogService.debug('🔐 [DEEP_LINK] User has role: $userType, using normal navigation');
+            final navService = NavigationService();
+            if (navService.isReady) {
+              final routeResult = await navService.determineInitialRoute();
+              await navService.navigateToRoute(
+                routeResult.route,
+                arguments: routeResult.arguments,
+                replace: true,
+              );
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        LogService.error('❌ [DEEP_LINK] Error handling Google OAuth callback: $e');
+        // On error, redirect to auth method selection
+        final navService = NavigationService();
+        if (navService.isReady) {
+          await navService.navigateToRoute('/auth-method-selection', replace: true);
+        } else {
+          navService.queueDeepLink(Uri.parse('/auth-method-selection'));
+        }
+        return;
+      }
+    }
+    
+    // Check if this is an email verification link from Supabase
+    // Supabase verification links: https://[project].supabase.co/auth/v1/verify?token=...&type=signup
+    // OR: https://app.prepskul.com/?code=...&type=signup (redirected from Supabase)
     if ((code != null || token != null) && 
         type != null && 
         (type == 'signup' || type == 'email') &&
@@ -954,54 +1016,18 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAndNavigate();
     });
-    
-    // CRITICAL: Timeout fallback - ensure loading screen always dismisses
-    // This prevents the logo from staying stuck on screen if navigation fails
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted && !_navigationComplete) {
-        LogService.warning('[INIT_LOAD] Timeout - forcing navigation completion');
-        setState(() {
-          _navigationComplete = true;
-        });
-        if (kIsWeb) {
-          WebSplashService.removeSplash();
-        }
-        // Try to navigate to a safe fallback route
-        if (mounted) {
-          try {
-            final navService = NavigationService();
-            if (navService.isReady) {
-              final route = SupabaseService.isAuthenticated 
-                  ? '/student-nav' // Default to student nav if authenticated
-                  : '/auth-method-selection';
-              _navigateInstant(route, null);
-            }
-          } catch (e) {
-            LogService.error('[INIT_LOAD] Error in timeout fallback: $e');
-          }
-        }
-      }
-    });
   }
 
   Future<void> _initializeAndNavigate() async {
     if (_isNavigating || _navigationComplete) return;
     _isNavigating = true;
-    
-    // CRITICAL: Remove HTML splash screen immediately on web
-    if (kIsWeb) {
-      WebSplashService.removeSplash();
-    }
 
     // CRITICAL: Check authentication synchronously FIRST to avoid login screen flash
     // This prevents showing login screen for authenticated users during hot restart
-    // IMPORTANT: Also verify session is valid, not just that user exists
     final isAuthenticated = SupabaseService.isAuthenticated;
     final currentUser = SupabaseService.currentUser;
-    final session = SupabaseService.client.auth.currentSession;
 
-    // Only proceed if user exists AND session is valid
-    if (isAuthenticated && currentUser != null && session != null) {
+    if (isAuthenticated && currentUser != null) {
       // If URL contains 'code', it might be an email verification in progress
       // We should wait a bit longer for Supabase to process the code and potentially
       // confirm the email, which might trigger navigation handlers in SplashScreen
@@ -1028,16 +1054,15 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             // Navigate to determined route (could be onboarding, survey, or dashboard)
             if (mounted) {
               _navigateInstant(result.route, result.arguments);
-              // Mark navigation as complete immediately
+              // Remove splash after navigation to ensure it's hidden
+              Future.delayed(const Duration(milliseconds: 100), () {
+                WebSplashService.removeSplash();
+              });
+            }
+            if (mounted) {
               setState(() {
                 _navigationComplete = true;
               });
-              // Remove HTML splash screen after a brief delay
-              if (kIsWeb) {
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  WebSplashService.removeSplash();
-                });
-              }
             }
             return; // Exit early - navigation complete
           } catch (e) {
@@ -1069,14 +1094,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 final result = await navService.determineInitialRoute();
                 if (mounted) {
                   _navigateInstant(result.route, result.arguments);
-                  setState(() {
-                    _navigationComplete = true;
-                  });
-                  if (kIsWeb) {
-                    Future.delayed(const Duration(milliseconds: 200), () {
+                  Future.delayed(const Duration(milliseconds: 200), () {
+                    if (mounted) {
                       WebSplashService.removeSplash();
-                    });
-                  }
+                    }
+                  });
                 }
                 return;
               } catch (e2) {
@@ -1124,16 +1146,16 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           // This ensures the loading screen persists until the new screen is fully rendered
           if (mounted) {
             _navigateInstant(result.route, result.arguments);
-            // Mark navigation as complete immediately
+            // Remove splash after navigation to ensure it's hidden
+            Future.delayed(const Duration(milliseconds: 100), () {
+              WebSplashService.removeSplash();
+            });
+          }
+          
+          if (mounted) {
             setState(() {
               _navigationComplete = true;
             });
-            // Remove HTML splash screen after a brief delay
-            if (kIsWeb) {
-              Future.delayed(const Duration(milliseconds: 100), () {
-                WebSplashService.removeSplash();
-              });
-            }
           }
         } else {
           // Navigation service not ready - wait a bit and try again
@@ -1141,15 +1163,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           if (mounted && navService.isReady) {
             final result = await navService.determineInitialRoute();
             if (mounted) {
+              WebSplashService.removeSplash();
               _navigateInstant(result.route, result.arguments);
-              setState(() {
-                _navigationComplete = true;
-              });
-              if (kIsWeb) {
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  WebSplashService.removeSplash();
-                });
-              }
             }
           }
         }
@@ -1160,24 +1175,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           final navService = NavigationService();
           if (navService.isReady) {
             _navigateInstant('/auth-method-selection', null);
-            setState(() {
-              _navigationComplete = true;
-            });
-            if (kIsWeb) {
-              Future.delayed(const Duration(milliseconds: 200), () {
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (mounted) {
                 WebSplashService.removeSplash();
-              });
-            }
-          }
-        } else {
-          // Even on error, mark as complete to prevent stuck loading screen
-          if (mounted) {
-            setState(() {
-              _navigationComplete = true;
+              }
             });
-            if (kIsWeb) {
-              WebSplashService.removeSplash();
-            }
           }
         }
       }
@@ -1253,14 +1255,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    // If navigation is complete, show nothing (will be replaced by navigated screen)
-    // Otherwise show loading screen
-    if (_navigationComplete) {
-      // Return empty container - navigation should have replaced this widget
-      return const SizedBox.shrink();
-    }
-    
     // Always show animated loading screen until navigation completes
+    // The navigation will replace this screen, so no need to check _navigationComplete
     // Use a Material widget to ensure proper background color during transition
     return Material(color: Colors.white, child: const InitialLoadingScreen());
   }

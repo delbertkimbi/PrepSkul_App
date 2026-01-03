@@ -15,7 +15,6 @@ import '../../../features/booking/services/session_reschedule_service.dart';
 import '../../../features/booking/models/trial_session_model.dart';
 import '../../../features/booking/utils/session_date_utils.dart';
 import '../../../core/services/supabase_service.dart';
-import '../../../features/sessions/widgets/hybrid_mode_selection_dialog.dart';
 import '../../../core/services/google_calendar_service.dart';
 import '../../../core/services/google_calendar_auth_service.dart';
 import '../../../core/widgets/empty_state_widget.dart';
@@ -1348,28 +1347,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       }
 
       final location = session['location'] as String? ?? 'online';
-      final address = session['onsite_address'] as String? ?? '';
-      final meetLink = session['meeting_link'] as String?;
-
-      // For hybrid sessions, show mode selection dialog
-      bool? isOnline;
-      if (location == 'hybrid') {
-        final selectedMode = await HybridModeSelectionDialog.show(
-          context,
-          sessionAddress: address,
-          meetingLink: meetLink,
-        );
-
-        if (selectedMode == null) {
-          // User cancelled
-          return;
-        }
-
-        isOnline = selectedMode;
-      } else {
-        // For online/onsite, determine from location
-        isOnline = location == 'online';
-      }
+      // Location should only be 'online' or 'onsite' (hybrid is a preference only)
+      // If somehow 'hybrid' exists, default to online
+      final sessionLocation = location == 'hybrid' ? 'online' : location;
+      final isOnline = sessionLocation == 'online';
 
       safeSetState(() {
         _sessionLoadingStates[sessionId] = true;
@@ -1504,10 +1485,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         return 'Online';
       case 'onsite':
         return address ?? 'Onsite';
-      case 'hybrid':
-        return 'Hybrid ${address != null ? '($address)' : ''}';
       default:
-        return location;
+        // Fallback for any unexpected values (including legacy 'hybrid')
+        return location == 'hybrid' ? 'Online' : location;
     }
   }
 
@@ -2064,6 +2044,7 @@ class _SessionDetailsSheet extends StatelessWidget {
     String studentName = 'Student';
     String location = 'online';
     String? address;
+    String? locationDescription;
     DateTime? sessionDate;
     String? sessionTime;
     String? subject;
@@ -2081,6 +2062,7 @@ class _SessionDetailsSheet extends StatelessWidget {
       studentName = recurringData?['student_name']?.toString() ?? 'Student';
       location = session['location'] as String? ?? 'online';
       address = session['onsite_address'] as String?;
+      locationDescription = session['location_description'] as String?;
       subject = session['subject'] as String?;
       sessionDate = DateTime.parse(session['scheduled_date'] as String);
       sessionTime = session['scheduled_time'] as String?;
@@ -2172,6 +2154,13 @@ class _SessionDetailsSheet extends StatelessWidget {
               ],
               _buildDetailSection('Location', location),
               if (address != null) _buildDetailSection('Address', address),
+              if (isIndividualSession && 
+                  locationDescription != null && 
+                  locationDescription.trim().isNotEmpty)
+                _buildDetailSectionWithDescription(
+                  'Location Details',
+                  locationDescription,
+                ),
               if (paymentPlan != null && monthlyTotal != null) ...[
                 _buildDetailSection(
                   'Payment Plan',
@@ -2223,6 +2212,55 @@ class _SessionDetailsSheet extends StatelessWidget {
           Text(
             value,
             style: GoogleFonts.poppins(fontSize: 16, color: AppTheme.textDark),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailSectionWithDescription(String label, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppTheme.textMedium,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: Colors.blue[700],
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    description,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.blue[800],
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

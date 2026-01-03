@@ -82,7 +82,10 @@ enum GameType {
   crossword,
   diagramLabel,
   dragDrop,
-  puzzlePieces;
+  puzzlePieces,
+  simulation, // Decision-based simulations (e.g., "Diagnose the Patient")
+  mystery, // Mystery/Detective games (e.g., "Who is the unreliable narrator?")
+  escapeRoom; // Concept escape rooms (e.g., "Escape the Lab")
 
   static GameType fromString(String value) {
     switch (value.toLowerCase()) {
@@ -115,6 +118,13 @@ enum GameType {
       case 'puzzle_pieces':
       case 'puzzlepieces':
         return GameType.puzzlePieces;
+      case 'simulation':
+        return GameType.simulation;
+      case 'mystery':
+        return GameType.mystery;
+      case 'escape_room':
+      case 'escaperoom':
+        return GameType.escapeRoom;
       default:
         return GameType.quiz;
     }
@@ -145,6 +155,12 @@ enum GameType {
         return 'drag_drop';
       case GameType.puzzlePieces:
         return 'puzzle_pieces';
+      case GameType.simulation:
+        return 'simulation';
+      case GameType.mystery:
+        return 'mystery';
+      case GameType.escapeRoom:
+        return 'escape_room';
     }
   }
 }
@@ -170,6 +186,14 @@ class GameItem {
   final List<String>? words; // For word search
   final List<Map<String, dynamic>>? clues; // For crossword
   final List<Map<String, dynamic>>? bubbles; // For bubble pop
+  // New fields for simulation, mystery, and escape room games
+  final Map<String, dynamic>? gameData; // Dynamic structure for simulation/mystery/escapeRoom
+  final List<Map<String, dynamic>>? scenarios; // For simulation games
+  final String? role; // For simulation games (e.g., "Public Health Officer")
+  final String? caseName; // For mystery games (e.g., "The Failed Experiment")
+  final List<Map<String, dynamic>>? mysteryClues; // For mystery games
+  final String? solution; // For mystery games
+  final List<Map<String, dynamic>>? rooms; // For escape room games
 
   GameItem({
     this.question,
@@ -190,6 +214,13 @@ class GameItem {
     this.words,
     this.clues,
     this.bubbles,
+    this.gameData,
+    this.scenarios,
+    this.role,
+    this.caseName,
+    this.mysteryClues,
+    this.solution,
+    this.rooms,
   });
 
   factory GameItem.fromJson(Map<String, dynamic> json) {
@@ -240,6 +271,25 @@ class GameItem {
       bubbles: json['bubbles'] != null
           ? List<Map<String, dynamic>>.from(json['bubbles'] as List)
           : null,
+      gameData: json['gameData'] != null
+          ? Map<String, dynamic>.from(json['gameData'] as Map)
+          : json['game_data'] != null
+              ? Map<String, dynamic>.from(json['game_data'] as Map)
+              : null,
+      scenarios: json['scenarios'] != null
+          ? List<Map<String, dynamic>>.from(json['scenarios'] as List)
+          : null,
+      role: json['role'] as String?,
+      caseName: json['caseName'] ?? json['case_name'] ?? json['case'] as String?,
+      mysteryClues: json['mysteryClues'] != null
+          ? List<Map<String, dynamic>>.from(json['mysteryClues'] as List)
+          : json['clues'] != null && json['gameType'] == 'mystery'
+              ? List<Map<String, dynamic>>.from(json['clues'] as List)
+              : null,
+      solution: json['solution'] as String?,
+      rooms: json['rooms'] != null
+          ? List<Map<String, dynamic>>.from(json['rooms'] as List)
+          : null,
     );
   }
 
@@ -263,6 +313,13 @@ class GameItem {
       if (words != null) 'words': words,
       if (clues != null) 'clues': clues,
       if (bubbles != null) 'bubbles': bubbles,
+      if (gameData != null) 'gameData': gameData,
+      if (scenarios != null) 'scenarios': scenarios,
+      if (role != null) 'role': role,
+      if (caseName != null) 'caseName': caseName,
+      if (mysteryClues != null) 'mysteryClues': mysteryClues,
+      if (solution != null) 'solution': solution,
+      if (rooms != null) 'rooms': rooms,
     };
   }
 }

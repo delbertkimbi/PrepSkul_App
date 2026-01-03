@@ -18,6 +18,8 @@ import 'session_feedback_screen.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/screens/session_summary_screen.dart';
 import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
+import 'package:prepskul/features/sessions/widgets/location_tracking_widget.dart';
+import 'package:prepskul/features/sessions/widgets/session_mode_statistics_widget.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
@@ -28,6 +30,10 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
+import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
+import 'package:prepskul/features/payment/services/user_credits_service.dart';
+import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
+import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// My Sessions Screen
@@ -526,6 +532,23 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     };
   }
 
+  DateTime? _parseSessionDateTime(String date, String time) {
+    try {
+      final dateTime = DateTime.parse(date);
+      // Parse time (format: "HH:MM" or "HH:MM:SS")
+      final timeParts = time.split(':');
+      if (timeParts.length >= 2) {
+        final hour = int.parse(timeParts[0]);
+        final minute = int.parse(timeParts[1]);
+        return DateTime(dateTime.year, dateTime.month, dateTime.day, hour, minute);
+      }
+      return dateTime;
+    } catch (e) {
+      LogService.warning('Error parsing session date/time: $e');
+      return null;
+    }
+  }
+
   String _formatDateTime(String date, String time) {
     try {
       final dateTime = DateTime.parse(date);
@@ -935,6 +958,96 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       );
     } catch (e) {
       return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildCreditsHeader() {
+    return FutureBuilder<int>(
+      future: _getUserBalance(),
+      builder: (context, snapshot) {
+        final balance = snapshot.data ?? 0;
+        return Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[200]!),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Credits Balance',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '$balance',
+                          style: GoogleFonts.poppins(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'credits',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => CreditsBalanceScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<int> _getUserBalance() async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) return 0;
+      return await UserCreditsService.getUserBalance(userId);
+    } catch (e) {
+      LogService.error('Error getting user balance: $e');
+      return 0;
     }
   }
 
@@ -1409,6 +1522,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final status = session['status'] as String;
     final sessionId = session['id'] as String;
     final onsiteAddress = session['onsite_address'] as String?;
+    final locationDescription = session['location_description'] as String?;
     
     // Get current user info for check-in
     String? currentUserId;
@@ -1451,17 +1565,37 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               _buildDetailRow('Duration', '$duration minutes'),
               _buildDetailRow('Location', location == 'online' ? 'Online' : 'On-site'),
               _buildDetailRow('Status', _getStatusLabel(status)),
-              // Location map for onsite sessions
-              if (location == 'onsite' && onsiteAddress != null && onsiteAddress.isNotEmpty) ...[
+              // Mode statistics for flexible sessions
+              if (recurringData != null && recurringData['id'] != null)
+                SessionModeStatisticsWidget(
+                  recurringSessionId: recurringData['id'] as String,
+                  currentSessionLocation: location,
+                ),
+              // Location map for onsite sessions (hybrid is a preference only, not a location)
+              if (location == 'onsite' && 
+                  onsiteAddress != null && onsiteAddress.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 SessionLocationMap(
                   address: onsiteAddress,
                   coordinates: null, // Could be extracted from address if available
+                  locationDescription: locationDescription,
                   sessionId: sessionId,
                   currentUserId: currentUserId,
                   userType: userType,
                   showCheckIn: status == 'scheduled' || status == 'in_progress',
+                  scheduledDateTime: _parseSessionDateTime(scheduledDate, scheduledTime),
+                  locationType: location, // Pass location type for safety features
                 ),
+                // Real-time location tracking for parents during active sessions
+                if (status == 'in_progress' && 
+                    (userType == 'parent' || userType == 'student')) ...[
+                  const SizedBox(height: 16),
+                  LocationTrackingWidget(
+                    sessionId: sessionId,
+                    sessionAddress: onsiteAddress,
+                    sessionCoordinates: null,
+                  ),
+                ],
               ],
               
                             // Action buttons in details dialog
@@ -1580,6 +1714,20 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Attendance History',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AttendanceHistoryScreen(),
+                ),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
@@ -1633,10 +1781,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         child: ListView.builder(
                           controller: _upcomingScrollController,
                           padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: _upcomingSessions.length,
+                          itemCount: _upcomingSessions.length + 1, // +1 for credits widget
                           itemBuilder: (context, index) {
+                            if (index == 0) {
+                              // Credits balance widget at top
+                              return _buildCreditsHeader();
+                            }
                             return _buildSessionCard(
-                              _upcomingSessions[index],
+                              _upcomingSessions[index - 1],
                               true,
                             );
                           },
@@ -1692,4 +1844,3 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 }
-

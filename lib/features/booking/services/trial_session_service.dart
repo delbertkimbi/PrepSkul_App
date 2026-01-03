@@ -93,29 +93,42 @@ class TrialSessionService {
       // Skip this check if we're rescheduling an existing session (rescheduleSessionId is provided)
       if (rescheduleSessionId == null) {
       // Check for pending, approved, or scheduled trials
-      final pendingTrials = await _supabase
+      // Use .limit(1) before .maybeSingle() to handle cases where multiple rows might exist
+      final pendingTrialsResponse = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
           .eq('tutor_id', validTutorId)
           .eq('requester_id', userId)
           .eq('status', 'pending')
-          .maybeSingle();
+          .limit(1);
+      
+      final pendingTrials = (pendingTrialsResponse as List).isNotEmpty 
+          ? (pendingTrialsResponse as List)[0] as Map<String, dynamic>?
+          : null;
 
-      final approvedTrials = await _supabase
+      final approvedTrialsResponse = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
           .eq('tutor_id', validTutorId)
           .eq('requester_id', userId)
           .eq('status', 'approved')
-          .maybeSingle();
+          .limit(1);
+      
+      final approvedTrials = (approvedTrialsResponse as List).isNotEmpty 
+          ? (approvedTrialsResponse as List)[0] as Map<String, dynamic>?
+          : null;
 
-      final scheduledTrials = await _supabase
+      final scheduledTrialsResponse = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
           .eq('tutor_id', validTutorId)
           .eq('requester_id', userId)
           .eq('status', 'scheduled')
-          .maybeSingle();
+          .limit(1);
+      
+      final scheduledTrials = (scheduledTrialsResponse as List).isNotEmpty 
+          ? (scheduledTrialsResponse as List)[0] as Map<String, dynamic>?
+          : null;
 
       Map<String, dynamic>? existingTrial;
       if (pendingTrials != null) {
@@ -222,12 +235,18 @@ class TrialSessionService {
       };
 
       // Insert into database
-      final response = await _supabase
+      // Use .limit(1) and handle as list to avoid maybeSingle() issues with multiple rows
+      final responseList = await _supabase
           .from('trial_sessions')
           .insert(trialData)
           .select()
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+      
+      if (responseList == null || (responseList as List).isEmpty) {
+        throw Exception('Failed to create trial session - no response from database');
+      }
+      
+      final response = (responseList as List)[0] as Map<String, dynamic>;
 
       if (response == null) {
         throw Exception('Failed to create trial session - no response from database');

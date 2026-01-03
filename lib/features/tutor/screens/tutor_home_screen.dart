@@ -5,7 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/widgets/app_logo_header.dart';
-import '../../../core/services/auth_service.dart';
+import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';

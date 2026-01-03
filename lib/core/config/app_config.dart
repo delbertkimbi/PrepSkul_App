@@ -1,10 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode, kReleaseMode;
-import 'package:prepskul/core/services/log_service.dart';
-
-// Conditional import for web environment variable reading
-import 'web_env_helper_stub.dart'
-    if (dart.library.html) 'web_env_helper.dart';
+import 'package:flutter/foundation.dart';
 
 /// Centralized App Configuration
 /// 
@@ -21,22 +16,38 @@ class AppConfig {
   // 🔄 CHANGE THIS ONE LINE TO SWITCH ENVIRONMENTS
   // ============================================
   /// Set to `true` for production, `false` for sandbox/development
-  static const bool isProduction = false; // ← CHANGE THIS LINE
+  /// 
+  /// IMPORTANT: For production deployment, set this to `true`
+  /// This controls:
+  /// - Fapshi API endpoints (live vs sandbox)
+  /// - API credentials (production vs development)
+  /// - All payment processing
+  /// 
+  /// ⚠️ Always verify environment variables are set correctly:
+  /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
+  /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
+  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // Environment Detection
   // ============================================
   
   /// Get environment from .env file or use isProduction flag
+  /// Code-level flag takes precedence over env var
   static bool get _envIsProduction {
+    // Code-level flag takes precedence
+    if (isProduction) return true;
+    
+    // Then check env var as override
     try {
       final envValue = dotenv.env['ENVIRONMENT']?.toLowerCase();
       if (envValue == 'production' || envValue == 'prod') return true;
       if (envValue == 'development' || envValue == 'dev') return false;
     } catch (_) {
-      // dotenv not loaded, use flag
+      // dotenv not loaded
     }
-    return isProduction;
+    
+    return false; // Default to sandbox if nothing set
   }
   
   /// Current environment (production or sandbox)
@@ -50,22 +61,20 @@ class AppConfig {
   // ============================================
   
   /// Base API URL
-  /// Uses www.prepskul.com (Next.js app) instead of app.prepskul.com
   static String get apiBaseUrl {
     if (isProd) {
-      return _safeEnv('API_BASE_URL_PROD', 'https://www.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_PROD', 'https://app.prepskul.com/api');
     } else {
-      return _safeEnv('API_BASE_URL_DEV', 'https://www.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_DEV', 'https://app.prepskul.com/api');
     }
   }
   
   /// App Base URL
-  /// Uses www.prepskul.com (Next.js app) for API calls
   static String get appBaseUrl {
     if (isProd) {
-      return _safeEnv('APP_BASE_URL_PROD', 'https://www.prepskul.com');
+      return _safeEnv('APP_BASE_URL_PROD', 'https://app.prepskul.com');
     } else {
-      return _safeEnv('APP_BASE_URL_DEV', 'https://www.prepskul.com');
+      return _safeEnv('APP_BASE_URL_DEV', 'https://app.prepskul.com');
     }
   }
   
@@ -133,21 +142,7 @@ class AppConfig {
   // ============================================
   
   /// Supabase URL
-  /// Tries multiple variable name patterns for compatibility
   static String get supabaseUrl {
-    // Try Flutter-specific names first (SUPABASE_URL_PROD/DEV)
-    final prodUrl = _safeEnv('SUPABASE_URL_PROD', '');
-    if (prodUrl.isNotEmpty) return prodUrl;
-    
-    final devUrl = _safeEnv('SUPABASE_URL_DEV', '');
-    if (devUrl.isNotEmpty) return devUrl;
-    
-    // Fallback to Next.js variable names (NEXT_PUBLIC_SUPABASE_URL)
-    // This allows sharing the same Vercel environment variables
-    final nextJsUrl = _safeEnv('NEXT_PUBLIC_SUPABASE_URL', '');
-    if (nextJsUrl.isNotEmpty) return nextJsUrl;
-    
-    // If isProd is true, prefer PROD key even if empty (for error messages)
     if (isProd) {
       return _safeEnv('SUPABASE_URL_PROD', '');
     } else {
@@ -156,21 +151,7 @@ class AppConfig {
   }
   
   /// Supabase Anon Key
-  /// Tries multiple variable name patterns for compatibility
   static String get supabaseAnonKey {
-    // Try Flutter-specific names first (SUPABASE_ANON_KEY_PROD/DEV)
-    final prodKey = _safeEnv('SUPABASE_ANON_KEY_PROD', '');
-    if (prodKey.isNotEmpty) return prodKey;
-    
-    final devKey = _safeEnv('SUPABASE_ANON_KEY_DEV', '');
-    if (devKey.isNotEmpty) return devKey;
-    
-    // Fallback to Next.js variable names (NEXT_PUBLIC_SUPABASE_ANON_KEY)
-    // This allows sharing the same Vercel environment variables
-    final nextJsKey = _safeEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', '');
-    if (nextJsKey.isNotEmpty) return nextJsKey;
-    
-    // If isProd is true, prefer PROD key even if empty (for error messages)
     if (isProd) {
       return _safeEnv('SUPABASE_ANON_KEY_PROD', '');
     } else {
@@ -329,29 +310,15 @@ class AppConfig {
   // ============================================
   
   /// Safely read environment variable with fallback
-  /// Tries dotenv first, then window.env (web only), then fallback
   static String _safeEnv(String key, String fallback) {
     try {
-      // First, try dotenv
       final value = dotenv.env[key];
-      if (value != null && value.isNotEmpty) return value;
+      if (value == null || value.isEmpty) return fallback;
+      return value;
     } catch (_) {
-      // dotenv not initialized, continue to window.env
+      // dotenv not initialized
+      return fallback;
     }
-    
-    // On web, try window.env as fallback (for production builds)
-    if (kIsWeb) {
-      try {
-        final windowValue = getWindowEnv(key);
-        if (windowValue != null && windowValue.isNotEmpty) {
-          return windowValue;
-        }
-      } catch (_) {
-        // window.env not available, continue to fallback
-      }
-    }
-    
-    return fallback;
   }
   
   /// Safely read boolean environment variable
@@ -372,22 +339,21 @@ class AppConfig {
   /// Print current configuration (for debugging)
   static void printConfig() {
     if (kDebugMode) {
-      LogService.info('═══════════════════════════════════════');
-      LogService.info('📱 PrepSkul App Configuration');
-      LogService.info('═══════════════════════════════════════');
-      LogService.info('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
-      LogService.info('API Base URL: $apiBaseUrl');
-      LogService.info('Fapshi Environment: $fapshiEnvironment');
-      LogService.info('Fapshi Base URL: $fapshiBaseUrl');
-      LogService.info('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      LogService.info('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
-      LogService.info('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
-      LogService.info('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
-      LogService.info('═══════════════════════════════════════');
+      print('═══════════════════════════════════════');
+      print('📱 PrepSkul App Configuration');
+      print('═══════════════════════════════════════');
+      print('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
+      print('API Base URL: $apiBaseUrl');
+      print('Fapshi Environment: $fapshiEnvironment');
+      print('Fapshi Base URL: $fapshiBaseUrl');
+      print('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      print('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      print('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
+      print('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
+      print('═══════════════════════════════════════');
     }
   }
 }
-
 
 
 

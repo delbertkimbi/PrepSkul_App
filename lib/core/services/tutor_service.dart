@@ -290,7 +290,7 @@ class TutorService {
           .from('tutor_profiles')
           .select('''
             *,
-            profiles!inner(
+            profiles!tutor_profiles_user_id_fkey(
               full_name,
               avatar_url,
               email
@@ -853,6 +853,7 @@ class TutorService {
           'id': tutor['user_id']?.toString() ?? '',
           'full_name': (profile?['full_name']?.toString() ?? 'Unknown').toString(),
           'avatar_url': effectiveAvatarUrl?.toString(), // Use consolidated avatar URL
+          'profile_photo_url': profilePhotoUrl?.toString(), // Include profile_photo_url for BookingReview widget
           'email': profile?['email']?.toString(),
           'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
           'personal_statement':
@@ -944,7 +945,7 @@ class TutorService {
           .from('tutor_profiles')
           .select('''
             *,
-            profiles!inner(
+            profiles!tutor_profiles_user_id_fkey(
               full_name,
               avatar_url,
               email
@@ -1079,6 +1080,16 @@ class TutorService {
       final videoIntro = response['video_intro'] as String?;
       final effectiveVideoUrl = videoUrl ?? videoLink ?? videoIntro;
 
+      // Get avatar from tutor_profiles.profile_photo_url first, then fallback to profiles.avatar_url
+      final profilePhotoUrl = response['profile_photo_url']?.toString();
+      final avatarUrl = profile['avatar_url']?.toString();
+      final effectiveAvatarUrl =
+          (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+          ? profilePhotoUrl
+          : (avatarUrl != null && avatarUrl.isNotEmpty)
+          ? avatarUrl
+          : null;
+
       // Get student success metrics - use REAL session count from individual_sessions
       final totalStudents = (response['total_students'] ?? 0) as int;
       final totalHoursTaught = (response['total_hours_taught'] ?? 0) as int;
@@ -1112,7 +1123,8 @@ class TutorService {
       return {
         'id': response['user_id'],
         'full_name': profile['full_name']?.toString() ?? 'Unknown',
-        'avatar_url': profile['avatar_url']?.toString(),
+        'avatar_url': effectiveAvatarUrl?.toString(), // Use consolidated avatar URL
+        'profile_photo_url': profilePhotoUrl?.toString(), // Include profile_photo_url for BookingReview widget
         'email': profile['email']?.toString(),
         'bio': effectiveBio, // Dynamic bio for cards (no "Hello!")
         'personal_statement':
@@ -1220,7 +1232,7 @@ class TutorService {
           .from('tutor_profiles')
           .select('''
             *,
-            profiles!inner(
+            profiles!tutor_profiles_user_id_fkey(
               full_name,
               avatar_url,
               email
@@ -1228,7 +1240,7 @@ class TutorService {
           ''')
           .eq('status', 'approved')
           .neq('is_hidden', true)
-          .or('profiles.full_name.ilike.%$query%,subjects.cs.{$query}');
+          .or('profiles!tutor_profiles_user_id_fkey.full_name.ilike.%$query%,subjects.cs.{$query}');
 
       return (response as List).map((tutor) {
         final profile = tutor['profiles'];
@@ -1245,6 +1257,84 @@ class TutorService {
       }).toList();
     } catch (e) {
       LogService.error('Error searching tutors in Supabase: $e');
+      return [];
+    }
+  }
+
+  /// Normalize tutor subjects from various formats
+  /// Handles: subjects, specializations, JSON strings, null/empty cases
+  /// Returns a List<String> of normalized subject names
+  static List<String> normalizeTutorSubjects(Map<String, dynamic> tutor) {
+    try {
+      final tutorId = tutor['id']?.toString() ?? tutor['user_id']?.toString() ?? 'unknown';
+      final tutorName = tutor['full_name']?.toString() ?? 'Unknown';
+      
+      // Try to get subjects first
+      var subjects = tutor['subjects'];
+      final specializations = tutor['specializations'];
+      
+      LogService.debug('🔍 Normalizing subjects for tutor: $tutorName (ID: $tutorId)');
+      LogService.debug('   Raw subjects type: ${subjects?.runtimeType}, value: $subjects');
+      LogService.debug('   Raw specializations type: ${specializations?.runtimeType}, value: $specializations');
+
+      // If subjects is null/empty, try specializations
+      if (subjects == null ||
+          (subjects is List && subjects.isEmpty) ||
+          (subjects is String && subjects.trim().isEmpty)) {
+        LogService.debug('   Subjects is null/empty, checking specializations...');
+        if (specializations != null &&
+            ((specializations is List && specializations.isNotEmpty) ||
+             (specializations is String && specializations.trim().isNotEmpty))) {
+          LogService.debug('   Using specializations as subjects');
+          subjects = specializations;
+        }
+      }
+
+      // If still null or empty, return empty list
+      if (subjects == null) {
+        LogService.warning('⚠️ Tutor $tutorName (ID: $tutorId) has no subjects or specializations');
+        return [];
+      }
+
+      // Handle different data types
+      List<dynamic> subjectList = [];
+
+      if (subjects is List) {
+        // Already a list
+        subjectList = subjects;
+      } else if (subjects is String) {
+        // Try to parse as JSON
+        try {
+          final decoded = json.decode(subjects);
+          if (decoded is List) {
+            subjectList = decoded;
+          } else if (decoded is String) {
+            // Single string subject
+            subjectList = [decoded];
+          }
+        } catch (e) {
+          // Not JSON, treat as single subject string
+          if (subjects.trim().isNotEmpty) {
+            subjectList = [subjects];
+          }
+        }
+      }
+
+      // Convert to List<String> and filter out empty/null values
+      final normalizedSubjects = subjectList
+          .map((s) => s?.toString().trim())
+          .where((s) => s != null && s!.isNotEmpty)
+          .map((s) => s!)
+          .toList();
+
+      if (normalizedSubjects.isEmpty) {
+        LogService.warning('⚠️ Tutor $tutorName (ID: $tutorId) - normalized subjects list is empty after processing');
+      } else {
+        LogService.success('✅ Tutor $tutorName (ID: $tutorId) - normalized ${normalizedSubjects.length} subjects: $normalizedSubjects');
+      }
+      return normalizedSubjects;
+    } catch (e) {
+      LogService.warning('Error normalizing tutor subjects: $e');
       return [];
     }
   }
