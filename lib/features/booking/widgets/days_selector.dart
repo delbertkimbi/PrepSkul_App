@@ -133,33 +133,6 @@ class _DaysSelectorState extends State<DaysSelector> {
           ),
           const SizedBox(height: 24),
 
-          // Tutor's availability info
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green[50],
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.green[200]!),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Tutor is available: ${_tutorAvailableDays.join(', ')}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.green[900],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 32),
-
           // Days grid
           GridView.builder(
             shrinkWrap: true,
@@ -176,61 +149,6 @@ class _DaysSelectorState extends State<DaysSelector> {
               return _buildDayCard(day);
             },
           ),
-          const SizedBox(height: 24),
-
-          // Selection status
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: daysRemaining == 0
-                  ? Colors.green[50]
-                  : AppTheme.primaryColor.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: daysRemaining == 0
-                    ? Colors.green[200]!
-                    : AppTheme.primaryColor.withOpacity(0.2),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  daysRemaining == 0 ? Icons.check_circle : Icons.info_outline,
-                  size: 20,
-                  color: daysRemaining == 0
-                      ? Colors.green[700]
-                      : AppTheme.primaryColor,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    daysRemaining == 0
-                        ? '✓ Perfect! ${widget.requiredDays} ${widget.requiredDays > 1 ? 'days' : 'day'} selected'
-                        : 'Select $daysRemaining more ${daysRemaining > 1 ? 'days' : 'day'}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: daysRemaining == 0
-                          ? Colors.green[900]
-                          : Colors.grey[700],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          if (_selectedDays.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              'Selected: ${_selectedDays.join(', ')}',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: Colors.grey[700],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
         ],
       ),
     );
