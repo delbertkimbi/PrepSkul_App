@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:prepskul/features/sessions/widgets/embedded_map_widget.dart';
+import 'package:prepskul/features/booking/widgets/map_location_picker.dart';
 
 /// Step 4: Location Selector
 ///
@@ -98,17 +99,8 @@ class _LocationSelectorState extends State<LocationSelector> {
   }
 
   void _selectLocation(String location) async {
-    // If hybrid is selected, show dialog to choose online or onsite
-    if (location == 'hybrid') {
-      final actualLocation = await _showHybridLocationDialog();
-      if (actualLocation == null) {
-        // User cancelled, don't change selection
-        return;
-      }
-      // Use the chosen location (online or onsite) instead of hybrid
-      location = actualLocation;
-    }
-    
+    // If flexible (hybrid) is selected, allow it without immediate dialog
+    // The flexible flow will be handled in a separate step
     safeSetState(() => _selectedLocation = location);
     
     // Auto-populate address from survey if onsite selected and address is empty
@@ -378,254 +370,31 @@ class _LocationSelectorState extends State<LocationSelector> {
             color: Colors.purple,
           ),
 
-          // Address input (for onsite only - hybrid is converted to online/onsite)
+          // Map location picker (for onsite only)
           if (_selectedLocation == 'onsite') ...[
             const SizedBox(height: 32),
-            Text(
-              'Session Address',
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _addressController,
-              onChanged: (_) {
-                // Clear error when user starts typing
-                if (_showAddressError && _addressController.text.trim().isNotEmpty) {
-                  safeSetState(() {
-                    _showAddressError = false;
-                    _isAddressValid = false;
-                    _addressValidationError = null;
-                    _showAddressPreview = false;
-                  });
-                }
+            MapLocationPicker(
+              initialAddress: _addressController.text.trim().isNotEmpty
+                  ? _addressController.text.trim()
+                  : null,
+              initialCoordinates: _validatedCoordinates,
+              initialLocationDescription: _locationDescriptionController.text.trim().isNotEmpty
+                  ? _locationDescriptionController.text.trim()
+                  : null,
+              onLocationSelected: (address, coordinates, locationDescription) {
+                safeSetState(() {
+                  _addressController.text = address;
+                  _validatedCoordinates = coordinates;
+                  _isAddressValid = true;
+                  _showAddressError = false;
+                  _addressValidationError = null;
+                  if (locationDescription != null) {
+                    _locationDescriptionController.text = locationDescription;
+                  }
+                });
                 _notifyParent();
               },
-              onSubmitted: (_) {
-                // Validate address when user submits
-                if (_addressController.text.trim().isNotEmpty) {
-                  _validateAddress();
-                }
-              },
-              maxLines: 1,
-              decoration: InputDecoration(
-                labelText: 'Address *',
-                hintText: 'Enter your full address (City, Quarter, Street...)',
-                hintStyle: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey[400],
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: AppTheme.primaryColor,
-                    width: 2,
-                  ),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: Colors.red[300]!,
-                    width: 1,
-                  ),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: Colors.red[400]!,
-                    width: 2,
-                  ),
-                ),
-                prefixIcon: Icon(Icons.location_on, color: Colors.grey[600]),
-                suffixIcon: _addressController.text.trim().isNotEmpty
-                    ? IconButton(
-                        icon: _isValidatingAddress
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Icon(
-                                _isAddressValid
-                                    ? Icons.check_circle
-                                    : Icons.verified_user_outlined,
-                                color: _isAddressValid
-                                    ? Colors.green
-                                    : Colors.grey[400],
-                              ),
-                        onPressed: _validateAddress,
-                        tooltip: 'Validate address',
-                      )
-                    : null,
-                errorText: _showAddressError
-                    ? 'Address is required for onsite sessions'
-                    : _addressValidationError,
-              ),
-            ),
-            // Address validation status and preview
-            if (_isAddressValid && _validatedCoordinates != null) ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Address verified ✓',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.green[900],
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        safeSetState(() {
-                          _showAddressPreview = !_showAddressPreview;
-                        });
-                      },
-                      child: Text(
-                        _showAddressPreview ? 'Hide Map' : 'Show on Map',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.green[700],
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Address preview on map
-              if (_showAddressPreview) ...[
-                const SizedBox(height: 12),
-                Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[300]!),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: EmbeddedMapWidget(
-                      address: _addressController.text.trim(),
-                      coordinates: _validatedCoordinates,
-                      height: 200,
-                    ),
-                  ),
-                ),
-              ],
-            ],
-            const SizedBox(height: 12),
-            TextField(
-              controller: _locationDescriptionController,
-              onChanged: (_) => _notifyParent(),
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: 'Location Description',
-                hintText:
-                    'Add landmarks, nearby buildings, or clear directions to help the tutor find your location easily',
-                hintStyle: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: Colors.grey[400],
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: AppTheme.primaryColor,
-                    width: 2,
-                  ),
-                ),
-                prefixIcon: Icon(
-                  Icons.description_outlined,
-                  color: Colors.grey[600],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, size: 18, color: Colors.blue[700]),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Include landmarks or clear directions to help the tutor find your location easily.',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.blue[900],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          // Tutor availability note
-          if (_tutorTeachingModes.isNotEmpty) ...[
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Tutor offers: ${_getTutorModesText()}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.green[900],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              height: 400,
             ),
           ],
         ],

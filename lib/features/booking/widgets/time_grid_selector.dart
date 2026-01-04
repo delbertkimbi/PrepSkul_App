@@ -279,31 +279,6 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
               ),
           ],
 
-          // Selected time indicator
-          if (_selectedTimes.containsKey(_currentDay))
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle, size: 20, color: Colors.green[700]),
-                  const SizedBox(width: 12),
-                  Text(
-                    '✓ Selected: $_currentDay ${_selectedTimes[_currentDay]}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: Colors.green[900],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           const SizedBox(height: 32),
 
           // Navigation buttons
