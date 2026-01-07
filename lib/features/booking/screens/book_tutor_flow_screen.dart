@@ -11,9 +11,9 @@ import 'package:prepskul/features/booking/widgets/frequency_selector.dart';
 import 'package:prepskul/features/booking/widgets/days_selector.dart';
 import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
 import 'package:prepskul/features/booking/widgets/location_selector.dart';
+import 'package:prepskul/features/booking/widgets/flexible_session_location_selector.dart';
 import 'package:prepskul/features/booking/widgets/booking_review.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
 ///
@@ -37,7 +37,7 @@ class BookTutorFlowScreen extends StatefulWidget {
 class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
-  final int _totalSteps = 5;
+  final int _totalSteps = 6;
 
   // Booking data collected through the flow
   int? _selectedFrequency; // Sessions per week
@@ -46,6 +46,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   String? _selectedLocation; // online, onsite, hybrid
   String? _onsiteAddress;
   String? _locationDescription; // Brief description for onsite/hybrid
+  Map<String, String> _sessionLocations = {}; // {"Monday-3:00 PM": "onsite"}
+  Map<String, Map<String, String?>> _locationDetails = {}; // {"Monday-3:00 PM": {"address": "...", "coordinates": "..."}}
   String? _selectedPaymentPlan; // monthly, biweekly, weekly
 
   @override
@@ -145,6 +147,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       return;
     }
     
+    // If moving from step 3 (location) and hybrid is selected, skip to step 5 (review) if flexible step not needed
+    // Actually, we always show step 4 for hybrid, so no skip needed
+    
     if (_currentStep < _totalSteps - 1) {
       safeSetState(() => _currentStep++);
       _pageController.animateToPage(
@@ -157,13 +162,29 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   void _previousStep() {
     if (_currentStep > 0) {
-      safeSetState(() => _currentStep--);
+      // Calculate previous step - skip flexible step if not hybrid
+      int prevStep = _currentStep - 1;
+      if (prevStep == 4 && _selectedLocation != 'hybrid') {
+        // Skip flexible step (4) if not hybrid, go back to location (3)
+        prevStep = 3;
+      }
+      
+      safeSetState(() => _currentStep = prevStep);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  double _getProgressValue() {
+    // Adjust progress to account for skipped flexible step
+    final effectiveSteps = _selectedLocation == 'hybrid' ? _totalSteps : _totalSteps - 1;
+    final effectiveStep = _currentStep > 4 && _selectedLocation != 'hybrid' 
+        ? _currentStep - 1 
+        : _currentStep;
+    return (effectiveStep + 1) / effectiveSteps;
   }
 
   bool _canProceed() {
@@ -183,7 +204,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         }
         // For online or hybrid/flexible, no address needed upfront
         return true;
-      case 4: // Review
+      case 5: // Review
         return _selectedPaymentPlan != null;
       default:
         return false;
@@ -237,7 +258,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         times: _selectedTimes,
         location: _selectedLocation!,
         address: _onsiteAddress,
-            locationDescription: _locationDescription,
+        locationDescription: _locationDescription,
         paymentPlan: _selectedPaymentPlan!,
         monthlyTotal: monthlyTotal,
       );
@@ -469,7 +490,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(8),
           child: LinearProgressIndicator(
-            value: (_currentStep + 1) / _totalSteps,
+            value: _getProgressValue(),
             backgroundColor: Colors.grey[200],
             valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
           ),
@@ -530,11 +551,43 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 _selectedLocation = location;
                 _onsiteAddress = address;
                 _locationDescription = locationDescription;
+                // If not hybrid, clear session locations
+                if (location != 'hybrid') {
+                  _sessionLocations.clear();
+                  _locationDetails.clear();
+                }
               });
             },
           ),
 
-          // Step 5: Booking Review
+          // Step 5: Flexible Session Location Selector (only shown if hybrid selected)
+          _selectedLocation == 'hybrid'
+              ? FlexibleSessionLocationSelector(
+                  selectedDays: _selectedDays,
+                  selectedTimes: _selectedTimes,
+                  initialSessionLocations: _sessionLocations,
+                  initialLocationDetails: _locationDetails,
+                  onLocationsSelected: (sessionLocations, locationDetails) {
+                    safeSetState(() {
+                      _sessionLocations = sessionLocations;
+                      _locationDetails = locationDetails;
+                    });
+                  },
+                )
+              : Container(
+                  // Placeholder for non-hybrid - navigation will skip this step
+                  child: Center(
+                    child: Text(
+                      'Continue to review...',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+
+          // Step 6: Booking Review
           BookingReview(
             tutor: widget.tutor,
             frequency: _selectedFrequency ?? 1,
@@ -543,6 +596,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             location: _selectedLocation ?? 'online',
             address: _onsiteAddress,
             locationDescription: _locationDescription,
+            sessionLocations: _sessionLocations,
+            locationDetails: _locationDetails,
             initialPaymentPlan: _selectedPaymentPlan,
             onPaymentPlanSelected: (plan) {
               safeSetState(() => _selectedPaymentPlan = plan);

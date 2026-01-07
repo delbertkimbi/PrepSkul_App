@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -769,6 +770,28 @@ class SurveyRepository {
     try {
       LogService.info('Saving student survey for user: $userId');
 
+      // Check network connectivity first
+      try {
+        final connectivity = ConnectivityService();
+        await connectivity.initialize();
+        final isOnline = await connectivity.checkConnectivity();
+        
+        if (!isOnline) {
+          throw Exception('No internet connection. Please check your network and try again.');
+        }
+      } catch (e) {
+        // If connectivity check fails, check if it's a network error
+        final errorStr = e.toString().toLowerCase();
+        if (errorStr.contains('socket') || 
+            errorStr.contains('host lookup') || 
+            errorStr.contains('network') ||
+            errorStr.contains('connection')) {
+          throw Exception('Unable to connect to the server. Please check your internet connection and try again.');
+        }
+        // If it's not a network error, continue (might be connectivity service issue)
+        LogService.warning('Connectivity check failed but continuing: $e');
+      }
+
       // CRITICAL: Ensure profile exists before saving to learner_profiles
       // This prevents foreign key constraint violations
       Map<String, dynamic>? existingProfile;
@@ -779,6 +802,15 @@ class SurveyRepository {
             .eq('id', userId)
             .maybeSingle();
       } catch (e) {
+        final errorStr = e.toString().toLowerCase();
+        // Check for network/DNS errors and provide user-friendly message
+        if (errorStr.contains('socket') || 
+            errorStr.contains('host lookup') || 
+            errorStr.contains('nodename') ||
+            errorStr.contains('failed host lookup')) {
+          LogService.error('Network error checking profile existence: $e');
+          throw Exception('Unable to connect to the server. Please check your internet connection and try again.');
+        }
         LogService.warning('Error checking profile existence: $e');
         // If query fails, try to create profile anyway
         existingProfile = null;
@@ -842,6 +874,15 @@ class SurveyRepository {
 
           LogService.success('Profile created for user: $userId');
         } catch (profileError) {
+          final errorStr = profileError.toString().toLowerCase();
+          // Check for network/DNS errors
+          if (errorStr.contains('socket') || 
+              errorStr.contains('host lookup') || 
+              errorStr.contains('nodename') ||
+              errorStr.contains('failed host lookup')) {
+            LogService.error('Network error creating profile: $profileError');
+            throw Exception('Unable to connect to the server. Please check your internet connection and try again.');
+          }
           LogService.warning('Error creating profile: $profileError');
           // If profile creation fails, continue anyway - might already exist
           // or will be handled by database constraints
@@ -849,11 +890,26 @@ class SurveyRepository {
       }
 
       // Check if learner profile already exists
-      final existingLearnerProfile = await SupabaseService.client
-          .from('learner_profiles')
-          .select('user_id')
-          .eq('user_id', userId)
-          .maybeSingle();
+      Map<String, dynamic>? existingLearnerProfile;
+      try {
+        existingLearnerProfile = await SupabaseService.client
+            .from('learner_profiles')
+            .select('user_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+      } catch (e) {
+        final errorStr = e.toString().toLowerCase();
+        // Check for network/DNS errors
+        if (errorStr.contains('socket') || 
+            errorStr.contains('host lookup') || 
+            errorStr.contains('nodename') ||
+            errorStr.contains('failed host lookup')) {
+          LogService.error('Network error checking learner profile: $e');
+          throw Exception('Unable to connect to the server. Please check your internet connection and try again.');
+        }
+        LogService.warning('Error checking learner profile existence: $e');
+        existingLearnerProfile = null;
+      }
 
       // Filter out null values and handle missing columns
       final filteredData = <String, dynamic>{
@@ -984,6 +1040,19 @@ class SurveyRepository {
       LogService.success('Student survey saved successfully');
     } catch (e) {
       LogService.error('Error saving student survey: $e');
+      
+      // Convert technical errors to user-friendly messages
+      final errorStr = e.toString().toLowerCase();
+      if (errorStr.contains('socket') || 
+          errorStr.contains('host lookup') || 
+          errorStr.contains('nodename') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('network') ||
+          errorStr.contains('connection')) {
+        throw Exception('Unable to connect to the server. Please check your internet connection and try again.');
+      }
+      
+      // Re-throw the original error if it's not a network error
       rethrow;
     }
   }

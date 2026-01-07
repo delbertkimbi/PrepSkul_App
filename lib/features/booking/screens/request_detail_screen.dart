@@ -15,6 +15,8 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/features/booking/services/tutor_request_service.dart';
+import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 
 /// RequestDetailScreen
 ///
@@ -1009,7 +1011,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           },
           icon: const Icon(Icons.edit_calendar, size: 20),
           label: Text(
-            'Edit Date',
+            'Reschedule',
             style: GoogleFonts.poppins(
               fontWeight: FontWeight.w600,
               fontSize: 16,
@@ -1507,6 +1509,50 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             ),
             const SizedBox(height: 24),
 
+            // Matched Tutor (if matched)
+            if (request.matchedTutorId != null) ...[
+              _buildSectionTitle('Matched Tutor'),
+              const SizedBox(height: 12),
+              FutureBuilder<Map<String, dynamic>?>(
+                future: _loadMatchedTutorInfo(request.matchedTutorId!),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  }
+                  final tutor = snapshot.data;
+                  if (tutor == null) {
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Text(
+                        'Tutor information not available',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    );
+                  }
+                  return _buildMatchedTutorCard(context, tutor, request);
+                },
+              ),
+              const SizedBox(height: 24),
+            ],
+
             // Subjects & Education Level
             _buildSectionTitle('Subjects & Level'),
             const SizedBox(height: 12),
@@ -1521,7 +1567,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildInfoRow('Subjects', request.formattedSubjects),
-                  _buildInfoRow('Education Level', request.educationLevel),
+                  _buildInfoRow('Education Level', request.formattedEducationLevel),
                   if (request.specificRequirements != null && request.specificRequirements!.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     _buildInfoRow('Requirements', request.specificRequirements!),
@@ -1750,11 +1796,164 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+
+            // Edit and Delete Actions (only for pending/in_progress requests)
+            if (request.status == 'pending' || request.status == 'in_progress') ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _editRequest(context, request),
+                      icon: const Icon(Icons.edit_rounded, size: 18),
+                      label: Text(
+                        'Edit Request',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _deleteRequest(context, request),
+                      icon: const Icon(Icons.delete_rounded, size: 18),
+                      label: Text(
+                        'Delete',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+            ] else
+              const SizedBox(height: 32),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _editRequest(BuildContext context, TutorRequest request) async {
+    // Navigate to edit screen (reuse the request flow screen with prefill data)
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RequestTutorFlowScreen(
+          prefillData: {
+            'subjects': request.subjects,
+            'education_level': request.educationLevel,
+            'specific_requirements': request.specificRequirements,
+            'teaching_mode': request.teachingMode,
+            'budget_min': request.budgetMin,
+            'budget_max': request.budgetMax,
+            'tutor_gender': request.tutorGender,
+            'tutor_qualification': request.tutorQualification,
+            'preferred_days': request.preferredDays,
+            'preferred_time': request.preferredTime,
+            'location': request.location,
+            'location_description': request.locationDescription,
+            'urgency': request.urgency,
+            'additional_notes': request.additionalNotes,
+            'request_id': request.id, // Pass request ID to identify it's an edit
+          },
+        ),
+      ),
+    );
+
+    // Refresh the screen after returning
+    if (mounted) {
+      Navigator.pop(context); // Go back to list
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RequestDetailScreen(tutorRequest: request),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteRequest(BuildContext context, TutorRequest request) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Delete Request?',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Are you sure you want to delete this tutor request? This action cannot be undone.',
+          style: GoogleFonts.poppins(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.poppins(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        await TutorRequestService.deleteRequest(request.id);
+        
+        if (!mounted) return;
+        
+        Navigator.pop(context); // Go back to list
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Request deleted successfully',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Error deleting request: ${e.toString()}',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Color _getCustomRequestStatusColor(String status) {
@@ -1789,6 +1988,264 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  /// Load matched tutor information
+  Future<Map<String, dynamic>?> _loadMatchedTutorInfo(String tutorId) async {
+    try {
+      final supabase = SupabaseService.client;
+      
+      // Fetch tutor profile
+      final tutorProfile = await supabase
+          .from('tutor_profiles')
+          .select('''
+            *,
+            profiles:user_id(
+              id,
+              full_name,
+              avatar_url,
+              email
+            )
+          ''')
+          .eq('id', tutorId)
+          .maybeSingle();
+
+      if (tutorProfile == null) {
+        LogService.error('Error loading matched tutor: tutor profile not found');
+        return null;
+      }
+
+      final profile = tutorProfile['profiles'];
+      Map<String, dynamic>? profileData;
+      if (profile is Map) {
+        profileData = Map<String, dynamic>.from(profile);
+      } else if (profile is List && profile.isNotEmpty) {
+        profileData = Map<String, dynamic>.from(profile[0]);
+      }
+
+      // Get avatar
+      final profilePhotoUrl = tutorProfile['profile_photo_url']?.toString();
+      final avatarUrl = profileData?['avatar_url']?.toString();
+      final effectiveAvatarUrl = (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+          ? profilePhotoUrl
+          : (avatarUrl != null && avatarUrl.isNotEmpty)
+          ? avatarUrl
+          : null;
+
+      // Get rating
+      final totalReviews = (tutorProfile['total_reviews'] ?? 0) as int;
+      final adminApprovedRating = tutorProfile['admin_approved_rating'] as double?;
+      final calculatedRating = (tutorProfile['rating'] ?? 0.0) as double;
+      final effectiveRating = (totalReviews < 3 && adminApprovedRating != null)
+          ? adminApprovedRating
+          : (calculatedRating > 0 ? calculatedRating : (adminApprovedRating ?? 0.0));
+
+      return {
+        'id': tutorId,
+        'user_id': tutorProfile['user_id'],
+        'full_name': profileData?['full_name']?.toString() ?? 'Tutor',
+        'avatar_url': effectiveAvatarUrl,
+        'subjects': tutorProfile['subjects'] ?? [],
+        'rating': effectiveRating,
+        'total_reviews': totalReviews,
+        'hourly_rate': tutorProfile['hourly_rate'],
+        'bio': tutorProfile['bio'],
+      };
+    } catch (e) {
+      LogService.error('Error loading matched tutor info: $e');
+      return null;
+    }
+  }
+
+  /// Build matched tutor card widget
+  Widget _buildMatchedTutorCard(
+    BuildContext context,
+    Map<String, dynamic> tutor,
+    TutorRequest request,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.green[50]!,
+            Colors.green[100]!.withOpacity(0.5),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Avatar
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: Colors.green[100],
+                backgroundImage: tutor['avatar_url'] != null
+                    ? NetworkImage(tutor['avatar_url'] as String)
+                    : null,
+                child: tutor['avatar_url'] == null
+                    ? Text(
+                        (tutor['full_name'] as String? ?? 'T')
+                            .substring(0, 1)
+                            .toUpperCase(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.green[900],
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              // Name and rating
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tutor['full_name'] as String? ?? 'Tutor',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.star, color: Colors.amber, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          (tutor['rating'] as double? ?? 0.0).toStringAsFixed(1),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        if (tutor['total_reviews'] != null && (tutor['total_reviews'] as int) > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '(${tutor['total_reviews']} reviews)',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // Subjects
+          if (tutor['subjects'] != null && (tutor['subjects'] as List).isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: (tutor['subjects'] as List)
+                  .map<Widget>((subject) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.green[100],
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          subject.toString(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.green[900],
+                          ),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ],
+          // Bio
+          if (tutor['bio'] != null && (tutor['bio'] as String).isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              tutor['bio'] as String,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textMedium,
+                height: 1.5,
+              ),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          // Action buttons
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    // Navigate to tutor detail screen
+                    Navigator.pushNamed(
+                      context,
+                      '/tutor-detail',
+                      arguments: {'tutorId': tutor['user_id']},
+                    );
+                  },
+                  icon: const Icon(Icons.person, size: 18),
+                  label: Text(
+                    'View Profile',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: BorderSide(color: AppTheme.primaryColor),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    // Navigate to booking flow with pre-filled data
+                    Navigator.pushNamed(
+                      context,
+                      '/book-tutor',
+                      arguments: {
+                        'tutor': tutor,
+                        'customRequestId': request.id, // Link booking to this custom request
+                        'prefillData': {
+                          'days': request.preferredDays,
+                          'time': request.preferredTime,
+                          'location': request.location,
+                          'budget_min': request.budgetMin,
+                          'budget_max': request.budgetMax,
+                        },
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.book, size: 18),
+                  label: Text(
+                    'Book This Tutor',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBookingRequestDetail(BuildContext context, Map<String, dynamic> request) {

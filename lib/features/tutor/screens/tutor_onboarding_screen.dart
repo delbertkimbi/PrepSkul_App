@@ -5542,64 +5542,91 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     return parts.join('. ') + '.';
   }
 
-  /// Create personal statement for detail page (starts with "Hello! I am...")
+  /// Create personal statement for detail page (starts with personal info, more dynamic)
   /// This is the full bio shown in the tutor's detail page "About" section
   String _createPersonalStatement() {
-    // Start with greeting - for detail page only
-    String statement = 'Hello! I am ';
-
-    // Add education level if available
+    final parts = <String>[];
+    
+    // Start with the most unique/personal information first
+    
+    // 1. Start with subjects/specializations (most specific and engaging)
+    if (_selectedSpecializations.isNotEmpty) {
+      final subjects = _selectedSpecializations.join(', ');
+      parts.add('I specialize in $subjects');
+    } else if (_selectedTutoringAreas.isNotEmpty) {
+      final areas = _selectedTutoringAreas.join(' and ');
+      parts.add('I specialize in $areas');
+    }
+    
+    // 2. Add experience (shows credibility)
+    if (_hasExperience && _experienceDuration != null) {
+      parts.add('with ${_experienceDuration!.toLowerCase()} of teaching experience');
+    }
+    
+    // 3. Add education (builds trust)
     if (_selectedEducation != null) {
       final education = _selectedEducation!.toLowerCase();
-      // Format education nicely
       if (education.contains('phd') || education.contains('doctorate')) {
-        statement += 'a passionate educator with a ${education} ';
+        final eduText = education.replaceAll('education', '').trim();
+        parts.add('holding a $eduText');
       } else if (education.contains('master')) {
-        statement += 'a passionate educator with ${education} education ';
+        final eduText = education.replaceAll('education', '').trim();
+        parts.add('with a $eduText degree');
       } else {
-        statement += 'a passionate educator with ${education} education ';
+        final eduText = education.replaceAll('education', '').trim();
+        parts.add('with $eduText education');
       }
-    } else {
-      statement += 'a passionate educator ';
     }
-
-    // Add experience
-    if (_hasExperience && _experienceDuration != null) {
-      statement +=
-          'with ${_experienceDuration!.toLowerCase()} of teaching experience. ';
-    } else {
-      statement += 'excited to start my teaching journey. ';
-    }
-
-    // Add specialization areas
-    if (_selectedTutoringAreas.isNotEmpty) {
-      statement +=
-          'I specialize in ${_selectedTutoringAreas.join(' and ').toLowerCase()}, ';
-    }
-
-    // Add learner levels
+    
+    // 4. Add learner levels (shows who they work with)
     if (_selectedLearnerLevels.isNotEmpty) {
-      statement +=
-          'working with ${_selectedLearnerLevels.join(' and ').toLowerCase()} students. ';
+      parts.add('working with ${_selectedLearnerLevels.join(' and ').toLowerCase()} students');
     }
-
-    // Add subjects/specializations
-    if (_selectedSpecializations.isNotEmpty) {
-      statement +=
-          'My areas of expertise include ${_selectedSpecializations.join(', ').toLowerCase()}. ';
-    }
-
-    // Incorporate motivation (this is the key part - their personal touch)
+    
+    // 5. Incorporate motivation early (their personal touch - most important!)
     if (_motivationController.text.isNotEmpty) {
       final motivation = _motivationController.text.trim();
-      // Add motivation naturally into the flow
-      statement += '$motivation ';
+      // Capitalize first letter if needed
+      final formattedMotivation = motivation.substring(0, 1).toUpperCase() + 
+          (motivation.length > 1 ? motivation.substring(1) : '');
+      parts.add(formattedMotivation);
     }
-
-    // Closing statement
-    statement +=
-        'I am committed to providing quality education and helping students achieve their academic goals.';
-
+    
+    // Build the statement dynamically
+    String statement = '';
+    
+    if (parts.isNotEmpty) {
+      // Start with the first part (usually subjects/specializations)
+      statement = parts[0];
+      
+      // Add remaining parts with appropriate connectors
+      for (int i = 1; i < parts.length; i++) {
+        if (i == 1 && parts.length > 2) {
+          // Second part: use comma if there are more parts
+          statement += ', ${parts[i]}';
+        } else if (i == parts.length - 1) {
+          // Last part: use period
+          statement += '. ${parts[i]}.';
+        } else {
+          // Middle parts: use comma
+          statement += ', ${parts[i]}';
+        }
+      }
+      
+      // If we only had one part, add period
+      if (parts.length == 1) {
+        statement += '.';
+      }
+    } else {
+      // Fallback if no information available
+      statement = 'Passionate educator committed to helping students achieve their academic goals.';
+    }
+    
+    // Add closing commitment statement (only if we have personal info)
+    if (parts.isNotEmpty) {
+      statement += ' I am committed to providing quality education and helping students achieve their academic goals.';
+    }
+    
     return statement;
   }
 
@@ -6117,4 +6144,5 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     );
   }
 }
+
 

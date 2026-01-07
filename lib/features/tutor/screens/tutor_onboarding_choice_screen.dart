@@ -150,26 +150,20 @@ class _TutorOnboardingChoiceScreenState
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 40),
-              // Logo or Icon
-              Container(
+              // PrepSkul Logo
+              Image.asset(
+                'assets/images/app_logo(blue).png',
                 width: 120,
                 height: 120,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.primaryGradient,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primaryColor.withOpacity(0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.school,
-                  size: 60,
-                  color: Colors.white,
-                ),
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback if image fails to load
+                  return const Icon(
+                    Icons.school,
+                    size: 60,
+                    color: AppTheme.primaryColor,
+                  );
+                },
               ),
               const SizedBox(height: 32),
               // Title
@@ -206,7 +200,7 @@ class _TutorOnboardingChoiceScreenState
                     elevation: 2,
                     shadowColor: AppTheme.primaryColor.withOpacity(0.3),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   child: _isLoading
@@ -243,7 +237,7 @@ class _TutorOnboardingChoiceScreenState
                       width: 2,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   child: Text(
@@ -260,10 +254,10 @@ class _TutorOnboardingChoiceScreenState
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.orange[50],
+                  color: Colors.grey[50],
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.orange[200]!,
+                    color: Colors.grey[300]!,
                     width: 1.5,
                   ),
                 ),
@@ -274,7 +268,7 @@ class _TutorOnboardingChoiceScreenState
                       children: [
                         Icon(
                           Icons.info_outline,
-                          color: Colors.orange[700],
+                          color: Colors.grey[700],
                           size: 24,
                         ),
                         const SizedBox(width: 12),
@@ -283,7 +277,7 @@ class _TutorOnboardingChoiceScreenState
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: Colors.orange[900],
+                            color: AppTheme.textDark,
                           ),
                         ),
                       ],
@@ -293,7 +287,7 @@ class _TutorOnboardingChoiceScreenState
                       'If you skip onboarding:\n\n• Your profile will not be visible to students\n• You will need to complete onboarding to access all features\n• You can complete it anytime from your profile',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
-                        color: Colors.orange[900],
+                        color: AppTheme.textMedium,
                         height: 1.5,
                       ),
                     ),

@@ -832,8 +832,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
                               padding: const EdgeInsets.all(16),
                               itemCount: filteredGames.length + 
                                         (showRecentlyPlayed ? recentlyPlayed.length + 2 : 0) +
-                                        (_isLoadingMore ? 1 : 0) +
-                                        (!_hasMore && filteredGames.isNotEmpty ? 1 : 0),
+                                        (_isLoadingMore ? 1 : 0),
                               itemBuilder: (context, index) {
                                 // Recently Played section header
                                 if (showRecentlyPlayed && index == 0) {
@@ -891,20 +890,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
                                       padding: EdgeInsets.all(16.0),
                                       child: Center(
                                         child: CircularProgressIndicator(),
-                                      ),
-                                    );
-                                  }
-                                  if (!_hasMore && filteredGames.isNotEmpty) {
-                                    return Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Center(
-                                        child: Text(
-                                          'No more games to load',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            color: AppTheme.textMedium,
-                                          ),
-                                        ),
                                       ),
                                     );
                                   }

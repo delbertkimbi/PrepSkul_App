@@ -323,10 +323,6 @@ class StorageService {
       // Create storage path
       final storagePath = '$userId/$documentType$fileExtension';
 
-      // Delete existing file(s) before upload to prevent conflicts
-      // This handles file extension changes (e.g., .jpeg to .png)
-      await _deleteExistingDocument(userId, documentType);
-
       // Upload to Supabase - use uploadBinary on web for Uint8List, upload for mobile File
       LogService.debug('[DEBUG] Uploading to path: $storagePath');
       LogService.debug('[DEBUG] Upload data type: ${uploadData.runtimeType}');
@@ -343,8 +339,7 @@ class StorageService {
                 uploadData,
                 fileOptions: FileOptions(
                   contentType: mimeType,
-                  upsert:
-                      false, // We deleted the file above, so no need for upsert
+                  upsert: true, // Overwrite if the same path exists
                 ),
               );
           LogService.success('[DEBUG] uploadBinary completed successfully');
@@ -357,8 +352,7 @@ class StorageService {
                 storagePath,
                 uploadData,
                 fileOptions: const FileOptions(
-                  upsert:
-                      false, // We deleted the file above, so no need for upsert
+                  upsert: true, // Overwrite if the same path exists
                 ),
               );
           LogService.success('[DEBUG] Regular upload completed successfully');
@@ -378,6 +372,14 @@ class StorageService {
           if (statusMatch != null) {
             statusCode = int.tryParse(statusMatch.group(1)!);
           }
+        }
+
+        // If file/path was already deleted or link expired, surface a friendly message
+        if (statusCode == 404 || errorString.contains('404')) {
+          LogService.warning(
+              '[Storage] Received 404 during upload (likely stale link). Prompting user to retry with a fresh selection.');
+          throw Exception(
+              'This file link expired or was removed. Please re-select the file and try again.');
         }
 
         // If 409 error (duplicate), try deleting and retrying once

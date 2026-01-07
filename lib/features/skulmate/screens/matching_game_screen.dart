@@ -9,6 +9,7 @@ import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
+import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import 'game_results_screen.dart';
@@ -51,6 +52,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   int _xpEarned = 0;
   DateTime? _startTime;
   final GameSoundService _soundService = GameSoundService();
+  final TTSService _ttsService = TTSService();
   late ConfettiController _confettiController;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
@@ -59,12 +61,14 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   dynamic _character;
   GameStats? _currentStats;
   bool _isProcessing = false;
+  bool _isTTSEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    _ttsService.initialize();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
     _progressController = AnimationController(
       vsync: this,
@@ -139,6 +143,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     }
     _progressController.dispose();
     _confettiController.dispose();
+    _ttsService.dispose();
     super.dispose();
   }
 
@@ -156,6 +161,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       });
       _flipControllers[index]?.forward();
       _soundService.playFlip();
+      // Speak card text
+      if (_isTTSEnabled) {
+        _ttsService.speak(_cards[index].text);
+      }
     } else if (_secondFlipped == null && _firstFlipped != index) {
       // Second card flipped
       safeSetState(() {
@@ -165,6 +174,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       });
       _flipControllers[index]?.forward();
       _soundService.playFlip();
+      // Speak card text
+      if (_isTTSEnabled) {
+        _ttsService.speak(_cards[index].text);
+      }
       
       // Check for match
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -183,6 +196,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     
     if (isMatch) {
       // Correct match!
+      _soundService.playCorrect();
+      if (_isTTSEnabled) {
+        _ttsService.speak('Match! ${card1.text} and ${card2.text}');
+      }
       safeSetState(() {
         _matchedPairs[_firstFlipped!] = card1.pairId;
         _matchedPairs[_secondFlipped!] = card2.pairId;
@@ -312,6 +329,18 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           ),
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
+              color: AppTheme.textDark,
+            ),
+            onPressed: () {
+              safeSetState(() {
+                _isTTSEnabled = !_isTTSEnabled;
+                _ttsService.setEnabled(_isTTSEnabled);
+              });
+            },
+          ),
           if (_currentStreak > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),

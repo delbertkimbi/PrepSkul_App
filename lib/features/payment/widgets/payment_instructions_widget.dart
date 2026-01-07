@@ -8,7 +8,7 @@ import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 /// Displays provider-specific instructions for confirming payment
 /// Shows USSD code and step-by-step guide in a centered, soft card
 class PaymentInstructionsWidget extends StatelessWidget {
-  final String? provider;
+  final String? provider; // 'mtn' or 'orange'
   final String phoneNumber;
 
   const PaymentInstructionsWidget({
@@ -19,6 +19,10 @@ class PaymentInstructionsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (provider == null) {
+      return _buildGenericInstructions();
+    }
+
     final providerName = PaymentProviderHelper.getProviderName(provider);
     final ussdCode = PaymentProviderHelper.getUssdCode(provider);
     final instructions = PaymentProviderHelper.getPaymentInstructions(provider);
@@ -230,5 +234,92 @@ class PaymentInstructionsWidget extends StatelessWidget {
       ),
     );
   }
-}
 
+  Widget _buildInstructionStep({
+    required int step,
+    required String text,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Step number badge
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              '$step',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Icon
+        Icon(
+          icon,
+          size: 20,
+          color: color.withOpacity(0.7),
+        ),
+        const SizedBox(width: 8),
+        // Text
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: AppTheme.textDark,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGenericInstructions() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.blue.shade200,
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Payment Instructions',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'A payment request will be sent to $phoneNumber. Please approve it in your mobile money app to complete the payment.',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: AppTheme.textMedium,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -20,6 +20,7 @@ class BookingService {
     String? locationDescription,
     required String paymentPlan,
     required double monthlyTotal,
+    String? customRequestId, // Link to original custom tutor request
   }) async {
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -233,6 +234,8 @@ class BookingService {
         'monthly_total': monthlyTotal,
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
+        // Link to custom request if provided
+        if (customRequestId != null) 'custom_request_id': customRequestId,
         // Denormalized data
         'student_name': userProfile['full_name'],
         'student_avatar_url': studentAvatarUrl,

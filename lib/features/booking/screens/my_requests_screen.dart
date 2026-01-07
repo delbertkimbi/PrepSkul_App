@@ -52,6 +52,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   bool _isOffline = false;
   DateTime? _cacheTimestamp;
   final ConnectivityService _connectivity = ConnectivityService();
+  RealtimeChannel? _tutorRequestsChannel;
 
   final ScrollController _scrollController = ScrollController();
   String? _highlightRequestId;
@@ -63,6 +64,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     _tabController = TabController(length: 5, vsync: this);
     _highlightRequestId = widget.highlightRequestId;
     _initializeConnectivity();
+    _setupRealtimeSubscription();
     _loadRequests();
   }
 
@@ -596,8 +598,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final totalPending =
         pendingBookingCount + pendingCustomCount + pendingTrialCount;
 
-    // FAB only shows in Custom Request tab (index 2) AND only when there's a pending custom request
-    final showFAB = _selectedFilter == 'custom' && pendingCustomCount > 0;
+    // FAB shows in Custom Request tab to allow creating new requests
+    final showFAB = _selectedFilter == 'custom';
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
@@ -1017,7 +1019,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         MaterialPageRoute(
                           builder: (context) => const RequestTutorFlowScreen(),
                         ),
-                      ).then((_) => _loadRequests());
+                      ).then((result) {
+                        // Refresh if request was submitted successfully
+                        if (result == true) {
+                          _loadRequests();
+                          // Switch to custom requests tab to show the new request
+                          _tabController.animateTo(2);
+                        }
+                      });
                     },
                     icon: const Icon(Icons.add, size: 20),
                     label: Text(
@@ -4132,3 +4141,4 @@ class _RequestItem {
     this.trial,
   });
 }
+

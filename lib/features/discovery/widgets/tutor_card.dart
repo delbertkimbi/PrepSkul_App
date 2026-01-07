@@ -35,6 +35,9 @@ class TutorCard extends StatelessWidget {
 
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
+    final availability = tutor['combined_availability'] ?? tutor['availability'];
+    final bool isActive = (tutor['is_active'] == true) ||
+        (availability is Map && availability.isNotEmpty);
     
     // Clean bio text for card display
     final displayBio = TextFormatter.cleanBio(bio);
@@ -43,25 +46,23 @@ class TutorCard extends StatelessWidget {
     return RepaintBoundary(
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceColor, // Use theme surface color for neumorphic
-        borderRadius: BorderRadius.circular(16),
-        // Neumorphic shadows: light top-left, dark bottom-right
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withOpacity(0.7),
-            blurRadius: 10,
-            offset: const Offset(-4, -4),
-            spreadRadius: 0,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.grey[200]!,
+            width: 1,
           ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(4, 4),
-            spreadRadius: 0,
-          ),
-        ],
-      ),
+          // Very soft shadow just to lift from background
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+              spreadRadius: 0,
+            ),
+          ],
+        ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -85,33 +86,56 @@ class TutorCard extends StatelessWidget {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar (Larger & clickable)
+                    // Avatar (Larger & clickable) with activity indicator
                     GestureDetector(
                       onTap: () => _showProfileImage(context, tutor),
-                      child: Container(
-                        width: 70,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.primaryColor.withOpacity(0.1), // Background for fallback
-                          border: Border.all(
-                            color: AppTheme.primaryColor.withOpacity(0.3),
-                            width: 2.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                      child: Stack(
+                        children: [
+                          Container(
+                            width: 70,
+                            height: 70,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppTheme.primaryColor
+                                  .withOpacity(0.1), // Background for fallback
+                              border: Border.all(
+                                color: AppTheme.primaryColor.withOpacity(0.3),
+                                width: 2.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: _buildAvatarImage(
-                            tutor['avatar_url'] ?? tutor['profile_photo_url'],
-                            name,
+                            child: ClipOval(
+                              child: _buildAvatarImage(
+                                tutor['avatar_url'] ?? tutor['profile_photo_url'],
+                                name,
+                              ),
+                            ),
                           ),
-                        ),
+                          Positioned(
+                            bottom: 4,
+                            right: 4,
+                            child: Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isActive
+                                    ? AppTheme.primaryColor
+                                    : Colors.grey[400],
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 12),

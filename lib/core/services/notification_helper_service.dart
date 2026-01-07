@@ -1372,6 +1372,31 @@ class NotificationHelperService {
           );
   }
 
+  /// Notify user when their tutor request is matched with a tutor
+  static Future<void> notifyTutorRequestMatched({
+    required String userId,
+    required String requestId,
+    required String tutorName,
+    String? tutorId,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'tutor_request_matched',
+      title: '🎉 Tutor Matched!',
+      message: 'We found a tutor for your request: $tutorName',
+      priority: 'high',
+      actionUrl: '/requests/$requestId',
+      actionText: 'View Details',
+      icon: '🎉',
+      metadata: {
+        'request_id': requestId,
+        'tutor_id': tutorId,
+        'tutor_name': tutorName,
+      },
+      sendEmail: true,
+    );
+  }
+
   /// Notify all admins about new user signup
   /// 
   /// Creates a notification for each admin user when a new user signs up
@@ -1680,32 +1705,134 @@ class NotificationHelperService {
     );
   }
 
-  // ============================================
-  // CREDITS NOTIFICATIONS
-  // ============================================
-
-  /// Notify user when credits balance is low
+  /// Notify user when their credits balance is low
   static Future<void> notifyLowCreditsBalance({
     required String userId,
-    required int balance,
-    required int threshold,
+    required double balance,
+    required double threshold,
     String? paymentRequestId,
   }) async {
     await _sendNotificationViaAPI(
       userId: userId,
       type: 'low_credits_balance',
-      title: '⚠️ Low Credits Balance',
-      message: 'Your credits balance is low ($balance credits remaining). Consider adding more credits to continue booking sessions.',
+      title: '💰 Low Credits Balance',
+      message: 'Your credits balance (${balance.toStringAsFixed(0)}) is below the threshold (${threshold.toStringAsFixed(0)}). Please top up to continue using services.',
       priority: 'normal',
       actionUrl: paymentRequestId != null ? '/payments/$paymentRequestId' : '/credits',
-      actionText: 'Add Credits',
-      icon: '⚠️',
+      actionText: 'Top Up Credits',
+      icon: '💰',
       metadata: {
         'balance': balance,
         'threshold': threshold,
         if (paymentRequestId != null) 'payment_request_id': paymentRequestId,
       },
       sendEmail: true,
+      sendPush: false,
+    );
+  }
+
+  /// Notify admin when a tutor request is updated by user
+  static Future<void> notifyTutorRequestUpdated({
+    required String adminId,
+    required String requestId,
+    required String requesterName,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: adminId,
+      type: 'tutor_request_updated',
+      title: '🔄 Tutor Request Updated',
+      message: '$requesterName has updated their tutor request. Please review the changes.',
+      priority: 'normal',
+      actionUrl: '/admin/tutor-requests/$requestId',
+      actionText: 'Review Request',
+      icon: '🔄',
+      metadata: {
+        'request_id': requestId,
+        'requester_name': requesterName,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify admin when a tutor request is deleted by user
+  static Future<void> notifyTutorRequestDeleted({
+    required String adminId,
+    required String requestId,
+    required String requesterName,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: adminId,
+      type: 'tutor_request_deleted',
+      title: '🗑️ Tutor Request Deleted',
+      message: '$requesterName has deleted their tutor request.',
+      priority: 'normal',
+      actionUrl: '/admin/tutor-requests',
+      actionText: 'View Requests',
+      icon: '🗑️',
+      metadata: {
+        'request_id': requestId,
+        'requester_name': requesterName,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify user when their tutor request status changes
+  static Future<void> notifyTutorRequestStatusChanged({
+    required String userId,
+    required String requestId,
+    required String oldStatus,
+    required String newStatus,
+    String? adminNotes,
+  }) async {
+    String title;
+    String message;
+    String priority = 'normal';
+    String icon = '📋';
+
+    switch (newStatus.toLowerCase()) {
+      case 'in_progress':
+        title = '🔄 Request In Progress';
+        message = 'Your tutor request is now being processed by our team. We\'ll keep you updated!';
+        priority = 'normal';
+        icon = '🔄';
+        break;
+      case 'matched':
+        title = '🎉 Tutor Matched!';
+        message = 'Great news! We found a tutor for your request. Check the details now!';
+        priority = 'high';
+        icon = '🎉';
+        break;
+      case 'closed':
+        title = '✅ Request Closed';
+        message = 'Your tutor request has been closed.${adminNotes != null ? " Note: $adminNotes" : ""}';
+        priority = 'normal';
+        icon = '✅';
+        break;
+      default:
+        title = '📋 Request Status Updated';
+        message = 'Your tutor request status has been updated to: ${newStatus.replaceAll('_', ' ')}.';
+        priority = 'normal';
+        icon = '📋';
+    }
+
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'tutor_request_status_changed',
+      title: title,
+      message: message,
+      priority: priority,
+      actionUrl: '/requests/$requestId',
+      actionText: 'View Details',
+      icon: icon,
+      metadata: {
+        'request_id': requestId,
+        'old_status': oldStatus,
+        'new_status': newStatus,
+        if (adminNotes != null) 'admin_notes': adminNotes,
+      },
+      sendEmail: true,
+      sendPush: newStatus == 'matched' || newStatus == 'in_progress',
     );
   }
 }
