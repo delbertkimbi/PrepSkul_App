@@ -11,6 +11,7 @@ import 'package:prepskul/features/booking/widgets/frequency_selector.dart';
 import 'package:prepskul/features/booking/widgets/days_selector.dart';
 import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
 import 'package:prepskul/features/booking/widgets/location_selector.dart';
+import 'package:prepskul/features/booking/widgets/flexible_session_location_selector.dart';
 import 'package:prepskul/features/booking/widgets/booking_review.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 
@@ -36,7 +37,7 @@ class BookTutorFlowScreen extends StatefulWidget {
 class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
-  final int _totalSteps = 5;
+  final int _totalSteps = 6;
 
   // Booking data collected through the flow
   int? _selectedFrequency; // Sessions per week
@@ -45,6 +46,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   String? _selectedLocation; // online, onsite, hybrid
   String? _onsiteAddress;
   String? _locationDescription; // Brief description for onsite/hybrid
+  Map<String, String> _sessionLocations = {}; // {"Monday-3:00 PM": "onsite"}
+  Map<String, Map<String, String?>> _locationDetails = {}; // {"Monday-3:00 PM": {"address": "...", "coordinates": "..."}}
   String? _selectedPaymentPlan; // monthly, biweekly, weekly
 
   @override
@@ -125,14 +128,25 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   void _nextStep() {
     // Validate current step before proceeding
     if (!_canProceed()) {
-      // Show error message for location step if address is missing
-      if (_currentStep == 3 && 
-          (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') &&
+      // Show error messages for different steps
+      if (_currentStep == 3 && _selectedLocation == 'onsite' &&
           (_onsiteAddress == null || _onsiteAddress!.trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Please enter your address to continue with ${_selectedLocation == 'onsite' ? 'onsite' : 'hybrid'} sessions',
+              'Please select a location on the map to continue with onsite sessions',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red[600],
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else if (_currentStep == 4 && _selectedLocation == 'hybrid') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Please select locations for all sessions and provide addresses for onsite sessions',
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: Colors.red[600],
@@ -143,6 +157,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       }
       return;
     }
+    
+    // If moving from step 3 (location) and hybrid is selected, skip to step 5 (review) if flexible step not needed
+    // Actually, we always show step 4 for hybrid, so no skip needed
     
     if (_currentStep < _totalSteps - 1) {
       safeSetState(() => _currentStep++);
@@ -156,13 +173,29 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   void _previousStep() {
     if (_currentStep > 0) {
-      safeSetState(() => _currentStep--);
+      // Calculate previous step - skip flexible step if not hybrid
+      int prevStep = _currentStep - 1;
+      if (prevStep == 4 && _selectedLocation != 'hybrid') {
+        // Skip flexible step (4) if not hybrid, go back to location (3)
+        prevStep = 3;
+      }
+      
+      safeSetState(() => _currentStep = prevStep);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  double _getProgressValue() {
+    // Adjust progress to account for skipped flexible step
+    final effectiveSteps = _selectedLocation == 'hybrid' ? _totalSteps : _totalSteps - 1;
+    final effectiveStep = _currentStep > 4 && _selectedLocation != 'hybrid' 
+        ? _currentStep - 1 
+        : _currentStep;
+    return (effectiveStep + 1) / effectiveSteps;
   }
 
   bool _canProceed() {
@@ -176,13 +209,33 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         return _selectedTimes.length == _selectedDays.length;
       case 3: // Location
         if (_selectedLocation == null) return false;
-        // For onsite or hybrid, address is required
-        if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') {
+        // For onsite, address is required
+        if (_selectedLocation == 'onsite') {
           return _onsiteAddress != null && _onsiteAddress!.trim().isNotEmpty;
         }
-        // For online, no address needed
+        // For online or hybrid, no address needed at this step
         return true;
-      case 4: // Review
+      case 4: // Flexible Session Locations (only if hybrid selected)
+        if (_selectedLocation != 'hybrid') return true; // Skip validation if not hybrid
+        // For hybrid, ensure all sessions have locations assigned
+        if (_sessionLocations.isEmpty) return false;
+        // Check that all selected day/time combinations have locations
+        for (final day in _selectedDays) {
+          final time = _selectedTimes[day];
+          if (time == null || time.isEmpty) return false;
+          final sessionKey = '$day-$time';
+          if (!_sessionLocations.containsKey(sessionKey)) return false;
+          // If onsite, ensure location details are provided
+          if (_sessionLocations[sessionKey] == 'onsite') {
+            if (!_locationDetails.containsKey(sessionKey) ||
+                _locationDetails[sessionKey]!['address'] == null ||
+                _locationDetails[sessionKey]!['address']!.isEmpty) {
+              return false;
+            }
+          }
+        }
+        return true;
+      case 5: // Review
         return _selectedPaymentPlan != null;
       default:
         return false;
@@ -372,7 +425,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(8),
           child: LinearProgressIndicator(
-            value: (_currentStep + 1) / _totalSteps,
+            value: _getProgressValue(),
             backgroundColor: Colors.grey[200],
             valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
           ),
@@ -433,11 +486,43 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 _selectedLocation = location;
                 _onsiteAddress = address;
                 _locationDescription = locationDescription;
+                // If not hybrid, clear session locations
+                if (location != 'hybrid') {
+                  _sessionLocations.clear();
+                  _locationDetails.clear();
+                }
               });
             },
           ),
 
-          // Step 5: Booking Review
+          // Step 5: Flexible Session Location Selector (only shown if hybrid selected)
+          _selectedLocation == 'hybrid'
+              ? FlexibleSessionLocationSelector(
+                  selectedDays: _selectedDays,
+                  selectedTimes: _selectedTimes,
+                  initialSessionLocations: _sessionLocations,
+                  initialLocationDetails: _locationDetails,
+                  onLocationsSelected: (sessionLocations, locationDetails) {
+                    safeSetState(() {
+                      _sessionLocations = sessionLocations;
+                      _locationDetails = locationDetails;
+                    });
+                  },
+                )
+              : Container(
+                  // Placeholder for non-hybrid - navigation will skip this step
+                  child: Center(
+                    child: Text(
+                      'Continue to review...',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+
+          // Step 6: Booking Review
           BookingReview(
             tutor: widget.tutor,
             frequency: _selectedFrequency ?? 1,
@@ -446,6 +531,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             location: _selectedLocation ?? 'online',
             address: _onsiteAddress,
             locationDescription: _locationDescription,
+            sessionLocations: _sessionLocations,
+            locationDetails: _locationDetails,
             initialPaymentPlan: _selectedPaymentPlan,
             onPaymentPlanSelected: (plan) {
               safeSetState(() => _selectedPaymentPlan = plan);

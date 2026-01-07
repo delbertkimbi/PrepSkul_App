@@ -600,8 +600,6 @@ class NotificationNavigationService {
         break;
     }
   }
-}
-
 
   /// Navigate to reschedule request review screen
   static Future<void> _navigateToRescheduleReview(

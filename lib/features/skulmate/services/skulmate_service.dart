@@ -16,7 +16,7 @@ import 'http_client_stub.dart' if (dart.library.html) 'http_client_web.dart';
 class SkulMateService {
   /// Get API base URL with smart fallback
   /// In debug mode: tries localhost:3000 first, then falls back to production
-  /// In production: always uses production URL from AppConfig
+  /// In production: always uses production URL from AppConfig (https://prepskul.com/api)
   static String get _apiBaseUrl {
     if (kDebugMode) {
       // In debug mode, prefer localhost if available
@@ -123,8 +123,7 @@ class SkulMateService {
       String url = '$_apiBaseUrl$_generateEndpoint';
       String? fallbackUrl;
       
-      // In debug mode, always set up fallback to production
-      // This ensures the app works even if localhost is not running
+      // In debug mode, set fallback to production; in production, no fallback
       if (kDebugMode) {
         fallbackUrl = '$_productionApiBaseUrl$_generateEndpoint';
         LogService.info('🎮 [skulMate] Debug mode: Trying localhost first: $url');
@@ -147,7 +146,7 @@ class SkulMateService {
             },
             jsonEncode(requestBody),
           ).timeout(
-            const Duration(seconds: 15), // Reasonable timeout for localhost check
+            const Duration(seconds: 10), // Faster failover
             onTimeout: () {
               throw Exception('Connection timeout - localhost not responding');
             },
@@ -292,20 +291,78 @@ class SkulMateService {
 
         if (httpResponse.statusCode != 200) {
           String errorMessage = 'Unknown error';
-          try {
-            final responseBody = jsonDecode(httpResponse.body) as Map<String, dynamic>?;
-            errorMessage = responseBody?['error'] as String? ?? 
-              (httpResponse.statusCode == 500 
-                ? 'Server error - API may be misconfigured' 
-                : 'Unknown error');
-          } catch (_) {
-            errorMessage = 'HTTP ${httpResponse.statusCode}: ${httpResponse.body.length > 200 ? httpResponse.body.substring(0, 200) : httpResponse.body}';
+          String errorDetails = '';
+          
+          // Check if response is HTML (error page) instead of JSON
+          final responseBody = httpResponse.body.trim();
+          final isHtmlResponse = responseBody.startsWith('<!DOCTYPE') || 
+                                 responseBody.startsWith('<html') ||
+                                 responseBody.startsWith('<!');
+          
+          if (isHtmlResponse) {
+            LogService.error('🎮 [skulMate] API returned HTML instead of JSON (likely 404 or error page)');
+            LogService.error('🎮 [skulMate] Status code: ${httpResponse.statusCode}');
+            LogService.error('🎮 [skulMate] Response preview: ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
+            
+            if (httpResponse.statusCode == 404) {
+              errorMessage = 'API endpoint not found';
+              errorDetails = 'The game generation service may not be available. Please check your connection and try again.';
+            } else if (httpResponse.statusCode >= 500) {
+              errorMessage = 'Server error';
+              errorDetails = 'Our servers are experiencing issues. Please try again in a few moments.';
+            } else {
+              errorMessage = 'Service unavailable';
+              errorDetails = 'The game generation service is temporarily unavailable. Please try again later.';
+            }
+          } else {
+            // Try to parse as JSON
+            try {
+              final jsonBody = jsonDecode(responseBody) as Map<String, dynamic>?;
+              errorMessage = jsonBody?['error'] as String? ?? 
+                jsonBody?['message'] as String? ??
+                'Unknown error';
+              errorDetails = jsonBody?['details'] as String? ?? '';
+            } catch (e) {
+              errorMessage = 'Invalid response from server';
+              errorDetails = 'The server returned an unexpected response. Please try again.';
+            }
           }
+          
           LogService.error('🎮 [skulMate] API error (${httpResponse.statusCode}): $errorMessage');
-          throw Exception('Failed to generate game: $errorMessage');
+          throw Exception('$errorMessage${errorDetails.isNotEmpty ? '\n\n$errorDetails' : ''}');
         }
 
-        final data = jsonDecode(httpResponse.body) as Map<String, dynamic>;
+        // Check if response is HTML before parsing as JSON
+        final responseBody = httpResponse.body.trim();
+        final contentType = httpResponse.headers['content-type'] ?? '';
+        
+        // Check content-type header first
+        if (!contentType.contains('application/json') && 
+            (contentType.contains('text/html') || contentType.contains('text/plain'))) {
+          LogService.error('🎮 [skulMate] API returned non-JSON content-type: $contentType');
+          LogService.error('🎮 [skulMate] Response preview: ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
+          throw Exception('Invalid response format.\n\nThe server returned an unexpected response format. Please try again or contact support.');
+        }
+        
+        // Also check response body for HTML
+        if (responseBody.startsWith('<!DOCTYPE') || 
+            responseBody.startsWith('<html') ||
+            responseBody.startsWith('<!')) {
+          LogService.error('🎮 [skulMate] API returned HTML instead of JSON despite 200 status');
+          LogService.error('🎮 [skulMate] Content-Type: $contentType');
+          LogService.error('🎮 [skulMate] Response preview: ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
+          throw Exception('Invalid response format.\n\nThe server returned an HTML page instead of game data. This usually means the API endpoint is not available. Please try again later or contact support.');
+        }
+
+        // Try to parse as JSON
+        Map<String, dynamic> data;
+        try {
+          data = jsonDecode(responseBody) as Map<String, dynamic>;
+        } catch (e) {
+          LogService.error('🎮 [skulMate] Failed to parse JSON response: $e');
+          LogService.error('🎮 [skulMate] Response preview: ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
+          throw Exception('Invalid response format.\n\nThe server returned data in an unexpected format. Please try again or contact support.');
+        }
         final gameData = data['game'] as Map<String, dynamic>? ?? data;
 
         // Extract game ID - log if missing
@@ -371,11 +428,16 @@ class SkulMateService {
             'Please check your internet connection and try again. '
             'If the problem persists, please contact support.';
         } else if (errorStr.contains('timeout') ||
-                   errorStr.contains('request timeout')) {
+                   errorStr.contains('request timeout') ||
+                   errorStr.contains('connection timeout') ||
+                   errorStr.contains('connect timeout') ||
+                   errorStr.contains('took too long') ||
+                   errorStr.contains('timeout after')) {
           errorMessage = 
             'The request took too long to complete.\n\n'
+            'This can happen with large files or slow connections. '
             'Please check your internet connection and try again. '
-            'If this continues, contact support.';
+            'If this continues, try a smaller file or contact support.';
         } else if (errorStr.contains('[server]') || 
                    errorStr.contains('http 5') ||
                    errorStr.contains('internal server error')) {
@@ -391,10 +453,13 @@ class SkulMateService {
             'There was an issue with your request.\n\n'
             'Please check your input and try again. '
             'If this continues, contact support.';
-        } else if (errorStr.contains('invalid fileurl format')) {
+        } else if (errorStr.contains('invalid fileurl format') ||
+                   errorStr.contains('failed to download file') ||
+                   errorStr.contains('connection timeout')) {
           errorMessage = 
             'There was an issue processing your file.\n\n'
-            'Please try uploading a different file or contact support if the problem continues.';
+            'The file may be too large, corrupted, or the connection timed out. '
+            'Please try uploading a smaller file or contact support if the problem continues.';
         } else if (errorStr.contains('failed to generate game')) {
           // Extract the actual error from the API response
           final apiError = errorMessage.replaceAll('Exception: Failed to generate game: ', '');

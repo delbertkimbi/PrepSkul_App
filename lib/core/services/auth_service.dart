@@ -26,10 +26,46 @@ class AuthService {
   static Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     final isLogged = prefs.getBool(_keyIsLoggedIn) ?? false;
-    final hasSupabaseSession = SupabaseService.isAuthenticated;
+    
+    // If local says not logged in, return early
+    if (!isLogged) {
+      return false;
+    }
 
-    // If local says logged in but no Supabase session, clear local
+    // Wait for Supabase session to be restored (important on iOS after hot restart)
+    // Supabase stores sessions in secure storage and needs time to restore
+    bool hasSupabaseSession = SupabaseService.isAuthenticated;
+    
+    // If no session yet, wait a bit for it to restore (max 2 seconds)
+    if (!hasSupabaseSession) {
+      for (int i = 0; i < 10; i++) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        hasSupabaseSession = SupabaseService.isAuthenticated;
+        if (hasSupabaseSession) {
+          LogService.debug('✅ Supabase session restored after ${(i + 1) * 200}ms');
+          break;
+        }
+      }
+    }
+
+    // If still no Supabase session after waiting, try to restore from stored session
+    if (!hasSupabaseSession) {
+      try {
+        // Check if Supabase has a stored session that just needs to be loaded
+        final client = SupabaseService.client;
+        final session = client.auth.currentSession;
+        if (session != null) {
+          hasSupabaseSession = true;
+          LogService.debug('✅ Supabase session found after explicit check');
+        }
+      } catch (e) {
+        LogService.debug('⚠️ Error checking Supabase session: $e');
+      }
+    }
+
+    // If local says logged in but no Supabase session after waiting, clear local
     if (isLogged && !hasSupabaseSession) {
+      LogService.warning('⚠️ Local session exists but Supabase session not found - clearing local session');
       await logout();
       return false;
     }
@@ -182,6 +218,7 @@ class AuthService {
   }
 
   /// Get user's full profile from database
+  /// Also ensures name from signup is saved if profile name is missing
   static Future<Map<String, dynamic>?> getUserProfile() async {
     try {
       final userId = await getUserId();
@@ -194,7 +231,47 @@ class AuthService {
       );
 
       if (profiles.isEmpty) return null;
-      return profiles.first;
+      
+      final profile = profiles.first;
+      final profileName = profile['full_name']?.toString() ?? '';
+      
+      // If profile name is missing or invalid, try to update from signup data
+      if (profileName.isEmpty || 
+          profileName == 'User' || 
+          profileName == 'Student' ||
+          profileName.toLowerCase() == 'null') {
+        final prefs = await SharedPreferences.getInstance();
+        final signupName = prefs.getString('signup_full_name');
+        
+        if (signupName != null && 
+            signupName.isNotEmpty && 
+            signupName != 'User' && 
+            signupName != 'Student') {
+          // Update profile with signup name
+          try {
+            await SupabaseService.client
+                .from('profiles')
+                .update({'full_name': signupName})
+                .eq('id', userId);
+            
+            LogService.info('[AUTH] Updated profile name from signup: $signupName');
+            
+            // Return updated profile
+            final updatedProfiles = await SupabaseService.getData(
+              table: 'profiles',
+              field: 'id',
+              value: userId,
+            );
+            if (updatedProfiles.isNotEmpty) {
+              return updatedProfiles.first;
+            }
+          } catch (e) {
+            LogService.warning('[AUTH] Failed to update profile name: $e');
+          }
+        }
+      }
+      
+      return profile;
     } catch (e) {
       LogService.error('Error fetching user profile: $e');
       return null;
@@ -464,9 +541,12 @@ class AuthService {
       );
 
       await prefs.setBool('survey_intro_seen', false);
+      // Keep signup_full_name in SharedPreferences as backup until profile is confirmed
+      // Only remove after we verify the profile was created successfully
       await prefs.remove('signup_user_role');
-      await prefs.remove('signup_full_name');
-      await prefs.remove('signup_email');
+      // Don't remove signup_full_name and signup_email yet - keep as backup
+      // await prefs.remove('signup_full_name');
+      // await prefs.remove('signup_email');
 
       await NotificationHelperService.notifyAdminsAboutNewUserSignup(
         userEmail: email,

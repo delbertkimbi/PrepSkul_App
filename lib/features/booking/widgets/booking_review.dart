@@ -21,6 +21,8 @@ class BookingReview extends StatefulWidget {
   final String location;
   final String? address;
   final String? locationDescription;
+  final Map<String, String>? sessionLocations; // For flexible bookings
+  final Map<String, Map<String, String?>>? locationDetails; // For flexible bookings
   final String? initialPaymentPlan;
   final Function(String paymentPlan) onPaymentPlanSelected;
 
@@ -33,6 +35,8 @@ class BookingReview extends StatefulWidget {
     required this.location,
     this.address,
     this.locationDescription,
+    this.sessionLocations,
+    this.locationDetails,
     this.initialPaymentPlan,
     required this.onPaymentPlanSelected,
   }) : super(key: key);
@@ -148,14 +152,104 @@ class _BookingReviewState extends State<BookingReview> {
             icon: Icons.place,
             color: Colors.green,
             children: [
-              _buildDetailRow('Format', widget.location.toUpperCase()),
-              if (widget.address != null) ...[
-                const SizedBox(height: 12),
-                _buildDetailRow('Address', widget.address!),
-              ],
-              if (widget.locationDescription != null && widget.locationDescription!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _buildDetailRow('Description', widget.locationDescription!),
+              if (widget.location == 'hybrid' && widget.sessionLocations != null) ...[
+                // Flexible booking: show per-session locations
+                ...widget.selectedDays.map((day) {
+                  final time = widget.selectedTimes[day] ?? '';
+                  if (time.isEmpty) return const SizedBox.shrink();
+                  final sessionKey = '$day-$time';
+                  final sessionLocation = widget.sessionLocations![sessionKey] ?? 'online';
+                  final locationInfo = widget.locationDetails?[sessionKey];
+                  
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              sessionLocation == 'online' ? Icons.videocam : Icons.home,
+                              size: 16,
+                              color: sessionLocation == 'online' ? Colors.blue : Colors.green,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '$day at $time',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                            Chip(
+                              label: Text(
+                                sessionLocation.toUpperCase(),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              backgroundColor: sessionLocation == 'online' 
+                                  ? Colors.blue[50] 
+                                  : Colors.green[50],
+                              labelStyle: TextStyle(
+                                color: sessionLocation == 'online' 
+                                    ? Colors.blue[900] 
+                                    : Colors.green[900],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (sessionLocation == 'onsite' && locationInfo != null) ...[
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (locationInfo['address'] != null) ...[
+                                  Text(
+                                    locationInfo['address']!,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ],
+                                if (locationInfo['locationDescription'] != null &&
+                                    locationInfo['locationDescription']!.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    locationInfo['locationDescription']!,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ] else ...[
+                // Standard booking: show single location
+                _buildDetailRow('Format', widget.location.toUpperCase()),
+                if (widget.address != null) ...[
+                  const SizedBox(height: 12),
+                  _buildDetailRow('Address', widget.address!),
+                ],
+                if (widget.locationDescription != null && widget.locationDescription!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildDetailRow('Description', widget.locationDescription!),
+                ],
               ],
             ],
           ),

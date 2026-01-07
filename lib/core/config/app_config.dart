@@ -63,7 +63,8 @@ class AppConfig {
   /// Base API URL
   static String get apiBaseUrl {
     if (isProd) {
-      return _safeEnv('API_BASE_URL_PROD', 'https://app.prepskul.com/api');
+      // Production now uses the custom domain prepskul.com
+      return _safeEnv('API_BASE_URL_PROD', 'https://prepskul.com/api');
     } else {
       return _safeEnv('API_BASE_URL_DEV', 'https://app.prepskul.com/api');
     }

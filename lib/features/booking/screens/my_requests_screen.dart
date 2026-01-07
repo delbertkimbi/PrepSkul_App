@@ -47,13 +47,87 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   bool _isOffline = false;
   DateTime? _cacheTimestamp;
   final ConnectivityService _connectivity = ConnectivityService();
+  RealtimeChannel? _tutorRequestsChannel;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
     _initializeConnectivity();
+    _setupRealtimeSubscription();
     _loadRequests();
+  }
+
+  /// Setup Realtime subscription for tutor requests
+  void _setupRealtimeSubscription() {
+    final userId = SupabaseService.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      _tutorRequestsChannel = SupabaseService.client
+          .channel('tutor_requests_$userId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'tutor_requests',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'requester_id',
+              value: userId,
+            ),
+            callback: (payload) {
+              LogService.info('Tutor request updated via Realtime: ${payload.newRecord}');
+              
+              if (mounted) {
+                // Reload requests to get latest data
+                _loadRequests();
+                
+                // Show toast if status changed to 'matched'
+                if (payload.eventType == PostgresChangeEvent.update) {
+                  final oldStatus = payload.oldRecord?['status'] as String?;
+                  final newStatus = payload.newRecord?['status'] as String?;
+                  
+                  if (oldStatus != 'matched' && newStatus == 'matched') {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Row(
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.white),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '🎉 Great news! A tutor has been matched to your request!',
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        backgroundColor: Colors.green[600],
+                        duration: const Duration(seconds: 5),
+                        action: SnackBarAction(
+                          label: 'View',
+                          textColor: Colors.white,
+                          onPressed: () {
+                            // Switch to custom tab and scroll to the matched request
+                            _tabController.animateTo(2); // Custom tab index
+                          },
+                        ),
+                      ),
+                    );
+                  }
+                }
+              }
+            },
+          )
+          .subscribe();
+
+      LogService.success('Realtime subscription set up for tutor requests');
+    } catch (e) {
+      LogService.warning('Failed to set up Realtime subscription: $e');
+    }
   }
 
   /// Initialize connectivity monitoring
@@ -105,6 +179,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   @override
   void dispose() {
+    _tutorRequestsChannel?.unsubscribe();
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -527,8 +602,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final totalPending =
         pendingBookingCount + pendingCustomCount + pendingTrialCount;
 
-    // FAB only shows in Custom Request tab (index 2) AND only when there's a pending custom request
-    final showFAB = _selectedFilter == 'custom' && pendingCustomCount > 0;
+    // FAB shows in Custom Request tab to allow creating new requests
+    final showFAB = _selectedFilter == 'custom';
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
@@ -935,7 +1010,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         MaterialPageRoute(
                           builder: (context) => const RequestTutorFlowScreen(),
                         ),
-                      ).then((_) => _loadRequests());
+                      ).then((result) {
+                        // Refresh if request was submitted successfully
+                        if (result == true) {
+                          _loadRequests();
+                          // Switch to custom requests tab to show the new request
+                          _tabController.animateTo(2);
+                        }
+                      });
                     },
                     icon: const Icon(Icons.add, size: 20),
                     label: Text(
@@ -1072,98 +1154,202 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildCustomRequestCard(BuildContext context, TutorRequest request) {
     final t = AppLocalizations.of(context)!;
-    return _buildNeomorphicCard(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RequestDetailScreen(
-                tutorRequest: request,
-              ),
-            ),
-          ).then((_) {
-            // Refresh after returning from detail page
-            _loadRequests();
-          });
-        },
-        borderRadius: BorderRadius.circular(20),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1,
+        ),
+        // Reduced elevation - minimal shadow
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
         child: Padding(
-          padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+            // Header with logo, type text, and status
               Row(
                 children: [
+                // PrepSkul Logo
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
+                  width: 36,
+                  height: 36,
                     decoration: BoxDecoration(
-                      color: Colors.orange[100],
+                    color: AppTheme.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      t.myRequestsFilterCustom,
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange[900],
-                      ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/images/app_logo(blue).png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          Icons.school,
+                          color: AppTheme.primaryColor,
+                          size: 20,
+                        );
+                      },
                     ),
                   ),
-                  const Spacer(),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Custom Request - just text, no badge
+                      Text(
+                       t.myRequestsFilterCustom,
+                       style: GoogleFonts.poppins(
+                           fontSize: 12.5,
+                           fontWeight: FontWeight.w600,
+                           color: AppTheme.textMedium,
+                         ),
+                       ),
+                    ],
+                  ),
+                ),
                   _buildStatusChip(context, request.status),
                 ],
               ),
-              const SizedBox(height: 12),
+            const SizedBox(height: 10),
+            
+            // Subject title
               Text(
                 request.formattedSubjects,
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
                 ),
               ),
-              const SizedBox(height: 8),
-              _buildInfoRow(Icons.school, request.educationLevel),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.access_time, request.formattedDays),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.location_on, request.location),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.attach_money, request.formattedBudget),
-              if (request.urgency != 'normal') ...[
-                const SizedBox(height: 4),
-                Row(
+            const SizedBox(height: 10),
+            
+            // Info grid - 2 columns
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInfoRow(Icons.school_rounded, request.formattedEducationLevel),
+                      const SizedBox(height: 6),
+                      _buildInfoRow(Icons.access_time_rounded, request.formattedDays),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInfoRow(Icons.location_on_rounded, request.location),
+                      const SizedBox(height: 6),
+                      _buildInfoRow(Icons.attach_money_rounded, request.formattedBudget),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            // Urgency indicator if not normal
+            if (request.urgency != 'normal') ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: request.urgency == 'urgent'
+                      ? Colors.red[50]
+                      : Colors.blue[50],
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: request.urgency == 'urgent'
+                        ? Colors.red[200]!
+                        : Colors.blue[200]!,
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
                       request.urgency == 'urgent'
-                          ? Icons.priority_high
-                          : Icons.schedule,
-                      size: 16,
+                          ? Icons.priority_high_rounded
+                          : Icons.schedule_rounded,
+                      size: 12,
                       color: request.urgency == 'urgent'
-                          ? Colors.red
-                          : Colors.blue,
+                          ? Colors.red[700]
+                          : Colors.blue[700],
                     ),
                     const SizedBox(width: 4),
                     Text(
                       request.urgencyLabel,
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 10,
                         color: request.urgency == 'urgent'
-                            ? Colors.red
-                            : Colors.blue,
+                            ? Colors.red[700]
+                            : Colors.blue[700],
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ],
-          ),
+            
+            const SizedBox(height: 12),
+            
+            // View Details button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RequestDetailScreen(
+                        tutorRequest: request,
+                      ),
+                    ),
+                  ).then((_) {
+                    // Refresh after returning from detail page
+                    _loadRequests();
+                  });
+                },
+                icon: const Icon(Icons.arrow_forward_rounded, size: 14),
+                label: Text(
+                  'View Details',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primaryColor,
+                  side: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 1.5,
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1531,7 +1717,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               },
                               icon: const Icon(Icons.edit_calendar, size: 18),
                               label: Text(
-                                'Edit Date',
+                                'Reschedule',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -2358,19 +2544,33 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: chipColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: chipColor.withOpacity(0.3)),
       ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: chipColor,
-        ),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
-        softWrap: false,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: chipColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: chipColor,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+            softWrap: false,
+          ),
+        ],
       ),
     );
   }
@@ -2712,3 +2912,4 @@ class _RequestItem {
     this.trial,
   });
 }
+

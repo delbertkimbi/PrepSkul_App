@@ -69,10 +69,15 @@ class GamesServicesController {
     try {
       if (kIsWeb || !_isSignedIn) return false;
 
-      await GamesServices.unlock(achievement: Achievement(
-        androidID: Platform.isAndroid ? achievementId : null,
-        iOSID: Platform.isIOS ? achievementId : null,
-      ));
+      if (Platform.isAndroid) {
+        await GamesServices.unlock(achievement: Achievement(
+          androidID: achievementId,
+        ));
+      } else if (Platform.isIOS) {
+        await GamesServices.unlock(achievement: Achievement(
+          iOSID: achievementId,
+        ));
+      }
 
       LogService.info('🎮 [GamesServices] Achievement unlocked: $achievementId');
       return true;
@@ -89,13 +94,21 @@ class GamesServicesController {
     try {
       if (kIsWeb || !_isSignedIn) return false;
 
-      await GamesServices.submitScore(
-        score: Score(
-          androidLeaderboardID: Platform.isAndroid ? leaderboardId : null,
-          iOSLeaderboardID: Platform.isIOS ? leaderboardId : null,
-          value: score,
-        ),
-      );
+      if (Platform.isAndroid) {
+        await GamesServices.submitScore(
+          score: Score(
+            androidLeaderboardID: leaderboardId,
+            value: score,
+          ),
+        );
+      } else if (Platform.isIOS) {
+        await GamesServices.submitScore(
+          score: Score(
+            iOSLeaderboardID: leaderboardId,
+            value: score,
+          ),
+        );
+      }
 
       LogService.info('🎮 [GamesServices] Score submitted: $score to $leaderboardId');
       return true;

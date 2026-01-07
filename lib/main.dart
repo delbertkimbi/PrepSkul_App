@@ -138,6 +138,13 @@ void main() async {
       );
       LogService.warning('Supabase initialized with fallback values (set SUPABASE_URL_DEV/PROD in .env)');
     }
+    
+    // Give Supabase time to restore session from secure storage (especially important on iOS)
+    // This prevents users from being logged out after hot restart
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (SupabaseService.isAuthenticated) {
+      LogService.debug('✅ Supabase session restored from storage');
+    }
 
     // Initialize LanguageService - make resilient to module loading failures
     try {
@@ -1016,6 +1023,48 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAndNavigate();
     });
+    
+    // Safety timeout - ensure loading screen is replaced after maximum 5 seconds
+    Future.delayed(const Duration(seconds: 5), () async {
+      if (mounted && !_navigationComplete) {
+        LogService.warning('[INIT_LOAD] Navigation timeout - forcing fallback navigation');
+        final navService = NavigationService();
+        if (navService.isReady) {
+          // CRITICAL: Check authentication before redirecting to auth screen
+          // During hot restart, authenticated users should not be sent to auth screen
+          final isAuthenticated = SupabaseService.isAuthenticated;
+          final currentUser = SupabaseService.currentUser;
+          
+          if (isAuthenticated && currentUser != null) {
+            // User is authenticated - try to determine proper route
+            try {
+              final result = await navService.determineInitialRoute();
+              if (mounted) {
+                _navigateInstant(result.route, result.arguments);
+                setState(() {
+                  _navigationComplete = true;
+                });
+              }
+            } catch (e) {
+              LogService.warning('[INIT_LOAD] Error in timeout fallback for authenticated user: $e');
+              // If we can't determine route, try dashboard as last resort
+              if (mounted) {
+                _navigateInstant('/dashboard', null);
+                setState(() {
+                  _navigationComplete = true;
+                });
+              }
+            }
+          } else {
+            // User is not authenticated - redirect to auth screen
+            _navigateInstant('/auth-method-selection', null);
+            setState(() {
+              _navigationComplete = true;
+            });
+          }
+        }
+      }
+    });
   }
 
   Future<void> _initializeAndNavigate() async {
@@ -1189,10 +1238,13 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
   /// Navigate instantly to route without animation
   /// This prevents the "white flash" issue during the initial transition
   void _navigateInstant(String routeName, Object? arguments) {
-    Widget? page;
+    if (!mounted) return;
     
-    // Map route names to widgets directly
-    switch (routeName) {
+    try {
+      Widget? page;
+      
+      // Map route names to widgets directly
+      switch (routeName) {
       case '/onboarding':
         page = const SimpleOnboardingScreen();
         break;
@@ -1237,24 +1289,81 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         break;
       default:
         // Fallback to standard navigation if route not explicitly handled
+        // Use NavigationService but ensure we mark navigation as complete
         final navService = NavigationService();
-        navService.navigateToRoute(routeName, arguments: arguments as Map<String, dynamic>?, replace: true);
-        return;
+        if (navService.isReady) {
+          navService.navigateToRoute(routeName, arguments: arguments as Map<String, dynamic>?, replace: true);
+          if (mounted) {
+            setState(() {
+              _navigationComplete = true;
+            });
+          }
+        } else {
+          // NavigationService not ready, fallback to auth screen
+          page = const AuthMethodSelectionScreen();
+        }
+        if (page == null) return;
     }
 
-    if (page != null) {
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => page!,
-          transitionDuration: Duration.zero, // Instant transition
-          reverseTransitionDuration: Duration.zero,
-        ),
-      );
+      if (page != null) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) => page!,
+            transitionDuration: Duration.zero, // Instant transition
+            reverseTransitionDuration: Duration.zero,
+          ),
+        );
+        // Mark navigation as complete
+        if (mounted) {
+          setState(() {
+            _navigationComplete = true;
+          });
+        }
+      } else {
+        // If page is null, fallback to auth screen
+        LogService.warning('[INIT_LOAD] Page is null for route $routeName, falling back to auth');
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+          );
+          setState(() {
+            _navigationComplete = true;
+          });
+        }
+      }
+    } catch (e) {
+      LogService.error('[INIT_LOAD] Error in _navigateInstant: $e');
+      // Fallback navigation on error
+      if (mounted) {
+        try {
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+          );
+          setState(() {
+            _navigationComplete = true;
+          });
+        } catch (e2) {
+          LogService.error('[INIT_LOAD] Error in fallback navigation: $e2');
+        }
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // If navigation is complete, show empty container (shouldn't happen as navigation replaces this)
+    // Otherwise show loading screen
+    if (_navigationComplete) {
+      return const SizedBox.shrink();
+    }
     // Always show animated loading screen until navigation completes
     // The navigation will replace this screen, so no need to check _navigationComplete
     // Use a Material widget to ensure proper background color during transition

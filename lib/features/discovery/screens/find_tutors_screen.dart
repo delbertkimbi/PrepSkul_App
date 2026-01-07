@@ -843,20 +843,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceColor, // Use theme surface color for neumorphic
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        // Neumorphic shadows: light top-left, dark bottom-right
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1,
+        ),
+        // Very soft shadow just to lift from background
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.7),
-            blurRadius: 10,
-            offset: const Offset(-4, -4),
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(4, 4),
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
             spreadRadius: 0,
           ),
         ],

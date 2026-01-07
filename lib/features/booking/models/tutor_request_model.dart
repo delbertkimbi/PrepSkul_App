@@ -13,6 +13,7 @@ class TutorRequest {
   final List<String> preferredDays;
   final String preferredTime;
   final String location;
+  final String? locationDescription;
   final String urgency;
   final String? additionalNotes;
   final String status; // pending, in_progress, matched, closed
@@ -41,6 +42,7 @@ class TutorRequest {
     required this.preferredDays,
     required this.preferredTime,
     required this.location,
+    this.locationDescription,
     required this.urgency,
     this.additionalNotes,
     required this.status,
@@ -69,6 +71,7 @@ class TutorRequest {
       preferredDays: List<String>.from(json['preferred_days'] as List),
       preferredTime: json['preferred_time'] as String,
       location: json['location'] as String,
+      locationDescription: json['location_description'] as String?,
       urgency: json['urgency'] as String,
       additionalNotes: json['additional_notes'] as String?,
       status: json['status'] as String? ?? 'pending',
@@ -102,6 +105,7 @@ class TutorRequest {
       'preferred_days': preferredDays,
       'preferred_time': preferredTime,
       'location': location,
+      'location_description': locationDescription,
       'urgency': urgency,
       'additional_notes': additionalNotes,
       'status': status,
@@ -125,6 +129,15 @@ class TutorRequest {
   String get formattedBudget => '$budgetMin - $budgetMax XAF';
   String get formattedSubjects => subjects.join(', ');
   String get formattedDays => preferredDays.join(', ');
+
+  /// Get formatted education level without "(O-Level)" or "(A-Level)" suffixes
+  String get formattedEducationLevel {
+    return educationLevel
+        .replaceAll(' (O-Level)', '')
+        .replaceAll(' (A-Level)', '')
+        .replaceAll('(O-Level)', '')
+        .replaceAll('(A-Level)', '');
+  }
 
   String get urgencyLabel {
     switch (urgency) {

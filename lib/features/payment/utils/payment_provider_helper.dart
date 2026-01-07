@@ -2,109 +2,85 @@ import 'package:flutter/material.dart';
 
 /// Payment Provider Helper
 /// 
-/// Provides utility functions and constants for payment providers (MTN, Orange)
+/// Utility class for getting provider-specific information
+/// for MTN and Orange mobile money providers in Cameroon
 class PaymentProviderHelper {
-  /// MTN Mobile Money provider identifier
-  static const String mtn = 'mtn';
-  
-  /// Orange Money provider identifier
-  static const String orange = 'orange';
-
-  /// Get USSD code for a provider
-  static String getUssdCode(String? provider) {
-    switch (provider) {
-      case mtn:
-        return '*126#';
-      case orange:
-        return '#144#';
-      default:
-        return '';
-    }
-  }
-
-  /// Get provider display name
+  /// Get provider name from provider string
+  /// Returns "MTN" or "Orange" based on provider ('mtn' or 'orange')
   static String getProviderName(String? provider) {
-    switch (provider) {
-      case mtn:
-        return 'MTN Mobile Money';
-      case orange:
-        return 'Orange Money';
+    if (provider == null) return 'Mobile Money';
+    
+    switch (provider.toLowerCase()) {
+      case 'mtn':
+        return 'MTN';
+      case 'orange':
+        return 'Orange';
       default:
         return 'Mobile Money';
     }
   }
 
-  /// Get provider color (for UI branding)
+  /// Get provider color for UI branding
+  /// MTN: Yellow/Orange (#FFC107 or #FF9800)
+  /// Orange: Orange/Red (#FF5722 or #FF9800)
   static Color getProviderColor(String? provider) {
-    switch (provider) {
-      case mtn:
-        return const Color(0xFFFFCC00); // MTN Yellow
-      case orange:
-        return const Color(0xFFFF6600); // Orange Orange
+    if (provider == null) return Colors.blue;
+    
+    switch (provider.toLowerCase()) {
+      case 'mtn':
+        return const Color(0xFFF59E0B); // MTN Yellow/Orange
+      case 'orange':
+        return const Color(0xFFFF5722); // Orange Red
       default:
-        return Colors.grey;
+        return Colors.blue;
     }
   }
 
   /// Get provider icon
+  /// MTN: phone_android (Android icon)
+  /// Orange: phone_iphone (iPhone icon)
   static IconData getProviderIcon(String? provider) {
-    switch (provider) {
-      case mtn:
-        return Icons.phone_android; // MTN icon placeholder
-      case orange:
-        return Icons.phone_iphone; // Orange icon placeholder
+    if (provider == null) return Icons.phone;
+    
+    switch (provider.toLowerCase()) {
+      case 'mtn':
+        return Icons.phone_android;
+      case 'orange':
+        return Icons.phone_iphone;
       default:
         return Icons.phone;
     }
   }
 
-  /// Get step-by-step instructions for confirming payment
-  static List<String> getPaymentInstructions(String? provider) {
-    switch (provider) {
-      case mtn:
-        return [
-          'Dial *126# on your phone',
-          'Select "Mobile Money" from the menu',
-          'Select "Pay" or "Payment"',
-          'Confirm the payment request',
-          'Enter your Mobile Money PIN when prompted',
-        ];
-      case orange:
-        return [
-          'Dial #144# on your phone',
-          'Select "Orange Money" from the menu',
-          'Select "Pay" or "Payment"',
-          'Confirm the payment request',
-          'Enter your Orange Money PIN when prompted',
-        ];
-      default:
-        return [
-          'Check your phone for the payment notification',
-          'Follow the instructions on your phone',
-          'Enter your Mobile Money PIN when prompted',
-        ];
-    }
-  }
-
-  /// Get short confirmation message
+  /// Get provider-specific confirmation message
   static String getConfirmationMessage(String? provider) {
-    final ussdCode = getUssdCode(provider);
-    final providerName = getProviderName(provider);
-    
-    if (ussdCode.isNotEmpty) {
-      return 'Payment request sent to your $providerName. Dial $ussdCode to confirm.';
+    if (provider == null) {
+      return 'A payment request will be sent to this number. You\'ll need to approve it in your mobile money app.';
     }
-    return 'Payment request sent. Check your phone for the notification.';
+    
+    switch (provider.toLowerCase()) {
+      case 'mtn':
+        return 'You will receive a payment request on your MTN Mobile Money. Please approve it to complete the payment.';
+      case 'orange':
+        return 'You will receive a payment request on your Orange Money. Please approve it to complete the payment.';
+      default:
+        return 'A payment request will be sent to this number. You\'ll need to approve it in your mobile money app.';
+    }
   }
 
-  /// Get helpful tips for payment
-  static List<String> getPaymentTips(String? provider) {
-    return [
-      'Check your phone for the payment notification',
-      'You have 2 minutes to confirm the payment',
-      'If you don\'t receive the request, check your phone number',
-      'Make sure you have sufficient balance in your $provider account',
-    ];
+  /// Get USSD code for the provider
+  /// MTN: *126#
+  /// Orange: *144#
+  static String getUSSDCode(String? provider) {
+    if (provider == null) return '*126#';
+    
+    switch (provider.toLowerCase()) {
+      case 'mtn':
+        return '*126#';
+      case 'orange':
+        return '*144#';
+      default:
+        return '*126#';
+    }
   }
 }
-

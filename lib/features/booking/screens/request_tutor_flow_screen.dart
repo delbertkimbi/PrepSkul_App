@@ -6,10 +6,10 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
-import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:confetti/confetti.dart';
 
 /// Request Tutor Flow Screen
 ///
@@ -34,6 +34,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   List<String> _userSubjects = []; // User's subjects from survey (pre-selected)
   List<String> _availableSubjects =
       []; // All available subjects for user's niche
+  final TextEditingController _additionalSubjectController = TextEditingController();
   String? _educationLevel;
   List<String> _selectedRequirements =
       []; // Changed from text field to multi-select
@@ -42,8 +43,8 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
   String? _tutorGender;
   String? _tutorQualification;
   String? _teachingMode; // online, onsite, hybrid
-  int _minBudget = 20000;  // Monthly budget (XAF)
-  int _maxBudget = 100000;  // Monthly budget (XAF)
+  int _minBudget = 2000;  // Monthly budget (XAF)
+  int _maxBudget = 20000;  // Monthly budget (XAF)
 
   // Step 3: Schedule & Location
   List<String> _preferredDays = [];
@@ -69,6 +70,7 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
     _locationController.dispose();
     _locationDescriptionController.dispose();
     _customReasonController.dispose();
+    _additionalSubjectController.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -178,49 +180,16 @@ class _RequestTutorFlowScreenState extends State<RequestTutorFlowScreen> {
           }
 safeSetState(() {
             _userSubjects = userSubjects;
-            _selectedSubjects = List<String>.from(
-              userSubjects,
-            ); // Pre-select user's subjects
-
-            // Combine user's subjects/skills with available subjects
-            // CRITICAL: User's selected subjects MUST appear FIRST
-            final Set<String> allSubjectsSet = {};
             
-            // Step 1: Add user's selected subjects/skills FIRST (these are pre-selected)
-            for (var subject in userSubjects) {
-              if (subject != null && subject.toString().trim().isNotEmpty) {
-                allSubjectsSet.add(subject.toString().trim());
-              }
-            }
+            // Only use user's subjects - no other options
+            _availableSubjects = List<String>.from(userSubjects);
             
-            // Step 2: Add available subjects from user's niche (education level/stream)
-            for (var subject in availableSubjects) {
-              if (subject != null && subject.toString().trim().isNotEmpty) {
-                allSubjectsSet.add(subject.toString().trim());
-              }
-            }
+            // Auto-select all user subjects
+            _selectedSubjects = List<String>.from(userSubjects);
             
-            // Step 3: Build final list with user's subjects FIRST, then others alphabetically
-            final List<String> finalSubjectsList = [];
-            
-            // Add user's subjects FIRST (in the order they were selected)
-            for (var subject in userSubjects) {
-              final subjectStr = subject.toString().trim();
-              if (subjectStr.isNotEmpty && allSubjectsSet.contains(subjectStr) && !finalSubjectsList.contains(subjectStr)) {
-                finalSubjectsList.add(subjectStr);
-              }
-            }
-            
-            // Add other available subjects (alphabetically sorted)
-            final otherSubjects = allSubjectsSet
-                .where((s) => !userSubjects.contains(s))
-                .toList()
-              ..sort();
-            finalSubjectsList.addAll(otherSubjects);
-            
-            // If still empty, add defaults
-            if (finalSubjectsList.isEmpty) {
-              finalSubjectsList.addAll([
+            // If still empty, add defaults (fallback)
+            if (_availableSubjects.isEmpty) {
+              _availableSubjects = [
                 'Mathematics',
                 'Physics',
                 'Chemistry',
@@ -231,10 +200,10 @@ safeSetState(() {
                 'Economics',
                 'Geography',
                 'History',
-              ]);
+              ];
+              // If using defaults, allow selecting one
+              _selectedSubjects = [];
             }
-            
-            _availableSubjects = finalSubjectsList;
             _educationLevel = educationLevel;
             
             // Pre-fill specific requirements from survey
@@ -253,8 +222,8 @@ safeSetState(() {
             } else if (challenges != null && challenges is List) {
               _selectedRequirements = List<String>.from(challenges);
             }
-            _minBudget = ((surveyData?['budget_min'] as num?)?.toInt() ?? 20000).clamp(2000, 200000);  // Monthly budget default
-            _maxBudget = ((surveyData?['budget_max'] as num?)?.toInt() ?? 100000).clamp(2000, 200000);  // Monthly budget default
+            _minBudget = ((surveyData?['budget_min'] as num?)?.toInt() ?? 2000).clamp(2000, 200000);  // Monthly budget default
+            _maxBudget = ((surveyData?['budget_max'] as num?)?.toInt() ?? 20000).clamp(2000, 200000);  // Monthly budget default
             _tutorGender = surveyData?['tutor_gender_preference']?.toString();
             _tutorQualification = surveyData?['tutor_qualification_preference']
                 ?.toString();
@@ -397,9 +366,9 @@ safeSetState(() {
     final keyMap = {
       'Primary School': 'primary',
       'Form 1-3': 'lower_secondary',
-      'Form 4-5 (O-Level)': 'lower_secondary',
+      'Form 4-5': 'lower_secondary',
       'Lower Sixth': 'upper_secondary',
-      'Upper Sixth (A-Level)': 'upper_secondary',
+      'Upper Sixth': 'upper_secondary',
       'University': 'higher_education',
     };
     return keyMap[level] ?? 'primary';
@@ -430,7 +399,9 @@ safeSetState(() {
   bool _canProceed() {
     switch (_currentStep) {
       case 0: // Subject & Level
-        return _selectedSubjects.isNotEmpty && _educationLevel != null;
+        // Must have at least 1 subject selected
+        if (_selectedSubjects.isEmpty) return false;
+        return _educationLevel != null;
       case 1: // Preferences
         return _teachingMode != null;
       case 2: // Schedule & Location
@@ -458,7 +429,7 @@ safeSetState(() {
         title: Text(
           'Request a Tutor',
           style: GoogleFonts.poppins(
-            fontSize: 20,
+            fontSize: 15,
             fontWeight: FontWeight.w600,
             color: Colors.black,
           ),
@@ -578,8 +549,7 @@ safeSetState(() {
   }
 
   Widget _buildStep1SubjectLevel() {
-    // Use available subjects - user's selected subjects will be first
-    // This list is already properly ordered from _prefillFromData
+    // Only show user's subjects - no other options
     final subjects = _availableSubjects.isNotEmpty
         ? _availableSubjects
         : [
@@ -595,18 +565,20 @@ safeSetState(() {
             'History',
           ];
     
-    // Debug: Print to verify user's subjects are first
+    // Debug: Print to verify user's subjects
     if (_userSubjects.isNotEmpty) {
-      LogService.debug('📚 User\'s selected subjects (should appear first): ${_userSubjects}');
-      LogService.debug('📚 Available subjects list: ${subjects.take(10).toList()}');
+      LogService.debug('📚 User\'s subjects: ${_userSubjects}');
+      LogService.debug('📚 Available subjects list: ${subjects}');
+      LogService.debug('📚 Selected subjects: ${_selectedSubjects}');
+      LogService.debug('📚 Selection mode: ${_userSubjects.length == 1 ? "Auto-selected (single subject)" : "User must select exactly 1"}');
     }
 
     final levels = [
       'Primary School',
       'Form 1-3',
-      'Form 4-5 (O-Level)',
+      'Form 4-5',
       'Lower Sixth',
-      'Upper Sixth (A-Level)',
+      'Upper Sixth',
       'University',
     ];
 
@@ -621,30 +593,18 @@ safeSetState(() {
           // Header with icon
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.7),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.school,
-                  color: Colors.white,
-                  size: 24,
-                ),
+              Icon(
+                Icons.school_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
             'What subject do you need help with?',
             style: GoogleFonts.poppins(
-                    fontSize: 24,
-              fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
                     height: 1.2,
             ),
@@ -652,71 +612,22 @@ safeSetState(() {
               ),
             ],
           ),
-          if (_userSubjects.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.primaryColor.withOpacity(0.15),
-                    AppTheme.primaryColor.withOpacity(0.08),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
-                  width: 1.5,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                    color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.star_rounded,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Pre-filled from your profile',
-                      style: GoogleFonts.poppins(
-                            fontSize: 13,
-                        color: AppTheme.primaryColor,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'You can add more subjects if needed',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppTheme.textMedium,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-              ),
-            ),
-          ],
           if (_userSubjects.isEmpty) ...[
             const SizedBox(height: 12),
+                        Text(
+              'Select a subject you need tutoring for',
+                      style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.textMedium,
+                fontWeight: FontWeight.w500,
+            ),
+          ),
+          ] else if (_userSubjects.length > 1) ...[
+            const SizedBox(height: 12),
           Text(
-              'Select all subjects you need tutoring for',
+              'Select one or more subjects from your profile',
             style: GoogleFonts.poppins(
-                fontSize: 15,
+                fontSize: 13,
               color: AppTheme.textMedium,
                 fontWeight: FontWeight.w500,
             ),
@@ -725,19 +636,24 @@ safeSetState(() {
           const SizedBox(height: 24),
 
           // Subjects - Modern colorful chips
-          Wrap(
+          // Combine available subjects with any custom subjects that were added
+          Builder(
+            builder: (context) {
+              final allSubjects = [
+                ...subjects,
+                ..._selectedSubjects.where((s) => !subjects.contains(s)),
+              ];
+              return Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: subjects.map((subject) {
+                children: allSubjects.map((subject) {
               final isSelected = _selectedSubjects.contains(subject);
               final isUserSubject = _userSubjects.contains(subject);
-              
-              // Color scheme based on selection
-              final colors = _getSubjectColors(subject, isSelected, isUserSubject);
               
               return InkWell(
                 onTap: () {
                   safeSetState(() {
+                        // Allow multiple subject selection
                     if (isSelected) {
                       _selectedSubjects.remove(subject);
                     } else {
@@ -750,57 +666,43 @@ safeSetState(() {
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? LinearGradient(
-                            colors: colors,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                    : null,
-                    color: isSelected ? null : Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
+                        color: isSelected 
+                            ? AppTheme.primaryColor.withOpacity(0.1)
+                            : Colors.grey[50],
+                        borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelected
-                          ? colors[0]
+                              ? AppTheme.primaryColor
                           : (isUserSubject
                               ? AppTheme.primaryColor.withOpacity(0.3)
                               : Colors.grey[300]!),
-                      width: isSelected ? 0 : 1.5,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: colors[0].withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                    : null,
+                          width: isSelected ? 2 : 1.5,
+                        ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (isUserSubject && isSelected)
-                        const Icon(
+                            Icon(
                           Icons.star_rounded,
                           size: 18,
-                          color: Colors.white,
+                              color: AppTheme.primaryColor,
                         ),
                       if (isUserSubject && isSelected) const SizedBox(width: 6),
                       Text(
                         subject,
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                              fontSize: 12,
                           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                          color: isSelected ? Colors.white : AppTheme.textDark,
+                              color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                         ),
                       ),
                       if (isSelected) ...[
                         const SizedBox(width: 6),
-                        const Icon(
+                            Icon(
                           Icons.check_circle_rounded,
-                          size: 18,
-                          color: Colors.white,
+                              size: 16,
+                              color: AppTheme.primaryColor,
                         ),
                       ],
                     ],
@@ -808,6 +710,71 @@ safeSetState(() {
                 ),
               );
             }).toList(),
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          
+          // Additional subject input field
+          TextField(
+            controller: _additionalSubjectController,
+            decoration: InputDecoration(
+              hintText: 'Add another subject (optional)',
+              hintStyle: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textLight,
+              ),
+              prefixIcon: Icon(
+                Icons.add_circle_outline_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
+              suffixIcon: _additionalSubjectController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.add_rounded, color: AppTheme.primaryColor),
+                      onPressed: () {
+                        final subject = _additionalSubjectController.text.trim();
+                        if (subject.isNotEmpty && !_selectedSubjects.contains(subject)) {
+                          safeSetState(() {
+                            _selectedSubjects.add(subject);
+                            _additionalSubjectController.clear();
+                          });
+                        }
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.grey[50],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: AppTheme.textDark,
+            ),
+            onChanged: (value) {
+              safeSetState(() {});
+            },
+            onSubmitted: (value) {
+              final subject = value.trim();
+              if (subject.isNotEmpty && !_selectedSubjects.contains(subject)) {
+                safeSetState(() {
+                  _selectedSubjects.add(subject);
+                  _additionalSubjectController.clear();
+                });
+              }
+            },
           ),
           const SizedBox(height: 32),
 
@@ -824,108 +791,89 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorEducationLevel,
             style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
           ),
             ],
           ),
           const SizedBox(height: 16),
-          ...levels.map((level) {
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 3.5,
+            ),
+            itemCount: levels.length,
+            itemBuilder: (context, index) {
+              final level = levels[index];
             final isSelected = _educationLevel == level;
             final icon = _getEducationLevelIcon(level);
             
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: InkWell(
+              return InkWell(
                 onTap: () => safeSetState(() => _educationLevel = level),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? LinearGradient(
-                            colors: [
-                              AppTheme.primaryColor,
-                              AppTheme.primaryColor.withOpacity(0.8),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: isSelected ? null : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
+                    color: isSelected 
+                        ? AppTheme.primaryColor.withOpacity(0.1)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isSelected
                           ? AppTheme.primaryColor
                           : Colors.grey[300]!,
-                      width: isSelected ? 0 : 1.5,
+                      width: isSelected ? 2 : 1.5,
                     ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: AppTheme.primaryColor.withOpacity(0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
                   ),
                   child: Row(
                 children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: isSelected
-                              ? Colors.white.withOpacity(0.2)
+                              ? AppTheme.primaryColor.withOpacity(0.15)
                               : AppTheme.primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
                           icon,
-                          color: isSelected ? Colors.white : AppTheme.primaryColor,
-                          size: 24,
+                          color: AppTheme.primaryColor,
+                          size: 16,
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                     level,
                     style: GoogleFonts.poppins(
-                            fontSize: 15,
+                            fontSize: 11,
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                            color: isSelected ? Colors.white : AppTheme.textDark,
+                            color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (isSelected)
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Icon(
-                            Icons.check_rounded,
+                        Icon(
+                          Icons.check_circle_rounded,
                       color: AppTheme.primaryColor,
-                            size: 18,
-                          ),
+                          size: 16,
                     ),
                 ],
-              ),
                 ),
               ),
             );
-          }).toList(),
-          const SizedBox(height: 24),
+            },
+          ),
+          const SizedBox(height: 12),
 
           // Specific Requirements - Modern design
           const SizedBox(height: 8),
@@ -940,7 +888,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorSpecificRequirements,
             style: GoogleFonts.poppins(
-                  fontSize: 18,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -962,7 +910,6 @@ safeSetState(() {
             runSpacing: 10,
             children: requirementOptions.map((req) {
               final isSelected = _selectedRequirements.contains(req['value']);
-              final reqColors = _getRequirementColors(req['value'] as String, isSelected);
               
               return InkWell(
                 onTap: () {
@@ -977,32 +924,18 @@ safeSetState(() {
                 borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    gradient: isSelected
-                        ? LinearGradient(
-                            colors: reqColors,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: isSelected ? null : Colors.grey[50],
-                    borderRadius: BorderRadius.circular(12),
+                    color: isSelected 
+                        ? AppTheme.primaryColor.withOpacity(0.1)
+                        : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: isSelected
-                          ? reqColors[0]
+                          ? AppTheme.primaryColor
                           : Colors.grey[300]!,
-                      width: isSelected ? 0 : 1.5,
+                      width: isSelected ? 2 : 1.5,
                     ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: reqColors[0].withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : null,
                   ),
                   child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1010,27 +943,27 @@ safeSetState(() {
                     if (req['icon'] != null) ...[
                       Icon(
                         req['icon'] as IconData,
-                          size: 18,
-                          color: isSelected ? Colors.white : AppTheme.primaryColor,
+                          size: 16,
+                          color: isSelected ? AppTheme.primaryColor : AppTheme.primaryColor,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                     ],
                     Flexible(
                       child: Text(
                         req['label'] as String,
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
+                          fontSize: 12,
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                            color: isSelected ? Colors.white : AppTheme.textDark,
+                            color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                           ),
                         ),
                       ),
                       if (isSelected) ...[
                         const SizedBox(width: 6),
-                        const Icon(
+                        Icon(
                           Icons.check_circle_rounded,
                           size: 16,
-                          color: Colors.white,
+                          color: AppTheme.primaryColor,
                         ),
                       ],
                     ],
@@ -1045,23 +978,6 @@ safeSetState(() {
   }
 
   /// Get color scheme for subject chips
-  List<Color> _getSubjectColors(String subject, bool isSelected, bool isUserSubject) {
-    if (!isSelected) return [Colors.grey, Colors.grey];
-    
-    // Different color gradients for different subjects
-    final subjectLower = subject.toLowerCase();
-    if (subjectLower.contains('math') || subjectLower.contains('physics')) {
-      return [Colors.blue[600]!, Colors.blue[400]!];
-    } else if (subjectLower.contains('chem') || subjectLower.contains('bio')) {
-      return [Colors.green[600]!, Colors.green[400]!];
-    } else if (subjectLower.contains('english') || subjectLower.contains('french')) {
-      return [Colors.purple[600]!, Colors.purple[400]!];
-    } else if (subjectLower.contains('computer') || subjectLower.contains('science')) {
-      return [Colors.orange[600]!, Colors.orange[400]!];
-    } else {
-      return [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.7)];
-    }
-  }
 
   /// Get icon for education level
   IconData _getEducationLevelIcon(String level) {
@@ -1069,38 +985,16 @@ safeSetState(() {
       return Icons.child_care_rounded;
     } else if (level.contains('Form 1-3')) {
       return Icons.school_rounded;
-    } else if (level.contains('O-Level')) {
+    } else if (level.contains('Form 4-5')) {
       return Icons.assignment_rounded;
     } else if (level.contains('Lower Sixth')) {
       return Icons.menu_book_rounded;
-    } else if (level.contains('A-Level')) {
+    } else if (level.contains('Upper Sixth')) {
       return Icons.workspace_premium_rounded;
     } else if (level.contains('University')) {
       return Icons.school_rounded;
     }
     return Icons.school_rounded;
-  }
-
-  /// Get color scheme for requirement chips
-  List<Color> _getRequirementColors(String value, bool isSelected) {
-    if (!isSelected) return [Colors.grey, Colors.grey];
-    
-    switch (value) {
-      case 'exam_preparation':
-        return [Colors.red[600]!, Colors.red[400]!];
-      case 'gce_exams':
-        return [Colors.blue[600]!, Colors.blue[400]!];
-      case 'homework_help':
-        return [Colors.green[600]!, Colors.green[400]!];
-      case 'catch_up':
-        return [Colors.orange[600]!, Colors.orange[400]!];
-      case 'difficult_topic':
-        return [Colors.purple[600]!, Colors.purple[400]!];
-      case 'improve_grades':
-        return [Colors.teal[600]!, Colors.teal[400]!];
-      default:
-        return [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.7)];
-    }
   }
 
   List<Map<String, dynamic>> _getRequirementOptions() {
@@ -1159,8 +1053,8 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorTutorPreferences,
             style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
           ),
@@ -1168,7 +1062,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorHelpFindMatch,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 13,
               color: AppTheme.textMedium,
             ),
           ),
@@ -1176,7 +1070,7 @@ safeSetState(() {
 
           // Teaching Mode
           _buildSectionTitle(AppLocalizations.of(context)!.requestTutorTeachingMode),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _buildOptionCard(
             icon: Icons.laptop_mac,
             title: 'Online',
@@ -1184,7 +1078,7 @@ safeSetState(() {
             isSelected: _teachingMode == 'online',
             onTap: () => safeSetState(() => _teachingMode = 'online'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _buildOptionCard(
             icon: Icons.home,
             title: 'Onsite',
@@ -1192,7 +1086,7 @@ safeSetState(() {
             isSelected: _teachingMode == 'onsite',
             onTap: () => safeSetState(() => _teachingMode = 'onsite'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           _buildOptionCard(
             icon: Icons.sync_alt,
             title: 'Hybrid',
@@ -1255,17 +1149,42 @@ safeSetState(() {
             spacing: 12,
             children: ['Male', 'Female', 'No Preference'].map((gender) {
               final isSelected = _tutorGender == gender;
-              return ChoiceChip(
-                label: Text(gender),
-                selected: isSelected,
-                onSelected: (selected) {
-                  safeSetState(() => _tutorGender = selected ? gender : null);
+              return InkWell(
+                onTap: () {
+                  safeSetState(() => _tutorGender = isSelected ? null : gender);
                 },
-                selectedColor: AppTheme.primaryColor.withOpacity(0.2),
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 14,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppTheme.primaryColor : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        gender,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                          color: isSelected ? Colors.white : AppTheme.textDark,
+                        ),
+                      ),
+                      if (isSelected) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.check,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               );
             }).toList(),
@@ -1286,21 +1205,42 @@ safeSetState(() {
                   'No Preference',
                 ].map((qual) {
                   final isSelected = _tutorQualification == qual;
-                  return ChoiceChip(
-                    label: Text(qual),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      setState(
-                        () => _tutorQualification = selected ? qual : null,
-                      );
+                  return InkWell(
+                    onTap: () {
+                      safeSetState(() => _tutorQualification = isSelected ? null : qual);
                     },
-                    selectedColor: AppTheme.primaryColor.withOpacity(0.2),
-                    labelStyle: GoogleFonts.poppins(
-                      fontSize: 14,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppTheme.primaryColor : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            qual,
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
                       fontWeight: FontWeight.w500,
-                      color: isSelected
-                          ? AppTheme.primaryColor
-                          : AppTheme.textDark,
+                              color: isSelected ? Colors.white : AppTheme.textDark,
+                            ),
+                          ),
+                          if (isSelected) ...[
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.check,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   );
                 }).toList(),
@@ -1335,7 +1275,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorScheduleLocation,
             style: GoogleFonts.poppins(
-              fontSize: 22,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -1358,24 +1298,48 @@ safeSetState(() {
             runSpacing: 12,
             children: days.map((day) {
               final isSelected = _preferredDays.contains(day);
-              return FilterChip(
-                selected: isSelected,
-                label: Text(day),
-                onSelected: (selected) {
+              return InkWell(
+                onTap: () {
                   safeSetState(() {
-                    if (selected) {
-                      _preferredDays.add(day);
-                    } else {
+                    if (isSelected) {
                       _preferredDays.remove(day);
+                    } else {
+                      _preferredDays.add(day);
                     }
                   });
                 },
-                selectedColor: AppTheme.primaryColor.withOpacity(0.2),
-                checkmarkColor: AppTheme.primaryColor,
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 14,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppTheme.primaryColor : Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isSelected) ...[
+                        const Icon(
+                          Icons.check,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      Text(
+                        day,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                          color: isSelected ? Colors.white : AppTheme.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }).toList(),
@@ -1467,7 +1431,7 @@ safeSetState(() {
           Text(
             'Review Your Request',
             style: GoogleFonts.poppins(
-              fontSize: 22,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -1556,8 +1520,8 @@ safeSetState(() {
           }).toList(),
           const SizedBox(height: 24),
 
-          // Why do you need a tutor? (Optional)
-          _buildSectionTitle('Why do you need a tutor? (Optional)'),
+          // Why do you need a tutor?
+          _buildSectionTitle('Why do you need a tutor?'),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -1648,7 +1612,7 @@ safeSetState(() {
     return Text(
       title,
       style: GoogleFonts.poppins(
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: FontWeight.w600,
         color: AppTheme.textDark,
       ),
@@ -1673,7 +1637,7 @@ safeSetState(() {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
+            width: isSelected ? 2 : 1.5,
           ),
         ),
         child: Row(
@@ -1698,9 +1662,9 @@ safeSetState(() {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
+                      color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -1708,8 +1672,8 @@ safeSetState(() {
                     Text(
                       subtitle,
                       style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: AppTheme.textMedium,
+                        fontSize: 11,
+                        color: isSelected ? AppTheme.textMedium : AppTheme.textMedium,
                       ),
                     ),
                   ],
@@ -1717,7 +1681,7 @@ safeSetState(() {
               ),
             ),
             if (isSelected)
-              Icon(Icons.check_circle, color: AppTheme.primaryColor, size: 24),
+              Icon(Icons.check_circle, color: AppTheme.primaryColor, size: 18),
           ],
         ),
       ),
@@ -1814,6 +1778,13 @@ safeSetState(() {
           ),
           backgroundColor: Colors.red,
         ),
+      );
+      // Navigate back to step 1
+      safeSetState(() => _currentStep = 0);
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
       );
       return;
     }
@@ -1948,8 +1919,14 @@ safeSetState(() {
     );
 
     try {
-      // Create request in database
-      final requestId = await TutorRequestService.createRequest(
+      // Check if this is an edit (request_id in prefillData)
+      final isEdit = widget.prefillData?['request_id'] != null;
+      final requestId = isEdit ? widget.prefillData!['request_id'] as String : null;
+
+      if (isEdit && requestId != null) {
+        // Update existing request
+        await TutorRequestService.updateRequest(
+          requestId: requestId,
         subjects: _selectedSubjects,
         educationLevel: _educationLevel!,
         specificRequirements: _selectedRequirements.isNotEmpty
@@ -1972,7 +1949,9 @@ safeSetState(() {
         preferredDays: _preferredDays,
         preferredTime: _preferredTime!,
         location: _locationController.text.trim(),
-        locationDescription: null,  // Column doesn't exist in DB, storing in additional_notes instead
+          locationDescription: _locationDescriptionController.text.trim().isNotEmpty
+              ? _locationDescriptionController.text.trim()
+              : null,
         urgency: _urgency,
         additionalNotes: () {
           String notes = '';
@@ -1985,17 +1964,56 @@ safeSetState(() {
             );
             notes = reasonOption['title'] as String;
           }
-          // Append location description if provided (for hybrid/onsite)
-          if (_locationDescriptionController.text.trim().isNotEmpty) {
-            if (notes.isNotEmpty) notes += '\n\n';
-            notes += 'Location Description: ' + _locationDescriptionController.text.trim();
-          }
-          return notes.isEmpty ? null : notes;
+            return notes.isNotEmpty ? notes : null;
+          }(),
+        );
+      } else {
+        // Create new request
+        final newRequestId = await TutorRequestService.createRequest(
+          subjects: _selectedSubjects,
+          educationLevel: _educationLevel!,
+          specificRequirements: _selectedRequirements.isNotEmpty
+              ? _selectedRequirements
+                    .map((r) {
+                      final options = _getRequirementOptions();
+                      final option = options.firstWhere(
+                        (o) => o['value'] == r,
+                        orElse: () => {'label': r, 'value': r},
+                      );
+                      return option['label'] as String;
+                    })
+                    .join(', ')
+              : '',
+          teachingMode: _teachingMode!,
+          budgetMin: _minBudget,
+          budgetMax: _maxBudget,
+          tutorGender: _tutorGender,
+          tutorQualification: _tutorQualification,
+          preferredDays: _preferredDays,
+          preferredTime: _preferredTime!,
+          location: _locationController.text.trim(),
+          locationDescription: _locationDescriptionController.text.trim().isNotEmpty
+              ? _locationDescriptionController.text.trim()
+              : null,
+          urgency: _urgency,
+          additionalNotes: () {
+            String notes = '';
+            if (_requestReason == 'other') {
+              notes = _customReasonController.text.trim();
+            } else if (_requestReason != null) {
+              final reasonOption = _getRequestReasonOptions().firstWhere(
+                (r) => r['value'] == _requestReason,
+                orElse: () => {'title': _requestReason ?? 'Other', 'value': _requestReason},
+              );
+              notes = reasonOption['title'] as String;
+            }
+            return notes.isNotEmpty ? notes : null;
         }(),
       );
 
-      // Send WhatsApp notification to PrepSkul team
-      await _sendWhatsAppNotification(requestId);
+        // Send WhatsApp notification to PrepSkul team (only for new requests)
+        await _sendWhatsAppNotification(newRequestId);
+      }
 
       // Close loading
       if (mounted) Navigator.pop(context);
@@ -2010,14 +2028,37 @@ safeSetState(() {
       // Close loading
       if (mounted) Navigator.pop(context);
 
-      // Show error with more details
+      // Show user-friendly error message
       if (mounted) {
-        final errorMessage = e.toString().contains('not authenticated')
-            ? 'You are not logged in. Please log in and try again.'
-            : e.toString().contains('network') ||
-                  e.toString().contains('connection')
-            ? 'Network error. Please check your connection and try again.'
-            : 'Failed to submit request: ${e.toString().length > 100 ? e.toString().substring(0, 100) + "..." : e.toString()}';
+        String errorMessage;
+        String errorTitle = 'Unable to Submit Request';
+        
+        final errorString = e.toString().toLowerCase();
+        
+        if (errorString.contains('not authenticated') || errorString.contains('user not authenticated')) {
+          errorTitle = 'Authentication Required';
+          errorMessage = 'You need to be logged in to submit a request. Please log in and try again.';
+        } else if (errorString.contains('network') || 
+                   errorString.contains('connection') ||
+                   errorString.contains('socketexception') ||
+                   errorString.contains('failed host lookup')) {
+          errorTitle = 'Connection Problem';
+          errorMessage = 'Unable to connect to the server. Please check your internet connection and try again.';
+        } else if (errorString.contains('location_description') || 
+                   errorString.contains('pgrst204') ||
+                   errorString.contains('column') && errorString.contains('not found')) {
+          errorTitle = 'System Update Required';
+          errorMessage = 'The app needs to be updated. Please try again in a moment, or contact support if the problem persists.';
+        } else if (errorString.contains('permission') || errorString.contains('unauthorized')) {
+          errorTitle = 'Permission Denied';
+          errorMessage = 'You don\'t have permission to perform this action. Please contact support if you believe this is an error.';
+        } else if (errorString.contains('timeout') || errorString.contains('timed out')) {
+          errorTitle = 'Request Timeout';
+          errorMessage = 'The request took too long to process. Please check your connection and try again.';
+        } else {
+          errorTitle = 'Submission Failed';
+          errorMessage = 'We encountered an issue while submitting your request. Please try again in a moment. If the problem continues, contact our support team.';
+        }
 
         showDialog(
           context: context,
@@ -2027,14 +2068,22 @@ safeSetState(() {
             ),
             title: Row(
               children: [
-                Icon(Icons.error_outline, color: Colors.red[300], size: 24),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.error_outline, color: Colors.red[600], size: 24),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Error',
+                    errorTitle,
                     style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w600,
-                      fontSize: 18,
+                      fontSize: 15,
+                      color: AppTheme.textDark,
                     ),
                   ),
                 ),
@@ -2042,7 +2091,11 @@ safeSetState(() {
             ),
             content: Text(
               errorMessage,
-              style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+              style: GoogleFonts.poppins(
+                fontSize: 14, 
+                height: 1.5,
+                color: AppTheme.textMedium,
+              ),
             ),
             actions: [
               TextButton(
@@ -2266,12 +2319,24 @@ safeSetState(() {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            title: Text(
+            title: Row(
+              children: [
+                Icon(
+                  Icons.chat_rounded,
+                  color: AppTheme.primaryColor,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
               AppLocalizations.of(context)!.requestTutorSendWhatsApp,
               style: GoogleFonts.poppins(
-                fontSize: 18,
+                      fontSize: 15,
                 fontWeight: FontWeight.w700,
               ),
+                  ),
+                ),
+              ],
             ),
             content: Text(
               AppLocalizations.of(context)!.requestTutorWhatsAppPrompt,
@@ -2287,14 +2352,19 @@ safeSetState(() {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  minimumSize: const Size(0, 36),
                 ),
                 child: Text(
                   AppLocalizations.of(context)!.requestTutorSend,
                   style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
                 ),
@@ -2333,10 +2403,28 @@ safeSetState(() {
   }
 
   void _showSuccessDialog() {
+    final isEdit = widget.prefillData?['request_id'] != null;
+    
+    // Create confetti controller (only for new requests)
+    ConfettiController? confettiController;
+    if (!isEdit) {
+      confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    }
+    
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (context) {
+        // Trigger confetti animation after dialog is built
+        if (!isEdit && confettiController != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            confettiController!.play();
+          });
+        }
+        
+        return Stack(
+          children: [
+            AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
@@ -2356,16 +2444,18 @@ safeSetState(() {
             ),
             const SizedBox(height: 24),
             Text(
-              'Request Submitted!',
+                    isEdit ? 'Request Updated!' : 'Request Submitted!',
               style: GoogleFonts.poppins(
-                fontSize: 20,
+                      fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textDark,
               ),
             ),
             const SizedBox(height: 12),
             Text(
-              'We\'ve received your request and will find the perfect tutor for you. You\'ll be notified once we have a match!',
+                    isEdit 
+                      ? 'Your request has been updated successfully. The PrepSkul team will review the changes.'
+                      : 'We\'ve received your request and will find the perfect tutor for you. You\'ll be notified once we have a match!',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 fontSize: 14,
@@ -2378,10 +2468,10 @@ safeSetState(() {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () {
+                        confettiController?.dispose();
                   Navigator.pop(context); // Close dialog
-                  Navigator.pop(context); // Close request flow screen
-                  // User stays in the app - they can navigate to requests themselves
-                  // The request will appear in their requests section
+                        // Return true to indicate request was submitted successfully
+                        Navigator.pop(context, true);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
@@ -2403,6 +2493,35 @@ safeSetState(() {
           ],
         ),
       ),
+            // Confetti overlay (only for new requests)
+            if (!isEdit && confettiController != null)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConfettiWidget(
+                    confettiController: confettiController,
+                    blastDirection: 3.14 / 2, // Upward
+                    maxBlastForce: 8,
+                    minBlastForce: 3,
+                    emissionFrequency: 0.03,
+                    numberOfParticles: 80,
+                    gravity: 0.15,
+                    shouldLoop: false,
+                    colors: [
+                      Colors.green,
+                      Colors.blue,
+                      Colors.pink,
+                      Colors.orange,
+                      Colors.purple,
+                      Colors.yellow,
+                      AppTheme.primaryColor,
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

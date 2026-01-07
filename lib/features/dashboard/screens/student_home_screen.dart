@@ -134,8 +134,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         // Try stored signup data
         final storedName = prefs.getString('signup_full_name');
         LogService.debug('[HOME] Name from SharedPreferences: $storedName');
-        if (storedName != null && storedName.isNotEmpty) {
+        if (storedName != null && storedName.isNotEmpty && storedName != 'User' && storedName != 'Student') {
           userName = extractFirstName(storedName);
+          // If we found a name from signup but database doesn't have it, update the database
+          try {
+            final authUser = SupabaseService.currentUser;
+            if (authUser != null) {
+              await SupabaseService.client
+                  .from('profiles')
+                  .update({'full_name': storedName})
+                  .eq('id', authUser.id);
+              LogService.info('[HOME] Updated profile with signup name: $storedName');
+            }
+          } catch (e) {
+            LogService.warning('[HOME] Failed to update profile with signup name: $e');
+          }
         }
       }
       if (userName == null || userName.isEmpty) {
@@ -253,7 +266,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     // Extract city for quick actions (only actionable data)
     final city = _surveyData?['city'];
 
-    return StatusBarUtils.withLightStatusBar(
+    return StatusBarUtils.withDarkStatusBar(
       Scaffold(
         backgroundColor: Colors.white,
         floatingActionButton: FloatingActionButton.extended(
@@ -463,19 +476,113 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       subtitle: 'Track your child\'s learning journey and improvement',
                       color: AppTheme.accentGreen,
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AlertDialog(
-                              title: Text('Learning Progress'),
-                              content: Text('Feature coming soon'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: Text('Close'),
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            title: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accentGreen.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    Icons.trending_up,
+                                    color: AppTheme.accentGreen,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'Learning Progress',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Coming Soon!',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textDark,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'We\'re building an amazing feature that will help you track your child\'s learning journey, view their progress across subjects, see improvement trends, and celebrate their achievements.',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    color: AppTheme.textMedium,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accentGreen.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: AppTheme.accentGreen.withOpacity(0.3),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.info_outline,
+                                        color: AppTheme.accentGreen,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          'You\'ll be notified when this feature is available!',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 12,
+                                            color: AppTheme.textDark,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppTheme.primaryColor,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                child: Text(
+                                  'Close',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         );
                       },

@@ -281,6 +281,16 @@ class TutorService {
     bool? isVerified,
   }) async {
     try {
+      // Check network connectivity first
+      final connectivity = ConnectivityService();
+      await connectivity.initialize();
+      final isOnline = await connectivity.checkConnectivity();
+      
+      if (!isOnline) {
+        LogService.warning('TutorService: Offline - cannot fetch tutors from Supabase');
+        return [];
+      }
+      
       // Build query - use INNER join to ensure we only get tutors with profiles
       // The relationship is: tutor_profiles.user_id -> profiles.id
       // Try multiple relationship syntaxes for compatibility
@@ -329,6 +339,20 @@ class TutorService {
         rawTutors = response as List;
         LogService.success('Query successful: Raw query returned ${rawTutors.length} approved tutors from Supabase');
       } catch (queryError) {
+        final errorStr = queryError.toString().toLowerCase();
+        
+        // Check for network/DNS errors
+        if (errorStr.contains('socket') || 
+            errorStr.contains('host lookup') || 
+            errorStr.contains('nodename') ||
+            errorStr.contains('failed host lookup') ||
+            errorStr.contains('network') ||
+            errorStr.contains('connection')) {
+          LogService.error('Network error fetching tutors: $queryError');
+          // Return empty list instead of throwing - let UI handle it gracefully
+          return [];
+        }
+        
         LogService.error('Query failed with error: $queryError');
         LogService.error('Query error type: ${queryError.runtimeType}');
         
@@ -398,27 +422,43 @@ class TutorService {
       }
 
       if (rawTutors.isEmpty) {
-        LogService.warning('No tutors found with status="approved"');
+        LogService.warning('No tutors found with status="approved" and is_hidden=false');
         // Let's check what statuses exist and if there are any tutors at all
         try {
           final statusCheck = await SupabaseService.client
               .from('tutor_profiles')
-              .select('status, user_id')
+              .select('status, user_id, is_hidden')
               .limit(10);
           LogService.debug('Sample tutor statuses', statusCheck);
           
-          // Also check total tutors without filter
+          // Also check total tutors without status filter to see if any exist
           final allTutors = await SupabaseService.client
               .from('tutor_profiles')
-              .select('status')
+              .select('status, is_hidden')
               .limit(100);
           LogService.debug('Total tutors checked', (allTutors as List).length);
           if ((allTutors as List).isNotEmpty) {
             final statuses = (allTutors as List).map((t) => t['status']).toSet();
-            LogService.debug('Available statuses', statuses);
+            final hiddenCount = (allTutors as List).where((t) => t['is_hidden'] == true).length;
+            LogService.debug('Available statuses: $statuses');
+            LogService.debug('Hidden tutors: $hiddenCount out of ${(allTutors as List).length}');
+            
+            // If there are tutors but none approved, log a helpful message
+            if (statuses.isNotEmpty && !statuses.contains('approved')) {
+              LogService.warning('⚠️ Tutors exist but none have status="approved". Available statuses: $statuses');
+            }
+          } else {
+            LogService.warning('⚠️ No tutors found in tutor_profiles table at all');
           }
         } catch (e) {
-          LogService.warning('Could not check tutor statuses: $e');
+          final errorStr = e.toString().toLowerCase();
+          if (errorStr.contains('socket') || 
+              errorStr.contains('host lookup') || 
+              errorStr.contains('nodename')) {
+            LogService.error('Network error checking tutor statuses: $e');
+          } else {
+            LogService.warning('Could not check tutor statuses: $e');
+          }
         }
         return []; // Return empty list if no tutors found
       } else {

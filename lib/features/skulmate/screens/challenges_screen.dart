@@ -89,7 +89,11 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
           ),
           Expanded(
             child: _isLoading
-                ? ShimmerLoading() as Widget
+                ? ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 5,
+                    itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
+                  )
                 : _filteredChallenges.isEmpty
                     ? EmptyStateWidget(
                         icon: Icons.emoji_events,
@@ -99,7 +103,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                             : _selectedTab == 'received'
                                 ? 'You don\'t have any pending challenges'
                                 : 'No challenges found',
-                      ) as Widget
+                      )
                     : RefreshIndicator(
                         onRefresh: _loadChallenges,
                         child: ListView.builder(
@@ -109,7 +113,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                             return _buildChallengeCard(challenge);
                           },
                         ),
-                      ) as Widget,
+                      ),
           ),
         ],
       ),
@@ -159,36 +163,251 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
     final userId = SupabaseService.client.auth.currentUser?.id;
     final isChallenger = challenge.challengerId == userId;
     final opponentName = isChallenger ? challenge.challengeeName : challenge.challengerName;
+    final opponentAvatar = isChallenger ? challenge.challengeeAvatarUrl : challenge.challengerAvatarUrl;
+
+    Color statusColor;
+    String statusLabel;
+    IconData statusIcon;
+    
+    switch (challenge.status) {
+      case ChallengeStatus.completed:
+        statusColor = AppTheme.accentGreen;
+        statusLabel = 'Completed';
+        statusIcon = Icons.check_circle;
+        break;
+      case ChallengeStatus.accepted:
+        statusColor = Colors.blue;
+        statusLabel = 'Accepted';
+        statusIcon = Icons.play_circle;
+        break;
+      case ChallengeStatus.pending:
+        statusColor = Colors.orange;
+        statusLabel = 'Pending';
+        statusIcon = Icons.pending;
+        break;
+      case ChallengeStatus.declined:
+        statusColor = Colors.red;
+        statusLabel = 'Declined';
+        statusIcon = Icons.cancel;
+        break;
+      case ChallengeStatus.expired:
+        statusColor = Colors.grey;
+        statusLabel = 'Expired';
+        statusIcon = Icons.access_time;
+        break;
+    }
 
     return Card(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        title: Text(
-          isChallenger ? 'Challenge to $opponentName' : 'Challenge from ${challenge.challengerName}',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          challenge.gameTitle ?? 'Game Challenge',
-          style: GoogleFonts.poppins(),
-        ),
-        trailing: Text(
-          challenge.status.toString().toUpperCase(),
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: challenge.status == ChallengeStatus.completed
-                ? AppTheme.accentGreen
-                : challenge.status == ChallengeStatus.pending
-                    ? Colors.orange
-                    : AppTheme.textMedium,
-          ),
-        ),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey[200]!, width: 1),
+      ),
+      child: InkWell(
         onTap: () {
           // Navigate to challenge details or game
           if (challenge.gameId != null) {
             // Could navigate to game details
           }
         },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header: Opponent info and status
+              Row(
+                children: [
+                  // Opponent avatar
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                    backgroundImage: opponentAvatar != null
+                        ? NetworkImage(opponentAvatar)
+                        : null,
+                    child: opponentAvatar == null
+                        ? Icon(
+                            Icons.person,
+                            color: AppTheme.primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isChallenger ? 'You challenged $opponentName' : '$opponentName challenged you',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        // Game title - prominently displayed
+                        if (challenge.gameTitle != null)
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.sports_esports,
+                                size: 14,
+                                color: AppTheme.primaryColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  challenge.gameTitle!,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          Text(
+                            'Game Challenge',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  // Status badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: statusColor.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          statusIcon,
+                          size: 14,
+                          color: statusColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          statusLabel,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: statusColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // Challenge details
+              if (challenge.targetValue != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _getChallengeTypeIcon(challenge.challengeType),
+                        size: 16,
+                        color: AppTheme.primaryColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _getChallengeTypeLabel(challenge.challengeType, challenge.targetValue!),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.textDark,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              // Expiry info
+              if (challenge.status == ChallengeStatus.pending || challenge.status == ChallengeStatus.accepted) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.access_time,
+                      size: 12,
+                      color: AppTheme.textMedium,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Expires ${_formatExpiry(challenge.expiresAt)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  IconData _getChallengeTypeIcon(ChallengeType type) {
+    switch (type) {
+      case ChallengeType.score:
+        return Icons.star;
+      case ChallengeType.time:
+        return Icons.timer;
+      case ChallengeType.perfectScore:
+        return Icons.emoji_events;
+    }
+  }
+
+  String _getChallengeTypeLabel(ChallengeType type, int targetValue) {
+    switch (type) {
+      case ChallengeType.score:
+        return 'Target Score: $targetValue';
+      case ChallengeType.time:
+        return 'Complete in: ${targetValue}s';
+      case ChallengeType.perfectScore:
+        return 'Get Perfect Score';
+    }
+  }
+
+  String _formatExpiry(DateTime expiresAt) {
+    final now = DateTime.now();
+    final difference = expiresAt.difference(now);
+    
+    if (difference.inDays > 0) {
+      return 'in ${difference.inDays} day${difference.inDays > 1 ? 's' : ''}';
+    } else if (difference.inHours > 0) {
+      return 'in ${difference.inHours} hour${difference.inHours > 1 ? 's' : ''}';
+    } else if (difference.inMinutes > 0) {
+      return 'in ${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''}';
+    } else {
+      return 'soon';
+    }
   }
 }

@@ -100,6 +100,7 @@ dependencies:
   
   # Audio/Sound Effects
   audioplayers: ^6.0.0
+  flutter_tts: ^4.0.2
   
   # Sharing
   share_plus: ^10.0.0

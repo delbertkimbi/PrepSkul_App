@@ -359,8 +359,8 @@ class UserCreditsService {
         // Send notification
         await NotificationHelperService.notifyLowCreditsBalance(
           userId: userId,
-          balance: balance,
-          threshold: thresholdCredits,
+          balance: balance.toDouble(),
+          threshold: thresholdCredits.toDouble(),
           paymentRequestId: paymentRequestId,
         );
 
