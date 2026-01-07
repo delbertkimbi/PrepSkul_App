@@ -7,7 +7,7 @@ import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:prepskul/features/sessions/widgets/embedded_map_widget.dart';
-import 'package:prepskul/features/booking/widgets/map_location_picker.dart';
+// import 'package:prepskul/features/booking/widgets/map_location_picker.dart'; // File removed
 
 /// Step 4: Location Selector
 ///
@@ -370,35 +370,114 @@ class _LocationSelectorState extends State<LocationSelector> {
             color: Colors.purple,
           ),
 
-          // Map location picker (for onsite only)
+          // Address input field (shown when onsite is selected)
           if (_selectedLocation == 'onsite') ...[
-            const SizedBox(height: 32),
-            MapLocationPicker(
-              initialAddress: _addressController.text.trim().isNotEmpty
-                  ? _addressController.text.trim()
-                  : null,
-              initialCoordinates: _validatedCoordinates,
-              initialLocationDescription: _locationDescriptionController.text.trim().isNotEmpty
-                  ? _locationDescriptionController.text.trim()
-                  : null,
-              onLocationSelected: (address, coordinates, locationDescription) {
-                safeSetState(() {
-                  _addressController.text = address;
-                  _validatedCoordinates = coordinates;
-                  _isAddressValid = true;
-                  _showAddressError = false;
-                  _addressValidationError = null;
-                  if (locationDescription != null) {
-                    _locationDescriptionController.text = locationDescription;
-                  }
-                });
-                _notifyParent();
-              },
-              height: 400,
-            ),
+            const SizedBox(height: 24),
+            _buildAddressInput(),
           ],
         ],
       ),
+    );
+  }
+
+  Widget _buildAddressInput() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Your Address',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _addressController,
+          decoration: InputDecoration(
+            hintText: 'Enter your address',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: _showAddressError ? Colors.red : Colors.grey[300]!,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: _showAddressError ? Colors.red : Colors.grey[300]!,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: _showAddressError ? Colors.red : AppTheme.primaryColor,
+                width: 2,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
+            ),
+            filled: true,
+            fillColor: Colors.grey[50],
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          onChanged: (value) {
+            // Notify parent when address changes so continue button can be enabled
+            _notifyParent();
+          },
+          maxLines: 2,
+        ),
+        if (_showAddressError)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Please enter your address',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.red,
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
+        Text(
+          'Location Description (Optional)',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _locationDescriptionController,
+          decoration: InputDecoration(
+            hintText: 'e.g., Apartment 3B, Near the main gate',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey[300]!),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+            ),
+            filled: true,
+            fillColor: Colors.grey[50],
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          ),
+          onChanged: (value) {
+            // Notify parent when description changes
+            _notifyParent();
+          },
+          maxLines: 2,
+        ),
+      ],
     );
   }
 

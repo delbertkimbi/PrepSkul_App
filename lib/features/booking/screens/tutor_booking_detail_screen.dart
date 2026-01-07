@@ -56,24 +56,8 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             : null,
       );
 
-      // Get payment request ID (created during approval)
-      String? paymentRequestId;
-      try {
-        paymentRequestId = await PaymentRequestService.getPaymentRequestIdByBookingRequestId(
-          widget.request.id,
-        );
-        if (paymentRequestId != null) {
-          LogService.success('Found payment request ID: $paymentRequestId');
-        }
-      } catch (e) {
-        LogService.warning('Failed to get payment request ID: $e');
-      }
-
-      // Create recurring session from approved booking
-      await RecurringSessionService.createRecurringSessionFromBooking(
-        approvedRequest,
-        paymentRequestId: paymentRequestId,
-      );
+      // Note: Recurring session and payment request are already created
+      // in BookingService.approveBookingRequest() - no need to create again here
 
       // Send notification to student
       await NotificationService.createNotification(

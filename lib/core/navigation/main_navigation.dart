@@ -33,7 +33,28 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    // Initialize with widget parameter first (available in initState)
+    // Route arguments will be read in didChangeDependencies
     _selectedIndex = widget.initialTab ?? 0;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Now we can safely access inherited widgets like ModalRoute
+    // Try to get initialTab from route arguments first, then fall back to widget parameter
+    final routeArgs = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final tabFromArgs = routeArgs?['initialTab'] as int?;
+    
+    // Use route arguments if available, otherwise use widget parameter
+    final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
+    
+    if (targetTab != _selectedIndex) {
+      LogService.info('🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})');
+      safeSetState(() {
+        _selectedIndex = targetTab;
+      });
+    }
   }
 
   // Tutor screens (4 items)
@@ -46,10 +67,14 @@ class _MainNavigationState extends State<MainNavigation> {
 
   // Student screens (4 items)
   List<Widget> _getStudentScreens(String userType) {
+    // Get highlightRequestId from route arguments if available
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final highlightRequestId = args?['highlightRequestId'] as String?;
+    
     return [
     const StudentHomeScreen(), // Home Dashboard
     const FindTutorsScreen(), // Find Tutors
-    const MyRequestsScreen(), // My Booking Requests
+    MyRequestsScreen(highlightRequestId: highlightRequestId), // My Booking Requests
       ProfileScreen(userType: userType), // Profile & Settings (student or parent)
   ];
   }

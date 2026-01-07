@@ -7,22 +7,30 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
+import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
+import 'package:prepskul/features/payment/widgets/animated_checkmark.dart';
 import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/features/payment/services/fapshi_service.dart';
+import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 
 
 /// Booking Payment Screen
 /// 
-/// Payment screen for regular booking payments
-/// Auto-launched when tutor approves booking and payment request is created
-/// Handles Fapshi payment initiation and polling
+/// Professional multi-step payment flow for regular booking payments
+/// Step 1: Booking Summary & Phone Entry
+/// Step 2: Payment Summary with Charges
+/// Step 3: Payment Confirmation
+/// Step 4: Success
 
 class BookingPaymentScreen extends StatefulWidget {
   final String paymentRequestId;
-  final String? bookingRequestId; // Optional, for navigation back
+  final String? bookingRequestId;
 
   const BookingPaymentScreen({
     Key? key,
@@ -36,20 +44,27 @@ class BookingPaymentScreen extends StatefulWidget {
 
 class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   final TextEditingController _phoneController = TextEditingController();
+  final PageController _pageController = PageController();
+  
   bool _isLoading = true;
   bool _isProcessing = false;
   bool _isPolling = false;
   String? _errorMessage;
   String _paymentStatus = 'idle'; // idle, pending, successful, failed
   Map<String, dynamic>? _paymentRequest;
-  String? _detectedProvider; // 'mtn' or 'orange'
+  String? _detectedProvider;
+  int _currentStep = 0; // 0: Phone Entry, 1: Payment Summary, 2: Confirmation
+
+  // Payment calculations
+  double _subtotal = 0.0;
+  double _charges = 0.0;
+  double _total = 0.0;
 
   @override
   void initState() {
     super.initState();
     _loadPaymentRequest();
     _loadUserPhone();
-    // Listen to phone number changes to detect provider
     _phoneController.addListener(_onPhoneChanged);
   }
 
@@ -57,10 +72,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   void dispose() {
     _phoneController.removeListener(_onPhoneChanged);
     _phoneController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
-  /// Detect provider when phone number changes
   void _onPhoneChanged() {
     final phone = _phoneController.text.trim();
     if (phone.isNotEmpty) {
@@ -79,13 +94,23 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     }
   }
 
-  /// Load payment request details
   Future<void> _loadPaymentRequest() async {
     try {
       final request = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
       if (request != null && mounted) {
+        // Use original_amount if available, otherwise use amount
+        final originalAmount = (request['original_amount'] as num?)?.toDouble() ?? 
+                              (request['amount'] as num).toDouble();
+        
+        // Calculate charges (2% of subtotal)
+        final charges = originalAmount * 0.02;
+        final total = originalAmount + charges;
+        
         safeSetState(() {
           _paymentRequest = request;
+          _subtotal = originalAmount;
+          _charges = charges;
+          _total = total;
           _isLoading = false;
         });
       } else {
@@ -107,7 +132,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     }
   }
 
-  /// Pre-fill phone number from user profile
   Future<void> _loadUserPhone() async {
     try {
       final userProfile = await AuthService.getUserProfile();
@@ -124,7 +148,17 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     }
   }
 
-  /// Initiate payment
+  void _navigateToStep(int step) {
+    _pageController.animateToPage(
+      step,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    safeSetState(() {
+      _currentStep = step;
+    });
+  }
+
   Future<void> _initiatePayment() async {
     if (_paymentRequest == null) {
       safeSetState(() {
@@ -147,27 +181,23 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     });
 
     try {
-      final amount = (_paymentRequest!['amount'] as num).toDouble();
-      final bookingRequestId = _paymentRequest!['booking_request_id'] as String?;
+      // Use total amount (subtotal + charges) for payment
+      final amountToCharge = _total.toInt();
 
-      // Initiate payment via PaymentService
-      // Use payment_request_ prefix for webhook routing
       final paymentResponse = await FapshiService.initiateDirectPayment(
-        amount: amount.toInt(),
+        amount: amountToCharge,
         phone: _phoneController.text.trim(),
         externalId: 'payment_request_${widget.paymentRequestId}',
         userId: _paymentRequest!['student_id'] as String?,
         message: _paymentRequest!['description'] as String? ?? 'Booking payment',
       );
 
-      // Update payment request with Fapshi transaction ID
       await PaymentRequestService.updatePaymentRequestStatus(
         widget.paymentRequestId,
         'pending',
         fapshiTransId: paymentResponse.transId,
       );
 
-      // Detect provider for instructions
       final provider = FapshiService.detectPhoneProvider(_phoneController.text.trim());
       
       safeSetState(() {
@@ -176,6 +206,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         _isPolling = true;
         _detectedProvider = provider;
       });
+
+      // Navigate to confirmation step
+      _navigateToStep(2);
 
       // Start polling for payment status
       _pollPaymentStatus(paymentResponse.transId);
@@ -189,63 +222,105 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     }
   }
 
-  /// Poll payment status
   Future<void> _pollPaymentStatus(String transId) async {
     try {
       final status = await FapshiService.pollPaymentStatus(
         transId,
-        maxAttempts: 40, // 2 minutes max
+        maxAttempts: 40,
         interval: const Duration(seconds: 3),
       );
 
       if (mounted) {
-        safeSetState(() {
-          _isPolling = false;
-          if (status.isSuccessful) {
-            _paymentStatus = 'successful';
-            // Update payment request status
-            _completePayment(transId);
-          } else if (status.isFailed) {
-            _paymentStatus = 'failed';
-            _errorMessage = 'Your payment was declined. Please check your mobile money balance and try again.';
-            // Update payment request status
-            PaymentRequestService.updatePaymentRequestStatus(
-              widget.paymentRequestId,
-              'failed',
-              fapshiTransId: transId,
-            );
-          } else if (status.isPending) {
-            // Still pending after max attempts - don't mark as failed
-            // User might still be processing payment
-            _paymentStatus = 'pending';
-            _errorMessage = 'Payment is still pending. Please check your phone for the payment request and complete it.';
-            LogService.info('Payment still pending after polling: $transId');
-          } else {
-            // Unknown status - don't mark as failed
-            _paymentStatus = 'pending';
-            _errorMessage = 'Payment status unknown. Please check your phone for the payment request.';
-            LogService.warning('Unknown payment status: ${status.status}');
+        if (status.isSuccessful) {
+          // Keep _isPolling true until success dialog is shown
+          // This ensures processing overlay stays visible
+          _paymentStatus = 'successful';
+          await _completePayment(transId);
+          // Set _isPolling to false after dialog is shown
+          if (mounted) {
+            safeSetState(() {
+              _isPolling = false;
+            });
           }
-        });
+        } else {
+          safeSetState(() {
+            _isPolling = false;
+            if (status.isFailed) {
+              _paymentStatus = 'failed';
+              _errorMessage = 'Your payment was declined. Please check your mobile money balance and try again.';
+            } else if (status.isPending) {
+              _paymentStatus = 'pending';
+              _errorMessage = 'Payment is still pending. Please check your phone for the payment request and complete it.';
+            } else {
+              _paymentStatus = 'pending';
+              _errorMessage = 'Payment status unknown. Please check your phone for the payment request.';
+            }
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
         safeSetState(() {
           _isPolling = false;
           _paymentStatus = 'failed';
-          // Use user-friendly error message
           _errorMessage = ErrorHandler.getUserFriendlyMessage(e);
         });
       }
     }
   }
 
-  /// Complete payment
+  /// Sandbox helper: manually complete payment when the provider status API
+  /// is not available, so we can still test the rest of the flow (session generation,
+  /// notifications, sessions list).
+  Future<void> _forceCompleteSandbox() async {
+    safeSetState(() {
+      _isProcessing = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final fakeTransId = 'sandbox_manual_${DateTime.now().millisecondsSinceEpoch}';
+      LogService.info('🧪 Sandbox: Simulating payment success with transId: $fakeTransId');
+      await _completePayment(fakeTransId);
+    } catch (e) {
+      LogService.error('❌ Sandbox completion failed: $e');
+      if (mounted) {
+        safeSetState(() {
+          _errorMessage = 'Sandbox completion failed: $e';
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
   Future<void> _completePayment(String transId) async {
     try {
       LogService.info('Completing payment: ${widget.paymentRequestId}, transId: $transId');
       
-      // Update payment request status to paid
+      // Check if payment is already processed (idempotency)
+      final currentPaymentRequest = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+      if (currentPaymentRequest != null) {
+        final currentStatus = currentPaymentRequest['status'] as String?;
+        if (currentStatus == 'paid') {
+          LogService.info('Payment already processed as paid. Triggering webhook handler to ensure sessions are created...');
+          // Payment already paid, but ensure webhook processing happens
+          await FapshiWebhookService.handleWebhook(
+            transactionId: transId,
+            status: 'SUCCESS',
+            externalId: 'payment_request_${widget.paymentRequestId}',
+          );
+          if (mounted) {
+            // Show success dialog immediately without loading payment request first
+            // This prevents the blank page issue
+            _showSuccessDialog();
+            // Load payment request in background
+            _loadPaymentRequest();
+          }
+          return;
+        }
+      }
+      
+      // Update payment request status
       await PaymentRequestService.updatePaymentRequestStatus(
         widget.paymentRequestId,
         'paid',
@@ -253,57 +328,104 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       );
       LogService.success('Payment request status updated to paid');
 
-      // Convert payment to credits (idempotent - won't double-convert if webhook already processed)
+      // Trigger webhook handler to process payment and generate sessions
       try {
-        final amount = (_paymentRequest!['amount'] as num).toDouble();
+        LogService.info('🔄 Triggering webhook handler for payment: ${widget.paymentRequestId}, transId: $transId');
+        await FapshiWebhookService.handleWebhook(
+          transactionId: transId,
+          status: 'SUCCESS',
+          externalId: 'payment_request_${widget.paymentRequestId}',
+        );
+        LogService.success('✅ Webhook handler completed successfully');
+        
+        // Wait a moment and verify sessions were created
+        await Future.delayed(const Duration(seconds: 3));
+        final paymentRequest = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+        if (paymentRequest != null) {
+          final recurringSessionId = paymentRequest['recurring_session_id'] as String?;
+          if (recurringSessionId != null) {
+            final verifySessions = await SupabaseService.client
+                .from('individual_sessions')
+                .select('id, scheduled_date, status')
+                .eq('recurring_session_id', recurringSessionId)
+                .limit(5);
+            LogService.info('🔍 Verification: Found ${verifySessions.length} sessions for recurring_session_id: $recurringSessionId');
+            if (verifySessions.isNotEmpty) {
+              LogService.success('✅ Sample session dates: ${verifySessions.map((s) => '${s['scheduled_date']} (${s['status']})').join(', ')}');
+            } else {
+              LogService.warning('⚠️ No sessions found after generation. This may indicate an issue with session generation.');
+            }
+          } else {
+            LogService.warning('⚠️ No recurring_session_id found in payment request. Attempting to create recurring session and generate sessions...');
+            // Fallback: If webhook didn't create recurring session, try to create it now
+            try {
+              final paymentRequest = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+              if (paymentRequest != null) {
+                final bookingRequestId = paymentRequest['booking_request_id'] as String?;
+                if (bookingRequestId != null) {
+                  LogService.info('🔧 Fallback: Creating recurring session from booking request...');
+                  final bookingRequestData = await SupabaseService.client
+                      .from('booking_requests')
+                      .select()
+                      .eq('id', bookingRequestId)
+                      .maybeSingle();
+                  
+                  if (bookingRequestData != null) {
+                    final bookingRequest = BookingRequest.fromJson(bookingRequestData);
+                    final recurringSessionData = await RecurringSessionService.createRecurringSessionFromBooking(
+                      bookingRequest,
+                      paymentRequestId: widget.paymentRequestId,
+                    );
+                    
+                    final recurringSessionId = recurringSessionData['id'] as String;
+                    LogService.success('✅ Fallback: Created recurring session: $recurringSessionId');
+                    
+                    // Generate sessions
+                    final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
+                      recurringSessionId: recurringSessionId,
+                      weeksAhead: 8,
+                    );
+                    LogService.success('✅ Fallback: Generated $sessionsGenerated individual sessions');
+                  }
+                }
+              }
+            } catch (fallbackError) {
+              LogService.error('❌ Fallback session creation failed: $fallbackError');
+            }
+          }
+        }
+      } catch (e, stackTrace) {
+        LogService.error('❌ Error triggering webhook handler: $e');
+        LogService.error('Stack trace: $stackTrace');
+        // Continue even if webhook fails - it may have already been processed
+      }
+
+      try {
         final credits = await UserCreditsService.convertPaymentToCredits(
           widget.paymentRequestId,
-          amount,
+          _subtotal, // Use subtotal for credits, not total with charges
         );
         
         LogService.success('Payment converted to credits: $credits credits');
-        
-        if (mounted) {
-          // Show success with credits info
-          BrandedSnackBar.showSuccess(
-            context,
-            'Payment successful! $credits credits added to your account.',
-            duration: const Duration(seconds: 4),
-          );
-        }
       } catch (e) {
-        // Check if credits were already converted (webhook may have processed it)
         if (e.toString().contains('already converted') || 
             e.toString().contains('duplicate')) {
           LogService.info('Credits already converted (likely by webhook)');
-          if (mounted) {
-            BrandedSnackBar.showSuccess(
-              context,
-              'Payment successful! Your booking is confirmed.',
-              duration: const Duration(seconds: 3),
-            );
-          }
         } else {
           LogService.warning('Error converting payment to credits: $e');
-          // Don't fail the payment if credit conversion fails
-          if (mounted) {
-            BrandedSnackBar.showSuccess(
-              context,
-              'Payment successful! Your booking is confirmed.',
-              duration: const Duration(seconds: 3),
-            );
-          }
         }
       }
 
       if (mounted) {
-        // Refresh payment request to show updated status
-        await _loadPaymentRequest();
-        
-        // Navigate back after a short delay to allow user to see success message
-        Future.delayed(const Duration(seconds: 2), () {
+        // Show success dialog immediately - this will hide the processing overlay
+        _showSuccessDialog();
+        // Load payment request in background (non-blocking)
+        _loadPaymentRequest().then((_) {
+          // After dialog is shown and data loaded, hide processing overlay
           if (mounted) {
-            Navigator.pop(context, true); // Return true to indicate success
+            safeSetState(() {
+              _isPolling = false;
+            });
           }
         });
       }
@@ -314,14 +436,105 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           _errorMessage = 'Payment completed but failed to update status: ${ErrorHandler.getUserFriendlyMessage(e)}';
           _paymentStatus = 'failed';
         });
-        // Still show success message since payment went through
-        BrandedSnackBar.showSuccess(
-          context,
-          'Payment received! Please refresh to see updated status.',
-          duration: const Duration(seconds: 4),
-        );
       }
     }
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Animated Success Checkmark
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: AnimatedCheckmark(
+                    color: const Color(0xFF4CAF50), // Light green
+                    size: 60,
+                    animationDuration: const Duration(milliseconds: 1000),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Success Title
+              Text(
+                'Payment Successful!',
+                style: GoogleFonts.poppins(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              
+              // Success Message
+              Text(
+                'Your booking payment has been confirmed. Your sessions are now active!',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey.shade700,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              
+              // Close Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context); // Close dialog
+                    Navigator.pop(context, true); // Return to previous screen
+                    
+                    // Navigate to sessions screen to show newly created sessions
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    if (mounted) {
+                      Navigator.of(context).pushNamedAndRemoveUntil(
+                        '/student-nav',
+                        (route) => route.isFirst,
+                        arguments: {'initialTab': 2}, // Sessions tab
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    'Done',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -333,7 +546,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           backgroundColor: Colors.white,
           elevation: 0,
           title: Text(
-            'Payment',
+            'Complete Payment',
             style: GoogleFonts.poppins(
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -390,9 +603,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       );
     }
 
-    final amount = (_paymentRequest!['amount'] as num).toDouble();
-    final originalAmount = (_paymentRequest!['original_amount'] as num).toDouble();
-    final discountAmount = (_paymentRequest!['discount_amount'] as num?)?.toDouble() ?? 0.0;
     final paymentPlan = _paymentRequest!['payment_plan'] as String? ?? 'monthly';
     final description = _paymentRequest!['description'] as String?;
     final metadata = _paymentRequest!['metadata'] as Map<String, dynamic>?;
@@ -403,6 +613,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: _currentStep > 0
+            ? IconButton(
+                icon: Icon(Icons.arrow_back, color: AppTheme.textDark),
+                onPressed: () => _navigateToStep(_currentStep - 1),
+              )
+            : null,
         title: Text(
           'Complete Payment',
           style: GoogleFonts.poppins(
@@ -412,45 +628,264 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Booking Summary Card
-            _buildBookingSummary(tutorName, description, paymentPlan),
-            const SizedBox(height: 24),
-
-            // Payment Amount Card
-            _buildPaymentAmount(amount, originalAmount, discountAmount),
-            const SizedBox(height: 24),
-
-            // Phone Number Input
-            if (_paymentStatus == 'idle' || _paymentStatus == 'failed')
-              _buildPhoneInput(),
-            const SizedBox(height: 24),
-
-            // Payment Instructions (shown when pending)
-            if (_paymentStatus == 'pending' || _isPolling)
-              PaymentInstructionsWidget(
-                provider: _detectedProvider,
-                phoneNumber: _phoneController.text.trim(),
-              ),
-            
-            // Payment Status
-            if (_paymentStatus == 'pending' || _isPolling)
-              _buildPaymentPending(),
-            if (_paymentStatus == 'successful')
-              _buildPaymentSuccess(),
-            if (_errorMessage != null)
-              _buildErrorMessage(),
-
-            // Action Button
-            if (_paymentStatus == 'idle' || _paymentStatus == 'failed')
-              _buildPayButton(),
-          ],
-        ),
+      body: PageView(
+        controller: _pageController,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          // Step 1: Phone Entry
+          _buildPhoneEntryStep(tutorName, description, paymentPlan),
+          
+          // Step 2: Payment Summary
+          _buildPaymentSummaryStep(),
+          
+          // Step 3: Payment Confirmation
+          _buildPaymentConfirmationStep(),
+        ],
       ),
+    );
+  }
+
+  // Step 1: Phone Entry
+  Widget _buildPhoneEntryStep(String tutorName, String? description, String paymentPlan) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Booking Summary Card
+          _buildBookingSummary(tutorName, description, paymentPlan),
+          const SizedBox(height: 24),
+
+          // Phone Number Input
+          _buildPhoneInput(),
+          const SizedBox(height: 24),
+
+          // Error Message
+          if (_errorMessage != null) ...[
+            _buildErrorMessage(),
+            const SizedBox(height: 16),
+          ],
+
+          // Continue Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _phoneController.text.trim().isEmpty || _detectedProvider == null
+                  ? null
+                  : () {
+                      if (_detectedProvider != null) {
+                        _navigateToStep(1);
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Continue',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+
+  // Step 2: Payment Summary
+  Widget _buildPaymentSummaryStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Payment Summary Header
+          Text(
+            'Payment Summary',
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Payment Breakdown Card
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Subtotal
+                _buildSummaryRow(
+                  'Subtotal',
+                  PricingService.formatPrice(_subtotal),
+                  isTotal: false,
+                ),
+                const SizedBox(height: 16),
+                
+                // Divider
+                Divider(color: Colors.grey.shade200),
+                const SizedBox(height: 16),
+                
+                // Charges
+                _buildSummaryRow(
+                  'Payment Charges (2%)',
+                  PricingService.formatPrice(_charges),
+                  isTotal: false,
+                  isCharges: true,
+                ),
+                const SizedBox(height: 20),
+                
+                // Total
+                _buildSummaryRow(
+                  'Total Amount',
+                  PricingService.formatPrice(_total),
+                  isTotal: true,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Payment Method Info
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _detectedProvider == 'mtn' 
+                      ? Icons.phone_android 
+                      : Icons.phone_iphone,
+                  color: AppTheme.primaryColor,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Payment Method',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _detectedProvider != null
+                            ? PaymentProviderHelper.getProviderName(_detectedProvider)
+                            : 'Mobile Money',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  _phoneController.text.trim(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Pay Now Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isProcessing ? null : _initiatePayment,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+              child: _isProcessing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      'Pay ${PricingService.formatPrice(_total)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+            ),
+          ),
+          
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+
+  // Step 3: Payment Confirmation
+  Widget _buildPaymentConfirmationStep() {
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Payment Instructions (centered card)
+              if (_paymentStatus == 'pending' || _isPolling)
+                PaymentInstructionsWidget(
+                  provider: _detectedProvider,
+                  phoneNumber: _phoneController.text.trim(),
+                ),
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+            ],
+          ),
+        ),
+        
+        // Processing Overlay (shown while polling)
+        if (_isPolling)
+          _buildProcessingOverlay(),
+      ],
     );
   }
 
@@ -520,75 +955,6 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildPaymentAmount(double amount, double originalAmount, double discountAmount) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Payment Amount',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              if (discountAmount > 0) ...[
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      PricingService.formatPrice(originalAmount),
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        decoration: TextDecoration.lineThrough,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    Text(
-                      'Save ${PricingService.formatPrice(discountAmount)}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: Colors.green.shade700,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Discount for ${_paymentRequest!['payment_plan']?.toString().toUpperCase() ?? 'upfront'} payment',
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              Text(
-                PricingService.formatPrice(amount),
-                style: GoogleFonts.poppins(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPhoneInput() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -652,29 +1018,39 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             fillColor: Colors.white,
           ),
         ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _detectedProvider != null
-                      ? PaymentProviderHelper.getConfirmationMessage(_detectedProvider)
-                      : 'A payment request will be sent to this number. You\'ll need to approve it in your mobile money app.',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: Colors.blue.shade900,
-                  ),
-                ),
+        if (_detectedProvider == null && _phoneController.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Please enter a valid MTN or Orange number',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.red.shade600,
               ),
-            ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryRow(String label, String amount, {bool isTotal = false, bool isCharges = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: isTotal ? 16 : 14,
+            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+            color: isTotal ? AppTheme.textDark : Colors.grey.shade700,
+          ),
+        ),
+        Text(
+          amount,
+          style: GoogleFonts.poppins(
+            fontSize: isTotal ? 20 : 14,
+            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
+            color: isTotal ? AppTheme.primaryColor : (isCharges ? Colors.grey.shade700 : AppTheme.textDark),
           ),
         ),
       ],
@@ -683,11 +1059,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Widget _buildPaymentPending() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: AppTheme.primaryColor.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -695,21 +1071,21 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           Row(
             children: [
               SizedBox(
-                width: 24,
-                height: 24,
+                width: 20,
+                height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.orange.shade700),
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Waiting for payment confirmation...',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Colors.orange.shade900,
+                    color: AppTheme.textDark,
                   ),
                 ),
               ),
@@ -721,7 +1097,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             'This screen will update automatically once you complete the payment.',
             style: GoogleFonts.poppins(
               fontSize: 13,
-              color: Colors.orange.shade800,
+              color: Colors.grey.shade700,
               height: 1.5,
             ),
           ),
@@ -730,29 +1106,32 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildPaymentSuccess() {
+  Widget _buildProcessingOverlay() {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade200!),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.check_circle, color: Colors.green.shade700, size: 24),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              'Payment successful! Your booking is confirmed.',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.green.shade900,
-                fontWeight: FontWeight.w600,
+      color: Colors.white.withOpacity(0.85), // Increased opacity for better visibility
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 50,
+              height: 50,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              'Processing payment...',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.textDark,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -764,7 +1143,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       decoration: BoxDecoration(
         color: Colors.red.shade50,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.red.shade200!),
+        border: Border.all(color: Colors.red.shade200),
       ),
       child: Row(
         children: [
@@ -784,36 +1163,81 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildPayButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _isProcessing ? null : _initiatePayment,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.primaryColor,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+  /// Sandbox testing button - only shown in sandbox mode when payment fails
+  Widget _buildSandboxTestingButton() {
+    final isSandbox = !FapshiService.isProduction;
+    
+    // Only show in sandbox mode when payment has failed
+    if (!isSandbox || _paymentStatus != 'failed' || _errorMessage == null) {
+      return const SizedBox.shrink();
+    }
+    
+    // Only show if error is related to phone validation or payment processing
+    final showButton = _errorMessage!.toLowerCase().contains('phone') ||
+                       _errorMessage!.toLowerCase().contains('valid') ||
+                       _errorMessage!.toLowerCase().contains('declined') ||
+                       _errorMessage!.toLowerCase().contains('failed');
+    
+    if (!showButton) {
+      return const SizedBox.shrink();
+    }
+    
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.orange[50],
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange[200]!),
           ),
-        ),
-        child: _isProcessing
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Text(
-                'Pay ${PricingService.formatPrice((_paymentRequest!['amount'] as num).toDouble())}',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.orange[900]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Sandbox Testing Only',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange[900],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'If you\'re testing and the payment is failing, you can simulate a successful payment to test the rest of the flow (session generation, notifications, etc.).',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+                  fontSize: 11,
+                  color: Colors.orange[800],
+                  height: 1.4,
                 ),
               ),
-      ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _isProcessing ? null : _forceCompleteSandbox,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  backgroundColor: Colors.orange[100],
+                ),
+                child: Text(
+                  'Simulate Payment Success (Testing Only)',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange[900],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

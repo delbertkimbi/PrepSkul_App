@@ -919,6 +919,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   Widget _buildLocationCard() {
     final location = widget.request['location'] as String? ?? 'Not specified';
     final address = widget.request['address'] as String?;
+    final locationDescription = widget.request['location_description'] as String?;
 
     return Card(
       elevation: 2,
@@ -969,6 +970,11 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             _buildDetailRow(Icons.public, 'Type', location.toUpperCase()),
             if (address != null && address.isNotEmpty)
               _buildDetailRow(Icons.home, 'Address', address),
+            // Show location description if provided by learner
+            if (locationDescription != null && locationDescription.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _buildDetailRow(Icons.description, 'Location Details', locationDescription),
+            ],
           ],
         ),
       ),

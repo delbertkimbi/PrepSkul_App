@@ -71,6 +71,12 @@ class UserCreditsService {
 
       final userId = paymentRequest['student_id'] as String;
 
+      // Verify the authenticated user is the student who made the payment
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId != userId) {
+        LogService.warning('Payment conversion: authenticated user ($currentUserId) does not match payment student ($userId). This may cause RLS issues.');
+      }
+
       // Initialize user credits if doesn't exist
       await _initializeUserCredits(userId);
 

@@ -13,6 +13,7 @@ import 'package:prepskul/features/booking/widgets/time_grid_selector.dart';
 import 'package:prepskul/features/booking/widgets/location_selector.dart';
 import 'package:prepskul/features/booking/widgets/booking_review.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 
 /// Multi-step wizard for booking a tutor for recurring sessions
 ///
@@ -127,12 +128,12 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     if (!_canProceed()) {
       // Show error message for location step if address is missing
       if (_currentStep == 3 && 
-          (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') &&
+          _selectedLocation == 'onsite' &&
           (_onsiteAddress == null || _onsiteAddress!.trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Please enter your address to continue with ${_selectedLocation == 'onsite' ? 'onsite' : 'hybrid'} sessions',
+              'Please enter your address to continue with onsite sessions',
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: Colors.red[600],
@@ -176,11 +177,11 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         return _selectedTimes.length == _selectedDays.length;
       case 3: // Location
         if (_selectedLocation == null) return false;
-        // For onsite or hybrid, address is required
-        if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') {
+        // Only onsite requires address (hybrid/flexible doesn't need address upfront)
+        if (_selectedLocation == 'onsite') {
           return _onsiteAddress != null && _onsiteAddress!.trim().isNotEmpty;
         }
-        // For online, no address needed
+        // For online or hybrid/flexible, no address needed upfront
         return true;
       case 4: // Review
         return _selectedPaymentPlan != null;
@@ -256,13 +257,109 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       if (!mounted) return;
       Navigator.pop(context);
 
-      // Use ErrorHandlerService for consistent error handling
-      ErrorHandlerService.showError(
-        context,
-        e,
-        'Failed to send booking request. Please try again.',
-      );
+      // Check if this is an existing booking request error
+      final errorString = e.toString();
+      if (errorString.contains('EXISTING_BOOKING_REQUEST')) {
+        // Extract request ID from error message
+        final requestIdMatch = RegExp(r'requestId=([a-f0-9-]+)').firstMatch(errorString);
+        final requestId = requestIdMatch?.group(1);
+        
+        // Extract message (everything after the second colon)
+        final messageMatch = RegExp(r'EXISTING_BOOKING_REQUEST:requestId=[^:]+:(.+)').firstMatch(errorString);
+        final message = messageMatch?.group(1) ?? 'You already have an existing booking with this tutor.';
+        
+        _showExistingBookingDialog(message, requestId);
+      } else {
+        // Use ErrorHandlerService for other errors
+        ErrorHandlerService.showError(
+          context,
+          e,
+          'Failed to send booking request. Please try again.',
+        );
+      }
     }
+  }
+
+  void _showExistingBookingDialog(String message, String? requestId) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: AppTheme.primaryColor,
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Existing Booking',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            height: 1.5,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'OK',
+              style: GoogleFonts.poppins(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (requestId != null)
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context); // Close booking flow screen
+                
+                // Navigate to student navigation with requests tab and highlight the request
+                if (mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/student-nav',
+                    (route) => false,
+                    arguments: {
+                      'initialTab': 2, // Requests tab
+                      'highlightRequestId': requestId, // Highlight this request
+                    },
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(
+                'View Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   void _showSuccessDialog() {

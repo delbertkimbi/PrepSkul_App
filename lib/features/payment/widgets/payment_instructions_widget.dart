@@ -6,7 +6,7 @@ import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 /// Payment Instructions Widget
 /// 
 /// Displays provider-specific instructions for confirming payment
-/// Shows USSD code and step-by-step guide
+/// Shows USSD code and step-by-step guide in a centered, soft card
 class PaymentInstructionsWidget extends StatelessWidget {
   final String? provider;
   final String phoneNumber;
@@ -21,213 +21,212 @@ class PaymentInstructionsWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final providerName = PaymentProviderHelper.getProviderName(provider);
     final ussdCode = PaymentProviderHelper.getUssdCode(provider);
-    final providerColor = PaymentProviderHelper.getProviderColor(provider);
-    final providerIcon = PaymentProviderHelper.getProviderIcon(provider);
     final instructions = PaymentProviderHelper.getPaymentInstructions(provider);
+    
+    // Determine logo path based on provider
+    final logoPath = provider == PaymentProviderHelper.mtn
+        ? 'assets/images/mtn-logo.png'
+        : provider == PaymentProviderHelper.orange
+            ? 'assets/images/orange-logo.png'
+            : null;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: providerColor.withOpacity(0.3),
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: providerColor.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400),
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppTheme.primaryColor.withOpacity(0.15),
+            width: 1,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with provider info
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: providerColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  providerIcon,
-                  color: providerColor,
-                  size: 28,
-                ),
+          // Soft shadow (not elevated)
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Header with logo and title
+            if (logoPath != null) ...[
+              Image.asset(
+                logoPath,
+                height: 90,
+                width: 90,
+                fit: BoxFit.contain,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              const SizedBox(height: 16),
+            ],
+            Text(
+              'Confirm Payment',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              providerName,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // USSD Code Highlight
+            if (ussdCode.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Confirm Payment',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black,
-                      ),
+                    Icon(
+                      Icons.phone,
+                      color: AppTheme.primaryColor,
+                      size: 22,
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(width: 10),
                     Text(
-                      providerName,
+                      'Dial $ussdCode',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ],
                 ),
               ),
+              const SizedBox(height: 24),
             ],
-          ),
-          const SizedBox(height: 20),
-          
-          // USSD Code Highlight
-          if (ussdCode.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: providerColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: providerColor.withOpacity(0.3),
-                  width: 1.5,
+
+            // Step-by-step instructions
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Follow these steps:',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.phone,
-                    color: providerColor,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Dial $ussdCode',
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: providerColor,
-                      letterSpacing: 1.2,
+            ),
+            const SizedBox(height: 14),
+            ...instructions.asMap().entries.map((entry) {
+              final index = entry.key;
+              final instruction = entry.value;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${index + 1}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        instruction,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey.shade700,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            
             const SizedBox(height: 20),
-          ],
-
-          // Step-by-step instructions
-          Text(
-            'Follow these steps:',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...instructions.asMap().entries.map((entry) {
-            final index = entry.key;
-            final instruction = entry.value;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+            
+            // Helpful tip
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.primaryColor.withOpacity(0.15),
+                  width: 1,
+                ),
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: providerColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${index + 1}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
+                  Icon(
+                    Icons.info_outline,
+                    color: AppTheme.primaryColor,
+                    size: 18,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      instruction,
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey.shade700,
-                        height: 1.5,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Tip',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Check your phone ($phoneNumber) for the payment notification. You have 2 minutes to confirm.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            );
-          }),
-          
-          const SizedBox(height: 16),
-          
-          // Helpful tips
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.blue.shade200,
-                width: 1,
-              ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.info_outline,
-                  color: Colors.blue.shade700,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Tip:',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue.shade900,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Check your phone ($phoneNumber) for the payment notification. You have 2 minutes to confirm.',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.blue.shade800,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../../../core/services/log_service.dart';
 import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/models/booking_request_model.dart';
 import '../../../features/booking/services/booking_service.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'tutor_requests_screen.dart';
 
 /// Full-screen detail view for tutor booking requests
@@ -149,28 +150,56 @@ class _TutorRequestDetailFullScreenState
               ),
             ),
             const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: request.status == 'pending'
-                    ? AppTheme.primaryColor.withOpacity(0.1)
-                    : request.status == 'approved'
-                        ? AppTheme.accentGreen.withOpacity(0.1)
-                        : AppTheme.textMedium.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                request.status.toUpperCase(),
-                style: GoogleFonts.poppins(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: request.status == 'pending'
+            // Check payment status for approved requests
+            FutureBuilder<Map<String, dynamic>?>(
+              future: request.status == 'approved'
+                  ? PaymentRequestService.getPaymentRequestByBookingRequestId(request.id)
+                  : Future.value(null),
+              builder: (context, snapshot) {
+                String displayStatus = request.status;
+                Color statusColor;
+                Color statusBgColor;
+                
+                if (request.status == 'approved' && snapshot.hasData) {
+                  final paymentStatus = snapshot.data?['status'] as String?;
+                  if (paymentStatus == 'paid') {
+                    displayStatus = 'scheduled';
+                    statusColor = Colors.blue[700]!;
+                    statusBgColor = Colors.blue[50]!;
+                  } else {
+                    displayStatus = 'approved';
+                    statusColor = AppTheme.accentGreen;
+                    statusBgColor = AppTheme.accentGreen.withOpacity(0.1);
+                  }
+                } else {
+                  statusColor = request.status == 'pending'
                       ? AppTheme.primaryColor
                       : request.status == 'approved'
                           ? AppTheme.accentGreen
-                          : AppTheme.textMedium,
-                ),
-              ),
+                          : AppTheme.textMedium;
+                  statusBgColor = request.status == 'pending'
+                      ? AppTheme.primaryColor.withOpacity(0.1)
+                      : request.status == 'approved'
+                          ? AppTheme.accentGreen.withOpacity(0.1)
+                          : AppTheme.textMedium.withOpacity(0.1);
+                }
+                
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: statusBgColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    displayStatus.toUpperCase(),
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: statusColor,
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -263,10 +292,25 @@ class _TutorRequestDetailFullScreenState
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.softBorder),
       ),
-      child: _buildDetailRow(
-        Icons.location_on,
-        'Location',
-        _formatLocation(request.location, request.address),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDetailRow(
+            Icons.location_on,
+            'Location',
+            _formatLocation(request.location, request.address),
+          ),
+          // Show location description if provided by learner
+          if (request.locationDescription != null && 
+              request.locationDescription!.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildDetailRow(
+              Icons.description,
+              'Location Details',
+              request.locationDescription!,
+            ),
+          ],
+        ],
       ),
     );
   }
