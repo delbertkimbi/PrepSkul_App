@@ -147,37 +147,33 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      elevation: 1,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: InkWell(
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Game icon
               Container(
-                width: 56,
-                height: 56,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.7),
-                    ],
-                  ),
+                  color: AppTheme.primaryColor.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _gameIcon,
-                  color: Colors.white,
-                  size: 28,
+                  color: AppTheme.primaryColor,
+                  size: 24,
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               // Game info
               Expanded(
                 child: Column(
@@ -189,11 +185,11 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                           child: Text(
                             widget.game.title,
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
                             ),
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -214,17 +210,17 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
-                            vertical: 4,
+                            vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            color: AppTheme.primaryColor.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             _gameTypeLabel,
                             style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
                               color: AppTheme.primaryColor,
                             ),
                           ),
@@ -234,38 +230,27 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                         if (widget.game.metadata.difficulty != null)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
+                              horizontal: 8,
+                              vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: _getDifficultyColor(widget.game.metadata.difficulty!).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
+                              color: _getDifficultyColor(widget.game.metadata.difficulty!).withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(6),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _getDifficultyIcon(widget.game.metadata.difficulty!),
-                                  size: 10,
-                                  color: _getDifficultyColor(widget.game.metadata.difficulty!),
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  widget.game.metadata.difficulty!.toUpperCase(),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: _getDifficultyColor(widget.game.metadata.difficulty!),
-                                  ),
-                                ),
-                              ],
+                            child: Text(
+                              widget.game.metadata.difficulty!.toUpperCase(),
+                              style: GoogleFonts.poppins(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: _getDifficultyColor(widget.game.metadata.difficulty!),
+                              ),
                             ),
                           ),
                         if (widget.game.metadata.difficulty != null) const SizedBox(width: 8),
                         Text(
                           '${widget.game.items.length} items',
                           style: GoogleFonts.poppins(
-                            fontSize: 12,
+                            fontSize: 11,
                             color: AppTheme.textMedium,
                           ),
                         ),
@@ -307,12 +292,35 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                       ),
                     ],
                     const SizedBox(height: 4),
-                    Text(
-                      _formatDate(widget.game.createdAt),
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        color: AppTheme.textMedium,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          _formatDate(widget.game.createdAt),
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_stats != null && _stats!['timesPlayed'] > 0)
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.play_circle_fill,
+                                size: 14,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${_stats!['timesPlayed']}x',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: AppTheme.textMedium,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ],
                 ),
@@ -321,34 +329,51 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: Icon(
-                      _isFavorite ? Icons.favorite : Icons.favorite_border,
-                      color: _isFavorite ? Colors.red[400] : AppTheme.textMedium,
-                    ),
-                    onPressed: _toggleFavorite,
-                    tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          _isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: _isFavorite ? Colors.red[400] : AppTheme.textMedium,
+                        ),
+                        onPressed: _toggleFavorite,
+                        tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                      ),
+                      if (widget.onShare != null)
+                        IconButton(
+                          icon: Icon(
+                            Icons.share,
+                            color: AppTheme.textMedium,
+                          ),
+                          onPressed: widget.onShare,
+                          tooltip: 'Share game',
+                        ),
+                    ],
                   ),
-                  if (widget.onShare != null)
-                    IconButton(
-                      icon: const Icon(Icons.share),
-                      color: AppTheme.primaryColor,
-                      onPressed: widget.onShare,
-                      tooltip: 'Share game',
-                    ),
-                  if (widget.onPreview != null)
-                    IconButton(
-                      icon: const Icon(Icons.preview),
-                      color: AppTheme.primaryColor,
-                      onPressed: widget.onPreview,
-                      tooltip: 'Preview game',
-                    ),
-                  if (widget.onDelete != null)
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      color: Colors.red,
-                      onPressed: widget.onDelete,
-                      tooltip: 'Delete game',
+                  if (widget.onPreview != null || widget.onDelete != null)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.onPreview != null)
+                          IconButton(
+                            icon: Icon(
+                              Icons.remove_red_eye_outlined,
+                              color: AppTheme.textMedium,
+                            ),
+                            onPressed: widget.onPreview,
+                            tooltip: 'Preview game',
+                          ),
+                        if (widget.onDelete != null)
+                          IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: widget.onDelete,
+                            tooltip: 'Delete game',
+                          ),
+                      ],
                     ),
                 ],
               ),

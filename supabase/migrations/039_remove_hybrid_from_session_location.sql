@@ -24,7 +24,7 @@ DROP CONSTRAINT IF EXISTS recurring_sessions_location_check;
 ALTER TABLE public.recurring_sessions
 ADD CONSTRAINT recurring_sessions_location_check 
 CHECK (location IN ('online', 'onsite'));
-
+i 
 -- For session_reschedule_requests table
 ALTER TABLE public.session_reschedule_requests
 DROP CONSTRAINT IF EXISTS session_reschedule_requests_proposed_location_check;

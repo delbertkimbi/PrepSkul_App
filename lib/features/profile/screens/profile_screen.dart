@@ -13,11 +13,10 @@ import 'edit_profile_screen.dart';
 import 'language_settings_screen.dart';
 import 'profile_preview_screen.dart';
 import '../../tutor/screens/tutor_onboarding_screen.dart';
-import '../../discovery/screens/tutor_detail_screen.dart';
 import '../../../core/localization/app_localizations.dart';
-import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
+import '../../support/screens/help_support_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -696,7 +695,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: t.profileHelpSupport,
                             subtitle: t.profileHelpSupportSubtitle,
                             onTap: () {
-                              // TODO: Navigate to help
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const HelpSupportScreen(),
+                                ),
+                              );
                             },
                           ),
                         ],
@@ -829,19 +833,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.6),
-            blurRadius: 8,
-            offset: const Offset(-3, -3),
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(3, 3),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
             spreadRadius: 0,
           ),
         ],
@@ -852,21 +854,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                child: Icon(icon, color: AppTheme.primaryColor, size: 18),
+                child: Icon(icon, color: AppTheme.primaryColor, size: 16),
               ),
               const SizedBox(width: 10),
               Text(
                 title,
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
-                  letterSpacing: -0.2,
+                  letterSpacing: -0.3,
                 ),
               ),
             ],
@@ -1062,189 +1064,307 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           // Learning Path
           if (learningPath != null && learningPath.isNotEmpty) ...[
-            _buildInfoRow(label: 'Learning Path', value: learningPath),
-            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    Icons.track_changes_rounded,
+                    size: 14,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Learning Path',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              learningPath,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 10),
           ],
 
+          // Subjects & Skills Group
+          if ((subjects != null && subjects.isNotEmpty) || 
+              (skills != null && skills.isNotEmpty)) ...[
           // Subjects
           if (subjects != null && subjects.isNotEmpty) ...[
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      Icons.menu_book_rounded,
+                      size: 14,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
             Text(
               'Subjects',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
+                      letterSpacing: 0.2,
               ),
             ),
-            const SizedBox(height: 8),
+                ],
+              ),
+              const SizedBox(height: 6),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: subjects.map((subject) {
+                spacing: 6,
+                runSpacing: 6,
+                children: subjects.map((s) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: AppTheme.primaryColor.withOpacity(0.3),
+                        color: Colors.grey[200]!,
+                        width: 1,
                     ),
                   ),
                   child: Text(
-                    subject.toString(),
+                      s.toString(),
                     style: GoogleFonts.poppins(
                       fontSize: 12,
-                      color: AppTheme.primaryColor,
+                        color: AppTheme.textDark,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 );
               }).toList(),
             ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 10),
           ],
 
           // Skills
           if (skills != null && skills.isNotEmpty) ...[
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Icon(
+                      Icons.stars_rounded,
+                      size: 14,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
             Text(
               'Skills',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
+                      letterSpacing: 0.2,
               ),
             ),
-            const SizedBox(height: 8),
+                ],
+              ),
+              const SizedBox(height: 6),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: skills.map((skill) {
+                spacing: 6,
+                runSpacing: 6,
+                children: skills.map((s) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.grey[200]!,
+                        width: 1,
+                      ),
                   ),
                   child: Text(
-                    skill.toString(),
+                      s.toString(),
                     style: GoogleFonts.poppins(
                       fontSize: 12,
-                      color: Colors.orange[700],
+                        color: AppTheme.textDark,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 );
               }).toList(),
             ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 12),
+            ],
           ],
 
-          // Learning Goals
+          // Learning Goals - 2 columns
           if (learningGoals != null && learningGoals.isNotEmpty) ...[
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    Icons.flag_rounded,
+                    size: 14,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
             Text(
               'Learning Goals',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
-              ),
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            ...learningGoals.map((goal) {
-              // Safely extract goal text - handle both String and List cases
+                const SizedBox(height: 6),
+            Builder(
+              builder: (context) {
+                final List<dynamic> goalsList = learningGoals ?? [];
+                if (goalsList.isEmpty) return const SizedBox.shrink();
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 6,
+                    childAspectRatio: 3.5,
+                  ),
+                  itemCount: goalsList.length,
+                  itemBuilder: (context, index) {
+                    final goal = goalsList[index];
               String goalText;
               if (goal is String) {
                 goalText = goal;
               } else if (goal is List) {
-                // If goal is a list, join it without brackets
                 goalText = goal.map((item) => item.toString()).join(', ');
               } else {
-                // Convert to string and clean up any bracket formatting
                 goalText = goal.toString().replaceAll(RegExp(r'[\[\]]'), '');
               }
-
-              // Clean up any remaining bracket artifacts
               goalText = goalText.trim();
               if (goalText.startsWith('[') && goalText.endsWith(']')) {
                 goalText = goalText.substring(1, goalText.length - 1);
               }
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
+                    return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      margin: const EdgeInsets.only(top: 6),
-                      width: 6,
-                      height: 6,
+                          margin: const EdgeInsets.only(top: 4, right: 6),
+                          width: 4,
+                          height: 4,
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor,
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         goalText,
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
+                              fontSize: 12,
                           color: AppTheme.textDark,
-                          height: 1.5,
+                              height: 1.3,
+                              fontWeight: FontWeight.w400,
                         ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
-                ),
-              );
-            }).toList(),
-            const SizedBox(height: 16),
+                    );
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 4),
           ],
 
           // Learning Styles
           if (learningStyles != null && learningStyles.isNotEmpty) ...[
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(
+                    Icons.psychology_rounded,
+                    size: 14,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
             Text(
               'Learning Styles',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textMedium,
+                    letterSpacing: 0.2,
               ),
             ),
-            const SizedBox(height: 8),
+              ],
+            ),
+            const SizedBox(height: 6),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: learningStyles.map((style) {
+              spacing: 6,
+              runSpacing: 6,
+              children: learningStyles.map((s) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.purple.withOpacity(0.3)),
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: Colors.grey[200]!,
+                      width: 1,
+                    ),
                   ),
                   child: Text(
-                    style.toString(),
+                    s.toString(),
                     style: GoogleFonts.poppins(
                       fontSize: 12,
-                      color: Colors.purple[700],
+                      color: AppTheme.textDark,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 );
               }).toList(),
             ),
-            const SizedBox(height: 16),
           ],
 
           // Empty state
@@ -1254,15 +1374,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               (learningGoals == null || learningGoals.isEmpty) &&
               (learningStyles == null || learningStyles.isEmpty))
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.school_outlined,
+                      size: 48,
+                      color: AppTheme.textLight,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
                 'Complete your onboarding survey to see your learning information here.',
+                      textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(
-                  fontSize: 12,
+                        fontSize: 13,
                   color: AppTheme.textMedium,
-                  fontStyle: FontStyle.italic,
                 ),
-                textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
               ),
             ),
         ],
@@ -1412,4 +1543,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Build a professional learning info item with icon, label, and content
+  Widget _buildLearningInfoItem({
+    required IconData icon,
+    required String label,
+    String? value,
+    List<String>? chips,
+    List<String>? goals,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header with icon and label
+        Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: AppTheme.primaryColor,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textMedium,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        
+        // Content
+        if (value != null)
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          )
+        else if (chips != null && chips.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: chips.map((chip) {
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  chip,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.primaryColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              );
+            }).toList(),
+          )
+        else if (goals != null && goals.isNotEmpty)
+          ...goals.map((goal) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      goal,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: AppTheme.textDark,
+                        height: 1.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+      ],
+    );
+  }
+
 }
+

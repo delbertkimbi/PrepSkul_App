@@ -9,6 +9,7 @@ import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
+import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import '../widgets/skulmate_character_widget.dart';
@@ -42,9 +43,11 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   late Animation<double> _scaleAnimation;
   late Animation<double> _rotationAnimation;
   final GameSoundService _soundService = GameSoundService();
+  final TTSService _ttsService = TTSService();
   late ConfettiController _confettiController;
   dynamic _character; // Will be SkulMateCharacter
   GameStats? _currentStats;
+  bool _isTTSEnabled = true;
   
   // Swipe mechanics
   double _dragPosition = 0;
@@ -59,7 +62,14 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    _ttsService.initialize();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    // Speak first card term
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted && _isTTSEnabled) {
+        _speakCurrentCard();
+      }
+    });
     _flipController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -98,6 +108,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   @override
   void dispose() {
     _flipController.dispose();
+    _ttsService.dispose();
     _progressController.dispose();
     _swipeController.dispose();
     _confettiController.dispose();
@@ -178,13 +189,34 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
 
     if (_isFlipped) {
       _flipController.reverse();
+      // Speak term when flipping back
+      if (_isTTSEnabled) {
+        _speakCurrentCard();
+      }
     } else {
       _flipController.forward();
       _soundService.playFlip();
+      // Speak definition when flipped
+      if (_isTTSEnabled) {
+        final card = widget.game.items[_currentCardIndex];
+        final definition = card.definition ?? '';
+        if (definition.isNotEmpty) {
+          _ttsService.speak(definition);
+        }
+      }
     }
     safeSetState(() {
       _isFlipped = !_isFlipped;
     });
+  }
+
+  void _speakCurrentCard() {
+    if (!_isTTSEnabled) return;
+    final card = widget.game.items[_currentCardIndex];
+    final term = card.term ?? '';
+    if (term.isNotEmpty) {
+      _ttsService.speak(term);
+    }
   }
 
   void _markAsKnown(bool isKnown) {
@@ -284,6 +316,12 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         _dragPosition = 0;
         _dragOffset = Offset.zero;
         _isDragging = false;
+      });
+      // Speak next card
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && _isTTSEnabled) {
+          _speakCurrentCard();
+        }
       });
       // Animate progress bar
       final newProgress = (_currentCardIndex + 1) / widget.game.items.length;
@@ -388,6 +426,18 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
           ),
         ),
         actions: [
+          IconButton(
+            icon: Icon(
+              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
+              color: AppTheme.textDark,
+            ),
+            onPressed: () {
+              safeSetState(() {
+                _isTTSEnabled = !_isTTSEnabled;
+                _ttsService.setEnabled(_isTTSEnabled);
+              });
+            },
+          ),
           if (_currentStreak > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),

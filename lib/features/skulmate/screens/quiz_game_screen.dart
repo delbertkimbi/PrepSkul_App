@@ -9,6 +9,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
+import '../services/tts_service.dart';
 import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
@@ -32,24 +33,43 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
   int _xpEarned = 0;
   DateTime? _startTime;
   final GameSoundService _soundService = GameSoundService();
+  final TTSService _ttsService = TTSService();
   late ConfettiController _confettiController;
   dynamic _character;
   GameStats? _currentStats;
+  bool _isTTSEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    _ttsService.initialize();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
     _loadCharacter();
     _loadStats();
+    // Speak first question
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted && _isTTSEnabled) {
+        _speakCurrentQuestion();
+      }
+    });
   }
 
   @override
   void dispose() {
     _confettiController.dispose();
+    _ttsService.dispose();
     super.dispose();
+  }
+
+  void _speakCurrentQuestion() {
+    if (!_isTTSEnabled) return;
+    final question = widget.game.items[_currentQuestionIndex];
+    final questionText = question.question ?? '';
+    if (questionText.isNotEmpty) {
+      _ttsService.speak(questionText);
+    }
   }
 
   Future<void> _loadCharacter() async {
@@ -79,12 +99,18 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
         _score++;
         _xpEarned += 10;
         _soundService.playCorrect();
+        if (_isTTSEnabled) {
+          _ttsService.speak('Correct!');
+        }
       } else {
         _soundService.playIncorrect();
+        if (_isTTSEnabled) {
+          _ttsService.speak('Incorrect. The correct answer is ${question.options?[correctAnswerIndex] ?? ''}');
+        }
       }
     });
 
-    Future.delayed(Duration(seconds: 1), () {
+    Future.delayed(Duration(seconds: 2), () {
       if (mounted) {
         _nextQuestion();
       }
@@ -96,6 +122,12 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       safeSetState(() {
         _currentQuestionIndex++;
         _selectedAnswerIndex = null;
+      });
+      // Speak next question
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted && _isTTSEnabled) {
+          _speakCurrentQuestion();
+        }
       });
     } else {
       _finishGame();
@@ -151,6 +183,20 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       appBar: AppBar(
         title: Text('Quiz Game', style: GoogleFonts.poppins()),
         backgroundColor: AppTheme.primaryColor,
+        actions: [
+          IconButton(
+            icon: Icon(
+              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
+              color: Colors.white,
+            ),
+            onPressed: () {
+              safeSetState(() {
+                _isTTSEnabled = !_isTTSEnabled;
+                _ttsService.setEnabled(_isTTSEnabled);
+              });
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [

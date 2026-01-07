@@ -120,11 +120,13 @@ class SocialService {
             friend_profile:profiles!skulmate_friendships_friend_id_fkey(
               id,
               full_name,
+              email,
               avatar_url
             ),
             user_profile:profiles!skulmate_friendships_user_id_fkey(
               id,
               full_name,
+              email,
               avatar_url
             )
           ''')
@@ -136,7 +138,7 @@ class SocialService {
 
       final response = await query;
 
-      return response.map<Friendship>((json) {
+      final mapped = response.map<Friendship?>((json) {
         // Determine which profile is the friend (not the current user)
         final friendProfile = json['friend_profile'] as Map<String, dynamic>?;
         final userProfile = json['user_profile'] as Map<String, dynamic>?;
@@ -146,13 +148,34 @@ class SocialService {
         // If current user is the requester, friend is friend_profile
         // If current user is the recipient, friend is user_profile
         final friend = jsonUserId == userId ? friendProfile : userProfile;
-        
+        // If we cannot read the friend profile (RLS), still keep the friendship with a fallback
+        if (friend == null) {
+          LogService.warning(
+              '🎮 [Social] Missing friend profile (possible RLS). Using fallback name.');
+        }
+
+        // Prefer real name; fallback to email prefix to avoid "User"
+        final rawName = (friend?['full_name'] as String?)?.trim();
+        final email = friend?['email'] as String?;
+        final displayName = (rawName != null &&
+                rawName.isNotEmpty &&
+                rawName.toLowerCase() != 'user' &&
+                rawName.toLowerCase() != 'student')
+            ? rawName
+            : (email != null && email.isNotEmpty
+                ? email.split('@').first
+                : 'Friend');
+
         return Friendship.fromJson({
           ...json,
-          'friend_name': friend?['full_name'],
+          'friend_name': displayName,
           'friend_avatar_url': friend?['avatar_url'],
         });
-      }).toList();
+      }).whereType<Friendship>().toList();
+
+      LogService.debug(
+          '🎮 [Social] Loaded friendships: total=${mapped.length}, pending=${mapped.where((f) => f.status == FriendshipStatus.pending).length}, accepted=${mapped.where((f) => f.status == FriendshipStatus.accepted).length}');
+      return mapped;
     } catch (e) {
       LogService.error('🎮 [Social] Error fetching friends: $e');
       rethrow;
@@ -197,6 +220,7 @@ class SocialService {
             user:profiles!skulmate_leaderboards_user_id_fkey(
               id,
               full_name,
+              email,
               avatar_url
             )
           ''')
@@ -207,9 +231,25 @@ class SocialService {
 
       return response.map<LeaderboardEntry>((json) {
         final user = json['user'] as Map<String, dynamic>?;
+        final storedName = (json['user_name'] as String?)?.trim();
+        final rawName = (user?['full_name'] as String?)?.trim();
+        final email = user?['email'] as String?;
+        final displayName = (storedName != null &&
+                storedName.isNotEmpty &&
+                storedName.toLowerCase() != 'user' &&
+                storedName.toLowerCase() != 'student')
+            ? storedName
+            : (rawName != null &&
+                rawName.isNotEmpty &&
+                rawName.toLowerCase() != 'user' &&
+                rawName.toLowerCase() != 'student')
+            ? rawName
+            : (email != null && email.isNotEmpty
+                ? email.split('@').first
+                : 'Player');
         return LeaderboardEntry.fromJson({
           ...json,
-          'user_name': user?['full_name'],
+          'user_name': displayName,
           'user_avatar_url': user?['avatar_url'],
           // Note: user_level would need to be fetched separately from user_game_stats
           // For now, we'll leave it null and it can be calculated client-side if needed

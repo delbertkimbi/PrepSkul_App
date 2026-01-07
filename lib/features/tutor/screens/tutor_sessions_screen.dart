@@ -1589,7 +1589,6 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         meetLink = individualSession['meeting_link'] as String?;
       }
 
-      final location = session['location'] as String? ?? 'online';
       // Location should only be 'online' or 'onsite' (hybrid is a preference only)
       // If somehow 'hybrid' exists, default to online
       final sessionLocation = location == 'hybrid' ? 'online' : location;

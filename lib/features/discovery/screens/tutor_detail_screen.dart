@@ -504,33 +504,18 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      body: CustomScrollView(
-        slivers: [
-          // Modern App Bar with Video
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: true,
-            elevation: 0,
-            backgroundColor: Colors.white,
-            leading: IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.arrow_back, color: Colors.black),
-              ),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              IconButton(
+      body: SafeArea(
+        top: true,
+        bottom: false,
+        child: CustomScrollView(
+          slivers: [
+            // Modern App Bar with Video
+            SliverAppBar(
+              expandedHeight: 280,
+              pinned: true,
+              elevation: 0,
+              backgroundColor: Colors.white,
+              leading: IconButton(
                 icon: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -543,18 +528,36 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.favorite_border, color: Colors.black),
+                  child: const Icon(Icons.arrow_back, color: Colors.black),
                 ),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Added to favorites!')),
-                  );
-                },
+                onPressed: () => Navigator.pop(context),
               ),
-              const SizedBox(width: 8),
-            ],
-            flexibleSpace: FlexibleSpaceBar(background: _buildVideoSection()),
-          ),
+              actions: [
+                IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.favorite_border, color: Colors.black),
+                  ),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Added to favorites!')),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+              ],
+              flexibleSpace: FlexibleSpaceBar(background: _buildVideoSection()),
+            ),
 
           // Content
           SliverToBoxAdapter(
@@ -583,9 +586,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 3),
+                                    color: Colors.black.withOpacity(0.06),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
                                   ),
                                 ],
                               ),
@@ -866,6 +869,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -1561,6 +1565,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     // Use video ID as key to force rebuild when video changes
     final videoKey = ValueKey('video-$_videoId');
 
+    // Always show thumbnail preview first (before video is initialized)
+    // Only show player after user clicks play and video is initialized
+    if (!_isVideoInitialized && !_isVideoLoading) {
+      return _buildThumbnailPreview();
+    }
+
     // If video is initialized, show player
     if (_isVideoInitialized) {
       return kIsWeb && _videoId != null
@@ -1694,7 +1704,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       );
     }
 
-    // Default: Show thumbnail preview with play button (lazy load)
+    // Fallback: Show thumbnail preview if somehow we get here
     return _buildThumbnailPreview();
   }
 

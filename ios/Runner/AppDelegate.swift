@@ -18,24 +18,3 @@ import UIKit
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
-
-    // GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
-    
-    GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-}
-
-    // GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
-    
-    GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-}
-
-    // GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
-    
-    GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-}

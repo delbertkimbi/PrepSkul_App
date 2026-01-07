@@ -2,6 +2,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for handling tutor requests (custom tutors not on platform)
 class TutorRequestService {
@@ -39,16 +40,6 @@ class TutorRequestService {
         throw Exception('User profile not found: $userId');
       }
 
-      // Build additional_notes with location description if provided
-      String? finalAdditionalNotes = additionalNotes;
-      if (locationDescription != null && locationDescription!.isNotEmpty) {
-        if (finalAdditionalNotes != null && finalAdditionalNotes.isNotEmpty) {
-          finalAdditionalNotes += '\n\nLocation Description: ' + locationDescription!;
-        } else {
-          finalAdditionalNotes = 'Location Description: ' + locationDescription!;
-        }
-      }
-
       final requestData = {
         'requester_id': userId,
         'subjects': subjects,
@@ -62,9 +53,10 @@ class TutorRequestService {
         'preferred_days': preferredDays,
         'preferred_time': preferredTime,
         'location': location,
-        // 'location_description': locationDescription,  // Column doesn't exist in DB, storing in additional_notes instead
         'urgency': urgency,
-        'additional_notes': finalAdditionalNotes,
+        'additional_notes': additionalNotes != null && locationDescription != null
+            ? '${additionalNotes}\n\nLocation Details: $locationDescription'
+            : (additionalNotes ?? (locationDescription != null ? 'Location Details: $locationDescription' : null)),
         'status': 'pending',
         'created_at': DateTime.now().toIso8601String(),
         // Denormalized data
@@ -73,11 +65,46 @@ class TutorRequestService {
         'requester_type': userProfile['user_type'],
       };
 
-      final response = await _supabase
+      // Try to include location_description if column exists, otherwise append to additional_notes
+      // First attempt with location_description
+      Map<String, dynamic> insertData = Map<String, dynamic>.from(requestData);
+      if (locationDescription != null && locationDescription.isNotEmpty) {
+        insertData['location_description'] = locationDescription;
+      }
+
+      dynamic response;
+      try {
+        response = await _supabase
           .from('tutor_requests')
-          .insert(requestData)
+          .insert(insertData)
           .select('id')
           .maybeSingle();
+      } catch (e) {
+        // Check if error is about missing location_description column
+        final errorStr = e.toString().toLowerCase();
+        final isColumnError = e is PostgrestException ||
+            errorStr.contains('location_description') || 
+            errorStr.contains('pgrst204') ||
+            (errorStr.contains('column') && errorStr.contains('not found') && errorStr.contains('location'));
+        
+        if (isColumnError && insertData.containsKey('location_description')) {
+          LogService.warning('location_description column not found, using additional_notes instead');
+          // Remove location_description and retry
+          insertData.remove('location_description');
+          try {
+            response = await _supabase
+              .from('tutor_requests')
+              .insert(insertData)
+              .select('id')
+              .maybeSingle();
+          } catch (retryError) {
+            // If retry also fails, throw the original error
+            rethrow;
+          }
+        } else {
+          rethrow;
+        }
+      }
       
       if (response == null) {
         throw Exception('Failed to create tutor request');
@@ -189,6 +216,168 @@ class TutorRequestService {
     } catch (e) {
       LogService.error('Error cancelling tutor request: $e');
       throw Exception('Failed to cancel tutor request: $e');
+    }
+  }
+
+  /// Update a tutor request (user can edit their own request)
+  static Future<void> updateRequest({
+    required String requestId,
+    List<String>? subjects,
+    String? educationLevel,
+    String? specificRequirements,
+    String? teachingMode,
+    int? budgetMin,
+    int? budgetMax,
+    String? tutorGender,
+    String? tutorQualification,
+    List<String>? preferredDays,
+    String? preferredTime,
+    String? location,
+    String? locationDescription,
+    String? urgency,
+    String? additionalNotes,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      // Verify the request belongs to the user
+      final requestResponse = await _supabase
+          .from('tutor_requests')
+          .select('requester_id, status')
+          .eq('id', requestId)
+          .maybeSingle();
+
+      final request = requestResponse as Map<String, dynamic>?;
+
+      if (request == null) {
+        throw Exception('Request not found');
+      }
+
+      if (request['requester_id'] != userId) {
+        throw Exception('You can only edit your own requests');
+      }
+
+      // Only allow editing if status is pending or in_progress
+      final status = request['status'] as String;
+      if (status != 'pending' && status != 'in_progress') {
+        throw Exception('Cannot edit request with status: $status');
+      }
+
+      final updateData = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (subjects != null) updateData['subjects'] = subjects;
+      if (educationLevel != null) updateData['education_level'] = educationLevel;
+      if (specificRequirements != null) updateData['specific_requirements'] = specificRequirements;
+      if (teachingMode != null) updateData['teaching_mode'] = teachingMode;
+      if (budgetMin != null) updateData['budget_min'] = budgetMin;
+      if (budgetMax != null) updateData['budget_max'] = budgetMax;
+      if (tutorGender != null) updateData['tutor_gender'] = tutorGender;
+      if (tutorQualification != null) updateData['tutor_qualification'] = tutorQualification;
+      if (preferredDays != null) updateData['preferred_days'] = preferredDays;
+      if (preferredTime != null) updateData['preferred_time'] = preferredTime;
+      if (location != null) updateData['location'] = location;
+      if (locationDescription != null) updateData['location_description'] = locationDescription;
+      if (urgency != null) updateData['urgency'] = urgency;
+      if (additionalNotes != null) updateData['additional_notes'] = additionalNotes;
+
+      await _supabase
+          .from('tutor_requests')
+          .update(updateData)
+          .eq('id', requestId);
+
+      // Notify admins about the edit
+      final userProfile = await _supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .maybeSingle();
+
+      final requesterName = userProfile?['full_name'] as String? ?? 'User';
+      
+      // Get all admins and notify them
+      final adminResponse = await _supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_admin', true);
+
+      for (var admin in adminResponse) {
+        final adminId = admin['id'] as String;
+        await NotificationHelperService.notifyTutorRequestUpdated(
+          adminId: adminId,
+          requestId: requestId,
+          requesterName: requesterName,
+        );
+      }
+    } catch (e) {
+      LogService.error('Error updating tutor request: $e');
+      throw Exception('Failed to update tutor request: $e');
+    }
+  }
+
+  /// Delete a tutor request (user can delete their own request)
+  static Future<void> deleteRequest(String requestId) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      // Verify the request belongs to the user
+      final requestResponse = await _supabase
+          .from('tutor_requests')
+          .select('requester_id, status')
+          .eq('id', requestId)
+          .maybeSingle();
+
+      final request = requestResponse as Map<String, dynamic>?;
+
+      if (request == null) {
+        throw Exception('Request not found');
+      }
+
+      if (request['requester_id'] != userId) {
+        throw Exception('You can only delete your own requests');
+      }
+
+      // Only allow deletion if status is pending or in_progress
+      final status = request['status'] as String;
+      if (status != 'pending' && status != 'in_progress') {
+        throw Exception('Cannot delete request with status: $status');
+      }
+
+      // Get user name for admin notification
+      final userProfile = await _supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', userId)
+          .maybeSingle();
+
+      final requesterName = userProfile?['full_name'] as String? ?? 'User';
+
+      // Delete the request
+      await _supabase
+          .from('tutor_requests')
+          .delete()
+          .eq('id', requestId);
+
+      // Notify admins about the deletion
+      final adminResponse = await _supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_admin', true);
+
+      for (var admin in adminResponse) {
+        final adminId = admin['id'] as String;
+        await NotificationHelperService.notifyTutorRequestDeleted(
+          adminId: adminId,
+          requestId: requestId,
+          requesterName: requesterName,
+        );
+      }
+    } catch (e) {
+      LogService.error('Error deleting tutor request: $e');
+      throw Exception('Failed to delete tutor request: $e');
     }
   }
 
