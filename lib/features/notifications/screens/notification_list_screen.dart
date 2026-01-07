@@ -290,7 +290,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                     onRefresh: _refreshNotifications,
                     child: ListView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       itemCount: _groupedNotifications.length + 
                                 (_isLoadingMore ? 1 : 0) +
                                 (!_hasMore && _notifications.isNotEmpty ? 1 : 0),
@@ -343,7 +343,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                             ),
                             ...group.value.map(
                               (notification) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
+                                padding: const EdgeInsets.only(bottom: 10),
                                 child: NotificationItem(
                                   notification: notification,
                                   onTap: () {

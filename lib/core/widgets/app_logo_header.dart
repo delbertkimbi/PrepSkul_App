@@ -19,14 +19,27 @@ class AppLogoHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Build logo with error handling - use blue logo as primary since it's more reliable
+    Widget _buildLogo() {
+      return Image.asset(
+        'assets/images/app_logo(blue).png',
+        width: logoSize,
+        height: logoSize,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback: show icon if asset fails
+          return Icon(
+            Icons.school,
+            size: logoSize,
+            color: AppTheme.primaryColor,
+          );
+        },
+      );
+    }
+
     if (!showText) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.asset(
-          'assets/images/app_logo(blue-no-bg).png',
-          width: logoSize,
-          height: logoSize,
-        ),
+        child: _buildLogo(),
       );
     }
 
@@ -35,11 +48,7 @@ class AppLogoHeader extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: const BorderRadius.all(Radius.circular(12)),
-          child: Image.asset(
-            'assets/images/app_logo(blue-no-bg).png',
-            width: logoSize,
-            height: logoSize,
-          ),
+          child: _buildLogo(),
         ),
         const SizedBox(width: 12),
         Text(

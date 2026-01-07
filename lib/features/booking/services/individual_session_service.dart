@@ -61,8 +61,8 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
-      // FIX: Don't query non-existent columns, and make join optional (trial sessions don't have recurring_session_id)
-      // Note: recurring_sessions doesn't have 'subject' column, removed it
+      // Use optional join to include sessions even if recurring_sessions join fails
+      // Also include tutor_name, tutor_avatar_url, learner_name, learner_avatar_url, and subject from recurring_sessions for display
       var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions(
@@ -72,7 +72,14 @@ class IndividualSessionService {
               times,
               start_date,
               monthly_total,
-              payment_plan
+              payment_plan,
+              tutor_name,
+              tutor_avatar_url,
+              learner_name,
+              learner_avatar_url,
+              learner_id,
+              learner_type,
+              subject
             )
           ''')
           .eq('tutor_id', userId)
@@ -105,7 +112,8 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = beforeDate ?? now;
 
-      // FIX: Don't query non-existent columns, and make join optional
+      // Use optional join to include sessions even if recurring_sessions join fails
+      // Also include tutor_name, tutor_avatar_url, learner_name, learner_avatar_url, and subject from recurring_sessions for display
       var query = _supabase
           .from('individual_sessions')
           .select('''
@@ -118,7 +126,13 @@ class IndividualSessionService {
               times,
               start_date,
               monthly_total,
-              payment_plan
+              payment_plan,
+              tutor_name,
+              tutor_avatar_url,
+              learner_name,
+              learner_avatar_url,
+              learner_id,
+              learner_type
             )
           ''')
           .eq('tutor_id', userId)
@@ -151,11 +165,13 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
+      // Use optional join (not !inner) to include sessions even if recurring_sessions join fails
       var query = _supabase.from('individual_sessions').select('''
             *,
-            recurring_sessions!inner(
+            recurring_sessions(
               tutor_name,
-              tutor_avatar_url
+              tutor_avatar_url,
+              subject
             )
           ''')
           .or('learner_id.eq.$userId,parent_id.eq.$userId')
@@ -188,11 +204,13 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = beforeDate ?? now;
 
+      // Use optional join (not !inner) to include sessions even if recurring_sessions join fails
       var query = _supabase.from('individual_sessions').select('''
             *,
-            recurring_sessions!inner(
+            recurring_sessions(
               tutor_name,
-              tutor_avatar_url
+              tutor_avatar_url,
+              subject
             )
           ''')
           .or('learner_id.eq.$userId,parent_id.eq.$userId')

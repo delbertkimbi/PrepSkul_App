@@ -280,9 +280,23 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           // For individual sessions, fetch student name if missing
           if (session['_sessionType'] == 'individual') {
             final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-            if (recurringData != null && (session['student_name'] == null || session['student_name'] == 'Student')) {
+            
+            // First, try to get student name from recurring_sessions.learner_name
+            if (recurringData != null) {
+              final learnerName = recurringData['learner_name'] as String?;
+              if (learnerName != null && learnerName.trim().isNotEmpty && 
+                  learnerName.toLowerCase() != 'user' &&
+                  learnerName.toLowerCase() != 'student' &&
+                  learnerName.toLowerCase() != 'parent') {
+                session['student_name'] = learnerName.trim();
+                session['student_avatar_url'] = recurringData['learner_avatar_url'] as String?;
+                LogService.debug('✅ Using learner_name from recurring_sessions: ${learnerName.trim()}');
+              }
+            }
+            
+            // Fallback: If not found in recurring_sessions, fetch from profiles using learner_id/parent_id
+            if (session['student_name'] == null || session['student_name'] == 'Student') {
               try {
-                // Try to get student name from recurring_sessions or learner_id/parent_id
                 final learnerId = session['learner_id'] as String?;
                 final parentId = session['parent_id'] as String?;
                 final studentId = learnerId ?? parentId;
@@ -301,8 +315,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         fullName.toLowerCase() != 'student' &&
                         fullName.toLowerCase() != 'parent') {
                       session['student_name'] = fullName.trim();
-                      session['student_avatar_url'] = studentProfile['avatar_url'] as String?;
-                      LogService.debug('✅ Fetched student name for individual session: ${fullName.trim()}');
+                      if (session['student_avatar_url'] == null) {
+                        session['student_avatar_url'] = studentProfile['avatar_url'] as String?;
+                      }
+                      LogService.debug('✅ Fetched student name from profile for individual session: ${fullName.trim()}');
                     }
                   }
                 }
@@ -835,8 +851,29 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       // Individual session data
       final recurringData =
           session['recurring_sessions'] as Map<String, dynamic>?;
-      studentName = recurringData?['student_name']?.toString() ?? 'Student';
-      studentAvatar = recurringData?['student_avatar_url']?.toString();
+      
+      // Try to get student name from recurring_sessions first (learner_name)
+      if (recurringData != null) {
+        final learnerName = recurringData['learner_name'] as String?;
+        if (learnerName != null && learnerName.trim().isNotEmpty && 
+            learnerName.toLowerCase() != 'student' &&
+            learnerName.toLowerCase() != 'user') {
+          studentName = learnerName.trim();
+          studentAvatar = recurringData['learner_avatar_url'] as String?;
+        }
+      }
+      
+      // Use pre-fetched student name from session map (fetched in _loadSessions)
+      // If still 'Student', try to get from session data
+      if (studentName == 'Student') {
+        final preFetchedName = session['student_name'] as String?;
+        if (preFetchedName != null && preFetchedName.trim().isNotEmpty && 
+            preFetchedName.toLowerCase() != 'student' &&
+            preFetchedName.toLowerCase() != 'user') {
+          studentName = preFetchedName.trim();
+          studentAvatar = session['student_avatar_url'] as String?;
+        }
+      }
       location = session['location'] as String? ?? 'online';
       // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
       address = session['address'] as String? ?? session['onsite_address'] as String?;
@@ -1371,7 +1408,39 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           }
         } else {
           final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-          studentName = recurringData?['student_name']?.toString() ?? 'Student';
+          if (recurringData != null) {
+            final learnerName = recurringData['learner_name'] as String?;
+            if (learnerName != null && learnerName.trim().isNotEmpty && 
+                learnerName.toLowerCase() != 'student' &&
+                learnerName.toLowerCase() != 'user') {
+              studentName = learnerName.trim();
+            }
+          }
+          if (studentName == 'Student') {
+            // Fallback to profiles if needed
+            final learnerId = session['learner_id'] as String?;
+            final parentId = session['parent_id'] as String?;
+            final studentId = learnerId ?? parentId;
+            if (studentId != null && studentId.isNotEmpty) {
+              try {
+                final studentProfile = await SupabaseService.client
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', studentId)
+                    .maybeSingle();
+                if (studentProfile != null) {
+                  final fullName = studentProfile['full_name'] as String?;
+                  if (fullName != null && fullName.trim().isNotEmpty && 
+                      fullName.toLowerCase() != 'user' &&
+                      fullName.toLowerCase() != 'student') {
+                    studentName = fullName.trim();
+                  }
+                }
+              } catch (e) {
+                LogService.warning('Could not fetch student name: $e');
+              }
+            }
+          }
         }
       } catch (e) {
         LogService.warning('Could not fetch student name: $e');
@@ -2517,7 +2586,23 @@ class _SessionDetailsSheet extends StatelessWidget {
     if (isIndividualSession) {
       final recurringData =
           session['recurring_sessions'] as Map<String, dynamic>?;
-      studentName = recurringData?['student_name']?.toString() ?? 'Student';
+      if (recurringData != null) {
+        final learnerName = recurringData['learner_name'] as String?;
+        if (learnerName != null && learnerName.trim().isNotEmpty && 
+            learnerName.toLowerCase() != 'student' &&
+            learnerName.toLowerCase() != 'user') {
+          studentName = learnerName.trim();
+        }
+      }
+      // Use pre-fetched student name from session map (fetched in _loadSessions)
+      if (studentName == 'Student') {
+        final preFetchedName = session['student_name'] as String?;
+        if (preFetchedName != null && preFetchedName.trim().isNotEmpty && 
+            preFetchedName.toLowerCase() != 'student' &&
+            preFetchedName.toLowerCase() != 'user') {
+          studentName = preFetchedName.trim();
+        }
+      }
       location = session['location'] as String? ?? 'online';
       // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
       address = session['address'] as String? ?? session['onsite_address'] as String?;

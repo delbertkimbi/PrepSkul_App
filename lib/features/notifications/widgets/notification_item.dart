@@ -71,32 +71,38 @@ class _NotificationItemState extends State<NotificationItem> {
   }
 
   String _getIcon(String? type) {
+    // Return empty string to remove emoji display
+    // Icons will be handled by Material icons instead
+    return '';
+  }
+  
+  IconData _getIconData(String? type) {
     switch (type) {
       case 'booking_request':
       case 'booking_accepted':
       case 'booking_rejected':
-        return '🎓';
+        return Icons.book_online;
       case 'trial_request':
       case 'trial_accepted':
       case 'trial_rejected':
-        return '🎯';
+        return Icons.school;
       case 'payment_received':
       case 'payment_successful':
       case 'payment_failed':
-        return '💰';
+        return Icons.payment;
       case 'session_completed':
       case 'session_reminder':
       case 'session_starting_soon':
-        return '⏰';
+        return Icons.access_time;
       case 'profile_approved':
-        return '🎉';
+        return Icons.check_circle;
       case 'profile_rejected':
       case 'profile_improvement':
-        return '📝';
+        return Icons.edit_note;
       case 'review_received':
-        return '⭐';
+        return Icons.star;
       default:
-        return '🔔';
+        return Icons.notifications;
     }
   }
 
@@ -121,7 +127,6 @@ class _NotificationItemState extends State<NotificationItem> {
     Map<String, dynamic>? metadata,
     String? senderAvatarUrl,
     String? senderInitials,
-    String icon,
     String priority,
   ) {
     // Extract sender name from metadata (tutor_name, student_name, or sender_name)
@@ -203,7 +208,7 @@ class _NotificationItemState extends State<NotificationItem> {
       );
     }
     
-    // No sender info - show icon with colored background
+    // No sender info - show Material icon with colored background
     return Container(
       width: 48,
       height: 48,
@@ -212,9 +217,10 @@ class _NotificationItemState extends State<NotificationItem> {
         borderRadius: BorderRadius.circular(24),
       ),
       child: Center(
-        child: Text(
-          icon,
-          style: const TextStyle(fontSize: 20),
+        child: Icon(
+          _getIconData(widget.notification['type'] as String?),
+          size: 24,
+          color: _getPriorityColor(priority),
         ),
       ),
     );
@@ -281,7 +287,6 @@ class _NotificationItemState extends State<NotificationItem> {
   @override
   Widget build(BuildContext context) {
     final isRead = widget.notification['is_read'] == true;
-    final icon = widget.notification['icon'] as String? ?? _getIcon(widget.notification['type'] as String?);
     final title = widget.notification['title'] as String? ?? 'Notification';
     final message = widget.notification['message'] as String? ?? '';
     final createdAt = DateTime.parse(widget.notification['created_at'] as String);
@@ -321,18 +326,18 @@ class _NotificationItemState extends State<NotificationItem> {
           widget.onTap?.call();
         },
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isRead ? AppTheme.softBorder : _getPriorityColor(priority).withOpacity(0.2),
+              color: isRead ? AppTheme.softBorder : _getPriorityColor(priority).withOpacity(0.12),
               width: isRead ? 0.5 : 1,
             ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.03),
-                blurRadius: 4,
+                blurRadius: 6,
                 offset: const Offset(0, 1),
               ),
             ],
@@ -341,8 +346,8 @@ class _NotificationItemState extends State<NotificationItem> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // User Avatar (always show if sender info available, otherwise show icon)
-              _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, icon, priority),
-              const SizedBox(width: 12),
+              _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
+              const SizedBox(width: 14),
 
               // Content
               Expanded(
@@ -358,6 +363,7 @@ class _NotificationItemState extends State<NotificationItem> {
                               fontSize: 15,
                               fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
                               color: AppTheme.textDark,
+                              letterSpacing: -0.2,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -367,6 +373,7 @@ class _NotificationItemState extends State<NotificationItem> {
                           Container(
                             width: 8,
                             height: 8,
+                            margin: const EdgeInsets.only(left: 8),
                             decoration: const BoxDecoration(
                               color: AppTheme.primaryColor,
                               shape: BoxShape.circle,
@@ -374,18 +381,19 @@ class _NotificationItemState extends State<NotificationItem> {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       _getEnhancedMessage(message, metadata),
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
                         color: AppTheme.textMedium,
+                        height: 1.4,
                       ),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Text(
@@ -397,15 +405,19 @@ class _NotificationItemState extends State<NotificationItem> {
                           ),
                         ),
                         if (actionText != null) ...[
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                              horizontal: 10,
+                              vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
+                              color: AppTheme.primaryColor.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppTheme.primaryColor.withOpacity(0.15),
+                                width: 1,
+                              ),
                             ),
                             child: Text(
                               actionText,
@@ -413,6 +425,7 @@ class _NotificationItemState extends State<NotificationItem> {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: AppTheme.primaryColor,
+                                letterSpacing: 0.2,
                               ),
                             ),
                           ),

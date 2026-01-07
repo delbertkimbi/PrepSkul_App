@@ -366,6 +366,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         return 'Waiting for tutor\'s response';
       case 'approved':
         return 'Tutor has accepted your request!';
+      case 'paid':
+        return 'Payment completed! Your sessions are now active.';
       case 'rejected':
         return 'Tutor declined this request';
       default:
@@ -2284,45 +2286,6 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Status Banner
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: statusColor.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(_getStatusIcon(status), color: statusColor, size: 28),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          status.toUpperCase(),
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: statusColor,
-                          ),
-                        ),
-                        Text(
-                          _getStatusMessage(status),
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: statusColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
             // Tutor Card
             _buildTutorCard(tutorName, tutorAvatarUrl, tutorRating, tutorIsVerified),
             const SizedBox(height: 24),
@@ -2402,70 +2365,71 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               ),
             ],
             if (status == 'approved') ...[
-              // Check if payment request exists and is pending
-              FutureBuilder<String?>(
-                future: PaymentRequestService.getPaymentRequestIdByBookingRequestId(
-                  request['id'] as String,
-                ),
-                builder: (context, snapshot) {
-                  final paymentRequestId = snapshot.data;
-                  final hasPaymentRequest = paymentRequestId != null;
+              // Use cached payment status (no FutureBuilder flickering)
+              Builder(
+                builder: (context) {
+                  final paymentRequestId = request['payment_request_id'] as String?;
+                  final paymentStatus = request['payment_status'] as String?;
+                  
+                  // Don't show Pay Now if payment is already paid
+                  if (paymentStatus == 'paid' || paymentRequestId == null) {
+                    return const SizedBox.shrink();
+                  }
                   
                   return Column(
                     children: [
                       // Pay button (primary action if payment request exists and is pending)
-                      if (hasPaymentRequest)
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              // Navigate to payment screen
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => BookingPaymentScreen(
-                                    paymentRequestId: paymentRequestId!,
-                                    bookingRequestId: request['id'] as String,
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            // Navigate to payment screen
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => BookingPaymentScreen(
+                                  paymentRequestId: paymentRequestId!,
+                                  bookingRequestId: request['id'] as String,
+                                ),
+                              ),
+                            );
+                            
+                            // Refresh if payment was successful
+                            if (result == true && mounted) {
+                              safeSetState(() {
+                                // Refresh the screen
+                              });
+                              // Show success message
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Payment successful! Your booking is confirmed.',
+                                    style: GoogleFonts.poppins(),
                                   ),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 3),
                                 ),
                               );
-                              
-                              // Refresh if payment was successful
-                              if (result == true && mounted) {
-                                safeSetState(() {
-                                  // Refresh the screen
-                                });
-                                // Show success message
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      'Payment successful! Your booking is confirmed.',
-                                      style: GoogleFonts.poppins(),
-                                    ),
-                                    backgroundColor: Colors.green,
-                                    duration: const Duration(seconds: 3),
-                                  ),
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.payment),
-                            label: Text(
-                              'Pay Now',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            }
+                          },
+                          icon: const Icon(Icons.payment),
+                          label: Text(
+                            'Pay Now',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
-                      if (hasPaymentRequest) const SizedBox(height: 12),
+                      ),
+                      const SizedBox(height: 12),
                       // Message Tutor button (secondary action)
                       SizedBox(
                         width: double.infinity,

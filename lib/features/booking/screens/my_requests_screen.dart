@@ -14,10 +14,13 @@ import 'package:prepskul/features/booking/services/trial_session_service.dart' h
 import 'package:prepskul/features/booking/screens/post_trial_conversion_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
+import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
+import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
+import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
@@ -28,7 +31,9 @@ import '../../../core/localization/app_localizations.dart';
 import '../utils/session_date_utils.dart';
 
 class MyRequestsScreen extends StatefulWidget {
-  const MyRequestsScreen({Key? key}) : super(key: key);
+  final String? highlightRequestId; // Request ID to highlight when screen loads
+  
+  const MyRequestsScreen({Key? key, this.highlightRequestId}) : super(key: key);
 
   @override
   State<MyRequestsScreen> createState() => _MyRequestsScreenState();
@@ -49,85 +54,59 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   final ConnectivityService _connectivity = ConnectivityService();
   RealtimeChannel? _tutorRequestsChannel;
 
+  final ScrollController _scrollController = ScrollController();
+  String? _highlightRequestId;
+  bool _isNavigating = false; // Flag to prevent refresh during navigation
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _highlightRequestId = widget.highlightRequestId;
     _initializeConnectivity();
     _setupRealtimeSubscription();
     _loadRequests();
   }
 
-  /// Setup Realtime subscription for tutor requests
-  void _setupRealtimeSubscription() {
-    final userId = SupabaseService.currentUser?.id;
-    if (userId == null) return;
-
-    try {
-      _tutorRequestsChannel = SupabaseService.client
-          .channel('tutor_requests_$userId')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'tutor_requests',
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'requester_id',
-              value: userId,
-            ),
-            callback: (payload) {
-              LogService.info('Tutor request updated via Realtime: ${payload.newRecord}');
-              
-              if (mounted) {
-                // Reload requests to get latest data
-                _loadRequests();
-                
-                // Show toast if status changed to 'matched'
-                if (payload.eventType == PostgresChangeEvent.update) {
-                  final oldStatus = payload.oldRecord?['status'] as String?;
-                  final newStatus = payload.newRecord?['status'] as String?;
-                  
-                  if (oldStatus != 'matched' && newStatus == 'matched') {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.check_circle, color: Colors.white),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                '🎉 Great news! A tutor has been matched to your request!',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        backgroundColor: Colors.green[600],
-                        duration: const Duration(seconds: 5),
-                        action: SnackBarAction(
-                          label: 'View',
-                          textColor: Colors.white,
-                          onPressed: () {
-                            // Switch to custom tab and scroll to the matched request
-                            _tabController.animateTo(2); // Custom tab index
-                          },
-                        ),
-                      ),
-                    );
-                  }
-                }
-              }
-            },
-          )
-          .subscribe();
-
-      LogService.success('Realtime subscription set up for tutor requests');
-    } catch (e) {
-      LogService.warning('Failed to set up Realtime subscription: $e');
+  @override
+  void didUpdateWidget(MyRequestsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh if highlightRequestId changed (e.g., navigated here with a new request to highlight)
+    if (oldWidget.highlightRequestId != widget.highlightRequestId) {
+      _highlightRequestId = widget.highlightRequestId;
+      _loadRequests();
     }
+  }
+
+  bool _hasLoadedOnce = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh when screen becomes visible (e.g., after creating a booking request or receiving approval notification)
+    // Only refresh if we've already loaded once (to avoid double-loading on first build)
+    // This ensures new requests and status updates are immediately visible when returning to the screen
+    // Skip refresh if we're navigating away (to prevent refresh when View Session is clicked)
+    if (_hasLoadedOnce && 
+        ModalRoute.of(context)?.isCurrent == true && 
+        !_isNavigating) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && 
+            ModalRoute.of(context)?.isCurrent == true && 
+            !_isNavigating) {
+          _loadRequests();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _tabController.dispose();
+    _searchController.dispose();
+    _connectivity.dispose();
+    super.dispose();
   }
 
   /// Initialize connectivity monitoring
@@ -142,6 +121,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         safeSetState(() {
           _isOffline = !isOnline;
         });
+        
         
         // If came back online, reload requests
         if (isOnline && wasOffline) {
@@ -175,14 +155,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     // Pattern: [RESCHEDULE REQUEST: ...]
     final reschedulePattern = RegExp(r'\n?\n?\[RESCHEDULE REQUEST:.*?\]', dotAll: true);
     return goal.replaceAll(reschedulePattern, '').trim();
-  }
-
-  @override
-  void dispose() {
-    _tutorRequestsChannel?.unsubscribe();
-    _tabController.dispose();
-    _searchController.dispose();
-    super.dispose();
   }
 
   // Cache tutor info for trial sessions
@@ -275,17 +247,28 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       List<BookingRequest> bookingRequests = [];
       if (userId != null) {
         try {
+          LogService.info('🔄 Loading booking requests for user: $userId');
           bookingRequests = await BookingService.getStudentBookingRequests(userId);
-          LogService.success('Loaded ${bookingRequests.length} booking requests');
+          LogService.success('✅ Loaded ${bookingRequests.length} booking requests');
+          
+          // Log each request for debugging
+          for (var request in bookingRequests) {
+            LogService.info('📋 Request: id=${request.id}, status=${request.status}, tutor=${request.tutorName}');
+          }
           
           // Cache booking requests
           if (bookingRequests.isNotEmpty) {
             final requestsJson = bookingRequests.map((r) => r.toJson()).toList();
             await OfflineCacheService.cacheBookingRequests(userId, requestsJson);
+            LogService.info('💾 Cached ${bookingRequests.length} booking requests');
           }
-        } catch (e) {
-          LogService.error('Error loading booking requests: $e');
+        } catch (e, stackTrace) {
+          LogService.error('❌ Error loading booking requests: $e');
+          LogService.error('📚 Stack trace: $stackTrace');
+          LogService.error('👤 User ID: $userId');
         }
+      } else {
+        LogService.warning('⚠️ Cannot load booking requests: userId is null');
       }
 
       // Load tutor custom requests
@@ -323,7 +306,20 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         _customRequests = customRequests;
         _isLoading = false;
         _cacheTimestamp = DateTime.now();
+        _hasLoadedOnce = true; // Mark that we've loaded at least once
       });
+      
+      // Debug logging
+      LogService.info('📊 MyRequestsScreen state updated:');
+      LogService.info('   - Booking requests: ${bookingRequests.length}');
+      LogService.info('   - Custom requests: ${customRequests.length}');
+      LogService.info('   - Trial sessions: ${trials.length}');
+      if (bookingRequests.isNotEmpty) {
+        LogService.info('   - Booking request IDs: ${bookingRequests.map((r) => r.id).join(", ")}');
+        LogService.info('   - Booking request statuses: ${bookingRequests.map((r) => r.status).join(", ")}');
+      } else {
+        LogService.warning('⚠️ No booking requests found for user: $userId');
+      }
 
       // Check for completed trials that haven't been converted
       // Show dialog for the first one found
@@ -831,16 +827,22 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         showButton: true,
                     )
               : ListView.builder(
+                  controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                   itemCount: filteredRequests.length,
       itemBuilder: (ctx, index) {
                     final item = filteredRequests[index];
+        final isHighlighted = _highlightRequestId != null && 
+            ((item.type == 'booking' && item.booking?.id == _highlightRequestId) ||
+             (item.type == 'trial' && item.trial?.id == _highlightRequestId) ||
+             (item.type == 'custom' && item.custom?.id == _highlightRequestId));
+        
         if (item.type == 'booking') {
-          return _buildBookingRequestCard(context, item.booking!);
+          return _buildBookingRequestCard(context, item.booking!, isHighlighted: isHighlighted);
         } else if (item.type == 'custom') {
-          return _buildCustomRequestCard(context, item.custom!);
+          return _buildCustomRequestCard(context, item.custom!, isHighlighted: isHighlighted);
         } else {
-          return _buildTrialSessionCard(context, item.trial!);
+          return _buildTrialSessionCard(context, item.trial!, isHighlighted: isHighlighted);
         }
       },
                 ),
@@ -873,12 +875,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       itemCount: allPending.length,
       itemBuilder: (ctx, index) {
         final item = allPending[index];
+        final isHighlighted = _highlightRequestId != null && 
+            ((item.type == 'booking' && item.booking?.id == _highlightRequestId) ||
+             (item.type == 'trial' && item.trial?.id == _highlightRequestId) ||
+             (item.type == 'custom' && item.custom?.id == _highlightRequestId));
         if (item.type == 'booking') {
-          return _buildBookingRequestCard(context, item.booking!);
+          return _buildBookingRequestCard(context, item.booking!, isHighlighted: isHighlighted);
         } else if (item.type == 'custom') {
-          return _buildCustomRequestCard(context, item.custom!);
+          return _buildCustomRequestCard(context, item.custom!, isHighlighted: isHighlighted);
         } else {
-          return _buildTrialSessionCard(context, item.trial!);
+          return _buildTrialSessionCard(context, item.trial!, isHighlighted: isHighlighted);
         }
       },
     );
@@ -899,7 +905,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       padding: const EdgeInsets.all(20),
       itemCount: _customRequests.length,
       itemBuilder: (ctx, index) {
-        return _buildCustomRequestCard(context, _customRequests[index]);
+        final isHighlighted = _highlightRequestId != null && _customRequests[index].id == _highlightRequestId;
+        return _buildCustomRequestCard(context, _customRequests[index], isHighlighted: isHighlighted);
       },
     );
   }
@@ -919,7 +926,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       padding: const EdgeInsets.all(20),
       itemCount: _trialSessions.length,
       itemBuilder: (ctx, index) {
-        return _buildTrialSessionCard(context, _trialSessions[index]);
+        final isHighlighted = _highlightRequestId != null && _trialSessions[index].id == _highlightRequestId;
+        return _buildTrialSessionCard(context, _trialSessions[index], isHighlighted: isHighlighted);
       },
     );
   }
@@ -938,7 +946,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       padding: const EdgeInsets.all(20),
       itemCount: _bookingRequests.length,
       itemBuilder: (ctx, index) {
-        return _buildBookingRequestCard(context, _bookingRequests[index]);
+        final isHighlighted = _highlightRequestId != null && _bookingRequests[index].id == _highlightRequestId;
+        return _buildBookingRequestCard(context, _bookingRequests[index], isHighlighted: isHighlighted);
       },
     );
   }
@@ -1048,19 +1057,538 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
-  Widget _buildBookingRequestCard(BuildContext context, BookingRequest request) {
+  void _scrollToHighlightedRequest() {
+    if (_highlightRequestId == null) return;
+    
+    // Find the index of the highlighted request
+    final allRequests = [
+      ..._bookingRequests.map((r) => _RequestItem(type: 'booking', booking: r)),
+      ..._customRequests.map((r) => _RequestItem(type: 'custom', custom: r)),
+      ..._trialSessions.map((r) => _RequestItem(type: 'trial', trial: r)),
+    ];
+    
+    final index = allRequests.indexWhere((item) {
+      if (item.type == 'booking' && item.booking?.id == _highlightRequestId) return true;
+      if (item.type == 'trial' && item.trial?.id == _highlightRequestId) return true;
+      if (item.type == 'custom' && item.custom?.id == _highlightRequestId) return true;
+      return false;
+    });
+    
+    if (index >= 0 && _scrollController.hasClients) {
+      // Scroll to the item (approximate position: 200 pixels per item)
+      final targetOffset = (index * 200.0).clamp(0.0, _scrollController.position.maxScrollExtent);
+      _scrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+      
+      // Clear highlight after scrolling
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _highlightRequestId = null;
+          });
+        }
+      });
+    }
+  }
+
+  /// Get payment request status for a booking request
+  Future<Map<String, dynamic>?> _getPaymentRequestStatus(String bookingRequestId) async {
+    try {
+      final response = await PaymentRequestService.getPaymentRequestByBookingRequestId(bookingRequestId);
+      return response;
+    } catch (e) {
+      LogService.error('Error fetching payment request status: $e');
+      return null;
+    }
+  }
+
+  Widget _buildBookingRequestCard(BuildContext context, BookingRequest request, {bool isHighlighted = false}) {
+    final t = AppLocalizations.of(context)!;
+    
+    // Determine status for display
+    String displayStatus = request.status;
+    if (request.status == 'approved' && 
+        (request.paymentStatus == null || 
+         request.paymentStatus == 'pending' || 
+         request.paymentStatus == 'unpaid')) {
+      displayStatus = 'awaiting_payment';
+    } else if (request.paymentStatus == 'paid') {
+      displayStatus = 'paid';
+    }
+    
+    // Card is always clickable to show details
     return _buildNeomorphicCard(
       margin: const EdgeInsets.only(bottom: 16),
+      border: isHighlighted ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
       child: InkWell(
         onTap: () {
-    final t = AppLocalizations.of(context)!;
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) =>
                   RequestDetailScreen(request: request.toJson()),
             ),
-          );
+          ).then((_) {
+            _loadRequests();
+          });
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: _buildBookingCardContent(context, request, displayStatus),
+      ),
+    );
+  }
+
+  Widget _buildBookingCardContent(BuildContext context, BookingRequest request, String displayStatus) {
+    final t = AppLocalizations.of(context)!;
+    final subject = request.subject ?? 'Regular Session';
+    
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
+            ? LinearGradient(
+                colors: [
+                  AppTheme.primaryColor.withOpacity(0.03),
+                  Colors.transparent,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Modern header: Tutor info with integrated status
+            Row(
+              children: [
+                // Avatar with status indicator
+                Stack(
+                  children: [
+                    ClipOval(
+                      child: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: request.tutorAvatarUrl!,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    request.tutorName.isNotEmpty
+                                        ? request.tutorName[0].toUpperCase()
+                                        : 'T',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    request.tutorName.isNotEmpty
+                                        ? request.tutorName[0].toUpperCase()
+                                        : 'T',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  request.tutorName.isNotEmpty
+                                      ? request.tutorName[0].toUpperCase()
+                                      : 'T',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                    // Status indicator dot
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: _getStatusColor(displayStatus),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                // Tutor name and rating
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              request.tutorName,
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.textDark,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          // Status badge (compact, modern)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(displayStatus).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _getStatusColor(displayStatus).withOpacity(0.3),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              _getStatusLabel(displayStatus),
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: _getStatusColor(displayStatus),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.star_rounded,
+                            size: 14,
+                            color: Colors.amber[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            request.tutorRating > 0
+                                ? request.tutorRating.toStringAsFixed(1)
+                                : 'New',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              subject,
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+            
+            // Session details - modern horizontal layout (fixed overflow)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!, width: 1),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildModernInfoItem(
+                      Icons.calendar_today_outlined,
+                      request.getDaysSummary(),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 20,
+                    color: Colors.grey[300],
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  Expanded(
+                    child: _buildModernInfoItem(
+                      Icons.access_time_outlined,
+                      request.getTimeRange(),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    height: 20,
+                    color: Colors.grey[300],
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  Expanded(
+                    child: _buildModernInfoItem(
+                      request.location == 'online' 
+                          ? Icons.video_call_outlined 
+                          : Icons.location_on_outlined,
+                      request.location == 'online' ? 'Online' : (request.address ?? 'On-site'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Price and Action button in a row
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Price section (left side, 40% of row)
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Monthly Fee',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[600],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${request.monthlyTotal.toStringAsFixed(0)} XAF',
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
+                          letterSpacing: -0.5,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Action button (right side, 60% of row)
+                Expanded(
+                  flex: 3,
+                  child: Builder(
+                    builder: (context) {
+                      // Show Pay Now for approved, unpaid sessions
+                      if (request.status == 'approved' && 
+                          request.paymentRequestId != null && 
+                          request.paymentStatus != 'paid') {
+                        return ElevatedButton(
+                          onPressed: () async {
+                            LogService.info('💰 Pay Now button clicked for booking: ${request.id}');
+                            // Navigate directly to payment screen
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => BookingPaymentScreen(
+                                  paymentRequestId: request.paymentRequestId!,
+                                  bookingRequestId: request.id,
+                                ),
+                              ),
+                            );
+
+                            if (result == true && mounted) {
+                              await Future.delayed(const Duration(milliseconds: 2000));
+                              if (!mounted) return;
+                              await _loadRequests();
+                              if (mounted) {
+                                safeSetState(() {});
+                                // Navigate to sessions tab to show the newly created sessions
+                                Navigator.of(context).pushNamedAndRemoveUntil(
+                                  '/student-nav',
+                                  (route) => route.isFirst,
+                                  arguments: {'initialTab': 2}, // Sessions tab
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
+                          ),
+                          child: Text(
+                            t.myRequestsPayNow,
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      // Show View Details for pending sessions
+                      if (request.status == 'pending') {
+                        return OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => RequestDetailScreen(
+                                  request: request.toJson(),
+                                ),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.info_outline, size: 18),
+                          label: Text(
+                            'View Details',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryColor,
+                            side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      // Show View Session for paid sessions - navigate to sessions screen
+                      if (request.paymentStatus == 'paid') {
+                        return ElevatedButton.icon(
+                          onPressed: () async {
+                            LogService.info('🔵 [VIEW_SESSION] Button clicked for booking request: ${request.id}');
+                            LogService.info('🔵 [VIEW_SESSION] Request details: status=${request.status}, paymentStatus=${request.paymentStatus}');
+                            LogService.info('🔵 [VIEW_SESSION] Widget mounted: ${mounted}');
+                            LogService.info('🔵 [VIEW_SESSION] Context valid: ${context.mounted}');
+                            
+                            try {
+                              // Check if sessions exist before navigating
+                              LogService.info('🔵 [VIEW_SESSION] Calling _checkAndNavigateToSessions...');
+                              await _checkAndNavigateToSessions(context, bookingRequestId: request.id, isTrial: false);
+                              LogService.info('🔵 [VIEW_SESSION] _checkAndNavigateToSessions completed');
+                            } catch (e, stackTrace) {
+                              LogService.error('🔴 [VIEW_SESSION] ERROR in button onPressed: $e');
+                              LogService.error('🔴 [VIEW_SESSION] Stack trace: $stackTrace');
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Navigation error: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.calendar_today, size: 18),
+                          label: Text(
+                            'View Session',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
+                          ),
+                        );
+                      }
+                      
+                      return const SizedBox.shrink();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomRequestCard(BuildContext context, TutorRequest request, {bool isHighlighted = false}) {
+    final t = AppLocalizations.of(context)!;
+    return _buildNeomorphicCard(
+      margin: const EdgeInsets.only(bottom: 16),
+      border: isHighlighted ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => RequestDetailScreen(
+                tutorRequest: request,
+              ),
+            ),
+          ).then((_) {
+            // Refresh after returning from detail page
+            _loadRequests();
+          });
         },
         borderRadius: BorderRadius.circular(20),
         child: Padding(
@@ -1070,292 +1598,80 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             children: [
               Row(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: AppTheme.primaryColor,
-                    backgroundImage:
-                        request.tutorAvatarUrl != null &&
-                            request.tutorAvatarUrl!.isNotEmpty
-                        ? NetworkImage(request.tutorAvatarUrl!)
-                        : null,
-                    onBackgroundImageError:
-                        request.tutorAvatarUrl != null &&
-                            request.tutorAvatarUrl!.isNotEmpty
-                        ? (exception, stackTrace) {
-                            // Image failed to load, will show fallback
-                          }
-                        : null,
-                    child:
-                        request.tutorAvatarUrl == null ||
-                            request.tutorAvatarUrl!.isEmpty
-                        ? Text(
-                            request.tutorName.isNotEmpty
-                                ? request.tutorName[0].toUpperCase()
-                                : 'T',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          request.tutorName,
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                        Text(
-                          request.tutorRating.toStringAsFixed(1) + ' ⭐',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppTheme.textMedium,
-                          ),
-                        ),
-                      ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      t.myRequestsFilterCustom,
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange[900],
+                      ),
                     ),
                   ),
+                  const Spacer(),
                   _buildStatusChip(context, request.status),
                 ],
               ),
               const SizedBox(height: 12),
-              _buildInfoRow(Icons.school, request.getDaysSummary()),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.access_time, request.getTimeRange()),
-              const SizedBox(height: 4),
-              _buildInfoRow(
-                Icons.location_on,
-                request.location == 'online'
-                    ? 'Online'
-                    : request.address ?? 'On-site',
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '${request.monthlyTotal.toStringAsFixed(0)} XAF/month',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCustomRequestCard(BuildContext context, TutorRequest request) {
-    final t = AppLocalizations.of(context)!;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey[200]!,
-          width: 1,
-        ),
-        // Reduced elevation - minimal shadow
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-        child: Padding(
-        padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            // Header with logo, type text, and status
-              Row(
-                children: [
-                // PrepSkul Logo
-                  Container(
-                  width: 36,
-                  height: 36,
-                    decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(
-                      'assets/images/app_logo(blue).png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Icon(
-                          Icons.school,
-                          color: AppTheme.primaryColor,
-                          size: 20,
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Custom Request - just text, no badge
-                      Text(
-                       t.myRequestsFilterCustom,
-                       style: GoogleFonts.poppins(
-                           fontSize: 12.5,
-                           fontWeight: FontWeight.w600,
-                           color: AppTheme.textMedium,
-                         ),
-                       ),
-                    ],
-                  ),
-                ),
-                  _buildStatusChip(context, request.status),
-                ],
-              ),
-            const SizedBox(height: 10),
-            
-            // Subject title
               Text(
                 request.formattedSubjects,
                 style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
               ),
-            const SizedBox(height: 10),
-            
-            // Info grid - 2 columns
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoRow(Icons.school_rounded, request.formattedEducationLevel),
-                      const SizedBox(height: 6),
-                      _buildInfoRow(Icons.access_time_rounded, request.formattedDays),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoRow(Icons.location_on_rounded, request.location),
-                      const SizedBox(height: 6),
-                      _buildInfoRow(Icons.attach_money_rounded, request.formattedBudget),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            
-            // Urgency indicator if not normal
-            if (request.urgency != 'normal') ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: request.urgency == 'urgent'
-                      ? Colors.red[50]
-                      : Colors.blue[50],
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: request.urgency == 'urgent'
-                        ? Colors.red[200]!
-                        : Colors.blue[200]!,
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+              const SizedBox(height: 8),
+              _buildInfoRow(Icons.school, request.educationLevel),
+              const SizedBox(height: 4),
+              _buildInfoRow(Icons.access_time, request.formattedDays),
+              const SizedBox(height: 4),
+              _buildInfoRow(Icons.location_on, request.location),
+              const SizedBox(height: 4),
+              _buildInfoRow(Icons.attach_money, request.formattedBudget),
+              if (request.urgency != 'normal') ...[
+                const SizedBox(height: 4),
+                Row(
                   children: [
                     Icon(
                       request.urgency == 'urgent'
-                          ? Icons.priority_high_rounded
-                          : Icons.schedule_rounded,
-                      size: 12,
+                          ? Icons.priority_high
+                          : Icons.schedule,
+                      size: 16,
                       color: request.urgency == 'urgent'
-                          ? Colors.red[700]
-                          : Colors.blue[700],
+                          ? Colors.red
+                          : Colors.blue,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       request.urgencyLabel,
                       style: GoogleFonts.poppins(
-                        fontSize: 10,
+                        fontSize: 12,
                         color: request.urgency == 'urgent'
-                            ? Colors.red[700]
-                            : Colors.blue[700],
+                            ? Colors.red
+                            : Colors.blue,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ],
-            
-            const SizedBox(height: 12),
-            
-            // View Details button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => RequestDetailScreen(
-                        tutorRequest: request,
-                      ),
-                    ),
-                  ).then((_) {
-                    // Refresh after returning from detail page
-                    _loadRequests();
-                  });
-                },
-                icon: const Icon(Icons.arrow_forward_rounded, size: 14),
-                label: Text(
-                  'View Details',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.primaryColor,
-                  side: BorderSide(
-                    color: AppTheme.primaryColor,
-                    width: 1.5,
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTrialSessionCard(BuildContext context, TrialSession session) {
+  Widget _buildTrialSessionCard(BuildContext context, TrialSession session, {bool isHighlighted = false}) {
     // Get tutor info from cache
     final tutorInfo = _tutorInfoCache[session.tutorId] ?? {};
     final t = AppLocalizations.of(context)!;
@@ -1374,43 +1690,77 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     // Get rejection reason for expired/cancelled distinction
     final rejectionReason = session.rejectionReason;
 
+    // Determine if card should be clickable
+    // For approved unpaid sessions, disable card tap - let Pay Now button handle navigation
+    final isApprovedUnpaid = session.status == 'approved' && 
+        (session.paymentStatus.toLowerCase() == 'unpaid' || 
+         session.paymentStatus.toLowerCase() == 'pending');
+    final shouldAllowCardTap = !isApprovedUnpaid;
+
     return _buildNeomorphicCard(
       margin: const EdgeInsets.only(bottom: 16),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => RequestDetailScreen(
-                trialSession: session,
+      child: shouldAllowCardTap
+          ? InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => RequestDetailScreen(
+                      trialSession: session,
+                    ),
+                  ),
+                ).then((_) {
+                  // Refresh after returning from detail page
+                  _loadRequests();
+                });
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: _buildTrialCardContent(context, session, tutorName, tutorAvatarUrl, tutorRating, displayStatus, rejectionReason),
+            )
+          : IgnorePointer(
+              // Ignore pointer events on the card itself, but allow buttons inside to work
+              ignoring: false, // Don't ignore - allow child widgets to receive events
+              child: Material(
+                // Use Material instead of InkWell when card tap is disabled (for approved unpaid sessions)
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+                child: _buildTrialCardContent(context, session, tutorName, tutorAvatarUrl, tutorRating, displayStatus, rejectionReason),
               ),
             ),
-          ).then((_) {
-            // Refresh after returning from detail page
-            _loadRequests();
-          });
-        },
+    );
+  }
+
+  Widget _buildTrialCardContent(
+    BuildContext context,
+    TrialSession session,
+    String tutorName,
+    String? tutorAvatarUrl,
+    double tutorRating,
+    String displayStatus,
+    String? rejectionReason,
+  ) {
+    final t = AppLocalizations.of(context)!;
+    
+    return Container(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
-                ? LinearGradient(
-                    colors: [
-                      Colors.green.withOpacity(0.03),
-                      Colors.transparent,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  )
-                : null,
-          ),
-        child: Padding(
-            padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-                // Modern header: Tutor info with integrated status
+        gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
+            ? LinearGradient(
+                colors: [
+                  Colors.green.withOpacity(0.03),
+                  Colors.transparent,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Modern header: Tutor info with integrated status
               Row(
                 children: [
                     // Avatar with status indicator
@@ -1698,6 +2048,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           if (hasPassed || isCancelledExpired) {
                             return OutlinedButton.icon(
                               onPressed: () async {
+                                LogService.info('📅 Edit Date button clicked for trial session: ${session.id}');
                                 // Navigate to reschedule screen
                                 final tutorData = await _loadTutorInfoForReschedule(session.tutorId);
                                 if (tutorData != null && mounted) {
@@ -1717,7 +2068,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               },
                               icon: const Icon(Icons.edit_calendar, size: 18),
                               label: Text(
-                                'Reschedule',
+                                'Edit Date',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -1773,6 +2124,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           if (SessionDateUtils.shouldShowPayNowButton(session)) {
                             return ElevatedButton(
                               onPressed: () async {
+                                LogService.info('💰 Pay Now button clicked for trial session: ${session.id}');
+                                // Navigate directly to payment screen (not detail screen)
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -1782,12 +2135,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 );
 
                                 if (result == true) {
+                                  // Payment successful - refresh and navigate to sessions
                                   await Future.delayed(const Duration(milliseconds: 2000));
                                   if (!mounted) return;
                                   await _refreshTrialSession(session.id);
                                   await _loadRequests();
                                   if (mounted) {
                                     safeSetState(() {});
+                                    // Navigate to sessions tab to show the newly created session
+                                    Navigator.of(context).pushNamedAndRemoveUntil(
+                                      '/student-nav',
+                                      (route) => route.isFirst,
+                                      arguments: {'initialTab': 2}, // Sessions tab
+                                    );
                                   }
                                 }
                               },
@@ -1810,19 +2170,33 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             );
                           }
                           
-                          // Show View Session for paid, non-expired sessions
+                          // Show View Session for paid, non-expired sessions - navigate to sessions screen
                           if (session.paymentStatus.toLowerCase() == 'paid' || 
                               session.paymentStatus.toLowerCase() == 'completed') {
                             return ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => RequestDetailScreen(
-                                      trialSession: session,
-                                    ),
-                                  ),
-                                );
+                              onPressed: () async {
+                                LogService.info('🔵 [VIEW_SESSION_TRIAL] Button clicked for trial session: ${session.id}');
+                                LogService.info('🔵 [VIEW_SESSION_TRIAL] Session details: status=${session.status}, paymentStatus=${session.paymentStatus}');
+                                LogService.info('🔵 [VIEW_SESSION_TRIAL] Widget mounted: ${mounted}');
+                                LogService.info('🔵 [VIEW_SESSION_TRIAL] Context valid: ${context.mounted}');
+                                
+                                try {
+                                  // Check if session exists in individual_sessions before navigating
+                                  LogService.info('🔵 [VIEW_SESSION_TRIAL] Calling _checkAndNavigateToSessions...');
+                                  await _checkAndNavigateToSessions(context, sessionId: session.id, isTrial: true);
+                                  LogService.info('🔵 [VIEW_SESSION_TRIAL] _checkAndNavigateToSessions completed');
+                                } catch (e, stackTrace) {
+                                  LogService.error('🔴 [VIEW_SESSION_TRIAL] ERROR in button onPressed: $e');
+                                  LogService.error('🔴 [VIEW_SESSION_TRIAL] Stack trace: $stackTrace');
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Navigation error: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
                               },
                               icon: const Icon(Icons.calendar_today, size: 18),
                               label: Text(
@@ -1849,9 +2223,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ],
                 ),
-            ],
-            ),
-          ),
+          ],
         ),
       ),
     );
@@ -2500,6 +2872,52 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
+  /// Build payment status chip using cached payment status (no FutureBuilder flickering)
+  Widget _buildPaymentStatusChip(BookingRequest request) {
+    // If approved, check payment status
+    if (request.status == 'approved') {
+      if (request.paymentStatus == 'paid') {
+        // Show "Paid" status
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.green.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.green.withOpacity(0.3)),
+          ),
+          child: Text(
+            'Paid',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.green[700],
+            ),
+          ),
+        );
+      } else if (request.paymentStatus == 'pending' && request.paymentRequestId != null) {
+        // Show "Pay Now" status
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+          ),
+          child: Text(
+            'Pay Now',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+        );
+      }
+    }
+    // Default status chip
+    return _buildStatusChip(context, request.status);
+  }
+
   Widget _buildStatusChip(BuildContext context, String status) {
     Color chipColor;
     final t = AppLocalizations.of(context)!;
@@ -2544,33 +2962,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: chipColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: chipColor.withOpacity(0.3)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: chipColor,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: chipColor,
-            ),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
-            softWrap: false,
-          ),
-        ],
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: chipColor,
+        ),
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
+        softWrap: false,
       ),
     );
   }
@@ -2595,25 +2999,26 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
 
   /// Neomorphic card container with soft shadows
-  Widget _buildNeomorphicCard({required Widget child, EdgeInsets? margin}) {
+  Widget _buildNeomorphicCard({required Widget child, EdgeInsets? margin, Border? border}) {
     return Container(
       margin: margin ?? const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(20),
+        border: border,
         boxShadow: [
-          // Light shadow (top-left)
+          // Reduced elevation - lighter shadows
           BoxShadow(
-            color: Colors.white.withOpacity(0.8),
-            offset: const Offset(-6, -6),
-            blurRadius: 12,
+            color: Colors.white.withOpacity(0.5),
+            offset: const Offset(-2, -2),
+            blurRadius: 4,
             spreadRadius: 0,
           ),
-          // Dark shadow (bottom-right)
+          // Dark shadow (bottom-right) - reduced
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            offset: const Offset(6, 6),
-            blurRadius: 12,
+            color: Colors.black.withOpacity(0.05),
+            offset: const Offset(2, 2),
+            blurRadius: 4,
             spreadRadius: 0,
           ),
         ],
@@ -2679,15 +3084,839 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     );
   }
 
+  /// Check if sessions exist and navigate to sessions screen, or show error dialog
+  Future<void> _checkAndNavigateToSessions(
+    BuildContext context, {
+    String? sessionId,
+    String? bookingRequestId,
+    required bool isTrial,
+  }) async {
+    final startTime = DateTime.now();
+    LogService.info('🔵 [CHECK_SESSIONS] ========== START ==========');
+    LogService.info('🔵 [CHECK_SESSIONS] Method called at ${startTime.toIso8601String()}');
+    LogService.info('🔵 [CHECK_SESSIONS] Parameters:');
+    LogService.info('   - sessionId: $sessionId');
+    LogService.info('   - bookingRequestId: $bookingRequestId');
+    LogService.info('   - isTrial: $isTrial');
+    LogService.info('🔵 [CHECK_SESSIONS] Context mounted: ${context.mounted}');
+    LogService.info('🔵 [CHECK_SESSIONS] Widget mounted: $mounted');
+    
+    try {
+      LogService.info('🔍 [CHECK_SESSIONS] Checking sessions before navigation...');
+      LogService.info('📋 [CHECK_SESSIONS] Parameters: sessionId=$sessionId, bookingRequestId=$bookingRequestId, isTrial=$isTrial');
+      
+      final supabase = SupabaseService.client;
+      final userId = supabase.auth.currentUser?.id;
+      
+      if (userId == null) {
+        _showSessionErrorDialog(
+          context,
+          'Authentication Error',
+          'You are not logged in. Please log in and try again.',
+        );
+        return;
+      }
+
+      List<Map<String, dynamic>> sessions = [];
+      String errorDetails = '';
+
+      if (isTrial && sessionId != null) {
+        // Check for trial session in individual_sessions
+        try {
+          final trialSessions = await supabase
+              .from('individual_sessions')
+              .select('id, status, scheduled_date, scheduled_time')
+              .or('learner_id.eq.$userId,parent_id.eq.$userId')
+              .eq('id', sessionId)
+              .limit(1);
+          
+          sessions = (trialSessions as List).cast<Map<String, dynamic>>();
+          LogService.info('✅ Found ${sessions.length} trial session(s)');
+          
+          if (sessions.isEmpty) {
+            errorDetails = 'Trial session not found in individual_sessions table.\n'
+                'Session ID: $sessionId\n'
+                'User ID: $userId\n'
+                'This may indicate the session was not created after payment.';
+          }
+        } catch (e) {
+          errorDetails = 'Error checking trial session: $e';
+          LogService.error('❌ Error checking trial session: $e');
+        }
+      } else if (!isTrial && bookingRequestId != null) {
+        // Check for recurring session and individual sessions
+        try {
+          // First, check booking request status and payment request
+          final bookingRequest = await supabase
+              .from('booking_requests')
+              .select('id, status, tutor_id, student_id')
+              .eq('id', bookingRequestId)
+              .maybeSingle();
+          
+          LogService.info('📋 Booking request check: ${bookingRequest != null ? "Found" : "Not found"}');
+          
+          if (bookingRequest == null) {
+            errorDetails = 'Booking request not found.\n'
+                'Booking Request ID: $bookingRequestId\n'
+                'User ID: $userId';
+          } else {
+            final bookingStatus = bookingRequest['status'] as String?;
+            LogService.info('📋 Booking request status: $bookingStatus');
+            
+            // Check if payment request exists
+            final paymentRequest = await supabase
+                .from('payment_requests')
+                .select('id, status, recurring_session_id')
+                .eq('booking_request_id', bookingRequestId)
+                .maybeSingle();
+            
+            LogService.info('📋 Payment request check: ${paymentRequest != null ? "Found" : "Not found"}');
+            final paymentStatus = paymentRequest?['status'] as String?;
+            final paymentRequestRecurringSessionId = paymentRequest?['recurring_session_id'] as String?;
+            
+            // If payment is paid, navigate directly without checking sessions
+            // The sessions screen will handle RLS and show what's available
+            if (paymentStatus == 'paid') {
+              LogService.info('💰 Payment is paid - navigating directly to sessions screen');
+              LogService.info('🔵 [NAVIGATION] Skipping session check, navigating directly...');
+              sessions = [{'id': 'placeholder'}]; // Set a placeholder to trigger navigation
+              // Don't return - let the navigation code below handle it
+            }
+            
+            // Try to find recurring session by payment_request.recurring_session_id FIRST
+            // (This is the primary link since request_id FK constraint references session_requests, not booking_requests)
+            Map<String, dynamic>? recurringSession;
+            
+            if (paymentRequestRecurringSessionId != null) {
+              LogService.info('📋 Looking up recurring session by payment_request.recurring_session_id: $paymentRequestRecurringSessionId');
+              recurringSession = await supabase
+                  .from('recurring_sessions')
+                  .select('id, status, learner_id')
+                  .eq('id', paymentRequestRecurringSessionId)
+                  .maybeSingle();
+              
+              if (recurringSession != null) {
+                LogService.info('✅ Found recurring session via payment_request.recurring_session_id');
+              } else {
+                LogService.warning('⚠️ Recurring session not found by payment_request.recurring_session_id');
+              }
+            }
+            
+            // Fallback: Try to find by request_id (may be NULL due to FK constraint)
+            if (recurringSession == null) {
+              LogService.info('📋 Fallback: Trying to find recurring session by request_id: $bookingRequestId');
+              recurringSession = await supabase
+                  .from('recurring_sessions')
+                  .select('id, status, learner_id')
+                  .eq('request_id', bookingRequestId)
+                  .maybeSingle();
+              
+              if (recurringSession != null) {
+                LogService.info('✅ Found recurring session via request_id');
+              }
+            }
+            
+            // If still not found, check if there's a recurring session that should be linked
+            // This handles cases where recurring session was created but not linked to payment request
+            if (recurringSession == null && paymentRequest != null) {
+              LogService.info('📋 Recurring session not found - checking if one should exist...');
+              // The fix function will handle creating it if needed
+            }
+            
+            LogService.info('📋 Recurring session check: ${recurringSession != null ? "Found" : "Not found"}');
+            
+            if (recurringSession == null) {
+              String statusInfo = '';
+              if (bookingStatus != 'approved') {
+                statusInfo = '\n\n⚠️ Booking request status is "$bookingStatus" (expected "approved").\n'
+                    'Recurring sessions are only created after approval.';
+              } else if (paymentRequest == null) {
+                statusInfo = '\n\n⚠️ No payment request found for this booking.\n'
+                    'Payment request should be created when tutor approves the booking.';
+              } else {
+                final paymentStatus = paymentRequest['status'] as String?;
+                statusInfo = '\n\n⚠️ Payment request exists but recurring session was not created.\n'
+                    'Payment Request Status: $paymentStatus\n'
+                    'This may indicate:\n'
+                    '1. Recurring session creation failed during approval\n'
+                    '2. Database error during recurring session creation\n'
+                    '3. Approval process did not complete successfully';
+              }
+              
+              errorDetails = 'Recurring session not found for booking request.\n'
+                  'Booking Request ID: $bookingRequestId\n'
+                  'Booking Status: $bookingStatus\n'
+                  'User ID: $userId\n'
+                  'Payment Request: ${paymentRequest != null ? "Found (ID: ${paymentRequest['id']})" : "Not found"}\n'
+                  'Payment Request Recurring Session ID: ${paymentRequestRecurringSessionId ?? "null"}$statusInfo';
+              
+              // Show error dialog
+              if (mounted) {
+                _showSessionErrorDialog(
+                  context,
+                  'Sessions Not Found',
+                  errorDetails,
+                );
+                return; // Exit early since we showed the dialog
+              }
+            } else {
+              final recurringSessionId = recurringSession['id'] as String;
+              final learnerId = recurringSession['learner_id'] as String?;
+              
+              LogService.info('📋 Recurring session ID: $recurringSessionId');
+              LogService.info('📋 Learner ID: $learnerId, User ID: $userId');
+              
+              // Check if individual sessions exist
+              LogService.info('🔍 [CHECK_SESSIONS] Querying individual_sessions for recurring_session_id: $recurringSessionId');
+              final individualSessions = await supabase
+                  .from('individual_sessions')
+                  .select('id, status, scheduled_date, scheduled_time, recurring_session_id, learner_id, parent_id')
+                  .eq('recurring_session_id', recurringSessionId)
+                  .limit(10);
+              
+              sessions = (individualSessions as List).cast<Map<String, dynamic>>();
+              LogService.info('✅ [CHECK_SESSIONS] Found ${sessions.length} individual session(s) for recurring session: $recurringSessionId');
+              if (sessions.isNotEmpty) {
+                LogService.info('📋 [CHECK_SESSIONS] First session IDs: ${sessions.take(3).map((s) => s['id']).join(", ")}');
+              }
+              
+              if (sessions.isEmpty) {
+                // Check if payment is paid - if so, we can generate sessions
+                final paymentStatus = paymentRequest?['status'] as String?;
+                final canGenerateSessions = paymentStatus == 'paid';
+                
+                errorDetails = 'No individual sessions found for this booking.\n'
+                    'Recurring Session ID: $recurringSessionId\n'
+                    'Booking Request ID: $bookingRequestId\n'
+                    'User ID: $userId\n'
+                    'Learner ID: $learnerId\n'
+                    'Payment Status: ${paymentStatus ?? "unknown"}\n\n'
+                    'Possible causes:\n'
+                    '1. Sessions were not generated after payment\n'
+                    '2. Payment webhook did not trigger session generation\n'
+                    '3. Session generation failed silently\n'
+                    '4. Date calculation issue (sessions may be scheduled in the past)';
+                
+                // If payment is paid, try to generate sessions automatically
+                if (canGenerateSessions) {
+                  LogService.info('💰 Payment is paid but sessions missing - attempting to generate sessions...');
+                  try {
+                    final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
+                      recurringSessionId: recurringSessionId,
+                      weeksAhead: 8,
+                    );
+                    
+                    if (sessionsGenerated > 0) {
+                      LogService.success('✅ Generated $sessionsGenerated individual sessions');
+                      // Re-check for sessions
+                      final newSessions = await supabase
+                          .from('individual_sessions')
+                          .select('id, status, scheduled_date, scheduled_time, recurring_session_id')
+                          .eq('recurring_session_id', recurringSessionId)
+                          .limit(10);
+                      
+                      sessions = (newSessions as List).cast<Map<String, dynamic>>();
+                      LogService.info('✅ Found ${sessions.length} individual session(s) after generation');
+                    } else {
+                      LogService.warning('⚠️ Session generation returned 0 sessions');
+                      // Check if start_date might be the issue
+                      try {
+                        final rsDetails = await supabase
+                            .from('recurring_sessions')
+                            .select('start_date, days, times')
+                            .eq('id', recurringSessionId)
+                            .maybeSingle();
+                        if (rsDetails != null) {
+                          final startDate = DateTime.parse(rsDetails['start_date'] as String);
+                          final today = DateTime.now();
+                          if (startDate.isBefore(today)) {
+                            errorDetails += '\n\n⚠️ ISSUE DETECTED: Recurring session start_date ($startDate) is in the past. '
+                                'Sessions cannot be generated for past dates. The start_date needs to be updated to a future date.';
+                          }
+                        }
+                      } catch (e) {
+                        LogService.warning('Could not check start_date: $e');
+                      }
+                    }
+                  } catch (e, stackTrace) {
+                    LogService.error('❌ Failed to generate individual sessions: $e');
+                    LogService.error('📚 Stack trace: $stackTrace');
+                    
+                    // Enhanced RLS error detection and messaging
+                    final errorString = e.toString();
+                    if (errorString.contains('row-level security') || errorString.contains('RLS') || errorString.contains('42501')) {
+                      errorDetails += '\n\n❌ **RLS Policy Violation Detected**\n';
+                      errorDetails += 'The database security policy is blocking session creation.\n\n';
+                      errorDetails += '**Possible causes:**\n';
+                      errorDetails += '1. Your user ID does not match the tutor, learner, or parent ID in the session\n';
+                      errorDetails += '2. The RLS INSERT policy may be missing or incorrectly configured\n';
+                      errorDetails += '3. You may need to run the RLS fix script in Supabase\n\n';
+                      errorDetails += '**Error details:** $e\n\n';
+                      errorDetails += '**To fix:**\n';
+                      errorDetails += '1. Check terminal logs for user ID mismatch details\n';
+                      errorDetails += '2. Run DIAGNOSE_RLS_INSERT_FAILURE.sql in Supabase SQL Editor\n';
+                      errorDetails += '3. Run FIX_INDIVIDUAL_SESSIONS_RLS_SIMPLE.sql to fix the policy';
+                    } else {
+                      errorDetails += '\n\n❌ Session Generation Error: $e';
+                    }
+                    // Continue to show error dialog
+                  }
+                }
+              } else {
+                // Verify user has access to these sessions by checking learner_id or parent_id in individual_sessions
+                LogService.info('🔍 [CHECK_SESSIONS] Verifying user access to ${sessions.length} session(s)');
+                LogService.info('🔍 [CHECK_SESSIONS] User ID: $userId');
+                final userSessions = sessions.where((s) {
+                  final sessionLearnerId = s['learner_id'] as String?;
+                  final sessionParentId = s['parent_id'] as String?;
+                  final hasAccess = sessionLearnerId == userId || sessionParentId == userId;
+                  if (!hasAccess) {
+                    LogService.warning('⚠️ [CHECK_SESSIONS] Session ${s['id']} - learner_id: $sessionLearnerId, parent_id: $sessionParentId (no match)');
+                  }
+                  return hasAccess;
+                }).toList();
+                
+                LogService.info('✅ [CHECK_SESSIONS] User has access to ${userSessions.length} out of ${sessions.length} session(s)');
+                
+                if (userSessions.isEmpty && sessions.isNotEmpty) {
+                  // If sessions exist but user doesn't have access, still navigate
+                  // The sessions screen will handle RLS and show what the user can see
+                  LogService.warning('⚠️ [CHECK_SESSIONS] Sessions exist but user access check failed - navigating anyway (RLS will filter)');
+                  // Don't set errorDetails - we'll navigate anyway since sessions exist
+                } else if (userSessions.isNotEmpty) {
+                  // Use the filtered sessions for logging
+                  sessions = userSessions;
+                  LogService.info('✅ [CHECK_SESSIONS] Using ${sessions.length} accessible session(s)');
+                }
+              }
+            }
+          }
+        } catch (e, stackTrace) {
+          errorDetails = 'Error checking sessions: $e\n\nStack trace:\n$stackTrace';
+          LogService.error('❌ Error checking sessions: $e');
+          LogService.error('📚 Stack trace: $stackTrace');
+        }
+      }
+
+      // Log final state before navigation decision
+      LogService.info('🔵 [CHECK_SESSIONS] Final state check:');
+      LogService.info('   - Sessions count: ${sessions.length}');
+      LogService.info('   - Error details empty: ${errorDetails.isEmpty}');
+      LogService.info('   - Widget mounted: $mounted');
+      LogService.info('   - Context mounted: ${context.mounted}');
+      
+      // If sessions found, navigate to sessions screen
+      if (sessions.isNotEmpty) {
+        LogService.success('✅ [NAVIGATION] Sessions found (${sessions.length}), preparing to navigate...');
+        LogService.info('🔵 [NAVIGATION] Session IDs: ${sessions.take(5).map((s) => s['id']).join(", ")}${sessions.length > 5 ? "..." : ""}');
+        
+        if (!mounted) {
+          LogService.error('🔴 [NAVIGATION] Widget not mounted, cannot navigate');
+          return;
+        }
+        
+        LogService.info('🔵 [NAVIGATION] Widget is mounted, proceeding with navigation');
+        LogService.info('🔵 [NAVIGATION] Context mounted: ${context.mounted}');
+        LogService.info('🔵 [NAVIGATION] Navigator canPop: ${Navigator.of(context).canPop()}');
+        
+        try {
+          // Check if route exists
+          final routeSettings = ModalRoute.of(context)?.settings;
+          LogService.info('🔵 [NAVIGATION] Current route: ${routeSettings?.name}');
+          LogService.info('🔵 [NAVIGATION] Current route arguments: ${routeSettings?.arguments}');
+          
+          // Log navigation stack before navigation
+          final navigator = Navigator.of(context);
+          LogService.info('🔵 [NAVIGATION] Navigator state: ${navigator.toString()}');
+          
+          LogService.info('🔵 [NAVIGATION] Attempting pushNamedAndRemoveUntil to /my-sessions');
+          LogService.info('🔵 [NAVIGATION] Arguments: {\'initialTab\': 0}');
+          
+          // Set navigation flag to prevent refresh during navigation
+          _isNavigating = true;
+          LogService.info('🔵 [NAVIGATION] Set _isNavigating = true to prevent refresh');
+          
+          // Navigate to MySessionsScreen directly (not through bottom nav)
+          // This is the correct route for viewing sessions as a student
+          final navigationResult = Navigator.of(context).pushNamedAndRemoveUntil(
+            '/my-sessions',
+            (route) {
+              final isFirst = route.isFirst;
+              LogService.info('🔵 [NAVIGATION] Route predicate check: ${route.settings.name} isFirst=$isFirst');
+              // Keep the first route and /student-nav if it exists
+              return isFirst || route.settings.name == '/student-nav';
+            },
+            arguments: {'initialTab': 0}, // Upcoming sessions tab
+          );
+          
+          LogService.success('✅ [NAVIGATION] Navigation command executed successfully');
+          LogService.info('🔵 [NAVIGATION] Navigation result: $navigationResult');
+          
+          // Wait a moment to see if navigation actually happens
+          await Future.delayed(const Duration(milliseconds: 100));
+          
+          if (mounted) {
+            final newRoute = ModalRoute.of(context)?.settings;
+            LogService.info('🔵 [NAVIGATION] Route after navigation: ${newRoute?.name}');
+            LogService.info('🔵 [NAVIGATION] Route arguments after navigation: ${newRoute?.arguments}');
+            
+            if (newRoute?.name == '/my-sessions') {
+              LogService.success('✅ [NAVIGATION] Successfully navigated to /my-sessions');
+            } else {
+              LogService.warning('⚠️ [NAVIGATION] Navigation may have failed - route is still: ${newRoute?.name}');
+              // Reset flag if navigation failed
+              _isNavigating = false;
+            }
+          } else {
+            LogService.info('🔵 [NAVIGATION] Widget unmounted after navigation (expected)');
+            // Navigation succeeded, widget unmounted - flag will remain true (screen is gone)
+          }
+        } catch (e, stackTrace) {
+          LogService.error('🔴 [NAVIGATION] ERROR during navigation: $e');
+          LogService.error('🔴 [NAVIGATION] Error type: ${e.runtimeType}');
+          LogService.error('🔴 [NAVIGATION] Stack trace: $stackTrace');
+          // Reset flag on error
+          _isNavigating = false;
+          
+          // Check for specific error types
+          if (e.toString().contains('route')) {
+            LogService.error('🔴 [NAVIGATION] Route-related error detected');
+          }
+          if (e.toString().contains('context')) {
+            LogService.error('🔴 [NAVIGATION] Context-related error detected');
+          }
+          if (e.toString().contains('navigator')) {
+            LogService.error('🔴 [NAVIGATION] Navigator-related error detected');
+          }
+          
+          // Re-throw to be caught by outer try-catch
+          rethrow;
+        }
+        
+        return; // Exit early to prevent showing error dialog
+      } else {
+        // Show error dialog with details
+        LogService.warning('⚠️ [CHECK_SESSIONS] No sessions found, showing error dialog');
+        LogService.info('🔵 [CHECK_SESSIONS] Error details length: ${errorDetails.length}');
+        LogService.info('🔵 [CHECK_SESSIONS] Widget mounted: $mounted');
+        LogService.info('🔵 [CHECK_SESSIONS] Context mounted: ${context.mounted}');
+        
+        if (mounted && context.mounted) {
+          _showSessionErrorDialog(
+            context,
+            'Sessions Not Found',
+            errorDetails.isNotEmpty 
+                ? errorDetails 
+                : 'No sessions were found for this request. Please contact support if this issue persists.',
+          );
+        } else {
+          LogService.error('🔴 [CHECK_SESSIONS] Cannot show error dialog - widget or context not mounted');
+        }
+      }
+      
+      final endTime = DateTime.now();
+      final duration = endTime.difference(startTime);
+      LogService.info('🔵 [CHECK_SESSIONS] ========== END ==========');
+      LogService.info('🔵 [CHECK_SESSIONS] Total duration: ${duration.inMilliseconds}ms');
+    } catch (e, stackTrace) {
+      final endTime = DateTime.now();
+      final duration = endTime.difference(startTime);
+      LogService.error('🔴 [CHECK_SESSIONS] ========== ERROR ==========');
+      LogService.error('🔴 [CHECK_SESSIONS] Unexpected error in _checkAndNavigateToSessions: $e');
+      LogService.error('🔴 [CHECK_SESSIONS] Error type: ${e.runtimeType}');
+      LogService.error('🔴 [CHECK_SESSIONS] Stack trace: $stackTrace');
+      LogService.error('🔴 [CHECK_SESSIONS] Duration before error: ${duration.inMilliseconds}ms');
+      LogService.error('🔴 [CHECK_SESSIONS] Widget mounted: $mounted');
+      LogService.error('🔴 [CHECK_SESSIONS] Context mounted: ${context.mounted}');
+      
+      if (mounted && context.mounted) {
+        _showSessionErrorDialog(
+          context,
+          'Unexpected Error',
+          'An unexpected error occurred: $e\n\nPlease check the terminal logs for more details.',
+        );
+      } else {
+        LogService.error('🔴 [CHECK_SESSIONS] Cannot show error dialog - widget or context not mounted');
+      }
+      LogService.error('🔴 [CHECK_SESSIONS] ========== ERROR END ==========');
+    }
+  }
+
+  /// Fix missing recurring session and generate individual sessions
+  /// This is called when payment is paid but recurring session is missing
+  Future<void> _fixMissingRecurringSession(
+    BuildContext context, {
+    required String bookingRequestId,
+    String? paymentRequestId,
+  }) async {
+    try {
+      LogService.info('🔧 Starting fix for missing recurring session...');
+      LogService.info('📋 Booking Request ID: $bookingRequestId');
+      LogService.info('📋 Payment Request ID: $paymentRequestId');
+
+      // Show loading dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Fixing session issue...',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      final supabase = SupabaseService.client;
+
+      // Get booking request
+      final bookingRequestData = await supabase
+          .from('booking_requests')
+          .select()
+          .eq('id', bookingRequestId)
+          .maybeSingle();
+
+      if (bookingRequestData == null) {
+        throw Exception('Booking request not found: $bookingRequestId');
+      }
+
+      final bookingRequest = BookingRequest.fromJson(bookingRequestData);
+      LogService.info('✅ Found booking request: ${bookingRequest.id}');
+
+      // Get payment request if not provided
+      if (paymentRequestId == null) {
+        LogService.info('📋 Payment request ID not provided, fetching from booking request...');
+        try {
+          final paymentRequestData = await supabase
+              .from('payment_requests')
+              .select('id, status, recurring_session_id')
+              .eq('booking_request_id', bookingRequestId)
+              .order('created_at', ascending: false)
+              .limit(1)
+              .maybeSingle();
+          
+          if (paymentRequestData != null) {
+            paymentRequestId = paymentRequestData['id'] as String?;
+            LogService.info('✅ Found payment request ID: $paymentRequestId');
+          }
+        } catch (e) {
+          LogService.warning('⚠️ Failed to fetch payment request: $e');
+        }
+      }
+
+      // Check if recurring session already exists
+      // Priority: payment_request.recurring_session_id FIRST (since request_id FK references session_requests, not booking_requests)
+      Map<String, dynamic>? recurringSession;
+      
+      if (paymentRequestId != null) {
+        try {
+          final paymentRequest = await supabase
+              .from('payment_requests')
+              .select('recurring_session_id')
+              .eq('id', paymentRequestId)
+              .maybeSingle();
+          
+          final recurringSessionIdFromPayment = paymentRequest?['recurring_session_id'] as String?;
+          if (recurringSessionIdFromPayment != null) {
+            recurringSession = await supabase
+                .from('recurring_sessions')
+                .select('id')
+                .eq('id', recurringSessionIdFromPayment)
+                .maybeSingle();
+            if (recurringSession != null) {
+              LogService.info('✅ Found recurring session via payment_request.recurring_session_id');
+            }
+          }
+        } catch (e) {
+          LogService.warning('⚠️ Error checking payment_request for recurring_session_id: $e');
+        }
+      }
+      
+      // Fallback: Try by request_id (may be NULL due to FK constraint)
+      if (recurringSession == null) {
+        recurringSession = await supabase
+            .from('recurring_sessions')
+            .select('id')
+            .eq('request_id', bookingRequestId)
+            .maybeSingle();
+        if (recurringSession != null) {
+          LogService.info('✅ Found recurring session via request_id');
+        }
+      }
+
+      String recurringSessionId;
+      
+      if (recurringSession != null) {
+        // Recurring session already exists
+        recurringSessionId = recurringSession['id'] as String;
+        LogService.info('✅ Recurring session already exists: $recurringSessionId');
+        
+        // Ensure payment request is linked
+        if (paymentRequestId != null) {
+          try {
+            final paymentRequest = await supabase
+                .from('payment_requests')
+                .select('recurring_session_id')
+                .eq('id', paymentRequestId)
+                .maybeSingle();
+            
+            if (paymentRequest?['recurring_session_id'] != recurringSessionId) {
+              LogService.info('🔗 Linking payment request to recurring session...');
+              await PaymentRequestService.linkPaymentRequestToRecurringSession(
+                paymentRequestId,
+                recurringSessionId,
+              );
+              LogService.success('✅ Payment request linked to recurring session');
+            }
+          } catch (e) {
+            LogService.warning('⚠️ Failed to link payment request: $e');
+          }
+        }
+      } else {
+        // Create recurring session
+        LogService.info('📅 Creating recurring session...');
+        try {
+          final recurringSessionData = await RecurringSessionService.createRecurringSessionFromBooking(
+            bookingRequest,
+            paymentRequestId: paymentRequestId,
+          );
+
+          recurringSessionId = recurringSessionData['id'] as String;
+          LogService.success('✅ Recurring session created: $recurringSessionId');
+          
+          // Link payment request if not already linked
+          if (paymentRequestId != null) {
+            try {
+              await PaymentRequestService.linkPaymentRequestToRecurringSession(
+                paymentRequestId,
+                recurringSessionId,
+              );
+              LogService.success('✅ Payment request linked to recurring session');
+            } catch (e) {
+              LogService.warning('⚠️ Failed to link payment request: $e');
+              // Continue even if linking fails
+            }
+          }
+        } catch (e, stackTrace) {
+          LogService.error('❌ Failed to create recurring session: $e');
+          LogService.error('📚 Stack trace: $stackTrace');
+          throw Exception('Failed to create recurring session: $e');
+        }
+      }
+
+      // Check if payment is paid - if so, generate individual sessions
+      bool shouldGenerateSessions = false;
+      if (paymentRequestId != null) {
+        try {
+          final paymentRequest = await supabase
+              .from('payment_requests')
+              .select('status')
+              .eq('id', paymentRequestId)
+              .maybeSingle();
+
+          final paymentStatus = paymentRequest?['status'] as String?;
+          LogService.info('💰 Payment status: $paymentStatus');
+
+          if (paymentStatus == 'paid') {
+            shouldGenerateSessions = true;
+          }
+        } catch (e) {
+          LogService.warning('⚠️ Error checking payment status: $e');
+        }
+      }
+
+      // Generate individual sessions if payment is paid
+      if (shouldGenerateSessions) {
+        LogService.info('💰 Payment is paid - generating individual sessions...');
+        try {
+          // Check if sessions already exist
+          final existingSessions = await supabase
+              .from('individual_sessions')
+              .select('id')
+              .eq('recurring_session_id', recurringSessionId)
+              .limit(1);
+          
+          if (existingSessions.isEmpty) {
+            final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
+              recurringSessionId: recurringSessionId,
+              weeksAhead: 8,
+            );
+            LogService.success('✅ Generated $sessionsGenerated individual sessions');
+          } else {
+            LogService.info('✅ Individual sessions already exist, skipping generation');
+          }
+        } catch (e, stackTrace) {
+          LogService.error('❌ Failed to generate individual sessions: $e');
+          LogService.error('📚 Stack trace: $stackTrace');
+          // Continue even if generation fails - user can try again
+        }
+      } else {
+        LogService.info('💰 Payment not paid yet - individual sessions will be generated after payment');
+      }
+
+      // Close loading dialog
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Sessions fixed successfully! Navigating to sessions...',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Wait a moment for the snackbar to show
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Navigate to sessions tab
+      if (mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/student-nav',
+          (route) => route.isFirst,
+          arguments: {'initialTab': 2}, // Sessions tab
+        );
+      }
+    } catch (e, stackTrace) {
+      LogService.error('❌ Error fixing missing recurring session: $e');
+      LogService.error('📚 Stack trace: $stackTrace');
+
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to fix sessions: ${e.toString()}',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Show error dialog with session generation details
+  void _showSessionErrorDialog(
+    BuildContext context,
+    String title,
+    String message,
+  ) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red[700], size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey[800],
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.3),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Check terminal logs for detailed error information.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: AppTheme.primaryColor,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Close',
+              style: GoogleFonts.poppins(
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _getStatusColor(String status, {String? rejectionReason}) {
     switch (status.toLowerCase()) {
       case 'pending':
         return Colors.orange;
       case 'approved':
       case 'scheduled':
-        return Colors.green;
+        return AppTheme.primaryColor; // Changed from green to blue
       case 'awaiting_payment':
-        return Colors.blue;
+        return AppTheme.primaryColor;
       case 'paid':
         return Colors.green;
       case 'rejected':

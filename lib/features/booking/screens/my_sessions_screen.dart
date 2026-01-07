@@ -90,6 +90,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     _startCountdownTimer();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload sessions when screen becomes visible (e.g., after payment)
+    // This ensures newly created sessions appear immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadSessions();
+      }
+    });
+  }
+
   /// Initialize connectivity monitoring
   Future<void> _initializeConnectivity() async {
     await _connectivity.initialize();

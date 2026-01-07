@@ -413,32 +413,59 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                     ],
                   ),
                 ),
-                // Status Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: request.status == 'pending'
-                        ? AppTheme.primaryColor.withOpacity(0.1)
-                        : request.status == 'approved'
-                            ? AppTheme.accentGreen.withOpacity(0.1)
-                            : AppTheme.textMedium.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    request.status.toUpperCase(),
-                    style: GoogleFonts.poppins(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: request.status == 'pending'
+                // Status Badge - Check payment status for approved requests
+                FutureBuilder<Map<String, dynamic>?>(
+                  future: request.status == 'approved'
+                      ? PaymentRequestService.getPaymentRequestByBookingRequestId(request.id)
+                      : Future.value(null),
+                  builder: (context, snapshot) {
+                    String displayStatus = request.status;
+                    Color statusColor;
+                    Color statusBgColor;
+                    
+                    if (request.status == 'approved' && snapshot.hasData) {
+                      final paymentStatus = snapshot.data?['status'] as String?;
+                      if (paymentStatus == 'paid') {
+                        displayStatus = 'paid';
+                        statusColor = Colors.green[700]!;
+                        statusBgColor = Colors.green[50]!;
+                      } else {
+                        displayStatus = 'approved';
+                        statusColor = AppTheme.accentGreen;
+                        statusBgColor = AppTheme.accentGreen.withOpacity(0.1);
+                      }
+                    } else {
+                      statusColor = request.status == 'pending'
                           ? AppTheme.primaryColor
                           : request.status == 'approved'
                               ? AppTheme.accentGreen
-                              : AppTheme.textMedium,
-                    ),
-                  ),
+                              : AppTheme.textMedium;
+                      statusBgColor = request.status == 'pending'
+                          ? AppTheme.primaryColor.withOpacity(0.1)
+                          : request.status == 'approved'
+                              ? AppTheme.accentGreen.withOpacity(0.1)
+                              : AppTheme.textMedium.withOpacity(0.1);
+                    }
+                    
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusBgColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        displayStatus.toUpperCase(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: statusColor,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -1306,6 +1333,15 @@ class _RequestDetailsSheetState extends State<_RequestDetailsSheet> {
                 Icons.location_on,
                 _formatLocation(widget.request.location, widget.request.address),
               ),
+              // Show location description if provided by learner
+              if (widget.request.locationDescription != null && 
+                  widget.request.locationDescription!.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildInfoRow(
+                  Icons.description,
+                  'Location Details: ${widget.request.locationDescription!}',
+                ),
+              ],
               const SizedBox(height: 12),
               _buildInfoRow(
                 Icons.payment,

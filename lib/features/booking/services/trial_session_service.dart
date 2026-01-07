@@ -1541,7 +1541,10 @@ class TrialSessionService {
 
       // Create an individual session instance so trial appears in upcoming sessions
       try {
-        await _supabase.from('individual_sessions').insert({
+        LogService.info('📅 Creating individual session for trial: $sessionId');
+        LogService.info('📅 Session details: tutor=${trial.tutorId}, learner=${trial.learnerId}, date=$scheduledDate, time=$scheduledTime');
+        
+        final sessionData = {
           'recurring_session_id': null,
           'tutor_id': trial.tutorId,
           'learner_id': trial.learnerId,
@@ -1555,11 +1558,22 @@ class TrialSessionService {
           'duration_minutes': trial.durationMinutes,
           'location': trial.location,
           'meeting_link': meetLink,
-          'address': null,
-          'location_description': null,
-        });
-      } catch (e) {
-        LogService.warning('Error creating individual session for trial (will still keep trial record)', e);
+          'address': null, // Trial sessions don't have address field in model
+          'location_description': null, // Trial sessions don't have location_description field in model
+        };
+        
+        LogService.debug('📅 Individual session data: $sessionData');
+        
+        final insertedSession = await _supabase
+            .from('individual_sessions')
+            .insert(sessionData)
+            .select('id, scheduled_date, status')
+            .single();
+        
+        LogService.success('✅ Individual session created for trial: ${insertedSession['id']}, date: ${insertedSession['scheduled_date']}, status: ${insertedSession['status']}');
+      } catch (e, stackTrace) {
+        LogService.error('❌ Error creating individual session for trial: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
         // Continue - trial record is still valid even if individual_sessions creation fails
       }
 

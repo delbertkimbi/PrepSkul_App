@@ -443,4 +443,26 @@ class PaymentRequestService {
       return null;
     }
   }
+
+  /// Get payment request with full details by booking request ID
+  /// 
+  /// Returns the payment request with status and other details
+  static Future<Map<String, dynamic>?> getPaymentRequestByBookingRequestId(
+    String bookingRequestId,
+  ) async {
+    try {
+      final response = await SupabaseService.client
+          .from('payment_requests')
+          .select('id, status, booking_request_id, recurring_session_id')
+          .eq('booking_request_id', bookingRequestId)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      LogService.error('Error fetching payment request by booking request ID: $e');
+      return null;
+    }
+  }
 }

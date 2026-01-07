@@ -42,7 +42,7 @@ class BookingService {
       // Get tutor profile for denormalized data
       final tutorProfile = await SupabaseService.client
           .from('tutor_profiles')
-          .select('user_id, admin_approved_rating, base_session_price')
+          .select('user_id, admin_approved_rating, base_session_price, profile_photo_url')
           .eq('user_id', tutorId)
           .maybeSingle();
 
@@ -50,7 +50,7 @@ class BookingService {
 
       final tutorProfileData = await SupabaseService.client
           .from('profiles')
-          .select('full_name')
+          .select('full_name, avatar_url')
           .eq('id', tutorUserId)
           .maybeSingle();
 
@@ -58,7 +58,14 @@ class BookingService {
       // Constraint expects: ('learner', 'parent')
       // user_type can be: ('learner', 'student', 'tutor', 'parent')
       final rawUserType = userProfile['user_type'] as String?;
-      final userType = (rawUserType ?? 'learner').toLowerCase().trim();
+      
+      // Handle null or empty user_type
+      if (rawUserType == null || rawUserType.toString().trim().isEmpty) {
+        LogService.error('CRITICAL: user_type is null or empty for user $userId. Profile: $userProfile');
+        throw Exception('Your account type is not set. Please contact support or try logging out and back in.');
+      }
+      
+      final userType = rawUserType.toString().toLowerCase().trim();
 
       // Determine student_type with explicit validation
       String studentType;
@@ -66,16 +73,19 @@ class BookingService {
         studentType = 'learner';
       } else if (userType == 'parent') {
         studentType = 'parent';
+      } else if (userType == 'tutor') {
+        // Tutors cannot create booking requests
+        throw Exception('Tutors cannot create booking requests. Please use a student or parent account.');
       } else {
-        // Log unexpected value and default to 'learner'
-        LogService.warning('Unexpected user_type: "$rawUserType" (normalized: "$userType"), defaulting to "learner"');
-        studentType = 'learner';
+        // Log unexpected value and throw error
+        LogService.error('CRITICAL: Unexpected user_type: "$rawUserType" (normalized: "$userType") for user $userId');
+        throw Exception('Invalid account type. Please contact support. Your account type: "$rawUserType"');
       }
 
-      // Final validation - ensure it's one of the allowed values
+      // Final validation - ensure it's one of the allowed values (should never fail at this point)
       if (studentType != 'learner' && studentType != 'parent') {
-        LogService.error('Invalid student_type after mapping: "$studentType", forcing to "learner"');
-        studentType = 'learner';
+        LogService.error('CRITICAL: Invalid student_type after mapping: "$studentType" for user $userId');
+        throw Exception('System error: Invalid account type mapping. Please contact support.');
       }
 
       LogService.debug('Booking request', 'user_type: "$rawUserType" → student_type: "$studentType"');
@@ -108,16 +118,17 @@ class BookingService {
 
       if (existingRequests.isNotEmpty) {
         final existingRequest = existingRequests[0];
+        final existingRequestId = existingRequest['id'] as String;
         final existingStatus = existingRequest['status'] as String;
         final tutorName = existingRequest['tutor_name'] as String? ?? 'this tutor';
         
         String message;
         if (existingStatus == 'pending') {
-          message = 'You already have a pending booking request with $tutorName. Please wait for the tutor to respond before creating another request.';
+          message = 'EXISTING_BOOKING_REQUEST:requestId=$existingRequestId:You already have a pending booking request with $tutorName. Please wait for the tutor to respond before creating another request.';
         } else if (existingStatus == 'approved') {
-          message = 'You already have an approved booking with $tutorName. Please complete or cancel your existing booking before creating a new one.';
+          message = 'EXISTING_BOOKING_REQUEST:requestId=$existingRequestId:You already have an approved booking with $tutorName.';
         } else {
-          message = 'You already have an active booking request with $tutorName. Please wait for it to be processed.';
+          message = 'EXISTING_BOOKING_REQUEST:requestId=$existingRequestId:You already have an active booking request with $tutorName. Please wait for it to be processed.';
         }
         
         throw Exception(message);
@@ -193,6 +204,22 @@ class BookingService {
         );
       }
 
+      // Final validation before insert - ensure student_type is valid
+      if (studentType != 'learner' && studentType != 'parent') {
+        LogService.error('CRITICAL: Invalid student_type before insert: "$studentType". User profile: $userProfile');
+        throw Exception('Invalid user type. Please contact support.');
+      }
+
+      // Get avatar URLs
+      final studentAvatarUrl = userProfile['avatar_url'] as String?;
+      final tutorAvatarUrl = tutorProfileData?['avatar_url'] as String?;
+      
+      // Also check tutor_profiles for profile_photo_url
+      final tutorProfilePhotoUrl = tutorProfile?['profile_photo_url'] as String?;
+      final effectiveTutorAvatarUrl = (tutorProfilePhotoUrl != null && tutorProfilePhotoUrl.isNotEmpty)
+          ? tutorProfilePhotoUrl
+          : tutorAvatarUrl;
+
       // Create booking request data
       final requestData = {
         'student_id': userId,
@@ -211,19 +238,25 @@ class BookingService {
         if (customRequestId != null) 'custom_request_id': customRequestId,
         // Denormalized data
         'student_name': userProfile['full_name'],
-        'student_type': studentType, // Validated: 'learner' or 'parent'
+        'student_avatar_url': studentAvatarUrl,
+        'student_type': studentType, // Validated: 'learner' or 'parent' - MUST be one of these
         'tutor_name': tutorProfileData?['full_name'] ?? 'Tutor',
+        'tutor_avatar_url': effectiveTutorAvatarUrl,
         'tutor_rating':
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
       };
 
+      // Log the data being inserted for debugging (use error level so it shows in console)
+      LogService.error('🔍 DEBUG: About to insert booking request. student_type: "$studentType", user_type: "$rawUserType", student_id: $userId, tutor_id: $tutorUserId');
+      LogService.error('🔍 DEBUG: Full requestData: $requestData');
+
       // Insert into booking_requests table
       try {
         final response = await SupabaseService.client
-            .from('booking_requests')
-            .insert(requestData)
-            .select()
-            .maybeSingle();
+          .from('booking_requests')
+          .insert(requestData)
+          .select()
+          .maybeSingle();
         
         if (response == null) {
           throw Exception('Failed to create booking request');
@@ -257,7 +290,27 @@ class BookingService {
       }
     } catch (e) {
       LogService.error('Error creating booking request: $e');
-      rethrow;
+      
+      // Provide user-friendly error messages
+      final errorString = e.toString();
+      
+      if (errorString.contains('booking_requests_student_type_check')) {
+        // Try to get user info if available (may not be in scope if error occurred early)
+        try {
+          final currentUserId = SupabaseService.currentUser?.id;
+          LogService.error('Constraint violation - student_type issue. User ID: $currentUserId. Error: $e');
+        } catch (_) {
+          LogService.error('Constraint violation - student_type issue. Error: $e');
+        }
+        throw Exception('There was an issue with your account type. Please contact support or try logging out and back in.');
+      } else if (errorString.contains('duplicate') || errorString.contains('already exists')) {
+        throw Exception('You already have a booking request with this tutor. Please check your requests or wait for the tutor to respond.');
+      } else if (errorString.contains('TRIAL_SESSION_BLOCK')) {
+        // Re-throw trial session block messages as-is
+        rethrow;
+      } else {
+        rethrow;
+      }
     }
   }
 
@@ -273,10 +326,16 @@ class BookingService {
 
       LogService.debug('Fetching all requests for tutor: $userId');
 
-      // 1. Fetch Recurring Booking Requests
+      // 1. Fetch Recurring Booking Requests with student profile data and payment status
       var bookingQuery = SupabaseService.client
           .from('booking_requests')
-          .select('*')
+          .select(
+            '''
+            *,
+            student_profile:profiles!student_id(full_name, avatar_url, user_type),
+            payment_request:payment_requests!booking_request_id(id, status)
+            '''
+          )
           .eq('tutor_id', userId);
 
       if (status != null && status != 'all') {
@@ -286,6 +345,36 @@ class BookingService {
       final bookingResponse = await bookingQuery.order('created_at', ascending: false);
       final bookingList = (bookingResponse as List).map((json) {
         try {
+          // Update student_avatar_url from joined profile if not already set
+          final studentProfile = json['student_profile'];
+          if (studentProfile != null && studentProfile is Map) {
+            final profileAvatarUrl = studentProfile['avatar_url'] as String?;
+            if (profileAvatarUrl != null && profileAvatarUrl.isNotEmpty) {
+              json['student_avatar_url'] = profileAvatarUrl;
+            }
+          }
+          
+          // Extract payment status from joined payment_request
+          // Note: payment_requests has a foreign key to booking_requests, so it's one-to-many
+          // We need to get the most recent payment request
+          final paymentRequest = json['payment_request'];
+          if (paymentRequest != null) {
+            Map<String, dynamic>? latestPayment;
+            if (paymentRequest is List && paymentRequest.isNotEmpty) {
+              // Multiple payment requests - get the most recent one (first after ordering)
+              latestPayment = paymentRequest[0] as Map<String, dynamic>;
+            } else if (paymentRequest is Map) {
+              // Single payment request
+              latestPayment = paymentRequest as Map<String, dynamic>;
+            }
+            
+            if (latestPayment != null) {
+              json['payment_status'] = latestPayment['status'] as String?;
+              json['payment_request_id'] = latestPayment['id'] as String?;
+              LogService.debug('📋 Payment status for ${json['id']}: ${latestPayment['status']}, payment_request_id: ${latestPayment['id']}');
+            }
+          }
+          
           return BookingRequest.fromJson(json);
         } catch (e) {
           LogService.error('Error parsing booking request', e);
@@ -422,18 +511,118 @@ class BookingService {
     String studentId,
   ) async {
     try {
+      LogService.error('🔍 [BOOKING_REQUESTS] Fetching booking requests for student: $studentId');
+      
+      // First, check if ANY booking requests exist in the table (for debugging)
+      try {
+        final allRequestsCheck = await SupabaseService.client
+            .from('booking_requests')
+            .select('id, student_id, tutor_id, status, created_at')
+            .limit(10);
+        
+        LogService.error('📊 [BOOKING_REQUESTS] Total booking requests in table: ${(allRequestsCheck as List).length}');
+        if ((allRequestsCheck as List).isNotEmpty) {
+          LogService.error('📋 [BOOKING_REQUESTS] Sample requests:');
+          for (var req in (allRequestsCheck as List).take(3)) {
+            LogService.error('   - id: ${req['id']}, student_id: ${req['student_id']}, status: ${req['status']}');
+          }
+        }
+      } catch (e) {
+        LogService.error('❌ [BOOKING_REQUESTS] Error checking all requests: $e');
+      }
+      
+      // First, try a simple query without joins to test RLS
+      try {
+        LogService.error('🔍 [BOOKING_REQUESTS] Running simple query for student_id: $studentId');
+        final simpleResponse = await SupabaseService.client
+            .from('booking_requests')
+            .select('id, student_id, status, created_at')
+            .eq('student_id', studentId)
+            .order('created_at', ascending: false);
+        
+        LogService.error('📊 [BOOKING_REQUESTS] Simple query result: ${(simpleResponse as List).length} rows');
+        if ((simpleResponse as List).isNotEmpty) {
+          LogService.error('📋 [BOOKING_REQUESTS] Simple query sample: ${simpleResponse[0]}');
+        } else {
+          LogService.error('⚠️ [BOOKING_REQUESTS] No booking requests found with student_id: $studentId');
+        }
+      } catch (e, stackTrace) {
+        LogService.error('❌ [BOOKING_REQUESTS] Simple query failed: $e');
+        LogService.error('📚 [BOOKING_REQUESTS] Stack trace: $stackTrace');
+      }
+      
+      // Fix: tutor_id references profiles.id, not tutor_profiles.user_id
+      // We can't directly join tutor_profiles from booking_requests
+      // So we'll join profiles and fetch tutor_profiles data separately if needed
+      // Also join payment_requests to get payment status upfront (prevents UI flickering)
       var query = SupabaseService.client
           .from('booking_requests')
-          .select()
+          .select(
+            '''
+            *,
+            tutor_profile:profiles!tutor_id(full_name, avatar_url),
+            payment_request:payment_requests!booking_request_id(id, status)
+            '''
+          )
           .eq('student_id', studentId);
 
+      LogService.error('🔍 [BOOKING_REQUESTS] Running full query with joins for student_id: $studentId');
       final response = await query.order('created_at', ascending: false);
+      
+      LogService.error('📊 [BOOKING_REQUESTS] Full query response type: ${response.runtimeType}, length: ${(response as List).length}');
 
-      return (response as List)
-          .map((json) => BookingRequest.fromJson(json))
-          .toList();
-    } catch (e) {
-      LogService.error('Error fetching student booking requests: $e');
+      final bookingRequests = (response as List).map((json) {
+        try {
+          // Update tutor_avatar_url from joined profiles
+          final tutorProfile = json['tutor_profile'];
+          
+          if (tutorProfile != null && tutorProfile is Map) {
+            // Use avatar_url from profiles (tutor_profiles join removed due to FK constraint)
+            final avatarUrl = tutorProfile['avatar_url'] as String?;
+            
+            if (avatarUrl != null && avatarUrl.isNotEmpty) {
+              json['tutor_avatar_url'] = avatarUrl;
+            }
+          }
+          
+          // Extract payment status from joined payment_request
+          final paymentRequest = json['payment_request'];
+          if (paymentRequest != null && paymentRequest is List && paymentRequest.isNotEmpty) {
+            // payment_requests is a one-to-many relationship, get the most recent one
+            final latestPayment = paymentRequest[0] as Map<String, dynamic>;
+            json['payment_status'] = latestPayment['status'] as String?;
+            json['payment_request_id'] = latestPayment['id'] as String?;
+          } else if (paymentRequest != null && paymentRequest is Map) {
+            // Single payment request
+            json['payment_status'] = paymentRequest['status'] as String?;
+            json['payment_request_id'] = paymentRequest['id'] as String?;
+          }
+          
+          // Note: tutor_profiles data would need to be fetched separately if needed
+          // For now, we use avatar_url from profiles which should be sufficient
+          
+          return BookingRequest.fromJson(json);
+        } catch (e, stackTrace) {
+          LogService.error('❌ Error parsing booking request JSON: $e');
+          LogService.error('📚 Stack trace: $stackTrace');
+          LogService.error('📋 JSON data: $json');
+          rethrow;
+        }
+      }).toList();
+      
+      LogService.error('✅ [BOOKING_REQUESTS] Successfully fetched ${bookingRequests.length} booking requests for student: $studentId');
+      if (bookingRequests.isNotEmpty) {
+        LogService.error('📋 [BOOKING_REQUESTS] Request IDs: ${bookingRequests.map((r) => r.id).join(", ")}');
+        LogService.error('📋 [BOOKING_REQUESTS] Request statuses: ${bookingRequests.map((r) => r.status).join(", ")}');
+      } else {
+        LogService.error('⚠️ [BOOKING_REQUESTS] No booking requests returned for student: $studentId');
+      }
+      
+      return bookingRequests;
+    } catch (e, stackTrace) {
+      LogService.error('❌ Error fetching student booking requests: $e');
+      LogService.error('📚 Stack trace: $stackTrace');
+      LogService.error('👤 Student ID: $studentId');
       throw Exception('Failed to fetch booking requests: $e');
     }
   }
@@ -502,18 +691,21 @@ class BookingService {
 
       final bookingRequest = BookingRequest.fromJson(updated);
 
-      LogService.success('Booking request approved: $requestId');
+      LogService.success('✅ Booking request approved: $requestId');
+      LogService.info('📋 Approval Details:', 'studentId=${request.studentId}, tutorId=${request.tutorId}, location=${request.location}');
 
       // Create payment request when tutor approves (CRITICAL - must succeed)
       String? paymentRequestId;
       try {
+        LogService.info('💳 Creating payment request for approved booking...');
         paymentRequestId =
             await PaymentRequestService.createPaymentRequestOnApproval(
               bookingRequest,
             );
-        LogService.success('Payment request created for approved booking', paymentRequestId);
-      } catch (e) {
-        LogService.error('CRITICAL: Failed to create payment request: $e');
+        LogService.success('✅ Payment request created successfully: $paymentRequestId');
+      } catch (e, stackTrace) {
+        LogService.error('❌ CRITICAL: Failed to create payment request: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
         // Don't fail the approval, but log as error for monitoring
         // The booking is already approved, payment can be created manually if needed
         // However, this should be rare and indicates a system issue
@@ -521,19 +713,23 @@ class BookingService {
 
       // Create recurring session from approved booking
       try {
+        LogService.info('📅 Creating recurring session from approved booking...');
         await RecurringSessionService.createRecurringSessionFromBooking(
           bookingRequest,
           paymentRequestId: paymentRequestId,
         );
-        LogService.success('Recurring session created for approved booking');
-      } catch (e) {
-        LogService.warning('Failed to create recurring session: $e');
+        LogService.success('✅ Recurring session created successfully');
+        LogService.info('📝 Note: Individual sessions will be generated after first payment');
+      } catch (e, stackTrace) {
+        LogService.error('❌ Failed to create recurring session: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
         // Don't fail the approval if session creation fails
         // The request is already approved, session can be created manually later
       }
 
       // Send notification to student
       try {
+        LogService.info('📧 Sending approval notification to student...');
         final tutorName = request.tutorName;
         final subject = 'Tutoring Sessions';
         await NotificationHelperService.notifyBookingRequestAccepted(
@@ -545,8 +741,10 @@ class BookingService {
           paymentRequestId: paymentRequestId,
           senderAvatarUrl: request.tutorAvatarUrl,
         );
-      } catch (e) {
-        LogService.warning('Failed to send booking acceptance notification: $e');
+        LogService.success('✅ Approval notification sent to student');
+      } catch (e, stackTrace) {
+        LogService.error('❌ Failed to send booking acceptance notification: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
       }
 
       return bookingRequest;
@@ -596,10 +794,12 @@ class BookingService {
 
       final bookingRequest = BookingRequest.fromJson(updated);
 
-      LogService.success('Booking request rejected: $requestId');
+      LogService.success('✅ Booking request rejected: $requestId');
+      LogService.info('📋 Rejection Details:', 'studentId=${request.studentId}, tutorId=${request.tutorId}, reason=$reason');
 
       // Send notification to student
       try {
+        LogService.info('📧 Sending rejection notification to student...');
         final tutorName = request.tutorName;
         await NotificationHelperService.notifyBookingRequestRejected(
           studentId: request.studentId,
@@ -609,8 +809,10 @@ class BookingService {
           rejectionReason: reason,
           senderAvatarUrl: request.tutorAvatarUrl,
         );
-      } catch (e) {
-        LogService.warning('Failed to send booking rejection notification: $e');
+        LogService.success('✅ Rejection notification sent to student');
+      } catch (e, stackTrace) {
+        LogService.error('❌ Failed to send booking rejection notification: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
       }
 
       return bookingRequest;
@@ -822,10 +1024,11 @@ class BookingService {
       final Map<String, String> conflictDetails = {};
       
       // 1. Check recurring sessions (active sessions with other tutors)
+      // Note: recurring_sessions uses learner_id, not student_id
       final recurringSessions = await SupabaseService.client
           .from('recurring_sessions')
           .select('id, days, times, tutor_name, status')
-          .or('student_id.eq.$studentId,learner_id.eq.$studentId')
+          .eq('learner_id', studentId)
           .eq('status', 'active');
       
       for (final session in recurringSessions as List) {
