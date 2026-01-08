@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  agora_rtc_engine
   app_links
   audioplayers_windows
   connectivity_plus
@@ -12,6 +13,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_inappwebview_windows
   flutter_tts
   geolocator_windows
+  iris_method_channel
   share_plus
   url_launcher_windows
 )
