@@ -52,7 +52,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   bool _isOffline = false;
   DateTime? _cacheTimestamp;
   final ConnectivityService _connectivity = ConnectivityService();
-  RealtimeChannel? _tutorRequestsChannel;
 
   final ScrollController _scrollController = ScrollController();
   String? _highlightRequestId;
@@ -64,7 +63,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     _tabController = TabController(length: 5, vsync: this);
     _highlightRequestId = widget.highlightRequestId;
     _initializeConnectivity();
-    _setupRealtimeSubscription();
     _loadRequests();
   }
 
@@ -1170,74 +1168,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 // Avatar with status indicator
                 Stack(
                   children: [
-                    ClipOval(
-                      child: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: request.tutorAvatarUrl!,
-                              width: 48,
-                              height: 48,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    request.tutorName.isNotEmpty
-                                        ? request.tutorName[0].toUpperCase()
-                                        : 'T',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryColor,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    request.tutorName.isNotEmpty
-                                        ? request.tutorName[0].toUpperCase()
-                                        : 'T',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                      backgroundImage: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
+                          ? CachedNetworkImageProvider(request.tutorAvatarUrl!)
+                          : null,
+                      child: request.tutorAvatarUrl == null || request.tutorAvatarUrl!.isEmpty
+                          ? Text(
+                              request.tutorName.isNotEmpty
+                                  ? request.tutorName[0].toUpperCase()
+                                  : 'T',
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primaryColor,
                               ),
                             )
-                          : Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  request.tutorName.isNotEmpty
-                                      ? request.tutorName[0].toUpperCase()
-                                      : 'T',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
+                          : null,
                     ),
                     // Status indicator dot
                     Positioned(
@@ -1342,13 +1290,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
             const SizedBox(height: 16),
             
-            // Session details - modern horizontal layout (fixed overflow)
+            // Session details - flat horizontal layout (no elevation)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.grey[50],
+                color: Colors.transparent,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[200]!, width: 1),
               ),
               child: Row(
                 children: [
@@ -1573,9 +1520,33 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildCustomRequestCard(BuildContext context, TutorRequest request, {bool isHighlighted = false}) {
     final t = AppLocalizations.of(context)!;
-    return _buildNeomorphicCard(
+    final statusColor = _getStatusColor(request.status);
+    
+    return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      border: isHighlighted ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: isHighlighted 
+            ? Border.all(color: AppTheme.primaryColor, width: 2) 
+            : null,
+        boxShadow: [
+          // Reduced elevation - lighter shadows
+          BoxShadow(
+            color: Colors.white.withOpacity(0.3),
+            offset: const Offset(-1, -1),
+            blurRadius: 2,
+            spreadRadius: 0,
+          ),
+          // Dark shadow (bottom-right) - reduced
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            offset: const Offset(1, 1),
+            blurRadius: 2,
+            spreadRadius: 0,
+          ),
+        ],
+      ),
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -1596,74 +1567,188 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header with PrepSkul logo and badges
               Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange[100],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      t.myRequestsFilterCustom,
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange[900],
+                  // PrepSkul logo with status dot
+                  Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset(
+                          'assets/images/app_logo(blue).png',
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Icon(
+                              Icons.school,
+                              size: 32,
+                              color: AppTheme.primaryColor,
+                            );
+                          },
+                        ),
                       ),
+                      // Status indicator dot
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  // Custom Request text (plain black, no badge)
+                  Text(
+                    t.myRequestsFilterCustom,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: AppTheme.textDark,
                     ),
                   ),
                   const Spacer(),
+                  // Status badge - use _buildStatusChip for consistency
                   _buildStatusChip(context, request.status),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
+              // Subject title - larger and bolder
               Text(
                 request.formattedSubjects,
                 style: GoogleFonts.poppins(
                   fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
+                  height: 1.2,
                 ),
               ),
-              const SizedBox(height: 8),
-              _buildInfoRow(Icons.school, request.educationLevel),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.access_time, request.formattedDays),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.location_on, request.location),
-              const SizedBox(height: 4),
-              _buildInfoRow(Icons.attach_money, request.formattedBudget),
+              const SizedBox(height: 12),
+              // Info rows in 2 columns
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left column
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInfoRow(Icons.school, request.educationLevel),
+                        const SizedBox(height: 8),
+                        _buildInfoRow(Icons.access_time, request.formattedDays),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // Right column
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInfoRow(Icons.location_on, request.location),
+                        const SizedBox(height: 8),
+                        _buildInfoRow(Icons.attach_money, request.formattedBudget),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // Urgency indicator if applicable
               if (request.urgency != 'normal') ...[
-                const SizedBox(height: 4),
-                Row(
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: request.urgency == 'urgent'
+                        ? Colors.red[50]
+                        : Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: request.urgency == 'urgent'
+                          ? Colors.red[200]!
+                          : Colors.blue[200]!,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        request.urgency == 'urgent'
+                            ? Icons.priority_high
+                            : Icons.schedule,
+                        size: 14,
+                        color: request.urgency == 'urgent'
+                            ? Colors.red[700]
+                            : Colors.blue[700],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        request.urgencyLabel,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: request.urgency == 'urgent'
+                              ? Colors.red[700]
+                              : Colors.blue[700],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              // View Details button
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => RequestDetailScreen(
+                        tutorRequest: request,
+                      ),
+                    ),
+                  ).then((_) {
+                    _loadRequests();
+                  });
+                },
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  side: BorderSide(color: AppTheme.primaryColor, width: 1),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  minimumSize: const Size(double.infinity, 44),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      request.urgency == 'urgent'
-                          ? Icons.priority_high
-                          : Icons.schedule,
-                      size: 16,
-                      color: request.urgency == 'urgent'
-                          ? Colors.red
-                          : Colors.blue,
+                      Icons.chevron_right,
+                      size: 18,
+                      color: AppTheme.primaryColor,
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 8),
                     Text(
-                      request.urgencyLabel,
+                      'View Details',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: request.urgency == 'urgent'
-                            ? Colors.red
-                            : Colors.blue,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryColor,
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ],
           ),
         ),
@@ -1766,75 +1851,25 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     // Avatar with status indicator
                     Stack(
                 children: [
-                  ClipOval(
-                    child: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: tutorAvatarUrl,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(
-                              width: 48,
-                              height: 48,
-                                    decoration: BoxDecoration(
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                    backgroundImage: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                        ? CachedNetworkImageProvider(tutorAvatarUrl)
+                        : null,
+                    child: tutorAvatarUrl == null || tutorAvatarUrl.isEmpty
+                        ? Text(
+                            tutorName.isNotEmpty
+                                ? tutorName[0].toUpperCase()
+                                : 'T',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                              child: Center(
-                                child: Text(
-                                  tutorName.isNotEmpty
-                                      ? tutorName[0].toUpperCase()
-                                      : 'T',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            errorWidget: (context, url, error) => Container(
-                              width: 48,
-                              height: 48,
-                                    decoration: BoxDecoration(
-                              color: AppTheme.primaryColor,
-                                      shape: BoxShape.circle,
-                                    ),
-                              child: Center(
-                                child: Text(
-                                  tutorName.isNotEmpty
-                                      ? tutorName[0].toUpperCase()
-                                      : 'T',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
                             ),
                           )
-                        : Container(
-                            width: 48,
-                            height: 48,
-                                  decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                            child: Center(
-                              child: Text(
-                                tutorName.isNotEmpty
-                                    ? tutorName[0].toUpperCase()
-                                    : 'T',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                        : null,
+                  ),
                         // Status indicator dot
                         Positioned(
                           right: 0,
@@ -1938,13 +1973,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
                 const SizedBox(height: 16),
               
-                // Session details - modern horizontal layout
+                // Session details - flat horizontal layout (no elevation)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.grey[50],
+                    color: Colors.transparent,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[200]!, width: 1),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -2042,13 +2076,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                                      (session.rejectionReason?.contains('expired') == true ||
                                                       session.rejectionReason?.contains('not completed') == true);
                           
-                          // Show Edit Date for:
+                          // Show Reschedule for:
                           // 1. Sessions that have passed (expired) - includes paid sessions that passed
                           // 2. Cancelled sessions with expiration reason
                           if (hasPassed || isCancelledExpired) {
                             return OutlinedButton.icon(
                               onPressed: () async {
-                                LogService.info('📅 Edit Date button clicked for trial session: ${session.id}');
+                                LogService.info('📅 Reschedule button clicked for trial session: ${session.id}');
                                 // Navigate to reschedule screen
                                 final tutorData = await _loadTutorInfoForReschedule(session.tutorId);
                                 if (tutorData != null && mounted) {
@@ -2068,7 +2102,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               },
                               icon: const Icon(Icons.edit_calendar, size: 18),
                               label: Text(
-                                'Edit Date',
+                                'Reschedule',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
@@ -2968,7 +3002,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       child: Text(
         label,
         style: GoogleFonts.poppins(
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: FontWeight.w600,
           color: chipColor,
         ),
@@ -2982,14 +3016,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: AppTheme.textMedium),
-        const SizedBox(width: 8),
+        Icon(
+          icon,
+          size: 18,
+          color: AppTheme.textMedium,
+        ),
+        const SizedBox(width: 10),
         Expanded(
           child: Text(
             text,
             style: GoogleFonts.poppins(
               fontSize: 13,
-              color: AppTheme.textMedium,
+              color: AppTheme.textDark,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),

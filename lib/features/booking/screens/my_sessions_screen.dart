@@ -1031,6 +1031,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$balance sessions',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
                   ],
                 ),
               ),

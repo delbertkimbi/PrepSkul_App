@@ -4,15 +4,17 @@ import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Credits Balance Widget
 ///
-/// Displays current credits balance in a card format
+/// Displays current credits balance and session count in a card format
 class CreditsBalanceWidget extends StatelessWidget {
   final int currentCredits;
   final bool isLoading;
+  final int? sessionsRemaining; // Optional: if null, will calculate from credits (1 credit = 1 session)
 
   const CreditsBalanceWidget({
     Key? key,
     required this.currentCredits,
     this.isLoading = false,
+    this.sessionsRemaining,
   }) : super(key: key);
 
   @override
@@ -56,24 +58,38 @@ class CreditsBalanceWidget extends StatelessWidget {
               ),
             )
           else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '$currentCredits',
-                  style: GoogleFonts.poppins(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '$currentCredits',
+                      style: GoogleFonts.poppins(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'credits',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(height: 4),
                 Text(
-                  'credits',
+                  '${sessionsRemaining ?? currentCredits} sessions',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w400,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),

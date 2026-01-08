@@ -17,6 +17,42 @@ class PaymentInstructionsWidget extends StatelessWidget {
     required this.phoneNumber,
   }) : super(key: key);
 
+  /// Get payment instructions for the provider
+  List<String> _getPaymentInstructions(String? provider) {
+    if (provider == null) {
+      return [
+        'Dial the USSD code on your phone',
+        'Select "Pay" or "Payment" from the menu',
+        'Enter the amount when prompted',
+        'Confirm the payment',
+      ];
+    }
+    
+    switch (provider.toLowerCase()) {
+      case 'mtn':
+        return [
+          'Dial *126# on your MTN phone',
+          'Select "Pay" from the menu',
+          'Enter the amount when prompted',
+          'Confirm the payment',
+        ];
+      case 'orange':
+        return [
+          'Dial *144# on your Orange phone',
+          'Select "Pay" or "Payment" from the menu',
+          'Enter the amount when prompted',
+          'Confirm the payment',
+        ];
+      default:
+        return [
+          'Dial the USSD code on your phone',
+          'Select "Pay" or "Payment" from the menu',
+          'Enter the amount when prompted',
+          'Confirm the payment',
+        ];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (provider == null) {
@@ -24,13 +60,13 @@ class PaymentInstructionsWidget extends StatelessWidget {
     }
 
     final providerName = PaymentProviderHelper.getProviderName(provider);
-    final ussdCode = PaymentProviderHelper.getUssdCode(provider);
-    final instructions = PaymentProviderHelper.getPaymentInstructions(provider);
+    final ussdCode = PaymentProviderHelper.getUSSDCode(provider);
+    final instructions = _getPaymentInstructions(provider);
     
     // Determine logo path based on provider
-    final logoPath = provider == PaymentProviderHelper.mtn
+    final logoPath = provider == 'mtn'
         ? 'assets/images/mtn-logo.png'
-        : provider == PaymentProviderHelper.orange
+        : provider == 'orange'
             ? 'assets/images/orange-logo.png'
             : null;
 

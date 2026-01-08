@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -8,6 +9,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:io' show File;
+import 'dart:typed_data';
 import '../services/skulmate_service.dart';
 import 'game_generation_screen.dart';
 import 'game_library_screen.dart';
@@ -26,7 +28,9 @@ class SkulMateUploadScreen extends StatefulWidget {
 
 class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   List<File> _selectedFiles = [];
+  List<PlatformFile> _selectedFilesWeb = []; // For web platform
   List<XFile> _selectedImages = [];
+  Map<int, Uint8List> _imageBytesCache = {}; // Cache image bytes for web display
   List<String> _selectedFileNames = [];
 
   @override
@@ -43,10 +47,20 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
       if (result != null && result.files.isNotEmpty) {
         safeSetState(() {
-          _selectedFiles = result.files
-              .where((file) => file.path != null)
-              .map((file) => File(file.path!))
-              .toList();
+          if (kIsWeb) {
+            // On web, store PlatformFile objects (they have bytes)
+            _selectedFilesWeb = result.files
+                .where((file) => file.bytes != null || file.name.isNotEmpty)
+                .toList();
+            _selectedFiles = []; // Clear mobile files
+          } else {
+            // On mobile, store File objects (they have paths)
+            _selectedFiles = result.files
+                .where((file) => file.path != null)
+                .map((file) => File(file.path!))
+                .toList();
+            _selectedFilesWeb = []; // Clear web files
+          }
           _selectedFileNames = result.files
               .where((file) => file.name.isNotEmpty)
               .map((file) => file.name)
@@ -87,6 +101,11 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             safeSetState(() {
               _selectedImages.addAll(images);
               _selectedFiles = []; // Clear documents when images are selected
+              _selectedFilesWeb = []; // Clear web documents
+              // Pre-load image bytes for web display
+              if (kIsWeb) {
+                _loadImageBytesForWeb(images);
+              }
             });
           }
         } else {
@@ -119,6 +138,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       if (image != null) {
         safeSetState(() {
           _selectedImages.add(image);
+          // Pre-load image bytes for web display
+          if (kIsWeb) {
+            _loadImageBytesForWeb([image]);
+          }
         });
 
         // Ask if user wants to add another photo
@@ -156,6 +179,22 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     }
   }
 
+  /// Load image bytes for web display
+  Future<void> _loadImageBytesForWeb(List<XFile> images) async {
+    for (int i = 0; i < images.length; i++) {
+      final image = images[i];
+      try {
+        final bytes = await image.readAsBytes();
+        final index = _selectedImages.indexOf(image);
+        if (index >= 0) {
+          _imageBytesCache[index] = bytes;
+        }
+      } catch (e) {
+        LogService.warning('Failed to load image bytes for web: $e');
+      }
+    }
+  }
+
   Future<void> _navigateToTextInput() async {
     await Navigator.push(
       context,
@@ -186,20 +225,33 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       }
 
       // Upload all files
-      for (final file in _selectedFiles) {
-        final url = await StorageService.uploadDocument(
-          userId: user.id,
-          documentFile: file,
-          documentType: 'skulmate_notes',
-        );
-        fileUrls.add(url);
+      if (kIsWeb) {
+        // On web, use PlatformFile objects
+        for (final file in _selectedFilesWeb) {
+          final url = await StorageService.uploadDocument(
+            userId: user.id,
+            documentFile: file,
+            documentType: 'skulmate_notes',
+          );
+          fileUrls.add(url);
+        }
+      } else {
+        // On mobile, use File objects
+        for (final file in _selectedFiles) {
+          final url = await StorageService.uploadDocument(
+            userId: user.id,
+            documentFile: file,
+            documentType: 'skulmate_notes',
+          );
+          fileUrls.add(url);
+        }
       }
 
-      // Upload all images
+      // Upload all images (XFile works on both web and mobile)
       for (final image in _selectedImages) {
         final url = await StorageService.uploadDocument(
           userId: user.id,
-          documentFile: File(image.path),
+          documentFile: image, // Pass XFile directly - StorageService handles it
           documentType: 'skulmate_notes',
         );
         imageUrls.add(url);
@@ -234,7 +286,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasSelection = _selectedFiles.isNotEmpty || _selectedImages.isNotEmpty;
+    final hasSelection = _selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty || _selectedImages.isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
@@ -336,7 +388,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
               title: 'Upload PDF/Document',
               subtitle: 'PDF, DOCX, or TXT files',
               onTap: _pickDocument,
-              isSelected: _selectedFiles.isNotEmpty,
+              isSelected: kIsWeb ? _selectedFilesWeb.isNotEmpty : _selectedFiles.isNotEmpty,
             ),
             const SizedBox(height: 12),
             _buildUploadCard(
@@ -359,9 +411,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             if (hasSelection) ...[
               const SizedBox(height: 16),
               // Selected files grid
-              if (_selectedFiles.isNotEmpty) ...[
+              if (_selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty) ...[
                 Text(
-                  'Selected Documents (${_selectedFiles.length})',
+                  'Selected Documents (${kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length})',
                   style: GoogleFonts.poppins(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -372,7 +424,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: List.generate(_selectedFiles.length, (index) {
+                  children: List.generate(kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length, (index) {
                     return Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -404,7 +456,11 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                           InkWell(
                             onTap: () {
                               safeSetState(() {
-                                _selectedFiles.removeAt(index);
+                                if (kIsWeb) {
+                                  _selectedFilesWeb.removeAt(index);
+                                } else {
+                                  _selectedFiles.removeAt(index);
+                                }
                                 _selectedFileNames.removeAt(index);
                               });
                             },
@@ -439,16 +495,42 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   ),
                   itemCount: _selectedImages.length,
                   itemBuilder: (context, index) {
+                    final image = _selectedImages[index];
                     return Stack(
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(_selectedImages[index].path),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                          ),
+                          child: kIsWeb
+                              ? FutureBuilder<Uint8List?>(
+                                  future: _imageBytesCache.containsKey(index)
+                                      ? Future.value(_imageBytesCache[index])
+                                      : image.readAsBytes().then((bytes) {
+                                          _imageBytesCache[index] = bytes;
+                                          return bytes;
+                                        }),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.hasData && snapshot.data != null) {
+                                      return Image.memory(
+                                        snapshot.data!,
+                                        fit: BoxFit.cover,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                      );
+                                    }
+                                    return Container(
+                                      color: Colors.grey[200],
+                                      child: const Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : Image.file(
+                                  File(image.path),
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                ),
                         ),
                         Positioned(
                           top: 4,
@@ -456,7 +538,17 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                           child: InkWell(
                             onTap: () {
                               safeSetState(() {
+                                _imageBytesCache.remove(index);
                                 _selectedImages.removeAt(index);
+                                // Re-index the cache after removal
+                                final newCache = <int, Uint8List>{};
+                                for (int i = 0; i < _selectedImages.length; i++) {
+                                  final oldIndex = i < index ? i : i + 1;
+                                  if (_imageBytesCache.containsKey(oldIndex)) {
+                                    newCache[i] = _imageBytesCache[oldIndex]!;
+                                  }
+                                }
+                                _imageBytesCache = newCache;
                               });
                             },
                             child: Container(

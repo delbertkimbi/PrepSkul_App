@@ -362,6 +362,53 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ],
                         ),
                       ),
+                      GestureDetector(
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              title: Text(
+                                'Messaging',
+                                style: GoogleFonts.poppins(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              content: Text(
+                                'Messaging feature coming soon! You\'ll be able to chat with tutors and students directly.',
+                                style: GoogleFonts.poppins(),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text(
+                                    'OK',
+                                    style: GoogleFonts.poppins(
+                                      color: AppTheme.primaryColor,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.chat,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       const NotificationBell(iconColor: Colors.white),
                     ],
                   ),
@@ -417,36 +464,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
                   // Quick Actions
                   _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
-                  const SizedBox(height: 12),
-                  _buildActionCard(
-                    icon: Icons.search,
-                    title: AppLocalizations.of(context)!.findPerfectTutor,
-                    subtitle: city != null
-                        ? AppLocalizations.of(context)!.browseTutorsIn(city ?? '')
-                        : AppLocalizations.of(context)!.discoverTutorsNearYou,
-                    color: AppTheme.primaryColor,
-                    onTap: () {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        _userType == 'parent' ? '/parent-nav' : '/student-nav',
-                        arguments: {'initialTab': 1},
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildActionCard(
-                    icon: Icons.inbox_outlined,
-                    title: AppLocalizations.of(context)!.myRequests,
-                    subtitle: 'View your booking requests',
-                    color: Colors.orange,
-                    onTap: () {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        _userType == 'parent' ? '/parent-nav' : '/student-nav',
-                        arguments: {'initialTab': 2},
-                      );
-                    },
-                  ),
                   const SizedBox(height: 12),
                   _buildActionCard(
                     icon: Icons.calendar_today,
