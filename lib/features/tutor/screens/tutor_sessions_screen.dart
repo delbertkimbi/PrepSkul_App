@@ -631,7 +631,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           Expanded(
             child: _isLoading
                 ? ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: 5,
                     itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
                   )
@@ -641,7 +641,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     onRefresh: _loadSessions,
                     color: AppTheme.primaryColor,
                     child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _sessions.length,
                       itemBuilder: (context, index) {
                         return _buildSessionCard(_sessions[index]);
@@ -912,7 +912,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         (sessionDate != null && sessionDate!.isAfter(DateTime.now()));
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -982,7 +982,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               // Student info row
               Row(
                 children: [
@@ -1019,7 +1019,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                             height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           subject ?? 'Session',
                           style: GoogleFonts.poppins(
@@ -1104,7 +1104,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                   },
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // Session details (date, time, location) - more compact
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1133,7 +1133,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         ],
                       ),
                     if (sessionDate != null && sessionTime != null)
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                     // Location
                     Row(
                       children: [
@@ -1223,7 +1223,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               ],
               // Action buttons
               if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     if (location == 'online' && meetLink != null && meetLink.isNotEmpty)

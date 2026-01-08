@@ -754,10 +754,18 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
-                  color: Colors.orange.shade50,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    border: Border(
+                      left: BorderSide(
+                        color: AppTheme.primaryColor,
+                        width: 4,
+                      ),
+                    ),
+                  ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline, color: Colors.orange.shade700, size: 24),
+                      Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -768,7 +776,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: Colors.orange.shade900,
+                                color: AppTheme.textDark,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -776,7 +784,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                               'You are requesting to reschedule a missed trial session. The tutor will be notified and can approve or suggest an alternative time.',
                               style: GoogleFonts.poppins(
                                 fontSize: 12,
-                                color: Colors.orange.shade800,
+                                color: AppTheme.textMedium,
                               ),
                             ),
                           ],
@@ -1531,6 +1539,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Widget _buildTutorCard() {
     final avatarImage = _getTutorAvatarImage();
     final tutorName = widget.tutor['full_name'] ?? 'Tutor';
+    final rating = (widget.tutor['rating'] as num?)?.toDouble() ?? 0.0;
+    final totalReviews = (widget.tutor['total_reviews'] as num?)?.toInt() ?? 0;
+    final subjects = TutorService.normalizeTutorSubjects(widget.tutor);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1539,69 +1550,107 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey[200]!),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: AppTheme.primaryColor,
-            backgroundImage: avatarImage,
-            onBackgroundImageError: avatarImage != null
-                ? (exception, stackTrace) {
-                    // Image failed to load, will show fallback
-                  }
-                : null,
-            child: avatarImage == null
-                ? Text(
-                    tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
-                    style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.tutor['full_name'] ?? 'Tutor',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                backgroundImage: avatarImage,
+                onBackgroundImageError: avatarImage != null
+                    ? (exception, stackTrace) {
+                        // Image failed to load, will show fallback
+                      }
+                    : null,
+                child: avatarImage == null
+                    ? Text(
+                        tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
+                        style: GoogleFonts.poppins(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.star, size: 16, color: Colors.amber[700]),
-                    const SizedBox(width: 4),
                     Text(
-                      '${widget.tutor['rating'] ?? 4.8}',
+                      tutorName,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (widget.tutor['is_verified'] == true) ...[
-                      const SizedBox(width: 12),
-                      Icon(
-                        Icons.verified,
-                        size: 16,
-                        color: AppTheme.primaryColor,
-                      ),
-                    ],
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.star, size: 16, color: Colors.amber[700]),
+                        const SizedBox(width: 4),
+                        Text(
+                          rating > 0 ? rating.toStringAsFixed(1) : 'N/A',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        if (rating > 0 && totalReviews > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '($totalReviews)',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                        if (widget.tutor['is_verified'] == true || widget.tutor['status'] == 'approved') ...[
+                          const SizedBox(width: 12),
+                          Icon(
+                            Icons.verified,
+                            size: 16,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          // Subjects
+          if (subjects.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: subjects.take(5).map((subject) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  subject,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              )).toList(),
+            ),
+          ],
         ],
       ),
     );

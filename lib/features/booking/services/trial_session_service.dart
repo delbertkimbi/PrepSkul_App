@@ -10,6 +10,7 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:flutter/foundation.dart';
 
 /// TrialSessionService
@@ -1628,6 +1629,21 @@ class TrialSessionService {
         title: 'Trial Payment Received',
         message: tutorMessage,
       );
+
+      // Create conversation for messaging after payment is confirmed
+      try {
+        LogService.info('💬 Creating conversation for paid trial session...');
+        await ConversationLifecycleService.createConversationForTrial(
+          trialSessionId: sessionId,
+          studentId: trial.learnerId,
+          tutorId: trial.tutorId,
+        );
+        LogService.success('✅ Conversation created successfully for trial session');
+      } catch (e, stackTrace) {
+        LogService.error('❌ Failed to create conversation for trial session: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
+        // Don't fail payment completion if conversation creation fails
+      }
 
       LogService.success('Payment completed for trial: $sessionId', 'calendarOk=$calendarOk');
 

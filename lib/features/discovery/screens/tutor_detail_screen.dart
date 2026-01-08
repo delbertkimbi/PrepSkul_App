@@ -23,6 +23,9 @@ import 'dart:convert';
 import 'web_video_helper_stub.dart'
     if (dart.library.html) 'web_video_helper.dart'
     as web_video;
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/messaging/screens/chat_screen.dart';
+import 'package:prepskul/features/messaging/models/conversation_model.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -1173,6 +1176,52 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 ),
               ),
             ),
+          ),
+          // Chat button (only show if there's an active booking/trial)
+          FutureBuilder<bool>(
+            future: _hasActiveBookingWithTutor(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SizedBox.shrink();
+              }
+              
+              if (snapshot.data == true) {
+                return Column(
+                  children: [
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _isOffline
+                            ? () => OfflineDialog.show(
+                                  context,
+                                  message: 'Messaging requires an internet connection. Please check your connection and try again.',
+                                )
+                            : () => _navigateToChat(context),
+                        icon: const Icon(Icons.message),
+                        label: Text(
+                          'Message Tutor',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primaryColor,
+                          side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              
+              return const SizedBox.shrink();
+            },
           ),
         ],
       ),
@@ -2374,6 +2423,258 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     if (result != null) {
       // Reload reviews to show the new response
       _loadReviews();
+    }
+  }
+
+  /// Check if user has an active booking or trial with this tutor
+  Future<bool> _hasActiveBookingWithTutor() async {
+    try {
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) return false;
+
+      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      if (tutorId == null) return false;
+
+      final supabase = SupabaseService.client;
+
+      // Check for active trial sessions
+      final trialSessions = await supabase
+          .from('trial_sessions')
+          .select('id')
+          .eq('learner_id', currentUserId)
+          .eq('tutor_id', tutorId)
+          .inFilter('status', ['pending', 'approved', 'scheduled'])
+          .limit(1);
+
+      if ((trialSessions as List).isNotEmpty) {
+        return true;
+      }
+
+      // Check for active booking requests
+      final bookingRequests = await supabase
+          .from('booking_requests')
+          .select('id')
+          .eq('student_id', currentUserId)
+          .eq('tutor_id', tutorId)
+          .inFilter('status', ['pending', 'approved'])
+          .limit(1);
+
+      if ((bookingRequests as List).isNotEmpty) {
+        return true;
+      }
+
+      // Check for active recurring sessions
+      final recurringSessions = await supabase
+          .from('recurring_sessions')
+          .select('id')
+          .eq('learner_id', currentUserId)
+          .eq('tutor_id', tutorId)
+          .eq('status', 'active')
+          .limit(1);
+
+      return (recurringSessions as List).isNotEmpty;
+    } catch (e) {
+      LogService.error('Error checking active booking: $e');
+      return false;
+    }
+  }
+
+  /// Navigate to chat with this tutor
+  Future<void> _navigateToChat(BuildContext context) async {
+    try {
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'You must be logged in to message.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
+      if (tutorId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Tutor ID not found.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final supabase = SupabaseService.client;
+
+      // Try to find existing conversation
+      // First check by booking request
+      var conversationResponse = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('student_id', currentUserId)
+          .eq('tutor_id', tutorId)
+          .eq('status', 'active')
+          .maybeSingle();
+
+      // If not found, try to find by recurring session
+      if (conversationResponse == null) {
+        final recurringSession = await supabase
+            .from('recurring_sessions')
+            .select('id')
+            .eq('learner_id', currentUserId)
+            .eq('tutor_id', tutorId)
+            .eq('status', 'active')
+            .limit(1)
+            .maybeSingle();
+
+        if (recurringSession != null) {
+          final recurringId = recurringSession['id'] as String;
+          final conversationId = await ConversationLifecycleService.getConversationIdForRecurring(recurringId);
+          
+          if (conversationId != null) {
+            conversationResponse = await supabase
+                .from('conversations')
+                .select('*')
+                .eq('id', conversationId)
+                .maybeSingle();
+          }
+        }
+      }
+
+      // If still not found, try to find by trial session
+      if (conversationResponse == null) {
+        final trialSession = await supabase
+            .from('trial_sessions')
+            .select('id')
+            .eq('learner_id', currentUserId)
+            .eq('tutor_id', tutorId)
+            .inFilter('status', ['pending', 'approved', 'scheduled'])
+            .limit(1)
+            .maybeSingle();
+
+        if (trialSession != null) {
+          final trialId = trialSession['id'] as String;
+          final conversationId = await ConversationLifecycleService.getConversationIdForTrial(trialId);
+          
+          if (conversationId != null) {
+            conversationResponse = await supabase
+                .from('conversations')
+                .select('*')
+                .eq('id', conversationId)
+                .maybeSingle();
+          }
+        }
+      }
+
+      // If still not found, try to find by booking request
+      if (conversationResponse == null) {
+        final bookingRequest = await supabase
+            .from('booking_requests')
+            .select('id')
+            .eq('student_id', currentUserId)
+            .eq('tutor_id', tutorId)
+            .inFilter('status', ['pending', 'approved'])
+            .limit(1)
+            .maybeSingle();
+
+        if (bookingRequest != null) {
+          final bookingId = bookingRequest['id'] as String;
+          final conversationId = await ConversationLifecycleService.getConversationIdForBooking(bookingId);
+          
+          if (conversationId != null) {
+            conversationResponse = await supabase
+                .from('conversations')
+                .select('*')
+                .eq('id', conversationId)
+                .maybeSingle();
+          }
+        }
+      }
+
+      // Dismiss loading
+      if (mounted) Navigator.pop(context);
+
+      if (conversationResponse == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'No active conversation found. Please book a session first.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get tutor profile info
+      final tutorProfile = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', tutorId)
+          .maybeSingle();
+
+      // Create Conversation object
+      final conversation = Conversation(
+        id: conversationResponse['id'] as String,
+        studentId: conversationResponse['student_id'] as String,
+        tutorId: conversationResponse['tutor_id'] as String,
+        bookingRequestId: conversationResponse['booking_request_id'] as String?,
+        recurringSessionId: conversationResponse['recurring_session_id'] as String?,
+        individualSessionId: conversationResponse['individual_session_id'] as String?,
+        trialSessionId: conversationResponse['trial_session_id'] as String?,
+        status: conversationResponse['status'] as String? ?? 'active',
+        expiresAt: conversationResponse['expires_at'] != null
+            ? DateTime.parse(conversationResponse['expires_at'] as String)
+            : null,
+        lastMessageAt: conversationResponse['last_message_at'] != null
+            ? DateTime.parse(conversationResponse['last_message_at'] as String)
+            : null,
+        createdAt: DateTime.parse(conversationResponse['created_at'] as String),
+        otherUserName: tutorProfile?['full_name'] as String?,
+        otherUserAvatarUrl: tutorProfile?['avatar_url'] as String?,
+      );
+
+      // Navigate to chat screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(conversation: conversation),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error navigating to chat: $e');
+      if (mounted) {
+        // Dismiss loading if still showing
+        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }

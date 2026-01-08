@@ -8,6 +8,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'beautiful_login_screen.dart' hide WaveClipper;
 import 'beautiful_signup_screen.dart' hide WaveClipper;
@@ -137,49 +138,51 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                       children: [
                         SizedBox(height: contentTopSpacing),
 
-                        // Google Sign In Button - Primary
-                        _AuthMethodButton(
-                          icon: Icons.g_mobiledata, // Will replace with Google logo asset if available
-                          label: t.authContinueWithGoogle,
-                          isPrimary: false, // Changed to false to keep outlined style but distinct
-                          onTap: () async {
-                            try {
-                              await AuthService.signInWithGoogle();
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Google Sign-In failed: ${e.toString()}'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                        // Google Sign In Button - Primary (only show if enabled)
+                        if (AppConfig.enableGoogleSignIn) ...[
+                          _AuthMethodButton(
+                            icon: Icons.g_mobiledata, // Will replace with Google logo asset if available
+                            label: t.authContinueWithGoogle,
+                            isPrimary: false, // Changed to false to keep outlined style but distinct
+                            onTap: () async {
+                              try {
+                                await AuthService.signInWithGoogle();
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Google Sign-In failed: ${e.toString()}'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
                               }
-                            }
-                          },
-                        ),
+                            },
+                          ),
 
-                        const SizedBox(height: 24),
+                          const SizedBox(height: 24),
 
-                        // Divider with "OR"
-                        Row(
-                          children: [
-                            const Expanded(child: Divider(color: AppTheme.softBorder)),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              child: Text(
-                                t.authOr,
-                                style: GoogleFonts.poppins(
-                                  fontSize: subtitleFontSize,
-                                  color: AppTheme.textLight,
-                                  fontWeight: FontWeight.w500,
+                          // Divider with "OR"
+                          Row(
+                            children: [
+                              const Expanded(child: Divider(color: AppTheme.softBorder)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(
+                                  t.authOr,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: subtitleFontSize,
+                                    color: AppTheme.textLight,
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const Expanded(child: Divider(color: AppTheme.softBorder)),
-                          ],
-                        ),
+                              const Expanded(child: Divider(color: AppTheme.softBorder)),
+                            ],
+                          ),
 
-                        const SizedBox(height: 24),
+                          const SizedBox(height: 24),
+                        ],
 
                         // Auth Method Buttons - Navigate to SIGNIN screens
                         AnimatedSwitcher(
