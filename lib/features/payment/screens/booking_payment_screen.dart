@@ -18,6 +18,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+import 'package:confetti/confetti.dart';
 
 
 /// Booking Payment Screen
@@ -441,99 +442,138 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   }
 
   void _showSuccessDialog() {
+    final confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Animated Success Checkmark
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: AnimatedCheckmark(
-                    color: const Color(0xFF4CAF50), // Light green
-                    size: 60,
-                    animationDuration: const Duration(milliseconds: 1000),
-                  ),
-                ),
+      builder: (context) {
+        // Trigger confetti animation after dialog is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          confettiController.play();
+        });
+        
+        return Stack(
+          children: [
+            Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
               ),
-              const SizedBox(height: 24),
-              
-              // Success Title
-              Text(
-                'Payment Successful!',
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              
-              // Success Message
-              Text(
-                'Your booking payment has been confirmed. Your sessions are now active!',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              
-              // Close Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    Navigator.pop(context); // Close dialog
-                    Navigator.pop(context, true); // Return to previous screen
+              child: Container(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Animated Success Checkmark
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: AnimatedCheckmark(
+                          color: const Color(0xFF4CAF50), // Light green
+                          size: 60,
+                          animationDuration: const Duration(milliseconds: 1000),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                     
-                    // Navigate to sessions screen to show newly created sessions
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    if (mounted) {
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        '/student-nav',
-                        (route) => route.isFirst,
-                        arguments: {'initialTab': 2}, // Sessions tab
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    // Success Title
+                    Text(
+                      'Payment Successful!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  child: Text(
-                    'Done',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                    const SizedBox(height: 12),
+                    
+                    // Success Message
+                    Text(
+                      'Your booking payment has been confirmed. Your sessions are now active!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
+                    const SizedBox(height: 32),
+                    
+                    // Close Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          confettiController.dispose();
+                          Navigator.pop(context); // Close dialog
+                          Navigator.pop(context, true); // Return to previous screen
+                          
+                          // Navigate to sessions screen to show newly created sessions
+                          await Future.delayed(const Duration(milliseconds: 500));
+                          if (mounted) {
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              '/student-nav',
+                              (route) => route.isFirst,
+                              arguments: {'initialTab': 2}, // Sessions tab
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Done',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
+            // Confetti overlay
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConfettiWidget(
+                  confettiController: confettiController,
+                  blastDirection: 3.14 / 2, // Upward
+                  maxBlastForce: 8,
+                  minBlastForce: 3,
+                  emissionFrequency: 0.03,
+                  numberOfParticles: 80,
+                  gravity: 0.15,
+                  shouldLoop: false,
+                  colors: [
+                    Colors.green,
+                    Colors.blue,
+                    Colors.pink,
+                    Colors.orange,
+                    Colors.purple,
+                    Colors.yellow,
+                    AppTheme.primaryColor,
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

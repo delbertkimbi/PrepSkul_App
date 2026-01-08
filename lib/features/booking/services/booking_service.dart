@@ -582,7 +582,14 @@ class BookingService {
             
             if (avatarUrl != null && avatarUrl.isNotEmpty) {
               json['tutor_avatar_url'] = avatarUrl;
+            } else {
+              // If avatar_url is not available, try to fetch from tutor_profiles separately
+              // This is a fallback - the join should work in most cases
+              json['tutor_avatar_url'] = null; // Will show initials in UI
             }
+          } else {
+            // No tutor profile found - will show initials in UI
+            json['tutor_avatar_url'] = null;
           }
           
           // Extract payment status from joined payment_request

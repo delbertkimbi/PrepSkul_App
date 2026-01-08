@@ -350,12 +350,12 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           _youtubeController = YoutubePlayerController(
           initialVideoId: _videoId!,
             flags: const YoutubePlayerFlags(
-            autoPlay: true, // Auto-play when initialized
+            autoPlay: false, // Don't auto-play - wait for user to click
               mute: false,
               enableCaption: true,
-            controlsVisibleAtStart: false, // Hide controls initially for cleaner look
+            controlsVisibleAtStart: true, // Show controls when video starts
             hideControls: true, // Auto-hide controls after a few seconds
-            hideThumbnail: false,
+            hideThumbnail: false, // Show thumbnail initially
             loop: false,
             forceHD: true, // Force HD for better quality
             startAt: 0,
@@ -369,12 +369,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           _isVideoLoading = false;
         });
         
-        // Ensure video plays after a short delay to allow UI to update
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (_youtubeController?.value.isReady == true && !_isVideoPaused) {
-            _youtubeController?.play();
-          }
-        });
+        // Play video when user clicks (handled in _buildThumbnailPreview)
+        // Don't auto-play here - wait for user interaction
       }
     } catch (e) {
       LogService.error('Error initializing video: $e');
@@ -1610,12 +1606,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                 )
                               : null,
                           onReady: () {
-                            // Video is ready, ensure it plays smoothly
-                            Future.delayed(const Duration(milliseconds: 200), () {
-                              if (_youtubeController?.value.isReady == true) {
-                                _youtubeController?.play();
-                              }
-                            });
+                            // Video is ready - user will click to play
+                            // Don't auto-play here
                           },
                           onEnded: (metadata) {
                             // Handle video end - could show replay option
@@ -1716,6 +1708,14 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       onTap: () {
         // Initialize video when user taps
         _initializeVideo();
+        // Play video after initialization (for mobile)
+        if (!kIsWeb && _youtubeController != null) {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (_youtubeController?.value.isReady == true) {
+              _youtubeController?.play();
+            }
+          });
+        }
       },
       child: Container(
         decoration: BoxDecoration(

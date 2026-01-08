@@ -341,8 +341,54 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const AppLogoHeader(),
-        actions: const [
-          Padding(
+        actions: [
+          GestureDetector(
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: Text(
+                    'Messaging',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  content: Text(
+                    'Messaging feature coming soon! You\'ll be able to chat with tutors and students directly.',
+                    style: GoogleFonts.poppins(),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(
+                        'OK',
+                        style: GoogleFonts.poppins(
+                          color: AppTheme.primaryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.chat,
+                color: AppTheme.textDark,
+                size: 24,
+              ),
+            ),
+          ),
+          const Padding(
             padding: EdgeInsets.only(right: 16),
             child: NotificationBell(),
           ),
