@@ -389,6 +389,12 @@
     </div>
   </div>
   
+  <!-- Agora Web SDK for video sessions - Load before Flutter bootstrap -->
+  <!-- Using iris-web-rtc for Web SDK v4.x compatibility with Flutter package -->
+  <!-- The Flutter agora_rtc_engine package requires iris-web-rtc.js (not AgoraRTC_N.js) -->
+  <!-- Load synchronously (no async/defer) to ensure it's available when Flutter initializes -->
+  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

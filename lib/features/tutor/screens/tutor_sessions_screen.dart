@@ -21,6 +21,7 @@ import '../../../core/widgets/empty_state_widget.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
 import '../../../features/sessions/services/meet_service.dart';
+import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import 'tutor_session_detail_full_screen.dart';
 
 class TutorSessionsScreen extends StatefulWidget {
@@ -1226,16 +1227,27 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
+                    // Agora Video Session button - show for ALL online sessions (no meetLink dependency)
+                    if (location == 'online')
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _joinMeeting(context, meetLink!),
+                          onPressed: () {
+                            final sessionId = session['id'] as String?;
+                            final sessionType = session['_sessionType'] as String?;
+                            LogService.info('🎥 [Join Agora] Session ID: $sessionId, Type: $sessionType');
+                            LogService.info('🎥 [Join Agora] Full session data: ${session.keys.toList()}');
+                            if (sessionId != null) {
+                              _joinAgoraSession(context, sessionId);
+                            } else {
+                              LogService.error('❌ [Join Agora] Session ID is null!');
+                            }
+                          },
                           icon: Icon(
                             status == 'in_progress' ? Icons.video_call : Icons.video_call,
                             size: status == 'in_progress' ? 20 : 18,
                           ),
                           label: Text(
-                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
+                            status == 'in_progress' ? 'Join Session' : 'Join Video Session',
                             style: GoogleFonts.poppins(
                               fontSize: status == 'in_progress' ? 14 : 13,
                               fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
@@ -1562,7 +1574,64 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     }
   }
 
-  /// Join Google Meet session
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
+    try {
+      LogService.info('🎥 [Join Agora] Tutor joining Agora video session: $sessionId');
+      
+      // Verify the session exists in the database before navigating
+      try {
+        final sessionCheck = await SupabaseService.client
+            .from('individual_sessions')
+            .select('id, tutor_id, learner_id, parent_id, status')
+            .eq('id', sessionId)
+            .maybeSingle();
+        
+        if (sessionCheck == null) {
+          LogService.error('❌ [Join Agora] Session $sessionId not found in individual_sessions table!');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Session not found. Please refresh and try again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        
+        LogService.info('✅ [Join Agora] Session verified: ${sessionCheck['id']}, Status: ${sessionCheck['status']}');
+      } catch (e) {
+        LogService.error('❌ [Join Agora] Error verifying session: $e');
+        // Continue anyway - let the API handle the error
+      }
+      
+      // Navigate to Agora video session screen
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: 'tutor',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Join Google Meet session (fallback for non-Agora sessions)
   Future<void> _joinMeeting(BuildContext context, String meetLink) async {
     try {
       final uri = Uri.parse(meetLink);
@@ -1691,6 +1760,19 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             backgroundColor: AppTheme.accentGreen,
           ),
         );
+        
+        // For online sessions, navigate to Agora video screen
+        if (isOnline) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: 'tutor',
+              ),
+            ),
+          );
+        }
       }
       _loadSessions(); // Refresh
     } catch (e) {
@@ -2539,7 +2621,38 @@ class _SessionDetailsSheet extends StatelessWidget {
 
   const _SessionDetailsSheet({required this.session});
 
-  /// Join Google Meet session
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
+    try {
+      LogService.info('🎥 Tutor joining Agora video session from details: $sessionId');
+      
+      // Navigate to Agora video session screen
+      if (context.mounted) {
+        Navigator.pop(context); // Close dialog first
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: 'tutor',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Join Google Meet session (fallback for non-Agora sessions)
   Future<void> _joinMeeting(BuildContext context, String meetLink) async {
     try {
       final uri = Uri.parse(meetLink);
@@ -2723,44 +2836,43 @@ class _SessionDetailsSheet extends StatelessWidget {
                 'Status',
                 (session['status'] as String).toUpperCase(),
               ),
-              // Join Session Button (for in_progress sessions with meet link)
+              // Join Session Button (for in_progress sessions - Agora for all online)
               if ((session['status'] as String) == 'in_progress') ...[
                 const SizedBox(height: 24),
                 Builder(
                   builder: (context) {
-                    // Get meet link - check both trial and individual session formats
-                    final sessionType = session['_sessionType'] as String?;
-                    final isTrialSession = sessionType == 'trial';
-                    final meetLink = isTrialSession
-                        ? (session['meet_link'] as String?)
-                        : (session['meeting_link'] as String?);
-                    
-                    // Only show join button for online sessions with meet link
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty) {
-                      return ElevatedButton.icon(
-                        onPressed: () => _joinMeeting(context, meetLink),
-                        icon: const Icon(Icons.video_call, size: 20),
-                        label: Text(
-                          'Join Session',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                    // Show Agora button for ALL online sessions (no meetLink dependency)
+                    if (location == 'online') {
+                      final sessionId = isIndividualSession
+                          ? (session['id'] as String?)
+                          : (session['session_id'] as String?);
+                      
+                      if (sessionId != null) {
+                        return ElevatedButton.icon(
+                          onPressed: () => _joinAgoraSession(context, sessionId),
+                          icon: const Icon(Icons.video_call, size: 20),
+                          label: Text(
+                            'Join Session',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.accentGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 16,
-                            horizontal: 24,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.accentGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 24,
+                            ),
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
                           ),
-                          minimumSize: const Size(double.infinity, 56),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
-                        ),
-                      );
+                        );
+                      }
                     }
                     return const SizedBox.shrink();
                   },

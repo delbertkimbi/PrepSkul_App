@@ -152,6 +152,7 @@ class IndividualSessionService {
   }
 
   /// Get upcoming individual sessions for a student/parent
+  /// Only returns sessions that have been paid for
   static Future<List<Map<String, dynamic>>> getStudentUpcomingSessions({
     int limit = 10,
     DateTime? afterDate,
@@ -165,12 +166,15 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
-      // Use optional join (not !inner) to include sessions even if recurring_sessions join fails
+      // Fetch sessions with recurring_sessions join
+      // We'll filter by payment status after fetching
       var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions(
+              id,
               tutor_name,
               tutor_avatar_url,
+              tutor_id,
               subject
             )
           ''')
@@ -181,9 +185,47 @@ class IndividualSessionService {
       final response = await query
           .order('scheduled_date', ascending: true)
           .order('scheduled_time', ascending: true)
-          .limit(limit);
+          .limit(limit * 2); // Fetch more to filter by payment status
 
-      return (response as List).cast<Map<String, dynamic>>();
+      // Filter to only include sessions with paid payment_requests
+      final sessions = (response as List).cast<Map<String, dynamic>>();
+      final paidSessions = <Map<String, dynamic>>[];
+      
+      for (final session in sessions) {
+        final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+        if (recurringData != null) {
+          final recurringSessionId = recurringData['id'] as String?;
+          if (recurringSessionId != null) {
+            // Check payment status by querying payment_requests
+            try {
+              final paymentResponse = await _supabase
+                  .from('payment_requests')
+                  .select('status')
+                  .eq('recurring_session_id', recurringSessionId)
+                  .limit(1);
+              
+              final paymentRequests = paymentResponse as List<dynamic>?;
+              if (paymentRequests != null && paymentRequests.isNotEmpty) {
+                // Check if any payment request is paid
+                final hasPaidPayment = paymentRequests.any((pr) {
+                  final prMap = pr as Map<String, dynamic>;
+                  final status = (prMap['status'] as String? ?? '').toLowerCase();
+                  return status == 'paid' || status == 'completed';
+                });
+                
+                if (hasPaidPayment) {
+                  paidSessions.add(session);
+                }
+              }
+            } catch (e) {
+              // If payment_requests query fails, skip this session
+              LogService.warning('Error checking payment status for session ${session['id']}: $e');
+            }
+          }
+        }
+      }
+
+      return paidSessions.take(limit).toList();
     } catch (e) {
       LogService.error('Error fetching student upcoming sessions: $e');
       rethrow;
@@ -191,6 +233,7 @@ class IndividualSessionService {
   }
 
   /// Get past individual sessions for a student/parent
+  /// Only returns sessions that have been paid for
   static Future<List<Map<String, dynamic>>> getStudentPastSessions({
     int limit = 20,
     DateTime? beforeDate,
@@ -204,12 +247,15 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = beforeDate ?? now;
 
-      // Use optional join (not !inner) to include sessions even if recurring_sessions join fails
+      // Fetch sessions with recurring_sessions join
+      // We'll filter by payment status after fetching
       var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions(
+              id,
               tutor_name,
               tutor_avatar_url,
+              tutor_id,
               subject
             )
           ''')
@@ -220,9 +266,47 @@ class IndividualSessionService {
       final response = await query
           .order('scheduled_date', ascending: false)
           .order('scheduled_time', ascending: false)
-          .limit(limit);
+          .limit(limit * 2); // Fetch more to filter by payment status
 
-      return (response as List).cast<Map<String, dynamic>>();
+      // Filter to only include sessions with paid payment_requests
+      final sessions = (response as List).cast<Map<String, dynamic>>();
+      final paidSessions = <Map<String, dynamic>>[];
+      
+      for (final session in sessions) {
+        final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+        if (recurringData != null) {
+          final recurringSessionId = recurringData['id'] as String?;
+          if (recurringSessionId != null) {
+            // Check payment status by querying payment_requests
+            try {
+              final paymentResponse = await _supabase
+                  .from('payment_requests')
+                  .select('status')
+                  .eq('recurring_session_id', recurringSessionId)
+                  .limit(1);
+              
+              final paymentRequests = paymentResponse as List<dynamic>?;
+              if (paymentRequests != null && paymentRequests.isNotEmpty) {
+                // Check if any payment request is paid
+                final hasPaidPayment = paymentRequests.any((pr) {
+                  final prMap = pr as Map<String, dynamic>;
+                  final status = (prMap['status'] as String? ?? '').toLowerCase();
+                  return status == 'paid' || status == 'completed';
+                });
+                
+                if (hasPaidPayment) {
+                  paidSessions.add(session);
+                }
+              }
+            } catch (e) {
+              // If payment_requests query fails, skip this session
+              LogService.warning('Error checking payment status for session ${session['id']}: $e');
+            }
+          }
+        }
+      }
+
+      return paidSessions.take(limit).toList();
     } catch (e) {
       LogService.error('Error fetching student past sessions: $e');
       rethrow;

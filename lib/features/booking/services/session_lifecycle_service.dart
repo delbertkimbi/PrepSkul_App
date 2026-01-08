@@ -8,6 +8,7 @@ import 'package:prepskul/features/booking/services/session_payment_service.dart'
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/sessions/services/connection_quality_service.dart';
 import 'package:prepskul/features/sessions/services/location_sharing_service.dart';
+import 'package:prepskul/features/sessions/services/agora_recording_service.dart';
 
 /// Session Lifecycle Service
 ///
@@ -150,6 +151,17 @@ class SessionLifecycleService {
           }
         }
 
+        // Start Agora Cloud Recording for online sessions
+        // This replaces Fathom recording for Agora video sessions
+        try {
+          await AgoraRecordingService.startRecording(sessionId);
+          LogService.success('Agora recording started for session: $sessionId');
+        } catch (e) {
+          LogService.warning('Failed to start Agora recording: $e');
+          // Don't fail session start if recording fails
+        }
+
+        // Legacy: Fathom recording (if using Google Meet instead of Agora)
         // Fathom automatically records this session via calendar monitoring
         // The PrepSkul VA is already added as an attendee when the calendar event
         // is created (in GoogleCalendarService.createSessionEvent), so Fathom will:
@@ -157,7 +169,7 @@ class SessionLifecycleService {
         // 2. Auto-join the meeting when it starts
         // 3. Automatically start recording and transcribing
         // 4. Send webhook with summary/transcript when ready
-        LogService.debug('📹 Fathom will automatically record this session via calendar monitoring');
+        LogService.debug('📹 Fathom will automatically record this session via calendar monitoring (if using Google Meet)');
       }
 
       // Send notifications to both learner and parent if applicable
@@ -406,10 +418,19 @@ class SessionLifecycleService {
         }
       }
 
-      // For online sessions: Fathom recording stops automatically when meeting ends
-      // No manual stop needed - Fathom detects meeting end via Google Calendar event
+      // Stop Agora Cloud Recording for online sessions
       if (session['location'] == 'online') {
-        LogService.debug('Session ended - Fathom will automatically stop recording when meeting ends');
+        try {
+          await AgoraRecordingService.stopRecording(sessionId);
+          LogService.success('Agora recording stopped for session: $sessionId');
+        } catch (e) {
+          LogService.warning('Failed to stop Agora recording: $e');
+          // Don't fail session end if recording stop fails
+        }
+
+        // Legacy: Fathom recording stops automatically when meeting ends
+        // No manual stop needed - Fathom detects meeting end via Google Calendar event
+        LogService.debug('Session ended - Fathom will automatically stop recording when meeting ends (if using Google Meet)');
       }
 
       // Get payment ID to include in notification

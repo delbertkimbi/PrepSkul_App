@@ -34,6 +34,7 @@ import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
@@ -517,6 +518,32 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
+  /// Fetch tutor name from profiles table
+  Future<String?> _fetchTutorName(String tutorId) async {
+    try {
+      final response = await SupabaseService.client
+          .from('profiles')
+          .select('full_name')
+          .eq('id', tutorId)
+          .maybeSingle();
+      
+      if (response != null) {
+        final name = response['full_name'] as String?;
+        // Filter out generic names
+        if (name != null && 
+            name.toLowerCase() != 'tutor' && 
+            name.toLowerCase() != 'user' && 
+            name.toLowerCase() != 'student' && 
+            name.toLowerCase() != 'parent') {
+          return name;
+        }
+      }
+    } catch (e) {
+      LogService.warning('Error fetching tutor name for $tutorId: $e');
+    }
+    return null;
+  }
+
   Map<String, dynamic>? _convertTrialToSessionMap(TrialSession trial) {
     // Convert TrialSession object to the Map format used by _buildSessionCard
     // Returns null if the trial shouldn't be shown (e.g., rejected/cancelled might be hidden if old?)
@@ -645,7 +672,50 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
-  Future<void> _joinMeeting(String? meetLink) async {
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(String sessionId) async {
+    try {
+      // Get current user role
+      final userProfile = await AuthService.getUserProfile();
+      final userType = userProfile?['user_type'] as String?;
+      final userRole = (userType == 'tutor') ? 'tutor' : 'learner';
+      
+      LogService.info('🎥 Joining Agora video session: $sessionId as $userRole');
+      
+      // Navigate to Agora video session screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: userRole,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _joinMeeting(String? meetLink, {String? sessionId, String? location}) async {
+    // For online sessions, use Agora video instead of Google Meet
+    if (location == 'online' && sessionId != null) {
+      // Use Agora directly - no meetLink dependency
+      await _joinAgoraSession(sessionId);
+      return;
+    }
+
+    // Fallback to Google Meet for non-online sessions or if Agora fails
     if (meetLink == null || meetLink.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1080,9 +1150,45 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     
     // Get tutor name and avatar - prioritize recurring_sessions data, fallback to session data
-    final tutorName = recurringData?['tutor_name'] as String? 
-        ?? session['tutor_name'] as String? 
-        ?? (isTrial ? 'Tutor' : 'Tutor');
+    String? tutorName = recurringData?['tutor_name'] as String? 
+        ?? session['tutor_name'] as String?;
+    
+    // Filter out generic names like "Tutor", "user", "student", "parent"
+    if (tutorName != null && 
+        (tutorName.toLowerCase() == 'tutor' || 
+         tutorName.toLowerCase() == 'user' || 
+         tutorName.toLowerCase() == 'student' || 
+         tutorName.toLowerCase() == 'parent')) {
+      tutorName = null; // Will try to fetch from profiles
+    }
+    
+    // If still null or generic, try to fetch from profiles using tutor_id
+    if (tutorName == null && !isTrial) {
+      final tutorId = recurringData?['tutor_id'] as String? 
+          ?? session['tutor_id'] as String?;
+      if (tutorId != null) {
+        // Try to fetch synchronously from cache first, then async if needed
+        // For now, we'll fetch async and update on next build
+        _fetchTutorName(tutorId).then((name) {
+          if (name != null && mounted) {
+            safeSetState(() {
+              // Update the session map with fetched name
+              if (recurringData != null) {
+                recurringData['tutor_name'] = name;
+              } else {
+                session['tutor_name'] = name;
+              }
+            });
+          }
+        });
+      }
+    }
+    
+    // Final fallback - only use generic name if it's a trial, otherwise show loading
+    if (tutorName == null) {
+      tutorName = isTrial ? 'Tutor' : 'Loading...';
+    }
+    
     final tutorAvatar = recurringData?['tutor_avatar_url'] as String? 
         ?? session['tutor_avatar_url'] as String?;
     final subject = recurringData?['subject'] as String? 
@@ -1425,21 +1531,22 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ),
               ],
-              // Action buttons
+              // Action buttons - Always show for scheduled/in_progress sessions
               if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
+                    // Agora Video Session button - show for ALL online sessions (no meetLink dependency)
+                    if (location == 'online')
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _joinMeeting(meetLink),
+                          onPressed: () => _joinAgoraSession(sessionId),
                           icon: Icon(
                             status == 'in_progress' ? Icons.video_call : Icons.video_call,
                             size: status == 'in_progress' ? 20 : 18,
                           ),
                           label: Text(
-                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
+                            status == 'in_progress' ? 'Join Session' : 'Join Video Session',
                             style: GoogleFonts.poppins(
                               fontSize: status == 'in_progress' ? 14 : 13,
                               fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
@@ -1460,7 +1567,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           ),
                         ),
                       ),
-                    // Add to Calendar button
+                    // Add to Calendar button - Show alongside Agora button for scheduled sessions
                     // Show ONLY if:
                     // 1. Session doesn't have calendar_event_id yet, AND
                     // 2. User hasn't connected calendar (so they can connect), OR
@@ -1688,19 +1795,25 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _joinMeeting(meetLink);
-                  },
-                  icon: const Icon(Icons.video_call, size: 18),
-                  label: Text('Join Meeting', style: GoogleFonts.poppins()),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  ),
+                    // Agora Video Session button - show for ALL online sessions
+                    if (location == 'online')
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _joinAgoraSession(sessionId);
+                        },
+                        icon: const Icon(Icons.video_call, size: 18),
+                        label: Text(
+                          status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+                          style: GoogleFonts.poppins(),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: status == 'in_progress' 
+                              ? AppTheme.accentGreen 
+                              : AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        ),
                       ),
                     // Add to Calendar button (if no calendar event exists)
                     if (session['calendar_event_id'] == null || 
