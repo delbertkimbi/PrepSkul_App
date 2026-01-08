@@ -7,6 +7,7 @@ import 'package:prepskul/features/booking/services/recurring_session_service.dar
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 
 class BookingService {
   /// Create a booking request in the database
@@ -732,6 +733,20 @@ class BookingService {
         LogService.error('📚 Stack trace: $stackTrace');
         // Don't fail the approval if session creation fails
         // The request is already approved, session can be created manually later
+      }
+
+      // Create conversation for approved booking
+      try {
+        LogService.info('💬 Creating conversation for approved booking...');
+        await ConversationLifecycleService.createConversationForBooking(
+          bookingRequestId: requestId,
+          studentId: request.studentId,
+          tutorId: request.tutorId,
+        );
+        LogService.success('✅ Conversation created for booking');
+      } catch (e) {
+        LogService.warning('⚠️ Failed to create conversation for booking: $e');
+        // Don't fail approval if conversation creation fails
       }
 
       // Send notification to student

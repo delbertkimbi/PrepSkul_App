@@ -233,51 +233,88 @@
           if (loader && loader.parentNode) {
             loader.remove();
           }
-        }, 400);
+        }, 200);
       }
     };
+
+    // Immediate check: If Flutter is already loaded (hot restart scenario), remove splash immediately
+    // This runs immediately on script load to catch hot restart scenarios
+    (function checkImmediate() {
+      const loader = document.getElementById('flutter-loading');
+      if (loader) {
+        // Multiple checks for Flutter presence (hot restart scenarios)
+        const hasFlutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app], flt-scene-host');
+        const hasBodyContent = document.body && document.body.children.length > 1;
+        const hasFlutterElements = document.querySelector('flt-scene-host, flt-glass-pane');
+        
+        if (hasFlutterApp || hasFlutterElements || hasBodyContent) {
+          console.log('Flutter already loaded (hot restart), removing splash immediately');
+          loader.style.display = 'none'; // Immediate hide
+          loader.classList.add('hidden');
+          if (loader.parentNode) {
+            loader.remove(); // Remove immediately
+          }
+          return;
+        }
+        // Check again very quickly (50ms) for hot restart
+        setTimeout(checkImmediate, 50);
+      }
+    })();
 
     // Note: We do NOT hide on 'flutter-first-frame' anymore.
     // Flutter will call window.removeSplash() when it is fully ready.
     
-    // CRITICAL: Fallback - hide after 5 seconds if Flutter doesn't load/call removeSplash
-    // Reduced from 10s to 5s for faster removal on refresh
-    // This prevents the logo from staying stuck on screen after refresh
+    // CRITICAL: Fallback - hide after 500ms if Flutter doesn't load/call removeSplash
+    // Very short timeout to prevent logo from staying stuck on screen
+    // This prevents the logo from staying stuck on screen after refresh or hot restart
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        console.warn('Flutter did not call removeSplash within 5s, forcing removal');
+        console.warn('Flutter did not call removeSplash within 500ms, forcing removal');
+        loader.style.display = 'none'; // Immediate hide
         loader.classList.add('hidden');
-        setTimeout(function() {
-          if (loader && loader.parentNode) {
-            loader.remove();
-          }
-        }, 400);
+        if (loader.parentNode) {
+          loader.remove(); // Remove immediately
+        }
       }
-    }, 5000);
+    }, 500);
     
-    // Additional aggressive removal: Check every 500ms after 2 seconds
-    // This ensures the splash is removed quickly on refresh
+    // Additional aggressive removal: Check every 100ms starting immediately
+    // This ensures the splash is removed quickly on refresh and hot restart
     let checkCount = 0;
-    const maxChecks = 20; // 20 * 500ms = 10 seconds max
+    const maxChecks = 30; // 30 * 100ms = 3 seconds max
     const checkInterval = setInterval(function() {
       checkCount++;
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        // After 2 seconds (4 checks), start checking if Flutter is loaded
-        if (checkCount >= 4) {
-          // Check if Flutter has loaded by looking for Flutter app container
-          const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
-          if (flutterApp) {
-            console.log('Flutter app detected, removing splash');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400);
-            clearInterval(checkInterval);
+        // Start checking immediately (no delay) for hot restart scenarios
+        // Check if Flutter has loaded by looking for Flutter app container
+        const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app], body > flt-scene-host');
+        if (flutterApp) {
+          console.log('Flutter app detected, removing splash');
+          loader.style.display = 'none'; // Immediate hide
+          loader.classList.add('hidden');
+          if (loader.parentNode) {
+            loader.remove(); // Remove immediately
           }
+          clearInterval(checkInterval);
+          return;
+        }
+        // Also check if any Flutter widgets are rendered (more aggressive)
+        const hasFlutterContent = document.body && (
+          document.body.querySelector('flt-scene-host') ||
+          document.body.querySelector('flt-glass-pane') ||
+          document.body.children.length > 1 // More than just the loading div
+        );
+        if (hasFlutterContent) {
+          console.log('Flutter content detected, removing splash');
+          loader.style.display = 'none'; // Immediate hide
+          loader.classList.add('hidden');
+          if (loader.parentNode) {
+            loader.remove(); // Remove immediately
+          }
+          clearInterval(checkInterval);
+          return;
         }
       } else {
         // Splash already hidden, stop checking
@@ -288,24 +325,56 @@
       if (checkCount >= maxChecks) {
         clearInterval(checkInterval);
       }
-    }, 500);
+    }, 100);
     
+    // MutationObserver: Watch for Flutter elements being added to DOM (catches hot restart)
+    if (typeof MutationObserver !== 'undefined') {
+      const observer = new MutationObserver(function(mutations) {
+        const loader = document.getElementById('flutter-loading');
+        if (loader && !loader.classList.contains('hidden')) {
+          // Check if Flutter elements were added
+          const hasFlutterElements = document.querySelector('flt-scene-host, flt-glass-pane, [data-flt-app]');
+          if (hasFlutterElements) {
+            console.log('Flutter elements detected via MutationObserver, removing splash');
+            loader.style.display = 'none';
+            loader.classList.add('hidden');
+            if (loader.parentNode) {
+              loader.remove();
+            }
+            observer.disconnect();
+          }
+        }
+      });
+      
+      // Start observing body for child additions
+      if (document.body) {
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      } else {
+        document.addEventListener('DOMContentLoaded', function() {
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true
+          });
+        });
+      }
+    }
+
     // Additional safety: Remove on page visibility change (user switches tabs/refreshes)
     document.addEventListener('visibilitychange', function() {
       if (!document.hidden) {
-        // Page became visible - ensure splash is removed if it's been more than 2 seconds
-        setTimeout(function() {
-          const loader = document.getElementById('flutter-loading');
-          if (loader && !loader.classList.contains('hidden')) {
-            console.warn('Splash still visible after visibility change, removing');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400);
+        // Page became visible - ensure splash is removed immediately
+        const loader = document.getElementById('flutter-loading');
+        if (loader && !loader.classList.contains('hidden')) {
+          console.warn('Splash still visible after visibility change, removing');
+          loader.style.display = 'none';
+          loader.classList.add('hidden');
+          if (loader.parentNode) {
+            loader.remove();
           }
-        }, 2000);
+        }
       }
     });
   </script>

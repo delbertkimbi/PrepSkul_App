@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 
 
 
@@ -159,6 +160,27 @@ class FapshiWebhookService {
         } catch (e) {
           LogService.warning('Error generating Meet link: $e');
           // Don't fail the webhook if Meet link generation fails
+        }
+
+        // Create conversation for paid trial session
+        try {
+          final trial = await _supabase
+              .from('trial_sessions')
+              .select('learner_id, tutor_id')
+              .eq('id', trialSessionId)
+              .maybeSingle();
+          
+          if (trial != null) {
+            await ConversationLifecycleService.createConversationForTrial(
+              trialSessionId: trialSessionId,
+              studentId: trial['learner_id'] as String,
+              tutorId: trial['tutor_id'] as String,
+            );
+            LogService.success('Conversation created for paid trial: $trialSessionId');
+          }
+        } catch (e) {
+          LogService.warning('Failed to create conversation for trial: $e');
+          // Don't fail the webhook if conversation creation fails
         }
 
         // Send notifications

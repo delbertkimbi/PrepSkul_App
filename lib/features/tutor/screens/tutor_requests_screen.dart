@@ -431,30 +431,48 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                         statusBgColor = Colors.green[50]!;
                       } else {
                         displayStatus = 'approved';
-                        statusColor = AppTheme.accentGreen;
-                        statusBgColor = AppTheme.accentGreen.withOpacity(0.1);
+                        statusColor = Colors.green;
+                        statusBgColor = Colors.green.withOpacity(0.1);
                       }
                     } else {
-                      statusColor = request.status == 'pending'
-                          ? AppTheme.primaryColor
-                          : request.status == 'approved'
-                              ? AppTheme.accentGreen
-                              : AppTheme.textMedium;
-                      statusBgColor = request.status == 'pending'
-                          ? AppTheme.primaryColor.withOpacity(0.1)
-                          : request.status == 'approved'
-                              ? AppTheme.accentGreen.withOpacity(0.1)
-                              : AppTheme.textMedium.withOpacity(0.1);
+                      // Match parent/learner UI colors
+                      switch (request.status.toLowerCase()) {
+                        case 'pending':
+                          statusColor = Colors.orange;
+                          statusBgColor = Colors.orange.withOpacity(0.1);
+                          break;
+                        case 'approved':
+                        case 'matched':
+                        case 'scheduled':
+                          statusColor = Colors.green;
+                          statusBgColor = Colors.green.withOpacity(0.1);
+                          break;
+                        case 'rejected':
+                        case 'closed':
+                        case 'cancelled':
+                          statusColor = Colors.grey;
+                          statusBgColor = Colors.grey.withOpacity(0.1);
+                          break;
+                        case 'in_progress':
+                        case 'completed':
+                          statusColor = Colors.blue;
+                          statusBgColor = Colors.blue.withOpacity(0.1);
+                          break;
+                        default:
+                          statusColor = Colors.grey;
+                          statusBgColor = Colors.grey.withOpacity(0.1);
+                      }
                     }
                     
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                       decoration: BoxDecoration(
                         color: statusBgColor,
                         borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: statusColor.withOpacity(0.3)),
                       ),
                       child: Text(
                         displayStatus.toUpperCase(),
@@ -463,6 +481,9 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                           fontWeight: FontWeight.w600,
                           color: statusColor,
                         ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        softWrap: false,
                       ),
                     );
                   },
@@ -662,15 +683,23 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
+    // Match parent/learner UI colors
+    switch (status.toLowerCase()) {
       case 'pending':
-        return AppTheme.primaryColor;
+        return Colors.orange;
       case 'approved':
-        return AppTheme.accentGreen;
+      case 'matched':
+      case 'scheduled':
+        return Colors.green;
       case 'rejected':
-        return AppTheme.textMedium;
+      case 'closed':
+      case 'cancelled':
+        return Colors.grey;
+      case 'in_progress':
+      case 'completed':
+        return Colors.blue;
       default:
-        return AppTheme.textMedium;
+        return Colors.grey;
     }
   }
 
@@ -1522,15 +1551,23 @@ class _RequestDetailsSheetState extends State<_RequestDetailsSheet> {
   }
 
   Color _getStatusColor(String status) {
-    switch (status) {
+    // Match parent/learner UI colors
+    switch (status.toLowerCase()) {
       case 'pending':
-        return AppTheme.primaryColor;
+        return Colors.orange;
       case 'approved':
-        return AppTheme.accentGreen;
+      case 'matched':
+      case 'scheduled':
+        return Colors.green;
       case 'rejected':
-        return AppTheme.textMedium;
+      case 'closed':
+      case 'cancelled':
+        return Colors.grey;
+      case 'in_progress':
+      case 'completed':
+        return Colors.blue;
       default:
-        return AppTheme.textMedium;
+        return Colors.grey;
     }
   }
 

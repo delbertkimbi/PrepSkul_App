@@ -17,6 +17,11 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
+import 'package:prepskul/features/discovery/widgets/tutor_card.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/messaging/screens/chat_screen.dart';
+import 'package:prepskul/features/messaging/models/conversation_model.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 
 /// RequestDetailScreen
 ///
@@ -93,6 +98,153 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           backgroundColor: Colors.green,
         ),
       );
+    }
+  }
+
+  Future<void> _navigateToChat(BuildContext context, Map<String, dynamic> request) async {
+    try {
+      final bookingRequestId = request['id'] as String?;
+      if (bookingRequestId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Booking request ID not found.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Get or create conversation
+      final conversationData = await ConversationLifecycleService.getOrCreateConversation(
+        bookingRequestId: bookingRequestId,
+        tutorId: request['tutor_id'] as String?,
+        studentId: request['student_id'] as String?,
+      );
+
+      // Dismiss loading
+      if (mounted) Navigator.pop(context);
+
+      if (conversationData == null || conversationData['id'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to start conversation. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get full conversation data
+      final supabase = SupabaseService.client;
+      final conversationResponse = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationData['id'] as String)
+          .maybeSingle();
+
+      if (conversationResponse == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Conversation not found. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get other user's profile info
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'You must be logged in to message.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final otherUserId = conversationResponse['student_id'] == currentUserId
+          ? conversationResponse['tutor_id']
+          : conversationResponse['student_id'];
+
+      final otherUserProfile = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', otherUserId)
+          .maybeSingle();
+
+      // Create Conversation object
+      final conversation = Conversation(
+        id: conversationResponse['id'] as String,
+        studentId: conversationResponse['student_id'] as String,
+        tutorId: conversationResponse['tutor_id'] as String,
+        bookingRequestId: conversationResponse['booking_request_id'] as String?,
+        recurringSessionId: conversationResponse['recurring_session_id'] as String?,
+        individualSessionId: conversationResponse['individual_session_id'] as String?,
+        trialSessionId: conversationResponse['trial_session_id'] as String?,
+        status: conversationResponse['status'] as String? ?? 'active',
+        expiresAt: conversationResponse['expires_at'] != null
+            ? DateTime.parse(conversationResponse['expires_at'] as String)
+            : null,
+        lastMessageAt: conversationResponse['last_message_at'] != null
+            ? DateTime.parse(conversationResponse['last_message_at'] as String)
+            : null,
+        createdAt: DateTime.parse(conversationResponse['created_at'] as String),
+        otherUserName: otherUserProfile?['full_name'] as String?,
+        otherUserAvatarUrl: otherUserProfile?['avatar_url'] as String?,
+      );
+
+      // Navigate to chat screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(conversation: conversation),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error navigating to chat: $e');
+      if (mounted) {
+        // Dismiss loading if still showing
+        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1547,7 +1699,8 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       ),
                     );
                   }
-                  return _buildMatchedTutorCard(context, tutor, request);
+                  // Use standard TutorCard widget instead of custom greenish card
+                  return TutorCard(tutor: tutor);
                 },
               ),
               const SizedBox(height: 24),
@@ -2045,11 +2198,19 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         'user_id': tutorProfile['user_id'],
         'full_name': profileData?['full_name']?.toString() ?? 'Tutor',
         'avatar_url': effectiveAvatarUrl,
+        'profile_photo_url': effectiveAvatarUrl, // For TutorCard compatibility
         'subjects': tutorProfile['subjects'] ?? [],
         'rating': effectiveRating,
+        'admin_approved_rating': tutorProfile['admin_approved_rating'],
         'total_reviews': totalReviews,
         'hourly_rate': tutorProfile['hourly_rate'],
         'bio': tutorProfile['bio'],
+        'status': tutorProfile['admin_approval_status'] ?? 'pending',
+        'is_verified': tutorProfile['admin_approval_status'] == 'approved',
+        'completed_sessions': tutorProfile['completed_sessions'] ?? 0,
+        'availability': tutorProfile['availability'] ?? {},
+        'combined_availability': tutorProfile['availability'] ?? {},
+        'is_active': tutorProfile['admin_approval_status'] == 'approved',
       };
     } catch (e) {
       LogService.error('Error loading matched tutor info: $e');
@@ -2371,79 +2532,71 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   final paymentRequestId = request['payment_request_id'] as String?;
                   final paymentStatus = request['payment_status'] as String?;
                   
-                  // Don't show Pay Now if payment is already paid
-                  if (paymentStatus == 'paid' || paymentRequestId == null) {
-                    return const SizedBox.shrink();
-                  }
+                  // Show Pay Now button if payment is pending
+                  final showPayButton = paymentStatus != 'paid' && paymentRequestId != null;
                   
                   return Column(
                     children: [
                       // Pay button (primary action if payment request exists and is pending)
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            // Navigate to payment screen
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => BookingPaymentScreen(
-                                  paymentRequestId: paymentRequestId!,
-                                  bookingRequestId: request['id'] as String,
-                                ),
-                              ),
-                            );
-                            
-                            // Refresh if payment was successful
-                            if (result == true && mounted) {
-                              safeSetState(() {
-                                // Refresh the screen
-                              });
-                              // Show success message
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Payment successful! Your booking is confirmed.',
-                                    style: GoogleFonts.poppins(),
+                      if (showPayButton) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              // Navigate to payment screen
+                              final result = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => BookingPaymentScreen(
+                                    paymentRequestId: paymentRequestId!,
+                                    bookingRequestId: request['id'] as String,
                                   ),
-                                  backgroundColor: Colors.green,
-                                  duration: const Duration(seconds: 3),
                                 ),
                               );
-                            }
-                          },
-                          icon: const Icon(Icons.payment),
-                          label: Text(
-                            'Pay Now',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                              
+                              // Refresh if payment was successful
+                              if (result == true && mounted) {
+                                safeSetState(() {
+                                  // Refresh the screen
+                                });
+                                // Show success message
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Payment successful! Your booking is confirmed.',
+                                      style: GoogleFonts.poppins(),
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.payment),
+                            label: Text(
+                              'Pay Now',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      // Message Tutor button (secondary action)
+                        const SizedBox(height: 12),
+                      ],
+                      // Message Tutor button (always show for approved requests)
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
-                          onPressed: () {
-                            // TODO: Navigate to messaging
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Messaging coming soon!',
-                                  style: GoogleFonts.poppins(),
-                                ),
-                              ),
-                            );
+                          onPressed: () async {
+                            await _navigateToChat(context, request);
                           },
                           icon: const Icon(Icons.message),
                           label: Text(

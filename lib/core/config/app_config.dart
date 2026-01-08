@@ -29,6 +29,16 @@ class AppConfig {
   static const bool isProduction = false; // ← PRODUCTION MODE ENABLED
   
   // ============================================
+  // 🔐 Authentication Feature Flags
+  // ============================================
+  
+  /// Enable/disable Google Sign-In for user authentication
+  /// 
+  /// Set to `false` until Google Cloud Console verification is complete.
+  /// This only affects user authentication, not Google Calendar OAuth.
+  static const bool enableGoogleSignIn = false; // ← Disabled until Google verification complete
+  
+  // ============================================
   // Environment Detection
   // ============================================
   

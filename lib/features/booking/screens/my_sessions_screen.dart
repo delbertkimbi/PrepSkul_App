@@ -35,6 +35,9 @@ import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/messaging/screens/chat_screen.dart';
+import 'package:prepskul/features/messaging/models/conversation_model.dart';
 
 /// My Sessions Screen
 ///
@@ -1096,7 +1099,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final isExpired = status == 'expired';
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1168,7 +1171,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               // Tutor info row
               Row(
                 children: [
@@ -1205,7 +1208,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           subject,
                           style: GoogleFonts.poppins(
@@ -1216,6 +1219,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ),
                       ],
                     ),
+                  ),
+                  // Chat button - show if session is valid (scheduled, in_progress, or completed)
+                  Builder(
+                    builder: (context) {
+                      final status = session['status'] as String?;
+                      final isSessionValid = status != null && 
+                          status != 'cancelled' && 
+                          status != 'expired';
+                      
+                      if (!isSessionValid) {
+                        return const SizedBox.shrink();
+                      }
+                      
+                      return IconButton(
+                        icon: const Icon(Icons.message, size: 22),
+                        color: AppTheme.primaryColor,
+                        tooltip: 'Message Tutor',
+                        onPressed: () => _navigateToChatFromSession(context, session),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1287,7 +1310,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   },
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // Session details (date, time, location) - more compact
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1314,7 +1337,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               // Location
               Row(
                 children: [
@@ -1404,7 +1427,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               ],
               // Action buttons
               if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
@@ -1763,6 +1786,39 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final t = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
+        leading: Builder(
+          builder: (context) {
+            // Check if we can pop - if not, navigate to dashboard instead
+            if (Navigator.of(context).canPop()) {
+              return IconButton(
+                icon: const Icon(Icons.arrow_back),
+                color: Colors.white,
+                onPressed: () {
+                  // Simply pop - don't trigger any auth checks
+                  Navigator.of(context).pop();
+                },
+              );
+            } else {
+              // Can't pop - navigate to appropriate dashboard
+              return IconButton(
+                icon: const Icon(Icons.arrow_back),
+                color: Colors.white,
+                onPressed: () async {
+                  try {
+                    final userProfile = await AuthService.getUserProfile();
+                    final userType = userProfile?['user_type'] as String?;
+                    final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
+                    Navigator.pushReplacementNamed(context, route);
+                  } catch (e) {
+                    // Fallback to parent nav
+                    Navigator.pushReplacementNamed(context, '/parent-nav');
+                  }
+                },
+              );
+            }
+          },
+        ),
+        automaticallyImplyLeading: false,
         title: Text(
           t.mySessionsTitle,
           style: GoogleFonts.poppins(
@@ -1840,7 +1896,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onRefresh: _loadSessions,
                         child: ListView.builder(
                           controller: _upcomingScrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           itemCount: _upcomingSessions.length + 1, // +1 for credits widget
                           itemBuilder: (context, index) {
                             if (index == 0) {
@@ -1889,7 +1945,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onRefresh: _loadSessions,
                         child: ListView.builder(
                           controller: _pastScrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           itemCount: _pastSessions.length,
                           itemBuilder: (context, index) {
                             return _buildSessionCard(
@@ -1902,5 +1958,217 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               ],
             ),
     );
+  }
+
+  /// Get conversation ID for a session
+  Future<String?> _getConversationIdForSession(Map<String, dynamic> session) async {
+    try {
+      // Check if session is paid/approved (only show chat for valid sessions)
+      final status = session['status'] as String?;
+      if (status == null || status == 'cancelled' || status == 'expired') {
+        return null;
+      }
+
+      // Try individual session ID first
+      final individualSessionId = session['id'] as String?;
+      if (individualSessionId != null) {
+        final conversationId = await ConversationLifecycleService.getConversationIdForIndividual(individualSessionId);
+        if (conversationId != null) {
+          return conversationId;
+        }
+      }
+
+      // Try recurring session ID
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      if (recurringData != null) {
+        final recurringSessionId = recurringData['id'] as String?;
+        if (recurringSessionId != null) {
+          final conversationId = await ConversationLifecycleService.getConversationIdForRecurring(recurringSessionId);
+          if (conversationId != null) {
+            return conversationId;
+          }
+        }
+      }
+
+      // Try trial session ID (if this is a trial)
+      final trialData = session['trial_sessions'] as Map<String, dynamic>?;
+      if (trialData != null) {
+        final trialSessionId = trialData['id'] as String?;
+        if (trialSessionId != null) {
+          final conversationId = await ConversationLifecycleService.getConversationIdForTrial(trialSessionId);
+          if (conversationId != null) {
+            return conversationId;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      LogService.error('Error getting conversation ID for session: $e');
+      return null;
+    }
+  }
+
+  /// Navigate to chat from session card
+  Future<void> _navigateToChatFromSession(BuildContext context, Map<String, dynamic> session) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Get or create conversation
+      final supabase = SupabaseService.client;
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) {
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'You must be logged in to message.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get tutor ID from session
+      String? tutorId;
+      String? studentId = currentUserId;
+      
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      if (recurringData != null) {
+        tutorId = recurringData['tutor_id'] as String?;
+        studentId = recurringData['learner_id'] as String? ?? currentUserId;
+      }
+
+      if (tutorId == null) {
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to find tutor information.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get or create conversation
+      final conversationData = await ConversationLifecycleService.getOrCreateConversation(
+        recurringSessionId: recurringData?['id'] as String?,
+        individualSessionId: session['id'] as String?,
+        tutorId: tutorId,
+        studentId: studentId,
+      );
+
+      // Dismiss loading
+      if (mounted) Navigator.pop(context);
+
+      if (conversationData == null || conversationData['id'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to start conversation. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get full conversation data
+      final conversationResponse = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationData['id'] as String)
+          .maybeSingle();
+
+      if (conversationResponse == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Conversation not found. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get other user's profile info
+      final otherUserId = conversationResponse['student_id'] == currentUserId
+          ? conversationResponse['tutor_id']
+          : conversationResponse['student_id'];
+
+      final otherUserProfile = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', otherUserId)
+          .maybeSingle();
+
+      // Create Conversation object
+      final conversation = Conversation(
+        id: conversationResponse['id'] as String,
+        studentId: conversationResponse['student_id'] as String,
+        tutorId: conversationResponse['tutor_id'] as String,
+        bookingRequestId: conversationResponse['booking_request_id'] as String?,
+        recurringSessionId: conversationResponse['recurring_session_id'] as String?,
+        individualSessionId: conversationResponse['individual_session_id'] as String?,
+        trialSessionId: conversationResponse['trial_session_id'] as String?,
+        status: conversationResponse['status'] as String? ?? 'active',
+        expiresAt: conversationResponse['expires_at'] != null
+            ? DateTime.parse(conversationResponse['expires_at'] as String)
+            : null,
+        lastMessageAt: conversationResponse['last_message_at'] != null
+            ? DateTime.parse(conversationResponse['last_message_at'] as String)
+            : null,
+        createdAt: DateTime.parse(conversationResponse['created_at'] as String),
+        otherUserName: otherUserProfile?['full_name'] as String?,
+        otherUserAvatarUrl: otherUserProfile?['avatar_url'] as String?,
+      );
+
+      // Navigate to chat screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(conversation: conversation),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error navigating to chat from session: $e');
+      if (mounted) {
+        // Dismiss loading if still showing
+        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

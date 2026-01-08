@@ -18,6 +18,7 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import '../../../features/skulmate/screens/game_library_screen.dart';
 import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
+import '../../../features/messaging/screens/conversations_list_screen.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -364,34 +365,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                       GestureDetector(
                         onTap: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              title: Text(
-                                'Messaging',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              content: Text(
-                                'Messaging feature coming soon! You\'ll be able to chat with tutors and students directly.',
-                                style: GoogleFonts.poppins(),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: Text(
-                                    'OK',
-                                    style: GoogleFonts.poppins(
-                                      color: AppTheme.primaryColor,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ConversationsListScreen(),
                             ),
                           );
                         },
@@ -474,7 +451,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Navigator.pushNamed(context, '/my-sessions');
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildActionCard(
                     icon: Icons.payment,
                     title: AppLocalizations.of(context)!.paymentHistory,
@@ -486,7 +463,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                   // Learning Progress (for parents)
                   if (_userType == 'parent') ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     _buildActionCard(
                       icon: Icons.trending_up,
                       title: 'Learning Progress',
