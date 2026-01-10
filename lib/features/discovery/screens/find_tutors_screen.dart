@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -33,9 +35,14 @@ class FindTutorsScreen extends StatefulWidget {
 class _FindTutorsScreenState extends State<FindTutorsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final Debouncer _searchDebouncer = Debouncer(milliseconds: 500);
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _tutors = [];
   List<Map<String, dynamic>> _filteredTutors = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false; // For pagination
+  bool _hasMoreTutors = true; // Track if more tutors available
+  int _currentOffset = 0; // Current pagination offset
+  static const int _tutorsPerPage = 50; // Tutors per page
   List<MatchedTutor> _matchedTutors = []; // Store matched tutors with scores
   Map<String, MatchScore> _matchScores = {}; // Cache match scores by tutor ID
   String _sortBy = 'match'; // 'match', 'rating', 'price'
@@ -103,6 +110,32 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
       });
     });
+    
+    // Listen to scroll for lazy loading
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _searchController.removeListener(_filterTutors);
+    _searchController.dispose();
+    _searchDebouncer.dispose();
+    super.dispose();
+  }
+
+  /// Handle scroll events for lazy loading
+  void _onScroll() {
+    // Load more tutors when user scrolls near the bottom
+    if (_scrollController.position.pixels > 
+        _scrollController.position.maxScrollExtent - 200 && 
+        !_isLoadingMore && 
+        _hasMoreTutors &&
+        !_isLoading &&
+        !_isOffline) {
+      _loadMoreTutors();
+    }
   }
 
   /// Initialize connectivity monitoring
@@ -285,7 +318,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Future<void> _loadTutors() async {
-    safeSetState(() => _isLoading = true);
+    safeSetState(() {
+      _isLoading = true;
+      _currentOffset = 0;
+      _hasMoreTutors = true;
+    });
 
     try {
       // Check connectivity first - always get fresh status
@@ -309,6 +346,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               _tutors = cachedTutors;
               _filteredTutors = cachedTutors;
               _isLoading = false;
+              _hasMoreTutors = false; // No more when using cache
               _cacheTimestamp = timestamp > 0 
                   ? DateTime.fromMillisecondsSinceEpoch(timestamp)
                   : null;
@@ -331,7 +369,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final currentUserData = await AuthService.getCurrentUser();
       if (currentUserData == null) {
         // Fallback to regular tutor loading if no user
-        final tutors = await TutorService.fetchTutors();
+        final tutors = await TutorService.fetchTutors(
+          limit: _tutorsPerPage,
+          offset: _currentOffset,
+        );
         // Cache the tutors
         await OfflineCacheService.cacheTutors(tutors);
         if (mounted) {
@@ -339,6 +380,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _tutors = tutors;
             _filteredTutors = tutors;
             _isLoading = false;
+            _currentOffset = tutors.length;
+            _hasMoreTutors = tutors.length >= _tutorsPerPage;
             _cacheTimestamp = DateTime.now();
           });
         }
@@ -364,7 +407,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         );
 
         if (matchedTutors.isNotEmpty) {
-          // Use matched tutors
+          // Use matched tutors (matching service handles pagination internally)
           final tutorList = matchedTutors.map((mt) => mt.tutor).toList();
           // Cache the tutors
           await OfflineCacheService.cacheTutors(tutorList);
@@ -377,12 +420,17 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             };
             _filteredTutors = _tutors;
             _isLoading = false;
+            _currentOffset = tutorList.length;
+            _hasMoreTutors = false; // Matching service returns all matches
             _cacheTimestamp = DateTime.now();
           });
           LogService.success('FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
         } else {
           // Fallback to regular loading if no matches
-          final tutors = await TutorService.fetchTutors();
+          final tutors = await TutorService.fetchTutors(
+            limit: _tutorsPerPage,
+            offset: _currentOffset,
+          );
           // Cache the tutors
           await OfflineCacheService.cacheTutors(tutors);
           if (mounted) {
@@ -390,6 +438,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               _tutors = tutors;
               _filteredTutors = tutors;
               _isLoading = false;
+              _currentOffset = tutors.length;
+              _hasMoreTutors = tutors.length >= _tutorsPerPage;
               _cacheTimestamp = DateTime.now();
             });
           }
@@ -398,7 +448,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       } catch (e) {
         // Fallback to regular loading on error
         LogService.warning('FindTutorsScreen: Matching error, using regular loading: $e');
-        final tutors = await TutorService.fetchTutors();
+        final tutors = await TutorService.fetchTutors(
+          limit: _tutorsPerPage,
+          offset: _currentOffset,
+        );
         // Cache the tutors
         await OfflineCacheService.cacheTutors(tutors);
         if (mounted) {
@@ -406,6 +459,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             _tutors = tutors;
             _filteredTutors = tutors;
             _isLoading = false;
+            _currentOffset = tutors.length;
+            _hasMoreTutors = tutors.length >= _tutorsPerPage;
             _cacheTimestamp = DateTime.now();
           });
         }
@@ -428,6 +483,45 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           e,
           'Failed to load tutors. Please try again.',
         );
+      }
+    }
+  }
+
+  /// Load more tutors when scrolling down (lazy loading)
+  Future<void> _loadMoreTutors() async {
+    if (_isLoadingMore || !_hasMoreTutors || _isOffline) return;
+
+    try {
+      safeSetState(() {
+        _isLoadingMore = true;
+      });
+
+      final newTutors = await TutorService.fetchTutors(
+        limit: _tutorsPerPage,
+        offset: _currentOffset,
+      );
+
+      if (mounted && newTutors.isNotEmpty) {
+        safeSetState(() {
+          // Append new tutors to existing list
+          _tutors = [..._tutors, ...newTutors];
+          _filteredTutors = _tutors; // Re-apply filters if needed
+          _currentOffset += newTutors.length;
+          _hasMoreTutors = newTutors.length >= _tutorsPerPage;
+          _isLoadingMore = false;
+        });
+      } else {
+        safeSetState(() {
+          _hasMoreTutors = false;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading more tutors: $e');
+      if (mounted) {
+        safeSetState(() {
+          _isLoadingMore = false;
+        });
       }
     }
   }
@@ -728,9 +822,24 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         )
                     : _loadTutors,
                     child: ListView.builder(
+                      controller: _scrollController,
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      itemCount: _filteredTutors.length,
+                      itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        // Show loading indicator at bottom when loading more
+                        if (_isLoadingMore && index == _filteredTutors.length) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
+                        
+                        if (index >= _filteredTutors.length) {
+                          return const SizedBox.shrink();
+                        }
+                        
                         return _buildTutorCard(_filteredTutors[index]);
                       },
                     ),
@@ -1302,6 +1411,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   void _showFilterBottomSheet() {
+    // #region agent log
+    try {
+      final logData = {
+        'sessionId': 'debug-session',
+        'runId': 'run1',
+        'hypothesisId': 'C',
+        'location': 'find_tutors_screen.dart:1304',
+        'message': 'Filter bottom sheet opening',
+        'data': {'isOffline': _isOffline},
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+      File('/Users/user/Desktop/PrepSkul/.cursor/debug.log').writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
+    } catch (_) {}
+    // #endregion
+    
     if (_isOffline) {
       OfflineDialog.show(
         context,
@@ -1787,16 +1911,4 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
-  @override
-  @override
-  void dispose() {
-    _searchController.removeListener(_filterTutors);
-    _searchController.dispose();
-    _searchDebouncer.dispose();
-    super.dispose();
-  
-
-
-  
-}
 }

@@ -1,5 +1,5 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 
 /// Centralized App Configuration
 /// 
@@ -78,6 +78,33 @@ class AppConfig {
     } else {
       return _safeEnv('API_BASE_URL_DEV', 'https://www.prepskul.com/api');
     }
+  }
+  
+  /// Get effective API base URL (with localhost detection for local development)
+  /// 
+  /// Automatically detects when running locally on web and uses localhost:3000
+  /// for the Next.js dev server. This ensures local development works seamlessly
+  /// without requiring environment variable changes.
+  static String get effectiveApiBaseUrl {
+    String url = apiBaseUrl;
+    
+    // If running locally on web in non-production mode, use localhost
+    if (kIsWeb && !isProd) {
+      // Check if API_BASE_URL_DEV is explicitly set to localhost in .env
+      final envApiUrl = _safeEnv('API_BASE_URL_DEV', '');
+      
+      // If not explicitly set to localhost, automatically use localhost for local Next.js dev server
+      if (!url.contains('localhost') && !url.contains('127.0.0.1') && 
+          !envApiUrl.contains('localhost') && !envApiUrl.contains('127.0.0.1')) {
+        if (kDebugMode) {
+          print('🎯 Local development detected. Using localhost:3000 for Next.js API.');
+          print('🎯 To override, set API_BASE_URL_DEV=http://localhost:3000/api in .env');
+        }
+        return 'http://localhost:3000/api';
+      }
+    }
+    
+    return url;
   }
   
   /// App Base URL

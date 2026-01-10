@@ -45,6 +45,8 @@ import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
 import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
+import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
 import 'dart:async';
 
 void main() async {
@@ -517,6 +519,40 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       return;
     }
 
+    // Handle tutor detail deep links: /tutor/{tutorId}
+    // These are public routes (like Preply) - anyone can view tutor profiles
+    if (path.startsWith('/tutor/') && path != '/tutor' && !path.startsWith('/tutor/profile') && !path.startsWith('/tutor/dashboard') && !path.startsWith('/tutor/onboarding')) {
+      final tutorId = path.replaceFirst('/tutor/', '');
+      if (tutorId.isNotEmpty) {
+        LogService.debug('🔗 [DEEP_LINK] Tutor detail link detected: $tutorId');
+        final navService = NavigationService();
+        if (navService.isReady) {
+          // Fetch tutor data and navigate to tutor detail screen
+          try {
+            final tutor = await TutorService.fetchTutorById(tutorId);
+            if (tutor != null) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => TutorDetailScreen(tutor: tutor),
+                ),
+              );
+            } else {
+              LogService.warning('🔗 [DEEP_LINK] Tutor not found: $tutorId');
+              // Navigate to find tutors if tutor not found
+              navService.navigateToRoute('/find-tutors');
+            }
+          } catch (e) {
+            LogService.error('🔗 [DEEP_LINK] Error loading tutor: $e');
+            navService.navigateToRoute('/find-tutors');
+          }
+        } else {
+          // Queue for later
+          navService.queueDeepLink(uri);
+        }
+        return;
+      }
+    }
+
     // List of protected routes that require authentication
     // These routes should redirect to email login if user is not authenticated
     final protectedRoutes = [
@@ -524,7 +560,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       '/tutor/profile',
       '/tutor/dashboard',
       '/tutor/onboarding',
-      '/tutor',
+      '/tutor', // Only /tutor (without ID) is protected
       '/student',
       '/parent',
       '/bookings',

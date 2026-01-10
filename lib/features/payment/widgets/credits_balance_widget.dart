@@ -4,11 +4,13 @@ import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Credits Balance Widget
 ///
-/// Displays current credits balance and session count in a card format
+/// Displays current credits balance and estimated session count
+/// Note: 1 credit = 100 XAF. Session costs vary by tutor.
+/// Sessions are estimated based on average session cost (~3,500 XAF = 35 credits per session)
 class CreditsBalanceWidget extends StatelessWidget {
   final int currentCredits;
   final bool isLoading;
-  final int? sessionsRemaining; // Optional: if null, will calculate from credits (1 credit = 1 session)
+  final int? sessionsRemaining; // Optional: if provided, will use this value. Otherwise calculates estimate.
 
   const CreditsBalanceWidget({
     Key? key,
@@ -16,6 +18,16 @@ class CreditsBalanceWidget extends StatelessWidget {
     this.isLoading = false,
     this.sessionsRemaining,
   }) : super(key: key);
+
+  /// Calculate estimated sessions based on average session cost
+  /// Average session cost: ~3,500 XAF = 35 credits per session
+  /// Formula: credits / 35 (rounded down to show conservative estimate)
+  int _calculateEstimatedSessions() {
+    if (currentCredits <= 0) return 0;
+    // Average session cost: 3,500 XAF = 35 credits
+    // Round down to show conservative estimate
+    return (currentCredits / 35).floor();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,15 +96,19 @@ class CreditsBalanceWidget extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${sessionsRemaining ?? currentCredits} sessions',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white.withOpacity(0.9),
+                if (sessionsRemaining != null || currentCredits > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    sessionsRemaining != null
+                        ? '$sessionsRemaining sessions'
+                        : '~${_calculateEstimatedSessions()} sessions (est.)',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
         ],

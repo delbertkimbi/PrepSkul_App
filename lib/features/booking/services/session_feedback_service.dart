@@ -24,6 +24,9 @@ class SessionFeedbackService {
     String? whatWentWell,
     String? whatCouldImprove,
     bool? wouldRecommend,
+    bool? learningObjectivesMet,
+    int? studentProgressRating, // 1-5
+    bool? wouldContinueLessons,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -31,10 +34,16 @@ class SessionFeedbackService {
         throw Exception('User not authenticated');
       }
 
-      // Get session details to verify authorization
+      // Get session details to verify authorization and determine location/session type
       final session = await _supabase
           .from('individual_sessions')
-          .select('learner_id, parent_id, status, recurring_session_id')
+          .select('''
+            learner_id, 
+            parent_id, 
+            status, 
+            recurring_session_id,
+            location
+          ''')
           .eq('id', sessionId)
           .maybeSingle();
 
@@ -87,6 +96,48 @@ class SessionFeedbackService {
 
       if (session['recurring_session_id'] != null) {
         feedbackData['recurring_session_id'] = session['recurring_session_id'];
+      }
+
+      // Determine location type (online or onsite)
+      String? locationType;
+      if (session['location'] != null) {
+        final location = (session['location'] as String).toLowerCase().trim();
+        if (location == 'online' || location == 'onsite') {
+          locationType = location;
+        }
+      }
+      if (locationType != null) {
+        feedbackData['location_type'] = locationType;
+      }
+
+      // Determine session type (trial or recurrent)
+      // If recurring_session_id exists, it's a recurrent session
+      // Otherwise, check if there's a trial_session linked to this individual_session
+      String? sessionType;
+      if (session['recurring_session_id'] != null) {
+        sessionType = 'recurrent';
+      } else {
+        // Check if this individual_session is linked to a trial_session
+        // Trial sessions might create individual_sessions, so we check by matching IDs or other criteria
+        // For now, if no recurring_session_id, assume it's a trial session
+        // TODO: Add proper trial_session_id tracking if needed
+        sessionType = 'trial';
+      }
+      if (sessionType != null) {
+        feedbackData['session_type'] = sessionType;
+      }
+
+      // Add enhanced learning outcomes fields
+      if (learningObjectivesMet != null) {
+        feedbackData['learning_objectives_met'] = learningObjectivesMet;
+      }
+
+      if (studentProgressRating != null && studentProgressRating >= 1 && studentProgressRating <= 5) {
+        feedbackData['student_progress_rating'] = studentProgressRating;
+      }
+
+      if (wouldContinueLessons != null) {
+        feedbackData['would_continue_lessons'] = wouldContinueLessons;
       }
 
       if (existingFeedback != null) {

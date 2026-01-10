@@ -21,6 +21,7 @@ import 'tutor_onboarding_screen.dart';
 import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
+import '../../../features/messaging/widgets/message_icon_badge.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -343,28 +344,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         elevation: 0,
         title: const AppLogoHeader(),
         actions: [
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ConversationsListScreen(),
-                ),
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.chat,
-                color: AppTheme.textDark,
-                size: 24,
-              ),
-            ),
-          ),
+          const MessageIconBadge(),
           const Padding(
             padding: EdgeInsets.only(right: 16),
             child: NotificationBell(),

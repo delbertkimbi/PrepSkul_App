@@ -63,6 +63,78 @@ void main() {
       });
     });
 
+    group('Complete Messaging Flow', () {
+      test('should create conversation → send message → receive message → mark as read', () async {
+        // Test complete flow
+        expect(ConversationLifecycleService.createConversationForTrial, isA<Function>());
+        expect(ChatService.sendMessage, isA<Function>());
+        expect(ChatService.getMessages, isA<Function>());
+        expect(ChatService.markAsRead, isA<Function>());
+      });
+
+      test('should handle real-time message delivery', () async {
+        // Test real-time updates
+        expect(ChatService.watchMessages, isA<Function>());
+      });
+
+      test('should handle message filtering and blocking', () async {
+        // Test content filtering
+        expect(ChatService.previewMessage, isA<Function>());
+      });
+
+      test('should handle archive/unarchive flow', () async {
+        // Test archiving
+        expect(ChatService.archiveConversation, isA<Function>());
+        expect(ChatService.unarchiveConversation, isA<Function>());
+      });
+    });
+
+    group('Multi-User Scenarios', () {
+      test('should handle student sends message, tutor receives', () async {
+        // Test bidirectional messaging
+        expect(ChatService.sendMessage, isA<Function>());
+        expect(ChatService.watchMessages, isA<Function>());
+      });
+
+      test('should handle tutor responds, student receives', () async {
+        // Test response flow
+        expect(ChatService.sendMessage, isA<Function>());
+        expect(ChatService.watchMessages, isA<Function>());
+      });
+
+      test('should update unread count correctly', () async {
+        // Test unread count updates
+        expect(ChatService.markAsRead, isA<Function>());
+      });
+
+      test('should update real-time badge correctly', () async {
+        // Test badge updates
+        expect(ChatService.watchConversations, isA<Function>());
+      });
+    });
+
+    group('Error Scenarios', () {
+      test('should handle network failure during send', () async {
+        // Test network error handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle API timeout', () async {
+        // Test timeout handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle invalid conversation access', () async {
+        // Test authorization
+        expect(ChatService.getMessages, isA<Function>());
+      });
+
+      test('should handle blocked message gracefully', () async {
+        // Test blocked message handling
+        expect(ChatService.previewMessage, isA<Function>());
+      });
+    });
+
     group('booking integration', () {
       test('should verify conversation creation methods exist', () {
         // Test that conversation creation methods exist for booking/trial

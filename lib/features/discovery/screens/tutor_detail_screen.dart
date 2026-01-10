@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -26,6 +26,7 @@ import 'web_video_helper_stub.dart'
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
+import 'package:share_plus/share_plus.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -513,49 +514,74 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               expandedHeight: 280,
               pinned: true,
               elevation: 0,
-              backgroundColor: Colors.white,
-              leading: IconButton(
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
+              backgroundColor: Colors.transparent, // Transparent so buttons show above video
+              leading: Container(
+                margin: const EdgeInsets.only(left: 8, top: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.black),
+                  onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+              actions: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8, top: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withOpacity(0.2),
                         blurRadius: 8,
+                        spreadRadius: 1,
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.arrow_back, color: Colors.black),
-                ),
-                onPressed: () => Navigator.pop(context),
-              ),
-              actions: [
-                IconButton(
-                  icon: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.favorite_border, color: Colors.black),
+                  child: IconButton(
+                    icon: const Icon(Icons.share, color: Colors.black),
+                    onPressed: () => _shareTutor(),
+                    padding: EdgeInsets.zero,
                   ),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Added to favorites!')),
-                    );
-                  },
                 ),
-                const SizedBox(width: 8),
+                Container(
+                  margin: const EdgeInsets.only(right: 8, top: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.favorite_border, color: Colors.black),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Added to favorites!')),
+                      );
+                    },
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
               ],
-              flexibleSpace: FlexibleSpaceBar(background: _buildVideoSection()),
+              flexibleSpace: FlexibleSpaceBar(
+                background: _buildVideoSection(),
+                centerTitle: false,
+              ),
             ),
 
           // Content
@@ -1092,44 +1118,87 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          // Book Trial Session (outlined)
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _isOffline
-                  ? () => OfflineDialog.show(
-                        context,
-                        message: 'Booking a session requires an internet connection. Please check your connection and try again.',
-                      )
-                  : () {
-                // Pause video before navigating
-                _pauseVideo();
-                // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
-                final tutorData = _currentTutorData;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        BookTrialSessionScreen(tutor: tutorData),
+          // Message button and Book Trial Session row
+          Row(
+            children: [
+              // Message button (only show if there's an active booking/trial) - LEFT SIDE
+              FutureBuilder<bool>(
+                future: _hasActiveBookingWithTutor(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox.shrink();
+                  }
+                  
+                  if (snapshot.data == true) {
+                    return Container(
+                      height: 56, // Same height as Book Trial button
+                      width: 56,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppTheme.primaryColor, width: 2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        onPressed: _isOffline
+                            ? () => OfflineDialog.show(
+                                  context,
+                                  message: 'Messaging requires an internet connection. Please check your connection and try again.',
+                                )
+                            : () => _navigateToChat(context),
+                        icon: const Icon(
+                          Icons.message,
+                          color: AppTheme.primaryColor,
+                          size: 24,
+                        ),
+                        tooltip: 'Message Tutor',
+                        padding: EdgeInsets.zero, // Remove default padding to match button height
+                      ),
+                    );
+                  }
+                  
+                  return const SizedBox.shrink();
+                },
+              ),
+              // Book Trial Session button - RIGHT SIDE
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isOffline
+                      ? () => OfflineDialog.show(
+                            context,
+                            message: 'Booking a session requires an internet connection. Please check your connection and try again.',
+                          )
+                      : () {
+                    // Pause video before navigating
+                    _pauseVideo();
+                    // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
+                    final tutorData = _currentTutorData;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            BookTrialSessionScreen(tutor: tutorData),
+                      ),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: AppTheme.primaryColor, width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size(0, 56), // Same height as message button
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: AppTheme.primaryColor, width: 2),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  child: Text(
+                    'Book Trial Session',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
                 ),
               ),
-              child: Text(
-                'Book Trial Session',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
+            ],
           ),
           const SizedBox(height: 12),
           // Book This Tutor (filled)
@@ -1176,52 +1245,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 ),
               ),
             ),
-          ),
-          // Chat button (only show if there's an active booking/trial)
-          FutureBuilder<bool>(
-            future: _hasActiveBookingWithTutor(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const SizedBox.shrink();
-              }
-              
-              if (snapshot.data == true) {
-                return Column(
-                  children: [
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _isOffline
-                            ? () => OfflineDialog.show(
-                                  context,
-                                  message: 'Messaging requires an internet connection. Please check your connection and try again.',
-                                )
-                            : () => _navigateToChat(context),
-                        icon: const Icon(Icons.message),
-                        label: Text(
-                          'Message Tutor',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                          side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
-              
-              return const SizedBox.shrink();
-            },
           ),
         ],
       ),
@@ -2480,6 +2503,83 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   /// Navigate to chat with this tutor
+  /// Share tutor profile with unique deep link
+  Future<void> _shareTutor() async {
+    try {
+      // Use refreshed tutor data if available, otherwise fall back to widget.tutor
+      final tutorData = _currentTutorData;
+      
+      final tutorId = tutorData['id']?.toString() ?? 
+                     tutorData['user_id']?.toString() ??
+                     widget.tutor['id']?.toString() ?? 
+                     widget.tutor['user_id']?.toString();
+      
+      if (tutorId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to share tutor profile.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get tutor name from multiple possible sources
+      final tutorName = tutorData['full_name'] ?? 
+                       tutorData['profiles']?['full_name'] ??
+                       widget.tutor['full_name'] ?? 
+                       widget.tutor['profiles']?['full_name'] ?? 
+                       'Tutor';
+      
+      // Get tutor subject
+      final subjects = tutorData['subjects'] ?? widget.tutor['subjects'];
+      final tutorSubject = (subjects is List && subjects.isNotEmpty)
+          ? subjects[0].toString()
+          : (subjects is String && subjects.isNotEmpty)
+              ? subjects
+              : 'Tutor';
+
+      // Create unique deep link for this tutor
+      // Format: https://app.prepskul.com/tutor/{tutorId}
+      // For local development: prepskul://tutor/{tutorId}
+      final baseUrl = kDebugMode 
+          ? 'prepskul://tutor/$tutorId'
+          : 'https://app.prepskul.com/tutor/$tutorId';
+      
+      final shareText = 'Check out $tutorName on PrepSkul!\n\n$baseUrl';
+      
+      final result = await Share.share(
+        shareText,
+        subject: '$tutorName - $tutorSubject Tutor on PrepSkul',
+      );
+      
+      if (result.status == ShareResultStatus.success) {
+        LogService.success('Tutor profile shared successfully');
+      } else if (result.status == ShareResultStatus.dismissed) {
+        LogService.debug('Share dialog dismissed');
+      }
+    } catch (e) {
+      LogService.error('Error sharing tutor: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to share tutor profile. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _navigateToChat(BuildContext context) async {
     try {
       final currentUserId = SupabaseService.currentUser?.id;

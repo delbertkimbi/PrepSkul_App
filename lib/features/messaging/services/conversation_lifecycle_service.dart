@@ -1,8 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:prepskul/core/config/app_config.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 /// Conversation Lifecycle Service
 /// 
@@ -11,7 +8,6 @@ import 'dart:convert';
 /// - Auto-close expired conversations
 /// - Check conversation validity before messaging
 class ConversationLifecycleService {
-  static final String _apiBaseUrl = AppConfig.apiBaseUrl;
 
   /// Auto-create conversation for trial session
   /// 
@@ -166,7 +162,7 @@ class ConversationLifecycleService {
           .from('conversations')
           .select('status, expires_at, student_id, tutor_id')
           .eq('id', conversationId)
-          .single();
+          .maybeSingle();
       
       if (response == null) {
         return false;

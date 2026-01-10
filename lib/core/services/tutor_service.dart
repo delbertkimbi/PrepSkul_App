@@ -27,7 +27,7 @@ class TutorService {
   // ⚠️ TOGGLE THIS TO SWITCH BETWEEN DEMO AND REAL DATA
   static const bool USE_DEMO_DATA = false; // Using real tutors from Supabase
 
-  /// Fetch all tutors
+  /// Fetch tutors with pagination support
   /// Returns list of tutor profiles with all details
   /// Automatically uses cache when offline
   static Future<List<Map<String, dynamic>>> fetchTutors({
@@ -36,6 +36,8 @@ class TutorService {
     int? maxRate,
     double? minRating,
     bool? isVerified,
+    int limit = 50, // Default page size
+    int offset = 0, // Pagination offset
   }) async {
     // Check connectivity first
     final connectivity = ConnectivityService();
@@ -80,6 +82,8 @@ class TutorService {
         maxRate: maxRate,
         minRating: minRating,
         isVerified: isVerified,
+        limit: limit,
+        offset: offset,
       );
     }
     
@@ -279,6 +283,8 @@ class TutorService {
     int? maxRate,
     double? minRating,
     bool? isVerified,
+    int limit = 50,
+    int offset = 0,
   }) async {
     try {
       // Check network connectivity first
@@ -332,10 +338,12 @@ class TutorService {
         query = query.eq('is_verified', isVerified);
       }
 
-      LogService.database('Executing query...');
+      LogService.database('Executing query with pagination (limit: $limit, offset: $offset)...');
       List rawTutors;
       try {
-      final response = await query.order('rating', ascending: false);
+      final response = await query
+          .order('rating', ascending: false)
+          .range(offset, offset + limit - 1);
         rawTutors = response as List;
         LogService.success('Query successful: Raw query returned ${rawTutors.length} approved tutors from Supabase');
       } catch (queryError) {
@@ -365,7 +373,9 @@ class TutorService {
               .eq('status', 'approved')
               .neq('is_hidden', true);
           
-          final fallbackResponse = await fallbackQuery.order('rating', ascending: false);
+          final fallbackResponse = await fallbackQuery
+              .order('rating', ascending: false)
+              .range(offset, offset + limit - 1);
           final fallbackTutors = fallbackResponse as List;
           LogService.success('Fallback query returned ${fallbackTutors.length} tutors');
           

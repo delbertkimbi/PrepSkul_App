@@ -23,6 +23,9 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
   final _whatWentWellController = TextEditingController();
   final _whatCouldImproveController = TextEditingController();
   bool? _wouldRecommend;
+  bool? _learningObjectivesMet;
+  int? _studentProgressRating;
+  bool? _wouldContinueLessons;
   bool _isSubmitting = false;
   bool _canSubmit = false;
   Duration? _timeRemaining;
@@ -107,6 +110,9 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
             ? null
             : _whatCouldImproveController.text.trim(),
         wouldRecommend: _wouldRecommend,
+        learningObjectivesMet: _learningObjectivesMet,
+        studentProgressRating: _studentProgressRating,
+        wouldContinueLessons: _wouldContinueLessons,
       );
 
       if (mounted) {
@@ -423,6 +429,106 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
             ),
             const SizedBox(height: 32),
 
+            // Learning Objectives Met
+            Text(
+              'Were learning objectives met? (optional)',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: _buildLearningObjectivesButton(true)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildLearningObjectivesButton(false)),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // Student Progress Rating
+            Text(
+              'How would you rate your progress? (optional)',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(5, (index) {
+                final rating = index + 1;
+                return GestureDetector(
+                  onTap: () => safeSetState(() => _studentProgressRating = rating),
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: _studentProgressRating == rating
+                          ? AppTheme.primaryColor
+                          : Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _studentProgressRating == rating
+                            ? AppTheme.primaryColor
+                            : Colors.grey[300]!,
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$rating',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: _studentProgressRating == rating
+                              ? Colors.white
+                              : AppTheme.textMedium,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            if (_studentProgressRating != null) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'Progress: $_studentProgressRating/5',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+
+            // Would Continue Lessons
+            Text(
+              'Would you continue lessons with this tutor? (optional)',
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: _buildContinueLessonsButton(true)),
+                const SizedBox(width: 12),
+                Expanded(child: _buildContinueLessonsButton(false)),
+              ],
+            ),
+            const SizedBox(height: 32),
+
             // Submit Button
             SizedBox(
               width: double.infinity,
@@ -488,6 +594,80 @@ class _SessionFeedbackScreenState extends State<SessionFeedbackScreen> {
           const SizedBox(width: 8),
           Text(
             recommend ? 'Yes' : 'No',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLearningObjectivesButton(bool met) {
+    final isSelected = _learningObjectivesMet == met;
+    return OutlinedButton(
+      onPressed: () => safeSetState(() => _learningObjectivesMet = met),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+          width: isSelected ? 2 : 1,
+        ),
+        backgroundColor: isSelected
+            ? AppTheme.primaryColor.withOpacity(0.1)
+            : Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            met ? Icons.check_circle : Icons.cancel,
+            color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            met ? 'Yes' : 'No',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContinueLessonsButton(bool continueLessons) {
+    final isSelected = _wouldContinueLessons == continueLessons;
+    return OutlinedButton(
+      onPressed: () => safeSetState(() => _wouldContinueLessons = continueLessons),
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+          width: isSelected ? 2 : 1,
+        ),
+        backgroundColor: isSelected
+            ? AppTheme.primaryColor.withOpacity(0.1)
+            : Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            continueLessons ? Icons.arrow_forward : Icons.close,
+            color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            continueLessons ? 'Yes' : 'No',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,

@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -36,12 +37,21 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   List<Message> _messages = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false; // For pagination
+  bool _hasMoreMessages = true; // Track if more messages available
+  int _currentOffset = 0; // Current pagination offset
+  static const int _messagesPerPage = 50; // Messages per page
   bool _isSending = false;
   StreamSubscription? _messageStream;
   String? _errorMessage;
   ChatSuggestion? _suggestion;
   bool _bannerDismissed = false;
   bool _showBookTrialButton = false;
+  bool _hasText = false;
+  bool _isArchived = false;
+  Timer? _typingDebounceTimer; // For typing indicators
+  Timer? _messageBatchTimer; // For message batching
+  List<String> _pendingMessages = []; // Messages waiting to be sent
 
   @override
   void initState() {
@@ -49,6 +59,88 @@ class _ChatScreenState extends State<ChatScreen> {
     _loadMessages();
     _subscribeToMessages();
     _loadSuggestions();
+    _checkArchiveStatus();
+    // Listen to text changes to update button state
+    _messageController.addListener(_onTextChanged);
+    // Listen to scroll for lazy loading
+    _scrollController.addListener(_onScroll);
+  }
+
+  /// Handle scroll events for lazy loading
+  void _onScroll() {
+    // Load more messages when user scrolls near the top
+    if (_scrollController.position.pixels < 200 && 
+        !_isLoadingMore && 
+        _hasMoreMessages &&
+        !_isLoading) {
+      _loadMoreMessages();
+    }
+  }
+  
+  Future<void> _checkArchiveStatus() async {
+    try {
+      final isArchived = await ChatService.isConversationArchived(widget.conversation.id);
+      if (mounted) {
+        setState(() {
+          _isArchived = isArchived;
+        });
+      }
+    } catch (e) {
+      LogService.error('Error checking archive status: $e');
+    }
+  }
+  
+  Future<void> _handleArchiveAction() async {
+    try {
+      if (_isArchived) {
+        await ChatService.unarchiveConversation(widget.conversation.id);
+        if (mounted) {
+          setState(() {
+            _isArchived = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Conversation unarchived'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        await ChatService.archiveConversation(widget.conversation.id);
+        if (mounted) {
+          setState(() {
+            _isArchived = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Conversation archived'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      LogService.error('Error archiving/unarchiving conversation: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to ${_isArchived ? 'unarchive' : 'archive'} conversation'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+  
+  void _onTextChanged() {
+    final hasText = _messageController.text.trim().isNotEmpty;
+    if (hasText != _hasText) {
+      setState(() {
+        _hasText = hasText;
+      });
+    }
   }
   
   Future<void> _loadSuggestions() async {
@@ -94,9 +186,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _typingDebounceTimer?.cancel();
+    _messageBatchTimer?.cancel();
     _messageStream?.cancel();
     ChatService.unsubscribeFromMessages(widget.conversation.id);
+    _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
   }
@@ -106,26 +202,32 @@ class _ChatScreenState extends State<ChatScreen> {
       safeSetState(() {
         _isLoading = true;
         _errorMessage = null;
+        _currentOffset = 0;
+        _hasMoreMessages = true;
       });
 
       final messages = await ChatService.getMessages(
         conversationId: widget.conversation.id,
+        limit: _messagesPerPage,
+        offset: _currentOffset,
       );
 
       if (mounted) {
         safeSetState(() {
           _messages = messages;
           _isLoading = false;
+          _currentOffset = messages.length;
+          // If we got fewer messages than requested, no more available
+          _hasMoreMessages = messages.length >= _messagesPerPage;
         });
+        
+        // Mark messages as read when chat screen opens
+        _markMessagesAsRead();
         
         // Scroll to bottom
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
+            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
           }
         });
       }
@@ -140,11 +242,87 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Load more messages when scrolling up (lazy loading)
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages) return;
+
+    try {
+      safeSetState(() {
+        _isLoadingMore = true;
+      });
+
+      // Save current scroll position
+      final previousScrollExtent = _scrollController.position.maxScrollExtent;
+
+      final newMessages = await ChatService.getMessages(
+        conversationId: widget.conversation.id,
+        limit: _messagesPerPage,
+        offset: _currentOffset,
+      );
+
+      if (mounted && newMessages.isNotEmpty) {
+        safeSetState(() {
+          // Prepend new messages to existing list
+          _messages = [...newMessages, ..._messages];
+          _currentOffset += newMessages.length;
+          _hasMoreMessages = newMessages.length >= _messagesPerPage;
+          _isLoadingMore = false;
+        });
+
+        // Maintain scroll position after loading
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            final newScrollExtent = _scrollController.position.maxScrollExtent;
+            final scrollDifference = newScrollExtent - previousScrollExtent;
+            _scrollController.jumpTo(_scrollController.position.pixels + scrollDifference);
+          }
+        });
+      } else {
+        safeSetState(() {
+          _hasMoreMessages = false;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading more messages: $e');
+      if (mounted) {
+        safeSetState(() {
+          _isLoadingMore = false;
+        });
+      }
+    }
+  }
+
   void _subscribeToMessages() {
     _messageStream = ChatService.watchMessages(widget.conversation.id).listen((messages) {
       if (mounted) {
+        // Remove optimistic (temp_) messages when real messages arrive
+        // Real messages from server will replace optimistic ones
+        final realMessages = messages.where((m) => !m.id.startsWith('temp_')).toList();
+        final optimisticMessages = _messages.where((m) => m.id.startsWith('temp_')).toList();
+        
+        // Merge: real messages + optimistic messages that haven't been confirmed yet
+        // Improved matching: content + senderId + timestamp (within 10s window for slow networks)
+        final mergedMessages = <Message>[];
+        for (final realMsg in realMessages) {
+          mergedMessages.add(realMsg);
+          // Remove optimistic message with same content if it exists
+          // Use 10 second window to account for network delays
+          optimisticMessages.removeWhere((opt) => 
+            opt.content.trim() == realMsg.content.trim() && 
+            opt.senderId == realMsg.senderId &&
+            (realMsg.createdAt.difference(opt.createdAt).inSeconds.abs() < 10)
+          );
+        }
+        // Add remaining optimistic messages (not yet confirmed)
+        // Keep them until real message arrives or timeout
+        mergedMessages.addAll(optimisticMessages);
+        
+        // Sort by creation time
+        mergedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        
         safeSetState(() {
-          _messages = messages;
+          _messages = mergedMessages;
         });
         
         // Scroll to bottom on new message
@@ -200,16 +378,57 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    // Get current user info for optimistic message
+    final currentUserId = SupabaseService.currentUser?.id;
+    final currentUserName = SupabaseService.currentUser?.userMetadata?['full_name'] as String? ?? 
+                           widget.conversation.otherUserName ?? 'You';
+    final currentUserAvatarUrl = SupabaseService.currentUser?.userMetadata?['avatar_url'] as String?;
+
+    // Create optimistic message (show immediately)
+    final optimisticMessage = Message(
+      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      conversationId: widget.conversation.id,
+      senderId: currentUserId ?? '',
+      content: content,
+      createdAt: DateTime.now(),
+      senderName: currentUserName,
+      senderAvatarUrl: currentUserAvatarUrl,
+      isCurrentUser: true,
+      moderationStatus: 'pending', // Mark as pending until confirmed
+    );
+
+    // Add optimistic message to UI immediately for instant feedback
     safeSetState(() {
-      _isSending = true;
+      _messages = [..._messages, optimisticMessage];
+      _isSending = false; // Clear loading immediately - send feels instant
       _errorMessage = null;
     });
 
+    // Clear input immediately
+    _messageController.clear();
+
+    // Scroll to bottom immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+
+    // Send message in background (non-blocking)
     try {
       // Preview message first (optional - can show warnings)
       final preview = await ChatService.previewMessage(content);
       if (preview['willBlock'] == true) {
+        // Remove optimistic message and show error
         if (mounted) {
+          safeSetState(() {
+            _messages = _messages.where((m) => m.id != optimisticMessage.id).toList();
+            _isSending = false;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(preview['warnings']?.first ?? 'Message contains prohibited content'),
@@ -218,51 +437,71 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           );
         }
-        safeSetState(() {
-          _isSending = false;
-        });
         return;
       }
 
-      // Send message
-      await ChatService.sendMessage(
+      // Send message (real message will replace optimistic via realtime)
+      // Don't await - let it happen in background for instant feel
+      ChatService.sendMessage(
         conversationId: widget.conversation.id,
         content: content,
-      );
-
-      // Clear input
-      _messageController.clear();
-
-      // Scroll to bottom
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
+      ).catchError((error) {
+        // Only handle errors - success is handled by realtime subscription
+        LogService.error('Error sending message: $error');
+        if (mounted) {
+          final errorMsg = error.toString().replaceFirst('Exception: ', '');
+          safeSetState(() {
+            _messages = _messages.where((m) => m.id != optimisticMessage.id).toList();
+            _errorMessage = errorMsg;
+            _isSending = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMsg),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+            ),
           );
         }
       });
+
+      // The real message will arrive via realtime subscription and replace the optimistic one
+      // Fallback: If real message doesn't arrive within 10 seconds (slow networks), keep optimistic message
+      // This ensures messages don't disappear even if realtime is slow
+      Future.delayed(const Duration(seconds: 10), () {
+        if (mounted) {
+          // Check if real message with same content has arrived
+          final realMessageExists = _messages.any((m) => 
+            !m.id.startsWith('temp_') && 
+            m.content.trim() == optimisticMessage.content.trim() &&
+            m.senderId == optimisticMessage.senderId &&
+            (m.createdAt.difference(optimisticMessage.createdAt).inSeconds.abs() < 10)
+          );
+          
+          // Only remove optimistic message if real one hasn't arrived
+          // If real message hasn't arrived, keep optimistic (better UX than disappearing message)
+          if (!realMessageExists) {
+            // Don't remove - keep optimistic message as fallback
+            // Real message will eventually arrive and replace it
+            LogService.warning('Real message not received within 10s, keeping optimistic message');
+          }
+        }
+      });
     } catch (e) {
-      LogService.error('Error sending message: $e');
+      // Handle any errors from preview message
+      LogService.error('Error in message send flow: $e');
       if (mounted) {
-        final errorMsg = e.toString().replaceFirst('Exception: ', '');
         safeSetState(() {
-          _errorMessage = errorMsg;
+          _messages = _messages.where((m) => m.id != optimisticMessage.id).toList();
+          _isSending = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(errorMsg),
+            content: Text('Failed to send message. Please try again.'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        safeSetState(() {
-          _isSending = false;
-        });
       }
     }
   }
@@ -315,11 +554,15 @@ class _ChatScreenState extends State<ChatScreen> {
               radius: 18,
               backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
               backgroundImage: widget.conversation.otherUserAvatarUrl != null &&
-                      widget.conversation.otherUserAvatarUrl!.isNotEmpty
+                      widget.conversation.otherUserAvatarUrl!.isNotEmpty &&
+                      (widget.conversation.otherUserAvatarUrl!.startsWith('http://') ||
+                       widget.conversation.otherUserAvatarUrl!.startsWith('https://'))
                   ? CachedNetworkImageProvider(widget.conversation.otherUserAvatarUrl!)
                   : null,
               child: widget.conversation.otherUserAvatarUrl == null ||
-                      widget.conversation.otherUserAvatarUrl!.isEmpty
+                      widget.conversation.otherUserAvatarUrl!.isEmpty ||
+                      (!widget.conversation.otherUserAvatarUrl!.startsWith('http://') &&
+                       !widget.conversation.otherUserAvatarUrl!.startsWith('https://'))
                   ? Text(
                       widget.conversation.otherUserName?.isNotEmpty == true
                           ? widget.conversation.otherUserName![0].toUpperCase()
@@ -381,6 +624,38 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: AppTheme.textDark),
+            onSelected: (value) {
+              if (value == 'archive') {
+                _handleArchiveAction();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'archive',
+                child: Row(
+                  children: [
+                    Icon(
+                      _isArchived ? Icons.unarchive : Icons.archive_outlined,
+                      size: 20,
+                      color: AppTheme.textDark,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isArchived ? 'Unarchive' : 'Archive',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -420,10 +695,25 @@ class _ChatScreenState extends State<ChatScreen> {
                     : ListView.builder(
                         controller: _scrollController,
                         padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length + (_shouldShowBanner() ? 1 : 0),
+                        itemCount: _messages.length + 
+                                   (_shouldShowBanner() ? 1 : 0) + 
+                                   (_isLoadingMore ? 1 : 0),
                         itemBuilder: (context, index) {
+                          // Show loading indicator at top when loading more
+                          if (_isLoadingMore && index == 0) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+                          
+                          // Adjust index for loading indicator
+                          final adjustedIndex = _isLoadingMore ? index - 1 : index;
+                          
                           // Show banner after first message or date separator
-                          if (_shouldShowBanner() && index == 0) {
+                          if (_shouldShowBanner() && adjustedIndex == 0) {
                             return ActionSuggestionBanner(
                               message: _suggestion?.message ?? 'Book a trial while this tutor is still available',
                               onTap: _navigateToBookTrial,
@@ -436,7 +726,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           }
                           
                           // Adjust index if banner is shown
-                          final messageIndex = _shouldShowBanner() ? index - 1 : index;
+                          final messageIndex = _shouldShowBanner() ? adjustedIndex - 1 : adjustedIndex;
                           if (messageIndex < 0 || messageIndex >= _messages.length) {
                             return const SizedBox.shrink();
                           }
@@ -523,8 +813,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: TextField(
                       controller: _messageController,
                       maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
+                      minLines: 1,
+                      textInputAction: TextInputAction.newline,
+                      keyboardType: TextInputType.multiline,
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         hintStyle: GoogleFonts.poppins(
@@ -547,8 +838,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   const SizedBox(width: 8),
                   Container(
                     decoration: BoxDecoration(
-                      color: _isSending || _messageController.text.trim().isEmpty
-                          ? Colors.grey[300]
+                      color: _isSending || !_hasText
+                          ? AppTheme.primaryColor.withOpacity(0.3)
                           : AppTheme.primaryColor,
                       shape: BoxShape.circle,
                     ),
@@ -562,8 +853,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : const Icon(Icons.send, color: Colors.white, size: 20),
-                      onPressed: _isSending || _messageController.text.trim().isEmpty
+                          : Icon(
+                              Icons.send,
+                              color: _hasText ? Colors.white : AppTheme.primaryColor.withOpacity(0.5),
+                              size: 20,
+                            ),
+                      onPressed: _isSending || !_hasText
                           ? null
                           : _sendMessage,
                     ),
@@ -653,24 +948,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
             ),
-            if (message.isFiltered)
-              Padding(
-                padding: const EdgeInsets.only(top: 4, left: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.info_outline, size: 12, color: Colors.orange[700]),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Message flagged for review',
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        color: Colors.orange[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
           ],
         ),
       ),
