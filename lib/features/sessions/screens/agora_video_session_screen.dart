@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -60,6 +61,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   /// Initialize Agora session
   Future<void> _initializeSession() async {
     try {
+      // Log user role for debugging
+      LogService.info('🎥 Initializing Agora session - Session ID: ${widget.sessionId}, User Role: ${widget.userRole}');
+      
       safeSetState(() {
         _sessionState = AgoraSessionState.joining;
         _errorMessage = null;
@@ -253,6 +257,16 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
     // If remote user joined, show grid layout
     if (_remoteUID != null) {
+      final connection = _agoraService.currentConnection;
+      // Debug: Log connection status
+      if (kDebugMode) {
+        debugPrint('📹 [VideoView] Building remote video view:');
+        debugPrint('   - Remote UID: $_remoteUID');
+        debugPrint('   - Connection: ${connection != null ? "exists" : "null"}');
+        debugPrint('   - ChannelId: ${connection?.channelId ?? "null"}');
+        debugPrint('   - LocalUid: ${connection?.localUid ?? "null"}');
+      }
+      
       return Column(
         children: [
           // Remote video (larger)
@@ -262,6 +276,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               engine: engine,
               uid: _remoteUID,
               isLocal: false,
+              connection: connection, // Pass connection with channelId
             ),
           ),
           // Local video (smaller, bottom right)
@@ -290,30 +305,62 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       );
     }
 
-    // Only local video (waiting for remote)
+    // Only local video (waiting for remote or connected)
     return Stack(
       children: [
+        // Local video - always show when engine is available
         agora_widget.AgoraVideoViewWidget(
           engine: engine,
           uid: _agoraService.currentUID,
           isLocal: true,
         ),
-        // Waiting overlay
+        // Waiting overlay - only show if not connected or if remote user not detected
+        if (_sessionState != AgoraSessionState.connected || _remoteUID == null)
         Container(
           color: Colors.black54,
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const CircularProgressIndicator(color: Colors.white),
+                  if (_sessionState == AgoraSessionState.joining)
+                    const CircularProgressIndicator(color: Colors.white)
+                  else
+                    const SizedBox(height: 24),
                 const SizedBox(height: 16),
                 Text(
-                  'Waiting for ${widget.userRole == 'tutor' ? 'learner' : 'tutor'}...',
+                    _sessionState == AgoraSessionState.joining
+                        ? 'Connecting to session...'
+                        : 'Waiting for ${widget.userRole == 'tutor' ? 'learner' : 'tutor'} to join...',
                   style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 16,
                   ),
                 ),
+                  // Debug: Show current role (remove in production)
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Debug: Role=${widget.userRole}, State=${_sessionState.name}, RemoteUID=${_remoteUID ?? "null"}',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white54,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                  if (_sessionState == AgoraSessionState.joining) ...[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        'Please allow camera and microphone access when prompted',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
               ],
             ),
           ),
@@ -393,50 +440,86 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
   /// Build controls (bottom)
   Widget _buildControls() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              Colors.black.withOpacity(0.8),
-              Colors.transparent,
-            ],
+    return Stack(
+      children: [
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  Colors.black.withOpacity(0.8),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // Mute/Unmute button
+                _buildControlButton(
+                  icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
+                  label: _isAudioEnabled ? 'Mute' : 'Unmute',
+                  onPressed: _toggleAudio,
+                  isActive: _isAudioEnabled,
+                ),
+                // Camera on/off button
+                _buildControlButton(
+                  icon: _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
+                  label: _isVideoEnabled ? 'Camera Off' : 'Camera On',
+                  onPressed: _toggleVideo,
+                  isActive: _isVideoEnabled,
+                ),
+                // End call button
+                _buildControlButton(
+                  icon: Icons.call_end,
+                  label: 'End Call',
+                  onPressed: _endCall,
+                  isActive: false,
+                  isDanger: true,
+                ),
+              ],
+            ),
           ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            // Mute/Unmute button
-            _buildControlButton(
-              icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
-              label: _isAudioEnabled ? 'Mute' : 'Unmute',
-              onPressed: _toggleAudio,
-              isActive: _isAudioEnabled,
+        // Warning indicator if camera is off (above controls)
+        if (!_isVideoEnabled)
+          Positioned(
+            bottom: 100,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.warning, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Your camera is OFF - others cannot see you. Tap "Camera On" to enable.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            // Camera on/off button
-            _buildControlButton(
-              icon: _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
-              label: _isVideoEnabled ? 'Camera Off' : 'Camera On',
-              onPressed: _toggleVideo,
-              isActive: _isVideoEnabled,
-            ),
-            // End call button
-            _buildControlButton(
-              icon: Icons.call_end,
-              label: 'End Call',
-              onPressed: _endCall,
-              isActive: false,
-              isDanger: true,
-            ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 
@@ -525,23 +608,110 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   }
 
   /// Build loading overlay
+  /// Build loading overlay with permission instructions
   Widget _buildLoadingOverlay() {
     return Container(
-      color: Colors.black54,
+      color: Colors.black87,
       child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
           children: [
             const CircularProgressIndicator(color: Colors.white),
-            const SizedBox(height: 16),
+              const SizedBox(height: 24),
             Text(
-              _sessionState.displayName,
+                _sessionState == AgoraSessionState.joining
+                    ? 'Connecting to video session...'
+                    : _sessionState.displayName,
+                textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
                 color: Colors.white,
-                fontSize: 16,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (_sessionState == AgoraSessionState.joining) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.blue.shade300, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Permission Required',
+                            style: GoogleFonts.poppins(
+                              color: Colors.blue.shade300,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Please allow camera and microphone access when your browser prompts you. This is required for the video session.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.orange.shade300, size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'No permission prompt?',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.orange.shade300,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'If the browser didn\'t ask for permission:\n'
+                              '1. Click the camera/mic icon in the address bar\n'
+                              '2. Set both to "Allow"\n'
+                              '3. Refresh the page',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
               ),
             ),
           ],
+            ],
+          ),
         ),
       ),
     );

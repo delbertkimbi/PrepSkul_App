@@ -1580,15 +1580,33 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       LogService.info('🎥 [Join Agora] Tutor joining Agora video session: $sessionId');
       
       // Verify the session exists in the database before navigating
+      // Check both individual_sessions and trial_sessions
       try {
-        final sessionCheck = await SupabaseService.client
+        // First, try individual_sessions
+        var sessionCheck = await SupabaseService.client
             .from('individual_sessions')
             .select('id, tutor_id, learner_id, parent_id, status')
             .eq('id', sessionId)
             .maybeSingle();
         
+        // If not found in individual_sessions, check trial_sessions
         if (sessionCheck == null) {
-          LogService.error('❌ [Join Agora] Session $sessionId not found in individual_sessions table!');
+          LogService.info('📋 [Join Agora] Session not found in individual_sessions, checking trial_sessions...');
+          sessionCheck = await SupabaseService.client
+              .from('trial_sessions')
+              .select('id, tutor_id, learner_id, parent_id, status')
+              .eq('id', sessionId)
+              .maybeSingle();
+          
+          if (sessionCheck != null) {
+            LogService.info('✅ [Join Agora] Session found in trial_sessions: ${sessionCheck['id']}, Status: ${sessionCheck['status']}');
+          }
+        } else {
+          LogService.info('✅ [Join Agora] Session found in individual_sessions: ${sessionCheck['id']}, Status: ${sessionCheck['status']}');
+        }
+        
+        if (sessionCheck == null) {
+          LogService.error('❌ [Join Agora] Session $sessionId not found in individual_sessions or trial_sessions!');
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -1599,8 +1617,6 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           }
           return;
         }
-        
-        LogService.info('✅ [Join Agora] Session verified: ${sessionCheck['id']}, Status: ${sessionCheck['status']}');
       } catch (e) {
         LogService.error('❌ [Join Agora] Error verifying session: $e');
         // Continue anyway - let the API handle the error
@@ -2625,6 +2641,38 @@ class _SessionDetailsSheet extends StatelessWidget {
   Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
     try {
       LogService.info('🎥 Tutor joining Agora video session from details: $sessionId');
+      
+      // Verify the session exists (check both individual_sessions and trial_sessions)
+      try {
+        var sessionCheck = await SupabaseService.client
+            .from('individual_sessions')
+            .select('id')
+            .eq('id', sessionId)
+            .maybeSingle();
+        
+        if (sessionCheck == null) {
+          sessionCheck = await SupabaseService.client
+              .from('trial_sessions')
+              .select('id')
+              .eq('id', sessionId)
+              .maybeSingle();
+        }
+        
+        if (sessionCheck == null) {
+          LogService.error('❌ Session $sessionId not found');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Session not found. Please refresh and try again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        LogService.warning('Error verifying session (continuing anyway): $e');
+      }
       
       // Navigate to Agora video session screen
       if (context.mounted) {
