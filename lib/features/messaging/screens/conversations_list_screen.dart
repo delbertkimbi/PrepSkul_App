@@ -55,7 +55,9 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
         safeSetState(() => _isLoading = true);
       }
 
-      final conversations = await ChatService.getConversations();
+      final conversations = _selectedTab == 'archived'
+          ? await ChatService.getArchivedConversations()
+          : await ChatService.getConversations();
 
       if (mounted) {
         safeSetState(() {
@@ -78,23 +80,58 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
   }
 
   void _subscribeToConversations() {
-    _conversationStream = ChatService.watchConversations().listen((conversations) {
+    _conversationStream = ChatService.watchConversations().listen((conversations) async {
       if (mounted) {
-        safeSetState(() {
-          _conversations = conversations;
-        });
+        // Reload conversations based on current tab
+        await _loadConversations(refresh: true);
       }
     });
   }
 
   List<Conversation> get _filteredConversations {
-    // Filter by tab
-    if (_selectedTab == 'archived') {
-      // For now, archived is empty (future feature)
-      return [];
-    }
-    
     return _conversations;
+  }
+  
+  Future<void> _handleArchiveAction(Conversation conversation) async {
+    try {
+      if (_selectedTab == 'archived') {
+        // Unarchive
+        await ChatService.unarchiveConversation(conversation.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Conversation unarchived'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          await _loadConversations(refresh: true);
+        }
+      } else {
+        // Archive
+        await ChatService.archiveConversation(conversation.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Conversation archived'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          await _loadConversations(refresh: true);
+        }
+      }
+    } catch (e) {
+      LogService.error('Error archiving/unarchiving conversation: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to ${_selectedTab == 'archived' ? 'unarchive' : 'archive'} conversation'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   String _formatLastMessageTime(DateTime? time) {
@@ -172,6 +209,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
         setState(() {
           _selectedTab = value;
         });
+        _loadConversations(refresh: true);
       },
       child: Column(
         children: [
@@ -216,7 +254,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                 'No archived conversations',
                 style: GoogleFonts.poppins(
                   fontSize: 18,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w500,
                   color: AppTheme.textDark,
                 ),
               ),
@@ -226,31 +264,37 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
       );
     }
     
-    // Show main empty state with "Find a tutor" button - centered
-    return Center(
-      child: EmptyConversationsState(
-        onFindTutor: () async {
-          try {
-            final userProfile = await AuthService.getUserProfile();
-            final userType = userProfile?['user_type'] ?? 'student';
-            final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
-            
-            Navigator.pushReplacementNamed(
-              context,
-              route,
-              arguments: {'initialTab': 1}, // Find Tutors tab
-            );
-          } catch (e) {
-            LogService.error('Error navigating to find tutors: $e');
-            // Fallback: just navigate to student-nav
-            Navigator.pushReplacementNamed(
-              context,
-              '/student-nav',
-              arguments: {'initialTab': 1},
-            );
-          }
-        },
-      ),
+    // Show main empty state - user-type aware
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: AuthService.getUserProfile(),
+      builder: (context, snapshot) {
+        final userType = snapshot.data?['user_type'] as String? ?? 'student';
+        final isStudentOrParent = userType == 'student' || userType == 'parent' || userType == 'learner';
+        
+        return Center(
+          child: EmptyConversationsState(
+            userType: userType,
+            onFindTutor: isStudentOrParent ? () async {
+              try {
+                final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
+                Navigator.pushReplacementNamed(
+                  context,
+                  route,
+                  arguments: {'initialTab': 1}, // Find Tutors tab
+                );
+              } catch (e) {
+                LogService.error('Error navigating to find tutors: $e');
+                // Fallback: just navigate to student-nav
+                Navigator.pushReplacementNamed(
+                  context,
+                  '/student-nav',
+                  arguments: {'initialTab': 1},
+                );
+              }
+            } : null,
+          ),
+        );
+      },
     );
   }
 
@@ -274,6 +318,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
             ),
           );
         },
+        onLongPress: () => _handleArchiveAction(conversation),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -286,11 +331,15 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                     radius: 28,
                     backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                     backgroundImage: conversation.otherUserAvatarUrl != null &&
-                            conversation.otherUserAvatarUrl!.isNotEmpty
+                            conversation.otherUserAvatarUrl!.isNotEmpty &&
+                            (conversation.otherUserAvatarUrl!.startsWith('http://') ||
+                             conversation.otherUserAvatarUrl!.startsWith('https://'))
                         ? CachedNetworkImageProvider(conversation.otherUserAvatarUrl!)
                         : null,
                     child: conversation.otherUserAvatarUrl == null ||
-                            conversation.otherUserAvatarUrl!.isEmpty
+                            conversation.otherUserAvatarUrl!.isEmpty ||
+                            (!conversation.otherUserAvatarUrl!.startsWith('http://') &&
+                             !conversation.otherUserAvatarUrl!.startsWith('https://'))
                         ? Text(
                             conversation.otherUserName?.isNotEmpty == true
                                 ? conversation.otherUserName![0].toUpperCase()
@@ -381,6 +430,16 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                 ),
               ),
               const SizedBox(width: 8),
+              // Archive/Unarchive button
+              IconButton(
+                icon: Icon(
+                  _selectedTab == 'archived' ? Icons.unarchive : Icons.archive_outlined,
+                  color: Colors.grey[600],
+                  size: 20,
+                ),
+                onPressed: () => _handleArchiveAction(conversation),
+                tooltip: _selectedTab == 'archived' ? 'Unarchive' : 'Archive',
+              ),
               Icon(
                 Icons.chevron_right,
                 color: Colors.grey[400],

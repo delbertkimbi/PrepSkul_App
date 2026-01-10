@@ -45,8 +45,8 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class NotificationHelperService {
-  // Get API base URL from AppConfig
-  static String get _apiBaseUrl => AppConfig.apiBaseUrl;
+  // Get API base URL from AppConfig (with localhost detection for local development)
+  static String get _apiBaseUrl => AppConfig.effectiveApiBaseUrl;
 
   /// Send notification via API (handles in-app, push, and email)
   /// 

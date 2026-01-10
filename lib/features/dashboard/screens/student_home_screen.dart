@@ -19,6 +19,7 @@ import '../../../features/skulmate/screens/game_library_screen.dart';
 import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
+import '../../../features/messaging/widgets/message_icon_badge.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -363,28 +364,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ],
                         ),
                       ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ConversationsListScreen(),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.chat,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ),
+                      const MessageIconBadge(iconColor: Colors.white),
                       const SizedBox(width: 8),
                       const NotificationBell(iconColor: Colors.white),
                     ],

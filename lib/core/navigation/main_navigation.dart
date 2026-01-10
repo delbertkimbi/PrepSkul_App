@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -49,7 +51,28 @@ class _MainNavigationState extends State<MainNavigation> {
     // Use route arguments if available, otherwise use widget parameter
     final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
     
-    if (targetTab != _selectedIndex) {
+    // #region agent log
+    try {
+      final logData = {
+        'sessionId': 'debug-session',
+        'runId': 'run1',
+        'hypothesisId': 'C',
+        'location': 'main_navigation.dart:42',
+        'message': 'didChangeDependencies called',
+        'data': {'currentIndex': _selectedIndex, 'targetTab': targetTab, 'tabFromArgs': tabFromArgs, 'widgetInitialTab': widget.initialTab, 'willChange': targetTab != _selectedIndex},
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+      File('/Users/user/Desktop/PrepSkul/.cursor/debug.log').writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
+    } catch (_) {}
+    // #endregion
+    
+    // Only update tab if we have an explicit target from route args or widget parameter
+    // Don't update if both are null (which happens when modals open/close)
+    final hasExplicitTarget = tabFromArgs != null || widget.initialTab != null;
+    
+    // Only update tab if we have a valid target tab AND it's different from current
+    // AND we have an explicit target (not just defaulting to 0)
+    if (targetTab != _selectedIndex && targetTab >= 0 && hasExplicitTarget) {
       LogService.info('🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})');
       safeSetState(() {
         _selectedIndex = targetTab;
