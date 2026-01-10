@@ -9,17 +9,36 @@ class AgoraVideoViewWidget extends StatelessWidget {
   final agora_rtc_engine.RtcEngine engine;
   final int? uid;
   final bool isLocal;
+  final agora_rtc_engine.RtcConnection? connection; // Optional connection for remote video
 
   const AgoraVideoViewWidget({
     Key? key,
     required this.engine,
     required this.uid,
     this.isLocal = false,
+    this.connection,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     if (uid == null) {
+      return Container(
+        color: Colors.black,
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    // For remote video, we need a connection with channelId
+    // If connection is not provided or doesn't have channelId, show loading
+    if (!isLocal && (connection == null || connection!.channelId == null)) {
+      // Debug: Log why we're showing loading
+      if (connection == null) {
+        debugPrint('⚠️ [AgoraVideoView] Remote video: connection is null for UID=$uid');
+      } else if (connection!.channelId == null) {
+        debugPrint('⚠️ [AgoraVideoView] Remote video: connection.channelId is null for UID=$uid');
+      }
       return Container(
         color: Colors.black,
         child: const Center(
@@ -41,7 +60,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
           )
         : agora_rtc_engine.VideoViewController.remote(
             rtcEngine: engine,
-            connection: const agora_rtc_engine.RtcConnection(), // Default connection
+            connection: connection!, // Safe to use ! here because we checked above
             canvas: agora_rtc_engine.VideoCanvas(
               uid: uid!,
               // mirrorMode is optional - only set if available
