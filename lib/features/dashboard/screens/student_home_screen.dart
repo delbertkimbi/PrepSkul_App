@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
@@ -271,7 +272,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     return StatusBarUtils.withDarkStatusBar(
       Scaffold(
         backgroundColor: Colors.white,
-        floatingActionButton: FloatingActionButton.extended(
+        // SkulMate controlled by AppConfig feature flag
+        floatingActionButton: AppConfig.enableSkulMate ? FloatingActionButton.extended(
         onPressed: () async {
           // Check if user has any games
           try {
@@ -315,7 +317,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
         ),
         icon: const Icon(Icons.auto_awesome, color: Colors.white),
-      ),
+      ) : null,
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

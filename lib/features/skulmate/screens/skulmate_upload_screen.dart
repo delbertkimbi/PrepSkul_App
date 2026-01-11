@@ -55,10 +55,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             _selectedFiles = []; // Clear mobile files
           } else {
             // On mobile, store File objects (they have paths)
-            _selectedFiles = result.files
-                .where((file) => file.path != null)
-                .map((file) => File(file.path!))
-                .toList();
+          _selectedFiles = result.files
+              .where((file) => file.path != null)
+              .map((file) => File(file.path!))
+              .toList();
             _selectedFilesWeb = []; // Clear web files
           }
           _selectedFileNames = result.files
@@ -237,13 +237,13 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         }
       } else {
         // On mobile, use File objects
-        for (final file in _selectedFiles) {
-          final url = await StorageService.uploadDocument(
-            userId: user.id,
-            documentFile: file,
-            documentType: 'skulmate_notes',
-          );
-          fileUrls.add(url);
+      for (final file in _selectedFiles) {
+        final url = await StorageService.uploadDocument(
+          userId: user.id,
+          documentFile: file,
+          documentType: 'skulmate_notes',
+        );
+        fileUrls.add(url);
         }
       }
 
@@ -459,7 +459,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                                 if (kIsWeb) {
                                   _selectedFilesWeb.removeAt(index);
                                 } else {
-                                  _selectedFiles.removeAt(index);
+                                _selectedFiles.removeAt(index);
                                 }
                                 _selectedFileNames.removeAt(index);
                               });
@@ -527,10 +527,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                                 )
                               : Image.file(
                                   File(image.path),
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                ),
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          ),
                         ),
                         Positioned(
                           top: 4,

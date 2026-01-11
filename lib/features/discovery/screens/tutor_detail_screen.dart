@@ -56,6 +56,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   bool _isOffline = false;
   final ConnectivityService _connectivity = ConnectivityService();
   Map<String, dynamic>? _refreshedTutorData; // Store refreshed tutor data
+  bool _isFavorited = false; // Track favorite state
 
   @override
   void initState() {
@@ -290,26 +291,18 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               if (videoIdChanged) {
                 LogService.info('🔄 Video ID changed from $oldVideoId to $newVideoId - resetting player');
               } else {
-                LogService.info('🎬 Initializing video player with ID: $newVideoId');
+                LogService.info('🎬 Video ID extracted: $newVideoId - showing thumbnail preview');
               }
               _isVideoInitialized = false;
               _isVideoLoading = false;
               // Dispose old controller if exists
               _youtubeController?.dispose();
               _youtubeController = null;
+              // DO NOT auto-initialize - wait for user to click play button
             }
           });
           
-          // If video ID changed OR this is the first time, initialize the video player
-          if ((videoIdChanged || isFirstTime) && mounted) {
-            // Wait a bit for state to update, then initialize
-            Future.delayed(const Duration(milliseconds: 150), () {
-              if (mounted && _videoId == newVideoId) {
-                LogService.debug('🎥 Calling _initializeVideo() for video ID: $newVideoId');
-                _initializeVideo();
-              }
-            });
-          }
+          // Removed automatic initialization - video will only initialize when user clicks play button
         } else {
           LogService.warning('Could not extract video ID from URL: $newVideoUrl');
         }
@@ -350,20 +343,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           _isVideoLoading = false;
         });
       } else {
-        // For mobile, use YoutubePlayerController with modern settings
+        // For mobile, use YoutubePlayerController with optimized settings for faster loading
           _youtubeController = YoutubePlayerController(
           initialVideoId: _videoId!,
             flags: const YoutubePlayerFlags(
-            autoPlay: false, // Don't auto-play - wait for user to click
+            autoPlay: true, // Auto-play immediately when ready (user clicked play button)
               mute: false,
-              enableCaption: true,
-            controlsVisibleAtStart: true, // Show controls when video starts
+            enableCaption: false, // Disable captions for faster loading
+            controlsVisibleAtStart: false, // Hide controls initially for distraction-free viewing
             hideControls: true, // Auto-hide controls after a few seconds
-            hideThumbnail: false, // Show thumbnail initially
+            hideThumbnail: true, // Hide thumbnail once video starts for faster transition
             loop: false,
-            forceHD: true, // Force HD for better quality
+            forceHD: false, // Don't force HD - let YouTube decide for faster loading
             startAt: 0,
-            showLiveFullscreenButton: true,
+            showLiveFullscreenButton: false, // Hide fullscreen button for cleaner UI
             useHybridComposition: true, // Better performance on Android
           ),
         );
@@ -373,8 +366,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           _isVideoLoading = false;
         });
         
-        // Play video when user clicks (handled in _buildThumbnailPreview)
-        // Don't auto-play here - wait for user interaction
+        // No manual play() call needed - autoPlay: true handles it immediately
       }
     } catch (e) {
       LogService.error('Error initializing video: $e');
@@ -509,78 +501,50 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         bottom: false,
         child: CustomScrollView(
           slivers: [
-            // Modern App Bar with Video
+            // Modern App Bar with white background
             SliverAppBar(
-              expandedHeight: 280,
               pinned: true,
               elevation: 0,
-              backgroundColor: Colors.transparent, // Transparent so buttons show above video
-              leading: Container(
-                margin: const EdgeInsets.only(left: 8, top: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                  ],
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.black),
-                  onPressed: () => Navigator.pop(context),
-                  padding: EdgeInsets.zero,
-                ),
+              backgroundColor: Colors.white, // White background to prevent accidental video clicks
+              surfaceTintColor: Colors.white, // Ensure it stays white when scrolling
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.black),
+                onPressed: () => Navigator.pop(context),
               ),
               actions: [
-                Container(
-                  margin: const EdgeInsets.only(right: 8, top: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.share, color: Colors.black),
-                    onPressed: () => _shareTutor(),
-                    padding: EdgeInsets.zero,
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.share, color: Colors.black),
+                  onPressed: () => _shareTutor(),
                 ),
-                Container(
-                  margin: const EdgeInsets.only(right: 8, top: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        spreadRadius: 1,
+                IconButton(
+                  icon: Icon(
+                    _isFavorited ? Icons.favorite : Icons.favorite_border,
+                    color: _isFavorited ? AppTheme.primaryColor : Colors.black,
+                  ),
+                  onPressed: () {
+                    safeSetState(() {
+                      _isFavorited = !_isFavorited;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(_isFavorited 
+                          ? 'Added to favorites!' 
+                          : 'Removed from favorites!'),
                       ),
-                    ],
-                  ),
-                  child: IconButton(
-                    icon: const Icon(Icons.favorite_border, color: Colors.black),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Added to favorites!')),
-                      );
-                    },
-                    padding: EdgeInsets.zero,
-                  ),
+                    );
+                  },
                 ),
               ],
-              flexibleSpace: FlexibleSpaceBar(
-                background: _buildVideoSection(),
-                centerTitle: false,
+            ),
+
+            // Video section below AppBar
+            SliverToBoxAdapter(
+              child: Container(
+                color: Colors.white, // White background to match UI
+                child: AspectRatio(
+                  aspectRatio: 16 / 9, // Standard video aspect ratio
+                  child: _buildVideoSection(),
+                ),
               ),
             ),
 
@@ -1161,42 +1125,63 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
               // Book Trial Session button - RIGHT SIDE
               Expanded(
-                child: OutlinedButton(
-                  onPressed: _isOffline
-                      ? () => OfflineDialog.show(
-                            context,
-                            message: 'Booking a session requires an internet connection. Please check your connection and try again.',
-                          )
-                      : () {
-                    // Pause video before navigating
-                    _pauseVideo();
-                    // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
-                    final tutorData = _currentTutorData;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            BookTrialSessionScreen(tutor: tutorData),
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppTheme.primaryColor, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+            child: OutlinedButton(
+              onPressed: _isOffline
+                  ? () => OfflineDialog.show(
+                        context,
+                        message: 'Booking a session requires an internet connection. Please check your connection and try again.',
+                      )
+                  : () {
+                // Pause video before navigating
+                _pauseVideo();
+                // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
+                final tutorData = _currentTutorData;
+                    
+                    // Log tutor data for debugging
+                    LogService.info('📋 [TUTOR_DETAIL] Navigating to BookTrialSessionScreen');
+                    LogService.info('📋 [TUTOR_DETAIL] Tutor data keys: ${tutorData.keys.toList()}');
+                    LogService.info('📋 [TUTOR_DETAIL] Tutor user_id: ${tutorData['user_id']}');
+                    LogService.info('📋 [TUTOR_DETAIL] Tutor id: ${tutorData['id']}');
+                    LogService.info('📋 [TUTOR_DETAIL] Tutor name: ${tutorData['full_name'] ?? tutorData['profiles']?['full_name'] ?? 'Unknown'}');
+                    
+                    // Validate tutor ID before navigation
+                    final tutorId = tutorData['user_id'] as String? ?? tutorData['id'] as String?;
+                    if (tutorId == null) {
+                      LogService.error('❌ [TUTOR_DETAIL] Tutor ID is missing! Cannot book trial session.');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error: Tutor information is incomplete. Please try again.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        BookTrialSessionScreen(tutor: tutorData),
+                  ),
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: AppTheme.primaryColor, width: 2),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                     minimumSize: const Size(0, 56), // Same height as message button
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Book Trial Session',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+              ),
+              child: Text(
+                'Book Trial Session',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ),
               ),
             ],
           ),
@@ -1641,24 +1626,20 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
     // If video is initialized, show player
     if (_isVideoInitialized) {
-      return kIsWeb && _videoId != null
-          ? _buildWebVideoPlayer(_videoId!, key: videoKey)
-          : (_youtubeController != null
-                ? Container(
-                    key: videoKey, // Force rebuild when video ID changes
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.3),
-                          blurRadius: 20,
-                          spreadRadius: 2,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+      if (kIsWeb && _videoId != null) {
+        return _buildWebVideoPlayer(_videoId!, key: videoKey);
+      } else if (_youtubeController != null) {
+        return GestureDetector(
+          onTap: () {
+            // Tap to pause/play
+            if (_youtubeController != null) {
+              if (_youtubeController!.value.isPlaying) {
+                _youtubeController!.pause();
+              } else {
+                _youtubeController!.play();
+              }
+            }
+          },
                       child: YoutubePlayerBuilder(
                     onExitFullScreen: () {},
                     player: YoutubePlayer(
@@ -1678,63 +1659,46 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                 )
                               : null,
                           onReady: () {
-                            // Video is ready - user will click to play
-                            // Don't auto-play here
+                // Video is ready - autoPlay flag will handle playing immediately
+                LogService.debug('✅ Video player ready and will auto-play');
                           },
                           onEnded: (metadata) {
                             // Handle video end - could show replay option
                             LogService.info('Video ended');
                           },
                         ),
-                        builder: (context, player) => Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 10,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                          child: player,
-                        ),
-                      ),
-                    ),
-                  )
-                : _buildThumbnailPreview());
+            builder: (context, player) => player,
+          ),
+        );
+      } else {
+        return _buildThumbnailPreview();
+      }
     }
 
     // Show loading state with better UX
     if (_isVideoLoading) {
       return Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-        color: Colors.black,
-        ),
+        color: Colors.white, // Changed from black to white
         child: Stack(
           children: [
             // Show thumbnail while loading
             if (_getThumbnailUrl() != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: CachedNetworkImage(
+              CachedNetworkImage(
                 imageUrl: _getThumbnailUrl()!,
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
                 placeholder: (context, url) => Container(
-                  color: Colors.grey[900],
+                  color: Colors.grey[200], // Changed from grey[900] to grey[200]
                   child: const Center(
                       child: CircularProgressIndicator(
-                        color: Colors.white,
+                        color: AppTheme.primaryColor,
                         strokeWidth: 2,
                       ),
                   ),
                 ),
                 errorWidget: (context, url, error) =>
-                    Container(color: Colors.grey[900]),
-              ),
+                    Container(color: Colors.grey[200]), // Changed from grey[900] to grey[200]
               ),
             // Modern loading overlay with pulse animation
             Container(
@@ -1776,33 +1740,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget _buildThumbnailPreview() {
     final thumbnailUrl = _getThumbnailUrl();
 
-    return GestureDetector(
-      onTap: () {
-        // Initialize video when user taps
-        _initializeVideo();
-        // Play video after initialization (for mobile)
-        if (!kIsWeb && _youtubeController != null) {
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (_youtubeController?.value.isReady == true) {
-              _youtubeController?.play();
-            }
-          });
-        }
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 10,
-              spreadRadius: 1,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-      child: Stack(
+    return Stack(
         fit: StackFit.expand,
         children: [
           // Thumbnail image with caching
@@ -1813,67 +1751,55 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                   width: double.infinity,
                   height: double.infinity,
                   placeholder: (context, url) => Container(
-                    color: Colors.grey[900],
+                  color: Colors.grey[200],
                     child: const Center(
                           child: CircularProgressIndicator(
-                            color: Colors.white,
+                      color: AppTheme.primaryColor,
                             strokeWidth: 2,
                           ),
                     ),
                   ),
                   errorWidget: (context, url, error) {
                     return Container(
-                      color: Colors.grey[900],
-                      child: const Center(
+                    color: Colors.grey[200],
+                    child: Center(
                         child: Icon(
                           Icons.video_library_outlined,
                           size: 80,
-                          color: Colors.white54,
+                        color: Colors.grey[400],
                         ),
                       ),
                     );
                   },
                 )
               : Container(
-                  color: Colors.grey[900],
-                  child: const Center(
+                color: Colors.grey[200],
+                child: Center(
                     child: Icon(
                       Icons.video_library_outlined,
                       size: 80,
-                      color: Colors.white54,
+                    color: Colors.grey[400],
                     ),
                   ),
                 ),
-              // Modern play button overlay (smaller, more elegant)
-          Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.4),
-                    ],
-                  ),
-                ),
-            child: Center(
+        // Play button at bottom right - always visible and clickable
+        Positioned(
+          bottom: 16,
+          right: 16,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                // Initialize video when user taps play button
+                _initializeVideo();
+              },
+              borderRadius: BorderRadius.circular(28),
               child: Container(
-                    padding: const EdgeInsets.all(16),
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.95),
+                  color: AppTheme.primaryColor, // Deep blue play button
                   shape: BoxShape.circle,
-                  boxShadow: [
-                        BoxShadow(
-                          color: Colors.red.withOpacity(0.5),
-                          blurRadius: 20,
-                          spreadRadius: 4,
-                        ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 15,
-                          spreadRadius: 2,
-                    ),
-                  ],
                 ),
                 child: const Icon(
                   Icons.play_arrow,
@@ -1883,10 +1809,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               ),
             ),
           ),
-        ],
           ),
-        ),
-      ),
+      ],
     );
   }
 
@@ -1906,7 +1830,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
       return Container(
         key: key, // Use key to force rebuild when video changes
-        color: Colors.black,
+        color: Colors.white, // Changed from black to white
+        width: double.infinity,
+        height: double.infinity,
         child: HtmlElementView(viewType: viewType),
       );
     } else {
@@ -2545,11 +2471,11 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               : 'Tutor';
 
       // Create unique deep link for this tutor
-      // Format: https://app.prepskul.com/tutor/{tutorId}
+      // Format: https://www.prepskul.com/tutor/{tutorId} (production)
       // For local development: prepskul://tutor/{tutorId}
       final baseUrl = kDebugMode 
           ? 'prepskul://tutor/$tutorId'
-          : 'https://app.prepskul.com/tutor/$tutorId';
+          : 'https://www.prepskul.com/tutor/$tutorId';
       
       final shareText = 'Check out $tutorName on PrepSkul!\n\n$baseUrl';
       

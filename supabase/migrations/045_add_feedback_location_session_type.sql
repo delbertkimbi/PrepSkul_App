@@ -32,3 +32,4 @@ COMMENT ON COLUMN public.session_feedback.learning_objectives_met IS 'Whether le
 COMMENT ON COLUMN public.session_feedback.student_progress_rating IS 'Student rating of their progress (1-5)';
 COMMENT ON COLUMN public.session_feedback.would_continue_lessons IS 'Whether student would continue lessons';
 
+

@@ -39,6 +39,7 @@ import 'package:prepskul/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/widgets/initial_loading_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
@@ -882,14 +883,44 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           case '/forgot-password':
             return _createFadeRoute(() => const ForgotPasswordScreen());
           case '/skulmate/upload':
-            return _createFadeRoute(() => SkulMateUploadScreen());
+            // SkulMate controlled by AppConfig feature flag
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(() => SkulMateUploadScreen());
+            } else {
+              return _createFadeRoute(() => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+                ),
+              ));
+            }
           case '/skulmate/library':
-            return _createFadeRoute(() => GameLibraryScreen());
+            // SkulMate controlled by AppConfig feature flag
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(() => GameLibraryScreen());
+            } else {
+              return _createFadeRoute(() => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+                ),
+              ));
+            }
           case '/skulmate/character-selection':
-            final args = settings.arguments as Map<String, dynamic>?;
-            return _createFadeRoute(() => CharacterSelectionScreen(
-                  isFirstTime: args?['isFirstTime'] ?? false,
-                ));
+            // SkulMate controlled by AppConfig feature flag
+            if (AppConfig.enableSkulMate) {
+              final args = settings.arguments as Map<String, dynamic>?;
+              return _createFadeRoute(() => CharacterSelectionScreen(
+                    isFirstTime: args?['isFirstTime'] ?? false,
+                  ));
+            } else {
+              return _createFadeRoute(() => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+                ),
+              ));
+            }
         }
 
         // Handle navigation routes with optional initialTab argument
@@ -1077,6 +1108,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               final result = await navService.determineInitialRoute();
               if (mounted) {
                 _navigateInstant(result.route, result.arguments);
+                // Remove splash after navigation
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (mounted) {
+                    WebSplashService.removeSplash();
+                  }
+                });
                 setState(() {
                   _navigationComplete = true;
                 });
@@ -1086,6 +1123,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               // If we can't determine route, try dashboard as last resort
               if (mounted) {
                 _navigateInstant('/dashboard', null);
+                // Remove splash after navigation
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (mounted) {
+                    WebSplashService.removeSplash();
+                  }
+                });
                 setState(() {
                   _navigationComplete = true;
                 });
@@ -1094,6 +1137,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           } else {
             // User is not authenticated - redirect to auth screen
             _navigateInstant('/auth-method-selection', null);
+            // Remove splash after navigation
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (mounted) {
+                WebSplashService.removeSplash();
+              }
+            });
             setState(() {
               _navigationComplete = true;
             });
@@ -1366,6 +1415,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               reverseTransitionDuration: Duration.zero,
             ),
           );
+          // Remove splash after fallback navigation
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              WebSplashService.removeSplash();
+            }
+          });
           setState(() {
             _navigationComplete = true;
           });
@@ -1383,11 +1438,21 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               reverseTransitionDuration: Duration.zero,
             ),
           );
+          // Remove splash after error navigation
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              WebSplashService.removeSplash();
+            }
+          });
           setState(() {
             _navigationComplete = true;
           });
         } catch (e2) {
           LogService.error('[INIT_LOAD] Error in fallback navigation: $e2');
+          // Still try to remove splash even if navigation fails
+          if (mounted) {
+            WebSplashService.removeSplash();
+          }
         }
       }
     }

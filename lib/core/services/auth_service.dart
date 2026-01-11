@@ -185,7 +185,7 @@ class AuthService {
       // Sign out from Supabase
       await SupabaseService.signOut();
 
-      // Clear local session
+      // Clear local session and ALL user-related cached data
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyIsLoggedIn);
       await prefs.remove(_keyUserRole);
@@ -193,9 +193,15 @@ class AuthService {
       await prefs.remove(_keyUserPhone);
       await prefs.remove(_keyUserName);
       await prefs.remove(_keySurveyCompleted);
+      
+      // Clear signup-related cached data to prevent role confusion
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_email');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('pending_deep_link');
+      
       // Keep remember_me for convenience
-
-      LogService.success('User logged out successfully');
+      LogService.success('User logged out successfully - all cached data cleared');
     } catch (e) {
       LogService.error('Error during logout: $e');
       rethrow;
@@ -666,6 +672,38 @@ class AuthService {
     }
   }
 
+  /// Check if an error indicates the user is offline
+  /// Returns true if the error suggests no internet connection
+  static bool isOfflineError(dynamic error) {
+    if (error == null) return false;
+    
+    final errorStr = error.toString().toLowerCase();
+    
+    // Check for DNS/host lookup failures (most reliable offline indicator)
+    if (errorStr.contains('failed host lookup') ||
+        errorStr.contains('nodename nor servname provided') ||
+        errorStr.contains('name or service not known') ||
+        errorStr.contains('dns') && errorStr.contains('fail')) {
+      return true;
+    }
+    
+    // Check for socket exceptions (network unavailable)
+    if (errorStr.contains('socketexception') &&
+        (errorStr.contains('network is unreachable') ||
+         errorStr.contains('no route to host') ||
+         errorStr.contains('connection refused'))) {
+      return true;
+    }
+    
+    // Check for AuthRetryableFetchException with network errors
+    if (errorStr.contains('authretryablefetchexception') &&
+        (errorStr.contains('clientexception') || errorStr.contains('socketexception'))) {
+      return true;
+    }
+    
+    return false;
+  }
+
   /// Parse and return user-friendly error message
   static String parseAuthError(dynamic error) {
     if (error == null) return 'An unexpected error occurred';
@@ -675,6 +713,12 @@ class AuthService {
     
     // Convert error to lowercase string for easier matching
     final errorStr = error.toString().toLowerCase();
+    
+    // PRIORITY: Check for offline errors first (most user-friendly)
+    if (isOfflineError(error)) {
+      LogService.warning('[ERROR] Offline error detected - user has no internet connection');
+      return 'OFFLINE_ERROR'; // Special marker for offline errors
+    }
     
     // Handle PostgrestException (database errors from Supabase)
     if (error.toString().contains('PostgrestException') || 
@@ -737,7 +781,21 @@ class AuthService {
         errorStr.contains('networkerror') ||
         errorStr.contains('network request failed')) {
       LogService.error('[ERROR] Network fetch error detected');
+      // Check if it's an offline error
+      if (errorStr.contains('failed host lookup') || 
+          errorStr.contains('nodename nor servname')) {
+        return 'OFFLINE_ERROR'; // Special marker for offline errors
+      }
       return 'Connection error. Please check your internet connection and try again.';
+    }
+    
+    // Handle SocketException with host lookup failures (offline indicator)
+    if (errorStr.contains('socketexception') &&
+        (errorStr.contains('failed host lookup') ||
+         errorStr.contains('nodename nor servname provided') ||
+         errorStr.contains('name or service not known'))) {
+      LogService.warning('[ERROR] Offline error detected via SocketException');
+      return 'OFFLINE_ERROR'; // Special marker for offline errors
     }
 
     // If error is already a friendly Exception we created, extract the message

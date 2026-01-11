@@ -428,8 +428,14 @@ class StorageService {
         else if (statusCode == 403 ||
             errorString.contains('403') ||
             errorString.contains('row-level security') ||
-            errorString.contains('Unauthorized')) {
+            errorString.contains('Unauthorized') ||
+            errorString.contains('violates row-level security policy')) {
           LogService.error('[DEBUG] RLS policy error: $uploadError');
+          LogService.error('[DEBUG] Upload path: $storagePath');
+          LogService.error('[DEBUG] User ID: $userId');
+          LogService.error('[DEBUG] Bucket: $documentsBucket');
+          LogService.error('[DEBUG] This error indicates the storage bucket RLS policies are not configured correctly.');
+          LogService.error('[DEBUG] Please ensure migration 046_storage_bucket_rls_policies.sql has been run.');
           throw Exception(
             'Upload failed due to permissions. Please ensure you are logged in and try again. If the issue persists, contact support.',
           );
