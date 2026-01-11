@@ -238,16 +238,18 @@
     };
 
     // Immediate check: If Flutter is already loaded (hot restart scenario), remove splash immediately
-    // This runs immediately on script load to catch hot restart scenarios
+    // This runs immediately on script load to catch hot restart scenarios (0ms delay)
     (function checkImmediate() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
         // Multiple checks for Flutter presence (hot restart scenarios)
-        const hasFlutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app], flt-scene-host');
+        const hasFlutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
         const hasBodyContent = document.body && document.body.children.length > 1;
         const hasFlutterElements = document.querySelector('flt-scene-host, flt-glass-pane');
+        const hasFlutterBootstrap = typeof window.flutter !== 'undefined' || document.querySelector('script[src*="flutter_bootstrap"]');
+        const hasFlutterMain = document.querySelector('script[src*="main.dart.js"]');
         
-        if (hasFlutterApp || hasFlutterElements || hasBodyContent) {
+        if (hasFlutterApp || hasFlutterElements || hasBodyContent || hasFlutterBootstrap || hasFlutterMain) {
           console.log('Flutter already loaded (hot restart), removing splash immediately');
           loader.style.display = 'none'; // Immediate hide
           loader.classList.add('hidden');
@@ -256,28 +258,37 @@
           }
           return;
         }
-        // Check again very quickly (50ms) for hot restart
-        setTimeout(checkImmediate, 50);
+        // Check again immediately (0ms) for hot restart - no delay
+        setTimeout(checkImmediate, 0);
       }
     })();
 
     // Note: We do NOT hide on 'flutter-first-frame' anymore.
     // Flutter will call window.removeSplash() when it is fully ready.
     
-    // CRITICAL: Fallback - hide after 500ms if Flutter doesn't load/call removeSplash
-    // Very short timeout to prevent logo from staying stuck on screen
+    // CRITICAL: Fallback - hide after 1000ms if Flutter doesn't load/call removeSplash
+    // Increased timeout to account for slower loads, but still prevents logo from staying stuck
     // This prevents the logo from staying stuck on screen after refresh or hot restart
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        console.warn('Flutter did not call removeSplash within 500ms, forcing removal');
+        // Check if Flutter is actually loaded before forcing removal
+        const hasFlutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
+        const hasFlutterWindow = typeof window.flutter !== 'undefined';
+        const isFlutterRendered = hasFlutterApp && hasFlutterApp.offsetHeight > 0;
+        
+        if (hasFlutterApp || hasFlutterWindow || isFlutterRendered) {
+          console.warn('Flutter loaded but did not call removeSplash within 1000ms, forcing removal');
+        } else {
+          console.warn('Flutter did not load within 1000ms, forcing splash removal anyway');
+        }
         loader.style.display = 'none'; // Immediate hide
         loader.classList.add('hidden');
         if (loader.parentNode) {
           loader.remove(); // Remove immediately
         }
       }
-    }, 500);
+    }, 1000);
     
     // Additional aggressive removal: Check every 100ms starting immediately
     // This ensures the splash is removed quickly on refresh and hot restart
@@ -328,19 +339,24 @@
     }, 100);
     
     // MutationObserver: Watch for Flutter elements being added to DOM (catches hot restart)
+    // Specifically watch for flt-scene-host (most reliable indicator)
     if (typeof MutationObserver !== 'undefined') {
       const observer = new MutationObserver(function(mutations) {
         const loader = document.getElementById('flutter-loading');
         if (loader && !loader.classList.contains('hidden')) {
-          // Check if Flutter elements were added
-          const hasFlutterElements = document.querySelector('flt-scene-host, flt-glass-pane, [data-flt-app]');
-          if (hasFlutterElements) {
-            console.log('Flutter elements detected via MutationObserver, removing splash');
+          // Check specifically for flt-scene-host (most reliable Flutter indicator)
+          const flutterSceneHost = document.querySelector('flt-scene-host');
+          const hasFlutterElements = flutterSceneHost || document.querySelector('flt-glass-pane, [data-flt-app]');
+          const hasFlutterMain = document.querySelector('script[src*="main.dart.js"]');
+          
+          if (flutterSceneHost || hasFlutterElements || hasFlutterMain) {
+            console.log('Flutter elements detected via MutationObserver (flt-scene-host), removing splash');
             loader.style.display = 'none';
             loader.classList.add('hidden');
             if (loader.parentNode) {
               loader.remove();
             }
+            // Disconnect immediately after detection to prevent re-triggering
             observer.disconnect();
           }
         }
@@ -374,6 +390,26 @@
           if (loader.parentNode) {
             loader.remove();
           }
+        }
+      }
+    });
+    
+    // Page load event listener: Force removal if splash still visible after page fully loads
+    // This catches cases where Flutter loads but doesn't call removeSplash()
+    window.addEventListener('load', function() {
+      const loader = document.getElementById('flutter-loading');
+      if (loader && !loader.classList.contains('hidden')) {
+        // Check if Flutter is actually loaded
+        const hasFlutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
+        if (hasFlutterApp) {
+          console.warn('Page loaded with Flutter app present but splash still visible, forcing removal');
+        } else {
+          console.warn('Page loaded but Flutter app not detected, forcing splash removal anyway');
+        }
+        loader.style.display = 'none';
+        loader.classList.add('hidden');
+        if (loader.parentNode) {
+          loader.remove();
         }
       }
     });

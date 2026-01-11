@@ -1176,13 +1176,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           : null,
                       child: request.tutorAvatarUrl == null || request.tutorAvatarUrl!.isEmpty
                           ? Text(
-                              request.tutorName.isNotEmpty
-                                  ? request.tutorName[0].toUpperCase()
-                                  : 'T',
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.primaryColor,
+                                    request.tutorName.isNotEmpty
+                                        ? request.tutorName[0].toUpperCase()
+                                        : 'T',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
                               ),
                             )
                           : null,
@@ -1596,7 +1596,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         child: Container(
                           width: 12,
                           height: 12,
-                          decoration: BoxDecoration(
+                    decoration: BoxDecoration(
                             color: statusColor,
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.white, width: 2),
@@ -1608,8 +1608,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   const SizedBox(width: 8),
                   // Custom Request text (plain black, no badge)
                   Text(
-                    t.myRequestsFilterCustom,
-                    style: GoogleFonts.poppins(
+                      t.myRequestsFilterCustom,
+                      style: GoogleFonts.poppins(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: AppTheme.textDark,
@@ -1641,9 +1641,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildInfoRow(Icons.school, request.educationLevel),
+              _buildInfoRow(Icons.school, request.educationLevel),
                         const SizedBox(height: 8),
-                        _buildInfoRow(Icons.access_time, request.formattedDays),
+              _buildInfoRow(Icons.access_time, request.formattedDays),
                       ],
                     ),
                   ),
@@ -1653,9 +1653,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildInfoRow(Icons.location_on, request.location),
+              _buildInfoRow(Icons.location_on, request.location),
                         const SizedBox(height: 8),
-                        _buildInfoRow(Icons.attach_money, request.formattedBudget),
+              _buildInfoRow(Icons.attach_money, request.formattedBudget),
                       ],
                     ),
                   ),
@@ -1680,29 +1680,29 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        request.urgency == 'urgent'
-                            ? Icons.priority_high
-                            : Icons.schedule,
+                  children: [
+                    Icon(
+                      request.urgency == 'urgent'
+                          ? Icons.priority_high
+                          : Icons.schedule,
                         size: 14,
-                        color: request.urgency == 'urgent'
+                      color: request.urgency == 'urgent'
                             ? Colors.red[700]
                             : Colors.blue[700],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        request.urgencyLabel,
-                        style: GoogleFonts.poppins(
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      request.urgencyLabel,
+                      style: GoogleFonts.poppins(
                           fontSize: 11,
-                          color: request.urgency == 'urgent'
+                        color: request.urgency == 'urgent'
                               ? Colors.red[700]
                               : Colors.blue[700],
-                          fontWeight: FontWeight.w600,
-                        ),
+                        fontWeight: FontWeight.w600,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
+                ),
                 ),
               ],
               // View Details button
@@ -1859,17 +1859,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         : null,
                     child: tutorAvatarUrl == null || tutorAvatarUrl.isEmpty
                         ? Text(
-                            tutorName.isNotEmpty
-                                ? tutorName[0].toUpperCase()
-                                : 'T',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
+                                  tutorName.isNotEmpty
+                                      ? tutorName[0].toUpperCase()
+                                      : 'T',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
                             ),
                           )
                         : null,
-                  ),
+                        ),
                         // Status indicator dot
                         Positioned(
                           right: 0,

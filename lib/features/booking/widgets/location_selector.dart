@@ -103,12 +103,39 @@ class _LocationSelectorState extends State<LocationSelector> {
     // The flexible flow will be handled in a separate step
     safeSetState(() => _selectedLocation = location);
     
+    // For online sessions, fetch tutor's location and allow editing
+    if (location == 'online') {
+      await _fetchTutorLocation();
+    }
     // Auto-populate address from survey if onsite selected and address is empty
-    if (location == 'onsite' && _addressController.text.trim().isEmpty) {
+    else if (location == 'onsite' && _addressController.text.trim().isEmpty) {
       await _autoFillAddressFromSurvey();
     }
     
     _notifyParent();
+  }
+
+  /// Fetch tutor's location from their profile for online sessions
+  Future<void> _fetchTutorLocation() async {
+    try {
+      final tutorCity = widget.tutor['city']?.toString();
+      final tutorQuarter = widget.tutor['quarter']?.toString();
+      
+      if (tutorCity != null && tutorCity.isNotEmpty) {
+        final locationText = tutorQuarter != null && tutorQuarter.isNotEmpty
+            ? '$tutorCity, $tutorQuarter'
+            : tutorCity;
+        
+        safeSetState(() {
+          _addressController.text = locationText;
+        });
+        
+        _notifyParent();
+      }
+    } catch (e) {
+      LogService.warning('Could not fetch tutor location: $e');
+      // Silent fail - user can still type manually
+    }
   }
 
   /// Show dialog to choose online or onsite when hybrid is selected
@@ -290,11 +317,11 @@ class _LocationSelectorState extends State<LocationSelector> {
   void _notifyParent() {
     if (_selectedLocation == null) return;
 
-    // Only onsite needs address (hybrid is converted to online/onsite)
-    final needsAddress = _selectedLocation == 'onsite';
+    // Online and onsite both use address field (online shows tutor location, onsite shows student address)
+    final needsAddress = _selectedLocation == 'onsite' || _selectedLocation == 'online';
     
-    // Validate address if needed
-    if (needsAddress) {
+    // Validate address only for onsite (required)
+    if (_selectedLocation == 'onsite') {
       final addressText = _addressController.text.trim();
       safeSetState(() {
         _showAddressError = addressText.isEmpty;
@@ -305,8 +332,11 @@ class _LocationSelectorState extends State<LocationSelector> {
       });
     }
     
+    // For online, address is optional (tutor location, can be edited)
+    // For onsite, address is required
     final address = needsAddress ? _addressController.text.trim() : null;
-    final locationDescription = needsAddress
+    // Location description is optional for both online and onsite
+    final locationDescription = _locationDescriptionController.text.trim().isNotEmpty
         ? _locationDescriptionController.text.trim()
         : null;
 
@@ -370,33 +400,43 @@ class _LocationSelectorState extends State<LocationSelector> {
             color: Colors.purple,
           ),
 
-          // Address input field (shown when onsite is selected)
-          if (_selectedLocation == 'onsite') ...[
+          // Address input field (shown when online or onsite is selected)
+          if (_selectedLocation == 'online' || _selectedLocation == 'onsite') ...[
             const SizedBox(height: 24),
-            _buildAddressInput(),
+            _buildAddressInput(isOnline: _selectedLocation == 'online'),
           ],
         ],
       ),
     );
   }
 
-  Widget _buildAddressInput() {
+  Widget _buildAddressInput({bool isOnline = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Your Address',
+          isOnline ? 'Tutor Location' : 'Your Address',
           style: GoogleFonts.poppins(
             fontSize: 16,
             fontWeight: FontWeight.w600,
             color: Colors.black,
           ),
         ),
+        if (isOnline) ...[
+          const SizedBox(height: 4),
+          Text(
+            'You can edit this if needed',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         TextFormField(
           controller: _addressController,
           decoration: InputDecoration(
-            hintText: 'Enter your address',
+            hintText: isOnline ? 'Tutor location' : 'Enter your address',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(
@@ -430,7 +470,7 @@ class _LocationSelectorState extends State<LocationSelector> {
           },
           maxLines: 2,
         ),
-        if (_showAddressError)
+        if (_showAddressError && !isOnline)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
@@ -441,6 +481,7 @@ class _LocationSelectorState extends State<LocationSelector> {
               ),
             ),
           ),
+        // Location description is optional for both online and onsite
         const SizedBox(height: 16),
         Text(
           'Location Description (Optional)',
@@ -454,7 +495,9 @@ class _LocationSelectorState extends State<LocationSelector> {
         TextFormField(
           controller: _locationDescriptionController,
           decoration: InputDecoration(
-            hintText: 'e.g., Apartment 3B, Near the main gate',
+            hintText: isOnline 
+                ? 'e.g., Available for online sessions from this location'
+                : 'e.g., Apartment 3B, Near the main gate',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),

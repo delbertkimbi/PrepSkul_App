@@ -147,11 +147,15 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       return;
     }
     
-    // If moving from step 3 (location) and hybrid is selected, skip to step 5 (review) if flexible step not needed
-    // Actually, we always show step 4 for hybrid, so no skip needed
+    // Calculate next step - skip step 4 (flexible session selector) if location is not hybrid
+    int nextStep = _currentStep + 1;
+    if (nextStep == 4 && _selectedLocation != 'hybrid') {
+      // Skip flexible step (4) if not hybrid, go directly to review (5)
+      nextStep = 5;
+    }
     
-    if (_currentStep < _totalSteps - 1) {
-      safeSetState(() => _currentStep++);
+    if (nextStep < _totalSteps) {
+      safeSetState(() => _currentStep = nextStep);
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -204,11 +208,115 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         }
         // For online or hybrid/flexible, no address needed upfront
         return true;
+      case 4: // Flexible Session Location Selector (only for hybrid)
+        if (_selectedLocation != 'hybrid') return true; // Skip validation if not hybrid
+        return _sessionLocations.length == _selectedDays.length;
       case 5: // Review
         return _selectedPaymentPlan != null;
       default:
         return false;
     }
+  }
+
+  /// Build PageView children dynamically based on location selection
+  List<Widget> _buildPageViewChildren() {
+    return [
+      // Step 0: Frequency Selector
+      FrequencySelector(
+        tutor: widget.tutor,
+        initialFrequency: _selectedFrequency,
+        onFrequencySelected: (frequency) {
+          safeSetState(() {
+            _selectedFrequency = frequency;
+            // Reset days/times if frequency changes
+            if (_selectedDays.length > frequency) {
+              _selectedDays = _selectedDays.take(frequency).toList();
+              _selectedTimes.clear();
+            }
+          });
+        },
+      ),
+
+      // Step 1: Days Selector
+      DaysSelector(
+        tutor: widget.tutor,
+        requiredDays: _selectedFrequency ?? 1,
+        initialDays: _selectedDays,
+        onDaysSelected: (days) {
+          safeSetState(() {
+            _selectedDays = days;
+            // Clear times for days that were removed
+            _selectedTimes.removeWhere((day, time) => !days.contains(day));
+          });
+        },
+      ),
+
+      // Step 2: Time Grid Selector
+      TimeGridSelector(
+        tutor: widget.tutor,
+        selectedDays: _selectedDays,
+        initialTimes: _selectedTimes,
+        onTimesSelected: (times) {
+          safeSetState(() => _selectedTimes = times);
+        },
+      ),
+
+      // Step 3: Location Selector
+      LocationSelector(
+        tutor: widget.tutor,
+        initialLocation: _selectedLocation,
+        initialAddress: _onsiteAddress,
+        initialLocationDescription: _locationDescription,
+        onLocationSelected: (location, address, locationDescription) {
+          safeSetState(() {
+            _selectedLocation = location;
+            _onsiteAddress = address;
+            _locationDescription = locationDescription;
+            // If not hybrid, clear session locations
+            if (location != 'hybrid') {
+              _sessionLocations.clear();
+              _locationDetails.clear();
+            }
+          });
+        },
+      ),
+
+      // Step 4: Flexible Session Location Selector (only shown if hybrid selected)
+      _selectedLocation == 'hybrid'
+          ? FlexibleSessionLocationSelector(
+              selectedDays: _selectedDays,
+              selectedTimes: _selectedTimes,
+              initialSessionLocations: _sessionLocations,
+              initialLocationDetails: _locationDetails,
+              onLocationsSelected: (sessionLocations, locationDetails) {
+                safeSetState(() {
+                  _sessionLocations = sessionLocations;
+                  _locationDetails = locationDetails;
+                });
+              },
+            )
+          : Container(
+              // Empty container for non-hybrid - navigation will skip this step
+              color: Colors.white,
+            ),
+
+      // Step 5: Booking Review
+      BookingReview(
+        tutor: widget.tutor,
+        frequency: _selectedFrequency ?? 1,
+        selectedDays: _selectedDays,
+        selectedTimes: _selectedTimes,
+        location: _selectedLocation ?? 'online',
+        address: _onsiteAddress,
+        locationDescription: _locationDescription,
+        sessionLocations: _sessionLocations,
+        locationDetails: _locationDetails,
+        initialPaymentPlan: _selectedPaymentPlan,
+        onPaymentPlanSelected: (plan) {
+          safeSetState(() => _selectedPaymentPlan = plan);
+        },
+      ),
+    ];
   }
 
   Future<void> _submitBookingRequest() async {
@@ -499,111 +607,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       body: PageView(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(), // Disable swipe
-        children: [
-          // Step 1: Frequency Selector
-          FrequencySelector(
-            tutor: widget.tutor,
-            initialFrequency: _selectedFrequency,
-            onFrequencySelected: (frequency) {
-              safeSetState(() {
-                _selectedFrequency = frequency;
-                // Reset days/times if frequency changes
-                if (_selectedDays.length > frequency) {
-                  _selectedDays = _selectedDays.take(frequency).toList();
-                  _selectedTimes.clear();
-                }
-              });
-            },
-          ),
-
-          // Step 2: Days Selector
-          DaysSelector(
-            tutor: widget.tutor,
-            requiredDays: _selectedFrequency ?? 1,
-            initialDays: _selectedDays,
-            onDaysSelected: (days) {
-              safeSetState(() {
-                _selectedDays = days;
-                // Clear times for days that were removed
-                _selectedTimes.removeWhere((day, time) => !days.contains(day));
-              });
-            },
-          ),
-
-          // Step 3: Time Grid Selector
-          TimeGridSelector(
-            tutor: widget.tutor,
-            selectedDays: _selectedDays,
-            initialTimes: _selectedTimes,
-            onTimesSelected: (times) {
-              safeSetState(() => _selectedTimes = times);
-            },
-          ),
-
-          // Step 4: Location Selector
-          LocationSelector(
-            tutor: widget.tutor,
-            initialLocation: _selectedLocation,
-            initialAddress: _onsiteAddress,
-            initialLocationDescription: _locationDescription,
-            onLocationSelected: (location, address, locationDescription) {
-              safeSetState(() {
-                _selectedLocation = location;
-                _onsiteAddress = address;
-                _locationDescription = locationDescription;
-                // If not hybrid, clear session locations
-                if (location != 'hybrid') {
-                  _sessionLocations.clear();
-                  _locationDetails.clear();
-                }
-              });
-            },
-          ),
-
-          // Step 5: Flexible Session Location Selector (only shown if hybrid selected)
-          _selectedLocation == 'hybrid'
-              ? FlexibleSessionLocationSelector(
-                  selectedDays: _selectedDays,
-                  selectedTimes: _selectedTimes,
-                  initialSessionLocations: _sessionLocations,
-                  initialLocationDetails: _locationDetails,
-                  onLocationsSelected: (sessionLocations, locationDetails) {
-                    safeSetState(() {
-                      _sessionLocations = sessionLocations;
-                      _locationDetails = locationDetails;
-                    });
-                  },
-                )
-              : Container(
-                  // Placeholder for non-hybrid - navigation will skip this step
-                  child: Center(
-                    child: Text(
-                      'Continue to review...',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ),
-
-          // Step 6: Booking Review
-          BookingReview(
-            tutor: widget.tutor,
-            frequency: _selectedFrequency ?? 1,
-            selectedDays: _selectedDays,
-            selectedTimes: _selectedTimes,
-            location: _selectedLocation ?? 'online',
-            address: _onsiteAddress,
-            locationDescription: _locationDescription,
-            sessionLocations: _sessionLocations,
-            locationDetails: _locationDetails,
-            initialPaymentPlan: _selectedPaymentPlan,
-            onPaymentPlanSelected: (plan) {
-              safeSetState(() => _selectedPaymentPlan = plan);
-            },
-          ),
-        ],
+        children: _buildPageViewChildren(),
       ),
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(20),

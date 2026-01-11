@@ -75,19 +75,40 @@ class NavigationService {
           }
 
           if (profile != null) {
-            // Sync local session
+            // Sync local session with user ID verification
             final prefs = await SharedPreferences.getInstance();
+            final cachedUserId = prefs.getString('user_id');
+            final currentUserId = user.id;
+            
+            // CRITICAL: Verify user ID matches before syncing
+            // If different user detected, clear old session data first
+            if (cachedUserId != null && cachedUserId != currentUserId) {
+              LogService.warning('[NAV_SERVICE] Different user detected! Clearing old session data.');
+              LogService.warning('[NAV_SERVICE] Cached user: $cachedUserId, Current user: $currentUserId');
+              // Clear old session data
+              await prefs.remove('is_logged_in');
+              await prefs.remove('user_role');
+              await prefs.remove('user_id');
+              await prefs.remove('user_phone');
+              await prefs.remove('user_name');
+              await prefs.remove('survey_completed');
+              await prefs.remove('signup_user_role');
+              await prefs.remove('signup_email');
+              await prefs.remove('signup_full_name');
+              await prefs.remove('pending_deep_link');
+            }
+            
             final localIsLoggedIn = prefs.getBool('is_logged_in') ?? false;
 
             if (!localIsLoggedIn) {
               await AuthService.saveSession(
-                userId: user.id,
+                userId: currentUserId,
                 userRole: profile['user_type'] ?? 'student',
                 phone: profile['phone_number'] ?? '',
                 fullName: profile['full_name'] ?? '',
                 surveyCompleted: profile['survey_completed'] ?? false,
               );
-              LogService.success('[NAV_SERVICE] Session synced to local storage');
+              LogService.success('[NAV_SERVICE] Session synced to local storage for user: ${profile['full_name']} (${profile['user_type']})');
             }
 
             final userRole = profile['user_type'] ?? 'student';
@@ -175,7 +196,28 @@ class NavigationService {
       final isLoggedIn = await AuthService.isLoggedIn();
       final hasSupabaseSession = SupabaseService.isAuthenticated;
       final hasCompletedSurvey = await AuthService.isSurveyCompleted();
-      final userRole = await AuthService.getUserRole();
+      
+      // CRITICAL FIX: If Supabase session exists, always fetch user role from database
+      // NEVER use SharedPreferences as fallback when Supabase session is valid
+      String? userRole;
+      if (hasSupabaseSession && SupabaseService.currentUser != null) {
+        try {
+          final profile = await SupabaseService.client
+              .from('profiles')
+              .select('user_type')
+              .eq('id', SupabaseService.currentUser!.id)
+              .maybeSingle();
+          userRole = profile?['user_type'] as String?;
+          LogService.debug('[NAV_SERVICE] Fetched user role from database: $userRole');
+        } catch (e) {
+          LogService.warning('[NAV_SERVICE] Error fetching user role from DB: $e - falling back to SharedPreferences');
+          // Only fall back to SharedPreferences if database fetch fails
+          userRole = await AuthService.getUserRole();
+        }
+      } else {
+        // Only use SharedPreferences if no Supabase session exists
+        userRole = await AuthService.getUserRole();
+      }
 
       LogService.debug(
         '📊 [NAV_SERVICE] State: onboarding=$hasCompletedOnboarding, loggedIn=$isLoggedIn, supabase=$hasSupabaseSession, survey=$hasCompletedSurvey, role=$userRole',

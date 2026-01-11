@@ -73,3 +73,4 @@ COMMENT ON COLUMN public.message_feedback.feedback_type IS 'Type of feedback: fa
 COMMENT ON COLUMN public.message_feedback.context_snippet IS 'Relevant context around the flagged content for review';
 COMMENT ON COLUMN public.message_feedback.review_action IS 'Action taken after admin review: whitelist_pattern, adjust_threshold, or no_action';
 
+

@@ -172,10 +172,30 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   Future<void> _loadTutorSchedule() async {
     try {
       safeSetState(() => _isLoadingSchedule = true);
-      final tutorId =
-          widget.tutor['user_id'] as String? ?? widget.tutor['id'] as String?;
-      if (tutorId == null) {
-        LogService.warning('No tutor ID found');
+      
+      // Enhanced tutor ID extraction with logging
+      final tutorUserId = widget.tutor['user_id'] as String?;
+      final tutorId = widget.tutor['id'] as String?;
+      final finalTutorId = tutorUserId ?? tutorId;
+      
+      LogService.info('📋 [BOOK_TRIAL] Loading schedule for tutor');
+      LogService.info('📋 [BOOK_TRIAL] Tutor data keys: ${widget.tutor.keys.toList()}');
+      LogService.info('📋 [BOOK_TRIAL] user_id: $tutorUserId');
+      LogService.info('📋 [BOOK_TRIAL] id: $tutorId');
+      LogService.info('📋 [BOOK_TRIAL] Final tutor ID: $finalTutorId');
+      LogService.info('📋 [BOOK_TRIAL] Tutor name: ${widget.tutor['full_name'] ?? widget.tutor['profiles']?['full_name'] ?? 'Unknown'}');
+      
+      if (finalTutorId == null) {
+        LogService.error('❌ [BOOK_TRIAL] No tutor ID found in tutor data');
+        LogService.error('❌ [BOOK_TRIAL] Tutor data: ${widget.tutor}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: Tutor ID not found. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
         return;
       }
 
@@ -183,8 +203,9 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       final dayName = DateFormat('EEEE').format(_selectedDate);
 
       // Get available times for this day (filters out blocked slots)
+      // finalTutorId is guaranteed to be non-null here due to the check above
       final availableTimes = await AvailabilityService.getAvailableTimesForDay(
-        tutorId: tutorId,
+        tutorId: finalTutorId!,
         day: dayName,
         date: _selectedDate, // Pass specific date for precise checking
       );
@@ -416,8 +437,23 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           ? _goalController.text.trim() 
           : null;
       
+      // Enhanced tutor ID extraction with validation
+      final tutorUserId = widget.tutor['user_id'] as String?;
+      final tutorId = widget.tutor['id'] as String?;
+      final finalTutorId = tutorUserId ?? tutorId;
+      
+      if (finalTutorId == null) {
+        throw Exception('Tutor ID is required but not found in tutor data. Please try again.');
+      }
+      
+      LogService.info('📋 [BOOK_TRIAL] Creating trial request');
+      LogService.info('📋 [BOOK_TRIAL] Tutor ID: $finalTutorId');
+      LogService.info('📋 [BOOK_TRIAL] Subject: $_selectedSubject');
+      LogService.info('📋 [BOOK_TRIAL] Date: $_selectedDate');
+      LogService.info('📋 [BOOK_TRIAL] Time: $_selectedTime');
+      
       await TrialSessionService.createTrialRequest(
-        tutorId: widget.tutor['user_id'] ?? widget.tutor['id'],
+        tutorId: finalTutorId,
         subject: _selectedSubject!,
         scheduledDate: _selectedDate,
         scheduledTime: _selectedTime!,

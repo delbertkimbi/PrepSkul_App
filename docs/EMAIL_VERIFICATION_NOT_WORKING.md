@@ -161,3 +161,4 @@ You must configure Resend as SMTP in Supabase:
 
 
 
+
