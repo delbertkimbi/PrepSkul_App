@@ -60,23 +60,55 @@ class AgoraTokenService {
         'sessionId': sessionId,
       });
       
-      final response = kIsWeb
-          ? await postWeb(url, headers, body).timeout(
-              const Duration(seconds: 10),
-              onTimeout: () {
-                throw Exception('Request timeout. The API server may be unreachable or slow to respond.');
-              },
-            )
-          : await http.post(
-              Uri.parse(url),
-              headers: headers,
-              body: body,
-            ).timeout(
-              const Duration(seconds: 10),
-              onTimeout: () {
-                throw Exception('Request timeout. The API server may be unreachable or slow to respond.');
-              },
-            );
+      // Retry logic with exponential backoff
+      int maxRetries = 3;
+      Duration timeout = const Duration(seconds: 30); // Increased from 10 to 30 seconds
+      http.Response? response;
+      Exception? lastError;
+
+      for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          LogService.info('🎥 Attempt $attempt/$maxRetries: Fetching token from $url');
+          
+          response = kIsWeb
+              ? await postWeb(url, headers, body).timeout(
+                  timeout,
+                  onTimeout: () {
+                    throw Exception('Request timeout after ${timeout.inSeconds}s. The API server may be unreachable or slow to respond.');
+                  },
+                )
+              : await http.post(
+                  Uri.parse(url),
+                  headers: headers,
+                  body: body,
+                ).timeout(
+                  timeout,
+                  onTimeout: () {
+                    throw Exception('Request timeout after ${timeout.inSeconds}s. The API server may be unreachable or slow to respond.');
+                  },
+                );
+          
+          // If we got a response, break out of retry loop
+          break;
+        } catch (e) {
+          lastError = e is Exception ? e : Exception(e.toString());
+          LogService.warning('⚠️ Attempt $attempt failed: $lastError');
+          
+          // If this is the last attempt, rethrow
+          if (attempt == maxRetries) {
+            throw lastError!;
+          }
+          
+          // Wait before retrying (exponential backoff: 1s, 2s, 4s)
+          final delay = Duration(seconds: 1 << (attempt - 1));
+          LogService.info('⏳ Retrying in ${delay.inSeconds}s...');
+          await Future.delayed(delay);
+        }
+      }
+
+      if (response == null) {
+        throw lastError ?? Exception('Failed to get response after $maxRetries attempts');
+      }
 
       LogService.info('🎥 Agora token response status: ${response.statusCode}');
       

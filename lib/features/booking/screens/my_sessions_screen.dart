@@ -35,6 +35,7 @@ import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
@@ -682,12 +683,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       
       LogService.info('🎥 Joining Agora video session: $sessionId as $userRole');
       
-      // Navigate to Agora video session screen
+      // Navigate to pre-join screen first
       if (mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
+            builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: userRole,
             ),

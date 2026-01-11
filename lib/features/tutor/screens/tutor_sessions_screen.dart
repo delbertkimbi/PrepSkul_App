@@ -22,6 +22,7 @@ import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
 import '../../../features/sessions/services/meet_service.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
+import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import 'tutor_session_detail_full_screen.dart';
 
 class TutorSessionsScreen extends StatefulWidget {
@@ -1622,12 +1623,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         // Continue anyway - let the API handle the error
       }
       
-      // Navigate to Agora video session screen
+      // Navigate to pre-join screen first
       if (context.mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
+            builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: 'tutor',
             ),
