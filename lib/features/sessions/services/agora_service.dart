@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -25,6 +26,8 @@ class AgoraService {
   bool _isVideoEnabled = false; // Track video state manually - starts OFF
   bool _isAudioEnabled = false; // Track audio state manually - starts OFF
   Timer? _videoCheckTimer; // Periodic check to ensure video stays unmuted
+  int? _dataStreamId; // Data stream ID for sending screen sharing notifications
+  int? _dataStreamId; // Data stream ID for sending screen sharing notifications
   
   // Event streams
   final _stateController = StreamController<AgoraSessionState>.broadcast();
@@ -283,6 +286,20 @@ class AgoraService {
         _isAudioEnabled = initialMicEnabled;
       }
 
+      // Create data stream for screen sharing notifications
+      try {
+        _dataStreamId = await _engine!.createDataStream(
+          const DataStreamConfig(
+            syncWithAudio: false,
+            ordered: true,
+          ),
+        );
+        LogService.success('✅ Data stream created for screen sharing notifications: $_dataStreamId');
+      } catch (e) {
+        LogService.warning('Could not create data stream: $e');
+        // Continue without data stream - screen sharing detection will be manual
+      }
+
       // Join channel
       // Note: Don't set state to connected here - wait for onJoinChannelSuccess event
       await _engine!.joinChannel(
@@ -536,6 +553,9 @@ class AgoraService {
         );
         LogService.success('✅ Screen sharing started');
         _screenSharingController.add({'uid': _currentUID, 'sharing': true});
+        
+        // Notify remote users via data stream
+        _notifyRemoteUsersScreenSharing(true);
       } else {
         // For mobile, screen sharing may require different implementation
         LogService.warning('Screen sharing on mobile may require platform-specific implementation');
@@ -569,10 +589,42 @@ class AgoraService {
       await _engine!.stopScreenCapture();
       LogService.success('✅ Screen sharing stopped');
       _screenSharingController.add({'uid': _currentUID, 'sharing': false});
+      
+      // Notify remote users via data stream
+      _notifyRemoteUsersScreenSharing(false);
     } catch (e) {
       LogService.error('Failed to stop screen sharing: $e');
       _errorController.add('Failed to stop screen sharing: $e');
     }
+  }
+
+  /// Notify remote users about screen sharing state via data stream
+  Future<void> _notifyRemoteUsersScreenSharing(bool isSharing) async {
+    if (_dataStreamId == null || _engine == null || !_isInChannel) {
+      LogService.warning('Cannot send screen sharing notification: dataStreamId=$_dataStreamId, engine=${_engine != null}, inChannel=$_isInChannel');
+      return;
+    }
+
+    try {
+      final message = isSharing ? 'screen_share_start' : 'screen_share_stop';
+      final messageBytes = message.codeUnits;
+      
+      await _engine!.sendStreamMessage(
+        streamId: _dataStreamId!,
+        data: Uint8List.fromList(messageBytes),
+      );
+      LogService.success('✅ Sent screen sharing notification: $message');
+    } catch (e) {
+      LogService.warning('Failed to send screen sharing notification: $e');
+    }
+  }
+
+  /// Manually detect remote screen sharing
+  /// Call this when setting up remote video view with VideoSourceType.videoSourceScreen
+  /// Since onUserPublished is not available in this SDK version, we use manual detection
+  void detectRemoteScreenSharing(int remoteUid, bool isSharing) {
+    LogService.info('📺 Manual screen sharing detection: UID=$remoteUid, sharing=$isSharing');
+    _screenSharingController.add({'uid': remoteUid, 'sharing': isSharing});
   }
 
   /// Switch camera (front/back)
@@ -979,9 +1031,23 @@ class AgoraService {
             }
           }
         },
-        // Screen sharing events - using onUserPublished/onUserUnpublished with VideoSourceType
-        // Note: Screen sharing detection happens via onUserPublished with VideoSourceType.videoSourceScreen
-        // We'll detect it in onUserPublished handler instead
+        // Receive data stream messages for screen sharing notifications
+        onStreamMessage: (RtcConnection connection, int remoteUid, int streamId, Uint8List data, int length, int sentTs) {
+          try {
+            final message = String.fromCharCodes(data);
+            LogService.info('📨 Received data stream message from UID=$remoteUid: $message');
+            
+            if (message == 'screen_share_start') {
+              LogService.success('✅ Remote user started screen sharing: UID=$remoteUid');
+              _screenSharingController.add({'uid': remoteUid, 'sharing': true});
+            } else if (message == 'screen_share_stop') {
+              LogService.info('📺 Remote user stopped screen sharing: UID=$remoteUid');
+              _screenSharingController.add({'uid': remoteUid, 'sharing': false});
+            }
+          } catch (e) {
+            LogService.warning('Error parsing data stream message: $e');
+          }
+        },
       ),
     );
   }

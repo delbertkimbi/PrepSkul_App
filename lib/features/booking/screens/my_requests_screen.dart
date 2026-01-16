@@ -3160,9 +3160,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       String errorDetails = '';
 
       if (isTrial && sessionId != null) {
-        // Check for trial session in individual_sessions
+        // Check for trial session - try individual_sessions first (created after payment)
+        // If not found, check trial_sessions (might not have been created yet)
         try {
-          final trialSessions = await supabase
+          // First, try individual_sessions (created after payment completion)
+          var trialSessions = await supabase
               .from('individual_sessions')
               .select('id, status, scheduled_date, scheduled_time')
               .or('learner_id.eq.$userId,parent_id.eq.$userId')
@@ -3170,13 +3172,34 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               .limit(1);
           
           sessions = (trialSessions as List).cast<Map<String, dynamic>>();
-          LogService.info('✅ Found ${sessions.length} trial session(s)');
           
+          // If not found in individual_sessions, check trial_sessions
           if (sessions.isEmpty) {
-            errorDetails = 'Trial session not found in individual_sessions table.\n'
-                'Session ID: $sessionId\n'
-                'User ID: $userId\n'
-                'This may indicate the session was not created after payment.';
+            LogService.info('📋 Trial session not found in individual_sessions, checking trial_sessions...');
+            final trialSessionData = await supabase
+                .from('trial_sessions')
+                .select('id, status, scheduled_date, scheduled_time, payment_status')
+                .eq('id', sessionId)
+                .or('learner_id.eq.$userId,parent_id.eq.$userId,requester_id.eq.$userId')
+                .maybeSingle();
+            
+            if (trialSessionData != null) {
+              // Convert trial session to individual session format for display
+              sessions = [{
+                'id': trialSessionData['id'],
+                'status': trialSessionData['status'],
+                'scheduled_date': trialSessionData['scheduled_date'],
+                'scheduled_time': trialSessionData['scheduled_time'],
+              }];
+              LogService.info('✅ Found trial session in trial_sessions table (payment may still be processing)');
+            } else {
+              errorDetails = 'Trial session not found in individual_sessions or trial_sessions table.\n'
+                  'Session ID: $sessionId\n'
+                  'User ID: $userId\n'
+                  'This may indicate the session was not created after payment.';
+            }
+          } else {
+            LogService.info('✅ Found ${sessions.length} trial session(s) in individual_sessions');
           }
         } catch (e) {
           errorDetails = 'Error checking trial session: $e';

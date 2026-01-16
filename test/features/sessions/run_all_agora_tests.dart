@@ -15,6 +15,8 @@ import 'agora_video_session_test.dart' as agora_service_test;
 import 'agora_token_service_test.dart' as token_service_test;
 import 'agora_recording_service_test.dart' as recording_service_test;
 import 'agora_session_navigation_test.dart' as navigation_test;
+import 'screen_sharing_test.dart' as screen_sharing_test;
+import 'agora_screen_sharing_integration_test.dart' as screen_sharing_integration_test;
 
 void main() {
   group('🧪 Complete Agora Video Session Flow Tests', () {
@@ -32,6 +34,14 @@ void main() {
 
     group('🧭 Navigation Tests', () {
       navigation_test.main();
+    });
+
+    group('🖥️ Screen Sharing Tests', () {
+      screen_sharing_test.main();
+    });
+
+    group('🖥️ Screen Sharing Integration Tests', () {
+      screen_sharing_integration_test.main();
     });
   });
 }

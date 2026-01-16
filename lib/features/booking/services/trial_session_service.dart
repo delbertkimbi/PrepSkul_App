@@ -1403,12 +1403,15 @@ class TrialSessionService {
       );
 
       // Update trial session with transaction ID
+      // Note: Don't update payment_status - it should remain 'unpaid' until payment is confirmed
+      // The database constraint only allows: 'unpaid', 'paid', 'refunded'
+      // 'pending' is NOT a valid value for payment_status
       await _supabase
           .from('trial_sessions')
           .update({
             'fapshi_trans_id': paymentResponse.transId,
             'payment_initiated_at': DateTime.now().toIso8601String(),
-            'payment_status': 'pending',
+            // payment_status remains 'unpaid' until payment is confirmed via webhook or polling
           })
           .eq('id', sessionId);
 
@@ -1541,41 +1544,93 @@ class TrialSessionService {
       }
 
       // Create an individual session instance so trial appears in upcoming sessions
+      // Use the trial session ID as the individual session ID for proper linking
       try {
         LogService.info('📅 Creating individual session for trial: $sessionId');
         LogService.info('📅 Session details: tutor=${trial.tutorId}, learner=${trial.learnerId}, date=$scheduledDate, time=$scheduledTime');
         
-        final sessionData = {
-          'recurring_session_id': null,
-          'tutor_id': trial.tutorId,
-          'learner_id': trial.learnerId,
-          'parent_id': trial.parentId,
-          'status': 'scheduled',
-          'scheduled_date':
-              scheduledDate?.toIso8601String().split('T')[0] ??
-                  trial.scheduledDate.toIso8601String().split('T')[0],
-          'scheduled_time': scheduledTime,
-          'subject': trial.subject,
-          'duration_minutes': trial.durationMinutes,
-          'location': trial.location,
-          'meeting_link': meetLink,
-          'address': null, // Trial sessions don't have address field in model
-          'location_description': null, // Trial sessions don't have location_description field in model
-        };
-        
-        LogService.debug('📅 Individual session data: $sessionData');
-        
-        final insertedSession = await _supabase
+        // Check if individual session already exists (idempotency)
+        final existingIndividual = await _supabase
             .from('individual_sessions')
-            .insert(sessionData)
-            .select('id, scheduled_date, status')
-            .single();
+            .select('id, status')
+            .eq('id', sessionId)
+            .maybeSingle();
         
-        LogService.success('✅ Individual session created for trial: ${insertedSession['id']}, date: ${insertedSession['scheduled_date']}, status: ${insertedSession['status']}');
+        if (existingIndividual != null) {
+          LogService.info('✅ Individual session already exists for trial: $sessionId, status: ${existingIndividual['status']}');
+          // Update it to ensure it's in the correct state
+          await _supabase
+              .from('individual_sessions')
+              .update({
+                'status': 'scheduled',
+                'payment_status': 'paid',
+                'meeting_link': meetLink,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', sessionId);
+          LogService.success('✅ Updated existing individual session for trial: $sessionId');
+        } else {
+          // Create new individual session with trial session ID
+          final sessionData = {
+            'id': sessionId, // Use trial session ID as individual session ID for linking
+            'recurring_session_id': null,
+            'tutor_id': trial.tutorId,
+            'learner_id': trial.learnerId,
+            'parent_id': trial.parentId,
+            'status': 'scheduled',
+            'scheduled_date':
+                scheduledDate?.toIso8601String().split('T')[0] ??
+                    trial.scheduledDate.toIso8601String().split('T')[0],
+            'scheduled_time': scheduledTime,
+            'subject': trial.subject,
+            'duration_minutes': trial.durationMinutes,
+            'location': trial.location,
+            'meeting_link': meetLink,
+            'address': null, // Trial sessions don't have address field in model
+            'location_description': null, // Trial sessions don't have location_description field in model
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+          
+          LogService.debug('📅 Individual session data: $sessionData');
+          
+          final insertedSession = await _supabase
+              .from('individual_sessions')
+              .insert(sessionData)
+              .select('id, scheduled_date, status')
+              .single();
+          
+          LogService.success('✅ Individual session created for trial: ${insertedSession['id']}, date: ${insertedSession['scheduled_date']}, status: ${insertedSession['status']}');
+        }
       } catch (e, stackTrace) {
         LogService.error('❌ Error creating individual session for trial: $e');
         LogService.error('📚 Stack trace: $stackTrace');
-        // Continue - trial record is still valid even if individual_sessions creation fails
+        
+        // Check if it's a duplicate key error (session already exists)
+        if (e.toString().contains('duplicate key') || 
+            e.toString().contains('unique constraint') ||
+            e.toString().contains('already exists')) {
+          LogService.warning('⚠️ Individual session already exists (likely created by webhook). Continuing...');
+          // Try to update it instead
+          try {
+            await _supabase
+                .from('individual_sessions')
+                .update({
+                  'status': 'scheduled',
+                  'meeting_link': meetLink,
+                  'updated_at': DateTime.now().toIso8601String(),
+                })
+                .eq('id', sessionId);
+            LogService.success('✅ Updated existing individual session for trial: $sessionId');
+          } catch (updateError) {
+            LogService.warning('⚠️ Could not update existing session: $updateError');
+            // Continue anyway - session exists
+          }
+        } else {
+          // For other errors, re-throw to ensure payment completion fails if session creation fails
+          // This ensures the user knows there was an issue
+          throw Exception('Failed to create session after payment: $e');
+        }
       }
 
       // Notify tutor that session is ready and payment received (outside catch block)

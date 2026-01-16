@@ -11,6 +11,7 @@ import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
 import 'package:prepskul/features/payment/widgets/animated_checkmark.dart';
+import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -208,11 +209,30 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         _detectedProvider = provider;
       });
 
-      // Navigate to confirmation step
-      _navigateToStep(2);
+      // Navigate to dedicated payment confirmation screen
+      if (mounted) {
+        final result = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PaymentConfirmationScreen(
+              provider: provider,
+              phoneNumber: _phoneController.text.trim(),
+              amount: _total,
+              transactionId: paymentResponse.transId,
+              isSandbox: !FapshiService.isProduction,
+              onPaymentComplete: (transId) async {
+                await _completePayment(transId);
+                return true; // Return success
+              },
+            ),
+          ),
+        );
 
-      // Start polling for payment status
-      _pollPaymentStatus(paymentResponse.transId);
+        // If payment was successful, show success dialog and navigate
+        if (result == true && mounted) {
+          _showSuccessDialog();
+        }
+      }
     } catch (e) {
       final friendlyMessage = ErrorHandler.getUserFriendlyMessage(e);
       safeSetState(() {
@@ -904,28 +924,27 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   // Step 3: Payment Confirmation
   Widget _buildPaymentConfirmationStep() {
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Payment Instructions (centered card)
-              if (_paymentStatus == 'pending' || _isPolling)
-                PaymentInstructionsWidget(
-                  provider: _detectedProvider,
-                  phoneNumber: _phoneController.text.trim(),
-                ),
-              SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
-            ],
-          ),
-        ),
-        
-        // Processing Overlay (shown while polling)
-        if (_isPolling)
-          _buildProcessingOverlay(),
-      ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Payment Instructions (centered card) - Always show first
+          if (_paymentStatus == 'pending' || _isPolling)
+            PaymentInstructionsWidget(
+              provider: _detectedProvider,
+              phoneNumber: _phoneController.text.trim(),
+            ),
+          
+          // Processing indicator - Show BELOW the instructions card, not as overlay
+          if (_isPolling) ...[
+            const SizedBox(height: 32),
+            _buildProcessingIndicator(), // New method - not an overlay
+          ],
+          
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
     );
   }
 
@@ -1146,32 +1165,40 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildProcessingOverlay() {
+  // Processing indicator (shown below instructions card, not as overlay)
+  Widget _buildProcessingIndicator() {
     return Container(
-      color: Colors.white.withOpacity(0.85), // Increased opacity for better visibility
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: 50,
-              height: 50,
-              child: CircularProgressIndicator(
-                strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Processing payment...',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: AppTheme.textDark,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.primaryColor.withOpacity(0.2),
+          width: 1,
         ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            'Processing payment...',
+            style: GoogleFonts.poppins(
+              fontSize: 15,
+              color: AppTheme.textDark,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
