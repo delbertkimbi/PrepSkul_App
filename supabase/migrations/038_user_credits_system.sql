@@ -104,3 +104,6 @@ COMMENT ON COLUMN public.credit_transactions.reference_type IS 'Type of related 
 COMMENT ON COLUMN public.credit_transactions.reference_id IS 'ID of the related entity';
 
 
+
+
+

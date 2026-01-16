@@ -453,3 +453,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
   }
 }
 
+      ),
+    );
+  }
+}

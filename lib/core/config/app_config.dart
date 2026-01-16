@@ -461,3 +461,56 @@ class AppConfig {
 
 
 
+      return value;
+    } catch (_) {
+      // dotenv not initialized
+      return fallback;
+    }
+  }
+  
+  /// Safely read boolean environment variable
+  static bool _safeEnvBool(String key, bool fallback) {
+    try {
+      final value = dotenv.env[key]?.toLowerCase();
+      if (value == null || value.isEmpty) return fallback;
+      return value == 'true' || value == '1' || value == 'yes';
+    } catch (_) {
+      return fallback;
+    }
+  }
+  
+  // ============================================
+  // Debug Info
+  // ============================================
+  
+  /// Print current configuration (for debugging)
+  static void printConfig() {
+    if (kDebugMode) {
+      print('═══════════════════════════════════════');
+      print('📱 PrepSkul App Configuration');
+      print('═══════════════════════════════════════');
+      print('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
+      print('API Base URL: $apiBaseUrl');
+      print('Fapshi Environment: $fapshiEnvironment');
+      print('Fapshi Base URL: $fapshiBaseUrl');
+      print('Supabase URL: ${supabaseUrl.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      print('Firebase: ${firebaseProjectId.isNotEmpty ? "✅ Set" : "❌ Not Set"}');
+      print('Google Calendar: ${enableGoogleCalendar ? "✅ Enabled" : "❌ Disabled"}');
+      print('Fathom: ${enableFathomRecording ? "✅ Enabled" : "❌ Disabled"}');
+      print('═══════════════════════════════════════');
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

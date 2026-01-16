@@ -955,3 +955,93 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(Message message) {
+    final isCurrentUser = message.isCurrentUser;
+    
+    return Align(
+      alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        child: Column(
+          crossAxisAlignment: isCurrentUser 
+              ? CrossAxisAlignment.end 
+              : CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: isCurrentUser 
+                    ? AppTheme.primaryColor 
+                    : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: Radius.circular(isCurrentUser ? 16 : 4),
+                  bottomRight: Radius.circular(isCurrentUser ? 4 : 16),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    message.content,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: isCurrentUser ? Colors.white : AppTheme.textDark,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        DateFormat('HH:mm').format(message.createdAt),
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: isCurrentUser 
+                              ? Colors.white.withOpacity(0.7)
+                              : Colors.grey[600],
+                        ),
+                      ),
+                      if (isCurrentUser) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          message.isRead 
+                              ? Icons.done_all 
+                              : Icons.done,
+                          size: 14,
+                          color: message.isRead
+                              ? Colors.blue[300]
+                              : Colors.white.withOpacity(0.7),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
