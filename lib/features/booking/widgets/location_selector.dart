@@ -728,3 +728,196 @@ class _LocationSelectorState extends State<LocationSelector> {
     super.dispose();
   }
 }
+      onTap: isAvailable ? () => _selectLocation(location) : null,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.primaryColor.withOpacity(0.05)
+              : (isAvailable ? Colors.white : Colors.grey[100]),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.primaryColor
+                : (isAvailable ? Colors.grey[300]! : Colors.grey[200]!),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppTheme.primaryColor
+                    : (isAvailable ? color.withOpacity(0.1) : Colors.grey[200]),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icon,
+                size: 28,
+                color: isSelected
+                    ? Colors.white
+                    : (isAvailable ? color : Colors.grey[400]),
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            // Text
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: isAvailable ? Colors.black : Colors.grey[400],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: isAvailable ? Colors.grey[600] : Colors.grey[400],
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Selection indicator
+            if (isAvailable)
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected
+                        ? AppTheme.primaryColor
+                        : Colors.grey[400]!,
+                    width: 2,
+                  ),
+                ),
+                child: Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? AppTheme.primaryColor
+                        : Colors.transparent,
+                  ),
+                ),
+              )
+            else
+              Icon(Icons.block, size: 24, color: Colors.grey[400]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getTutorModesText() {
+    if (_tutorTeachingModes.contains('hybrid') ||
+        (_tutorTeachingModes.contains('online') &&
+            _tutorTeachingModes.contains('onsite'))) {
+      return 'Online & Onsite';
+    } else if (_tutorTeachingModes.contains('online')) {
+      return 'Online only';
+    } else if (_tutorTeachingModes.contains('onsite')) {
+      return 'Onsite only';
+    }
+    return 'All formats';
+  }
+
+  /// Validate address using geocoding
+  Future<void> _validateAddress() async {
+    final address = _addressController.text.trim();
+    if (address.isEmpty) {
+      safeSetState(() {
+        _isAddressValid = false;
+        _addressValidationError = 'Address cannot be empty';
+      });
+      return;
+    }
+
+    safeSetState(() {
+      _isValidatingAddress = true;
+      _addressValidationError = null;
+      _isAddressValid = false;
+    });
+
+    try {
+      // Use geocoding to verify address exists
+      final locations = await locationFromAddress(address);
+      
+      if (locations.isEmpty) {
+        safeSetState(() {
+          _isValidatingAddress = false;
+          _isAddressValid = false;
+          _addressValidationError = 'Address not found. Please check and try again.';
+        });
+        return;
+      }
+
+      final location = locations.first;
+      final coordinates = '${location.latitude},${location.longitude}';
+
+      // Get placemarks for additional info (city, country, etc.)
+      final placemarks = await placemarkFromCoordinates(
+        location.latitude,
+        location.longitude,
+      );
+
+      safeSetState(() {
+        _isValidatingAddress = false;
+        _isAddressValid = true;
+        _validatedCoordinates = coordinates;
+        _addressValidationError = null;
+        _showAddressPreview = true;
+      });
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Address verified! Found: ${placemarks.isNotEmpty ? placemarks.first.locality ?? placemarks.first.country ?? "Location" : "Location"}',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error validating address: $e');
+      safeSetState(() {
+        _isValidatingAddress = false;
+        _isAddressValid = false;
+        _addressValidationError = 'Could not verify address. Please check your internet connection and try again.';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    _locationDescriptionController.dispose();
+    super.dispose();
+  }
+}

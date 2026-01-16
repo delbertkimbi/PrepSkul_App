@@ -148,3 +148,19 @@ class EmptyConversationsState extends StatelessWidget {
   }
 }
 
+                  child: Text(
+                    'Find a tutor',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1389,3 +1389,155 @@ class TutorService {
     }
   }
 }
+  /// Build teaching style text from collected data
+  static String _buildTeachingStyleText(
+    List? teachingApproaches,
+    String? preferredMode,
+    String? preferredSessionType,
+    bool? handlesMultipleLearners,
+  ) {
+    final parts = <String>[];
+
+    // Preferred teaching mode
+    if (preferredMode != null && preferredMode.isNotEmpty) {
+      parts.add('Teaching Mode: $preferredMode');
+    }
+
+    // Teaching approaches
+    if (teachingApproaches != null && teachingApproaches.isNotEmpty) {
+      final approaches = teachingApproaches.map((a) => a.toString()).join(', ');
+      parts.add('Approach: $approaches');
+    }
+
+    // Preferred session type
+    if (preferredSessionType != null && preferredSessionType.isNotEmpty) {
+      parts.add('Session Type: $preferredSessionType');
+    }
+
+    // Multiple learners
+    if (handlesMultipleLearners == true) {
+      parts.add('Can handle multiple learners');
+    }
+
+    if (parts.isEmpty) {
+      return 'Teaching style information not available';
+    }
+
+    return parts.join('. ');
+  }
+
+  static Future<List<Map<String, dynamic>>> _searchSupabaseTutors(
+    String query,
+  ) async {
+    try {
+      final response = await SupabaseService.client
+          .from('tutor_profiles')
+          .select('''
+            *,
+            profiles!tutor_profiles_user_id_fkey(
+              full_name,
+              avatar_url,
+              email
+            )
+          ''')
+          .eq('status', 'approved')
+          .neq('is_hidden', true)
+          .or('profiles!tutor_profiles_user_id_fkey.full_name.ilike.%$query%,subjects.cs.{$query}');
+
+      return (response as List).map((tutor) {
+        final profile = tutor['profiles'];
+        return {
+          'id': tutor['user_id']?.toString() ?? '',
+          'full_name': profile['full_name']?.toString() ?? 'Unknown',
+          'avatar_url': profile['avatar_url']?.toString(),
+          'subjects': tutor['subjects'] ?? [],
+          'hourly_rate': tutor['hourly_rate'],
+          'is_verified': tutor['is_verified'] ?? false,
+          'rating': tutor['rating'] ?? 0.0,
+          'city': tutor['city']?.toString(),
+        };
+      }).toList();
+    } catch (e) {
+      LogService.error('Error searching tutors in Supabase: $e');
+      return [];
+    }
+  }
+
+  /// Normalize tutor subjects from various formats
+  /// Handles: subjects, specializations, JSON strings, null/empty cases
+  /// Returns a List<String> of normalized subject names
+  static List<String> normalizeTutorSubjects(Map<String, dynamic> tutor) {
+    try {
+      final tutorId = tutor['id']?.toString() ?? tutor['user_id']?.toString() ?? 'unknown';
+      final tutorName = tutor['full_name']?.toString() ?? 'Unknown';
+      
+      // Try to get subjects first
+      var subjects = tutor['subjects'];
+      final specializations = tutor['specializations'];
+      
+      LogService.debug('🔍 Normalizing subjects for tutor: $tutorName (ID: $tutorId)');
+      LogService.debug('   Raw subjects type: ${subjects?.runtimeType}, value: $subjects');
+      LogService.debug('   Raw specializations type: ${specializations?.runtimeType}, value: $specializations');
+
+      // If subjects is null/empty, try specializations
+      if (subjects == null ||
+          (subjects is List && subjects.isEmpty) ||
+          (subjects is String && subjects.trim().isEmpty)) {
+        LogService.debug('   Subjects is null/empty, checking specializations...');
+        if (specializations != null &&
+            ((specializations is List && specializations.isNotEmpty) ||
+             (specializations is String && specializations.trim().isNotEmpty))) {
+          LogService.debug('   Using specializations as subjects');
+          subjects = specializations;
+        }
+      }
+
+      // If still null or empty, return empty list
+      if (subjects == null) {
+        LogService.warning('⚠️ Tutor $tutorName (ID: $tutorId) has no subjects or specializations');
+        return [];
+      }
+
+      // Handle different data types
+      List<dynamic> subjectList = [];
+
+      if (subjects is List) {
+        // Already a list
+        subjectList = subjects;
+      } else if (subjects is String) {
+        // Try to parse as JSON
+        try {
+          final decoded = json.decode(subjects);
+          if (decoded is List) {
+            subjectList = decoded;
+          } else if (decoded is String) {
+            // Single string subject
+            subjectList = [decoded];
+          }
+        } catch (e) {
+          // Not JSON, treat as single subject string
+          if (subjects.trim().isNotEmpty) {
+            subjectList = [subjects];
+          }
+        }
+      }
+
+      // Convert to List<String> and filter out empty/null values
+      final normalizedSubjects = subjectList
+          .map((s) => s?.toString().trim())
+          .where((s) => s != null && s!.isNotEmpty)
+          .map((s) => s!)
+          .toList();
+
+      if (normalizedSubjects.isEmpty) {
+        LogService.warning('⚠️ Tutor $tutorName (ID: $tutorId) - normalized subjects list is empty after processing');
+      } else {
+        LogService.success('✅ Tutor $tutorName (ID: $tutorId) - normalized ${normalizedSubjects.length} subjects: $normalizedSubjects');
+      }
+      return normalizedSubjects;
+    } catch (e) {
+      LogService.warning('Error normalizing tutor subjects: $e');
+      return [];
+    }
+  }
+}

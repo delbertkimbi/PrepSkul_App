@@ -629,3 +629,75 @@ class SessionFeedbackService {
     }
   }
 }
+        return null; // Cannot determine without end time
+      }
+
+      final endedAt = DateTime.parse(session['session_ended_at'] as String);
+      final now = DateTime.now();
+      final timeSinceEnd = now.difference(endedAt);
+      final requiredWait = const Duration(hours: 24);
+
+      if (timeSinceEnd >= requiredWait) {
+        return null; // Can submit now
+      }
+
+      return requiredWait - timeSinceEnd; // Time remaining
+    } catch (e) {
+      LogService.error('Error getting time until feedback available: $e');
+      return null;
+    }
+  }
+  /// Submit tutor response to a student review
+  static Future<void> submitTutorResponse({
+    required String feedbackId,
+    required String response,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      final feedback = await _supabase
+          .from('session_feedback')
+          .select('id, session_id, individual_sessions!inner(tutor_id)')
+          .eq('id', feedbackId)
+          .maybeSingle();
+
+      if (feedback == null) {
+        throw Exception('Feedback not found: $feedbackId');
+      }
+
+      final tutorId = feedback['individual_sessions']['tutor_id'] as String;
+      if (tutorId != userId) {
+        throw Exception('Unauthorized: Only the tutor can respond');
+      }
+
+      final existing = await _supabase
+          .from('session_feedback')
+          .select('tutor_response')
+          .eq('id', feedbackId)
+          .maybeSingle();
+
+      if (existing == null) {
+        throw Exception('Feedback not found: $feedbackId');
+      }
+
+      if (existing['tutor_response'] != null) {
+        throw Exception('You have already responded');
+      }
+
+      await _supabase
+          .from('session_feedback')
+          .update({
+            'tutor_response': response.trim(),
+            'tutor_response_submitted_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', feedbackId);
+
+      LogService.success('Tutor response submitted: $feedbackId');
+    } catch (e) {
+      LogService.error('Error submitting tutor response: $e');
+      rethrow;
+    }
+  }
+}
