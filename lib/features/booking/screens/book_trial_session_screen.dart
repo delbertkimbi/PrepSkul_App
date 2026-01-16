@@ -1885,38 +1885,3 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   }
 
 }
-      String cleaned = time.trim();
-      if (cleaned.endsWith(' AM AM') || cleaned.endsWith(' PM PM') || 
-          cleaned.endsWith(' AM PM') || cleaned.endsWith(' PM AM')) {
-        final parts = cleaned.split(' ');
-        if (parts.length >= 3) {
-          cleaned = '${parts[0]} ${parts[1]}';
-        }
-      }
-      
-      // Extract time and AM/PM
-      final timeMatch = RegExp(r'(\d{1,2}:\d{2})\s*(AM|PM)').firstMatch(cleaned);
-      if (timeMatch != null && timeMatch.groupCount >= 2) {
-        return '${timeMatch.group(1)} ${timeMatch.group(2)}';
-      }
-      return cleaned.trim();
-    }
-    
-    // Handle 24-hour format (e.g., "19:00")
-    try {
-      final parts = time.split(':');
-      if (parts.length < 2) return time;
-      
-      final hour = int.parse(parts[0]);
-      final minute = parts[1].split(' ')[0];
-      
-      if (hour == 0) return '12:$minute AM';
-      if (hour < 12) return '$hour:$minute AM';
-      if (hour == 12) return '12:$minute PM';
-      return '${hour - 12}:$minute PM';
-    } catch (e) {
-      return time;
-    }
-  }
-
-}

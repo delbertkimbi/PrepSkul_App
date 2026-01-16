@@ -288,6 +288,3 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
 
 
 
-
-
-

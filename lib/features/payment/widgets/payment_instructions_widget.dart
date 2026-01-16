@@ -10,26 +10,21 @@ import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 class PaymentInstructionsWidget extends StatelessWidget {
   final String? provider; // 'mtn' or 'orange'
   final String phoneNumber;
-  final double? amount; // Payment amount in XAF
 
   const PaymentInstructionsWidget({
     Key? key,
     required this.provider,
     required this.phoneNumber,
-    this.amount,
   }) : super(key: key);
 
   /// Get payment instructions for the provider
   List<String> _getPaymentInstructions(String? provider) {
-    final amountText = amount != null 
-        ? '${amount!.toStringAsFixed(0)} XAF'
-        : 'the amount';
-    
     if (provider == null) {
       return [
         'Dial the USSD code on your phone',
-        'Enter your PIN code when prompted',
-        'Confirm payment of $amountText',
+        'Select "Pay" or "Payment" from the menu',
+        'Enter the amount when prompted',
+        'Confirm the payment',
       ];
     }
     
@@ -37,20 +32,23 @@ class PaymentInstructionsWidget extends StatelessWidget {
       case 'mtn':
         return [
           'Dial *126# on your MTN phone',
-          'Enter your PIN code when prompted',
-          'Confirm payment of $amountText',
+          'Select "Pay" from the menu',
+          'Enter the amount when prompted',
+          'Confirm the payment',
         ];
       case 'orange':
         return [
           'Dial *144# on your Orange phone',
-          'Enter your PIN code when prompted',
-          'Confirm payment of $amountText',
+          'Select "Pay" or "Payment" from the menu',
+          'Enter the amount when prompted',
+          'Confirm the payment',
         ];
       default:
         return [
           'Dial the USSD code on your phone',
-          'Enter your PIN code when prompted',
-          'Confirm payment of $amountText',
+          'Select "Pay" or "Payment" from the menu',
+          'Enter the amount when prompted',
+          'Confirm the payment',
         ];
     }
   }
@@ -101,8 +99,8 @@ class PaymentInstructionsWidget extends StatelessWidget {
             if (logoPath != null) ...[
               Image.asset(
                 logoPath,
-                height: 120, // Increased from 90 for better visibility
-                width: 120,  // Increased from 90 for better visibility
+                height: 90,
+                width: 90,
                 fit: BoxFit.contain,
               ),
               const SizedBox(height: 16),

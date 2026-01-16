@@ -116,19 +116,3 @@ class CreditsBalanceWidget extends StatelessWidget {
     );
   }
 }
-                        ? '$sessionsRemaining sessions'
-                        : '~${_calculateEstimatedSessions()} sessions (est.)',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-}

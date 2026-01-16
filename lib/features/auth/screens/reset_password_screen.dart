@@ -329,13 +329,3 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     super.dispose();
   }
 }
-  }
-
-  @override
-  void dispose() {
-    _otpController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-}

@@ -11,7 +11,6 @@ import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
 import 'package:prepskul/features/payment/widgets/animated_checkmark.dart';
-import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
@@ -209,30 +208,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         _detectedProvider = provider;
       });
 
-      // Navigate to dedicated payment confirmation screen
-      if (mounted) {
-        final result = await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PaymentConfirmationScreen(
-              provider: provider,
-              phoneNumber: _phoneController.text.trim(),
-              amount: _total,
-              transactionId: paymentResponse.transId,
-              isSandbox: !FapshiService.isProduction,
-              onPaymentComplete: (transId) async {
-                await _completePayment(transId);
-                return true; // Return success
-              },
-            ),
-          ),
-        );
+      // Navigate to confirmation step
+      _navigateToStep(2);
 
-        // If payment was successful, show success dialog and navigate
-        if (result == true && mounted) {
-          _showSuccessDialog();
-        }
-      }
+      // Start polling for payment status
+      _pollPaymentStatus(paymentResponse.transId);
     } catch (e) {
       final friendlyMessage = ErrorHandler.getUserFriendlyMessage(e);
       safeSetState(() {
@@ -476,96 +456,96 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         return Stack(
           children: [
             Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Animated Success Checkmark
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: AnimatedCheckmark(
-                    color: const Color(0xFF4CAF50), // Light green
-                    size: 60,
-                    animationDuration: const Duration(milliseconds: 1000),
-                  ),
-                ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
               ),
-              const SizedBox(height: 24),
-              
-              // Success Title
-              Text(
-                'Payment Successful!',
-                style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textDark,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              
-              // Success Message
-              Text(
-                'Your booking payment has been confirmed. Your sessions are now active!',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey.shade700,
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              
-              // Close Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () async {
-                          confettiController.dispose();
-                    Navigator.pop(context); // Close dialog
-                    Navigator.pop(context, true); // Return to previous screen
+              child: Container(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Animated Success Checkmark
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: AnimatedCheckmark(
+                          color: const Color(0xFF4CAF50), // Light green
+                          size: 60,
+                          animationDuration: const Duration(milliseconds: 1000),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                     
-                    // Navigate to sessions screen to show newly created sessions
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    if (mounted) {
-                      Navigator.of(context).pushNamedAndRemoveUntil(
-                        '/student-nav',
-                        (route) => route.isFirst,
-                        arguments: {'initialTab': 2}, // Sessions tab
-                      );
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    // Success Title
+                    Text(
+                      'Payment Successful!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  child: Text(
-                    'Done',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                    const SizedBox(height: 12),
+                    
+                    // Success Message
+                    Text(
+                      'Your booking payment has been confirmed. Your sessions are now active!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
+                    const SizedBox(height: 32),
+                    
+                    // Close Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          confettiController.dispose();
+                          Navigator.pop(context); // Close dialog
+                          Navigator.pop(context, true); // Return to previous screen
+                          
+                          // Navigate to sessions screen to show newly created sessions
+                          await Future.delayed(const Duration(milliseconds: 500));
+                          if (mounted) {
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              '/student-nav',
+                              (route) => route.isFirst,
+                              arguments: {'initialTab': 2}, // Sessions tab
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Done',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
             // Confetti overlay
             Positioned.fill(
               child: Align(
@@ -924,27 +904,28 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   // Step 3: Payment Confirmation
   Widget _buildPaymentConfirmationStep() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Payment Instructions (centered card) - Always show first
-          if (_paymentStatus == 'pending' || _isPolling)
-            PaymentInstructionsWidget(
-              provider: _detectedProvider,
-              phoneNumber: _phoneController.text.trim(),
-            ),
-          
-          // Processing indicator - Show BELOW the instructions card, not as overlay
-          if (_isPolling) ...[
-            const SizedBox(height: 32),
-            _buildProcessingIndicator(), // New method - not an overlay
-          ],
-          
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
-        ],
-      ),
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Payment Instructions (centered card)
+              if (_paymentStatus == 'pending' || _isPolling)
+                PaymentInstructionsWidget(
+                  provider: _detectedProvider,
+                  phoneNumber: _phoneController.text.trim(),
+                ),
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+            ],
+          ),
+        ),
+        
+        // Processing Overlay (shown while polling)
+        if (_isPolling)
+          _buildProcessingOverlay(),
+      ],
     );
   }
 
@@ -1165,40 +1146,32 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  // Processing indicator (shown below instructions card, not as overlay)
-  Widget _buildProcessingIndicator() {
+  Widget _buildProcessingOverlay() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.2),
-          width: 1,
+      color: Colors.white.withOpacity(0.85), // Increased opacity for better visibility
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 50,
+              height: 50,
+              child: CircularProgressIndicator(
+                strokeWidth: 4,
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Processing payment...',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.textDark,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Text(
-            'Processing payment...',
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              color: AppTheme.textDark,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }

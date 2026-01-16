@@ -22,9 +22,6 @@ import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
-import '../../../core/services/connectivity_service.dart';
-import '../../../core/services/offline_cache_service.dart';
-import '../../../core/widgets/offline_dialog.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -47,55 +44,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   bool _hasSavedProgress = false; // Track if user has any saved progress
   double _activeBalance = 0.0;
   double _pendingBalance = 0.0;
-  bool _isOffline = false;
-  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
-    _initializeConnectivity();
     _loadUserInfo();
     _checkDismissedApprovalCard();
     _checkOnboardingStatus();
-  }
-
-  /// Initialize connectivity monitoring
-  Future<void> _initializeConnectivity() async {
-    await _connectivity.initialize();
-    _checkConnectivity();
-    
-    // Listen to connectivity changes
-    _connectivity.connectivityStream.listen((isOnline) {
-      if (mounted) {
-        final wasOffline = _isOffline;
-        safeSetState(() {
-          _isOffline = !isOnline;
-        });
-        
-        // If came back online, refresh data
-        if (isOnline && wasOffline) {
-          LogService.info('🌐 Connection restored - refreshing tutor home screen');
-          _loadUserInfo();
-        }
-      }
-    });
-  }
-
-  /// Check current connectivity status
-  Future<void> _checkConnectivity() async {
-    final isOnline = await _connectivity.checkConnectivity();
-    if (mounted) {
-      final wasOffline = _isOffline;
-      safeSetState(() {
-        _isOffline = !isOnline;
-      });
-      
-      // If we just came back online, refresh data
-      if (isOnline && wasOffline) {
-        LogService.info('🌐 Connection detected - refreshing tutor home screen');
-        _loadUserInfo();
-      }
-    }
   }
 
   @override
@@ -205,51 +160,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
   Future<void> _loadUserInfo() async {
     try {
-      // Check connectivity first
-      final isOnline = await _connectivity.checkConnectivity();
-      safeSetState(() => _isOffline = !isOnline);
-      
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
 
-      // If offline, try to load from cache
-      if (_isOffline) {
-        LogService.info('TutorHomeScreen: Offline - loading from cache...');
-        
-        // Try to load cached user profile
-        final cachedProfile = await OfflineCacheService.getCachedUserProfile(userId);
-        if (cachedProfile != null) {
-          final cachedTutorData = cachedProfile['tutorProfile'] as Map<String, dynamic>?;
-          final cachedUserInfo = cachedProfile['userInfo'] as Map<String, dynamic>?;
-          
-          if (mounted) {
-            safeSetState(() {
-              _userInfo = cachedUserInfo ?? user;
-              _tutorProfile = cachedTutorData;
-              _approvalStatus = cachedTutorData?['status'] as String?;
-              _adminNotes = cachedTutorData?['admin_review_notes'] as String?;
-              _hasPendingUpdate = cachedTutorData?['has_pending_update'] as bool? ?? false;
-              _activeBalance = (cachedProfile['activeBalance'] as num?)?.toDouble() ?? 0.0;
-              _pendingBalance = (cachedProfile['pendingBalance'] as num?)?.toDouble() ?? 0.0;
-              _isLoading = false;
-            });
-          }
-          LogService.success('TutorHomeScreen: Loaded user info from cache');
-          return;
-        } else {
-          // No cache available - use basic user data
-          if (mounted) {
-            safeSetState(() {
-              _userInfo = user;
-              _isLoading = false;
-            });
-          }
-          LogService.warning('TutorHomeScreen: No cache available, using basic user data');
-          return;
-        }
-      }
-
-      // Online - load fresh data
       // Load fresh profile data from database to get updated name
       final profileResponse = await SupabaseService.client
           .from('profiles')
@@ -347,80 +260,16 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _pendingBalance = pendingBalance;
         _isLoading = false;
       });
-
-      // Cache user info for offline access
-      if (isOnline && userId.isNotEmpty) {
-        try {
-          await OfflineCacheService.cacheUserProfile(userId, {
-            'userInfo': _userInfo,
-            'tutorProfile': tutorData,
-            'activeBalance': activeBalance,
-            'pendingBalance': pendingBalance,
-          });
-        } catch (e) {
-          LogService.warning('Error caching user profile: $e');
-        }
-      }
       
       // Send notification if onboarding is incomplete (only once per day)
       if (onboardingSkipped || !onboardingComplete) {
         _checkAndSendOnboardingNotification();
       }
     } catch (e) {
-      LogService.error('Error loading user info: $e');
-      
-      // If error occurred and we're offline, try to load from cache as fallback
-      if (_isOffline) {
-        try {
-          final user = await AuthService.getCurrentUser();
-          final userId = user['userId'] as String;
-          final cachedProfile = await OfflineCacheService.getCachedUserProfile(userId);
-          
-          if (cachedProfile != null && mounted) {
-            final cachedTutorData = cachedProfile['tutorProfile'] as Map<String, dynamic>?;
-            final cachedUserInfo = cachedProfile['userInfo'] as Map<String, dynamic>?;
-            
-            safeSetState(() {
-              _userInfo = cachedUserInfo ?? user;
-              _tutorProfile = cachedTutorData;
-              _approvalStatus = cachedTutorData?['status'] as String?;
-              _adminNotes = cachedTutorData?['admin_review_notes'] as String?;
-              _hasPendingUpdate = cachedTutorData?['has_pending_update'] as bool? ?? false;
-              _activeBalance = (cachedProfile['activeBalance'] as num?)?.toDouble() ?? 0.0;
-              _pendingBalance = (cachedProfile['pendingBalance'] as num?)?.toDouble() ?? 0.0;
-              _isLoading = false;
-            });
-            LogService.success('TutorHomeScreen: Loaded from cache after error');
-            return;
-          }
-        } catch (cacheError) {
-          LogService.warning('Error loading from cache: $cacheError');
-        }
-      }
-      
-      // If no cache or still error, try to get basic user info
-      if (_userInfo == null) {
-        try {
-          final user = await AuthService.getCurrentUser();
-          if (mounted) {
-            safeSetState(() {
-              _userInfo = user;
-              _isLoading = false;
-            });
-          }
-        } catch (e) {
-          // Last resort - just stop loading
-          if (mounted) {
-            safeSetState(() {
-              _isLoading = false;
-            });
-          }
-        }
-      } else {
-        safeSetState(() {
-          _isLoading = false;
-        });
-      }
+      LogService.debug('Error loading user info: $e');
+      safeSetState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -493,22 +342,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         automaticallyImplyLeading: false, // No back button in bottom nav
         backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: false,
-        title: Padding(
-          padding: const EdgeInsets.only(left: 30),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'PrepSkul',
-              style: GoogleFonts.poppins(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-          ),
-        ),
-        titleSpacing: 0,
+        title: const AppLogoHeader(),
         actions: [
           const MessageIconBadge(),
           const Padding(
@@ -520,7 +354,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       body: _isLoading
           ? const TutorHomeSkeleton()
           : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -601,19 +435,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                         children: [
                           ProfileCompletionBanner(
                             status: _completionStatus!,
-                            onTap: () async {
-                              // Check if offline
-                              final isOnline = await _connectivity.checkConnectivity();
-                              if (!isOnline) {
-                                if (mounted) {
-                                  await OfflineDialog.show(
-                                    context,
-                                    message: 'Completing your profile requires an internet connection. Please check your connection and try again.',
-                                  );
-                                }
-                                return;
-                              }
-                              
+                            onTap: () {
                               // Navigate back to onboarding to complete profile
                               Navigator.of(context)
                                   .pushNamed(
@@ -633,19 +455,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                           ProfileCompletionWidget(
                             status: _completionStatus!,
                             showDetails: true,
-                            onEditSection: () async {
-                              // Check if offline
-                              final isOnline = await _connectivity.checkConnectivity();
-                              if (!isOnline) {
-                                if (mounted) {
-                                  await OfflineDialog.show(
-                                    context,
-                                    message: 'Editing your profile requires an internet connection. Please check your connection and try again.',
-                                  );
-                                }
-                                return;
-                              }
-                              
+                            onEditSection: () {
                               // Navigate to onboarding to edit
                               Navigator.of(context)
                                   .pushNamed(
@@ -1174,19 +984,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () async {
-                // Check if offline
-                final isOnline = await _connectivity.checkConnectivity();
-                if (!isOnline) {
-                  if (mounted) {
-                    await OfflineDialog.show(
-                      context,
-                      message: 'Viewing earnings requires an internet connection. Please check your connection and try again.',
-                    );
-                  }
-                  return;
-                }
-                
+              onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => const TutorEarningsScreen(),
