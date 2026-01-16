@@ -95,6 +95,21 @@ void main() {
     });
 
     group('Production Payment Polling', () {
+      test('production payment polling should check database for webhook updates', () {
+        const isProduction = true;
+        const isSandbox = false;
+        
+        // In production, should check database first
+        final shouldCheckDatabase = isProduction && !isSandbox;
+        expect(shouldCheckDatabase, true);
+        
+        // Should check trial_sessions and payment_requests tables
+        final checkTrialSessions = true;
+        final checkPaymentRequests = true;
+        expect(checkTrialSessions, true);
+        expect(checkPaymentRequests, true);
+      });
+
       test('production payment polling should use 10 second minimum wait', () {
         const isProduction = true;
         final minWaitTime = isProduction

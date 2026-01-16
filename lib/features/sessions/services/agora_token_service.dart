@@ -28,23 +28,16 @@ class AgoraTokenService {
         throw Exception('User not authenticated');
       }
 
-      // Use AppConfig for API URL (handles dev/prod automatically)
-      // For local testing, use localhost if available
-      String apiBaseUrl = AppConfig.apiBaseUrl; // Already includes /api
+      // Use AppConfig.effectiveApiBaseUrl which automatically detects production domains
+      // and ensures we use www.prepskul.com/api (not app.prepskul.com/api)
+      String apiBaseUrl = AppConfig.effectiveApiBaseUrl; // Already includes /api
       
-      // If running locally (web in debug mode), try localhost first
-      if (kIsWeb && !AppConfig.isProd) {
-        // Check if API_BASE_URL_DEV is set to localhost in .env
-        // Otherwise, try localhost for local Next.js dev server
-        const localhostUrl = 'http://localhost:3000/api';
-        
-        // If the configured URL is not localhost, and we're in debug mode,
-        // try localhost first (you can override by setting API_BASE_URL_DEV=http://localhost:3000/api in .env)
-        if (!apiBaseUrl.contains('localhost') && !apiBaseUrl.contains('127.0.0.1')) {
-          LogService.info('🎥 Local testing detected. Using localhost for Next.js API.');
-          LogService.info('🎥 To use a different URL, set API_BASE_URL_DEV in .env file');
-          apiBaseUrl = localhostUrl;
-        }
+      // Safety check: ensure we NEVER use app.prepskul.com/api (which doesn't have API routes)
+      // Always use www.prepskul.com/api (where Next.js API is hosted)
+      if (apiBaseUrl.contains('app.prepskul.com')) {
+        LogService.warning('⚠️ Invalid API URL detected: $apiBaseUrl');
+        LogService.warning('✅ Correcting to: https://www.prepskul.com/api');
+        apiBaseUrl = 'https://www.prepskul.com/api';
       }
       
       final url = '$apiBaseUrl/agora/token';
@@ -134,12 +127,13 @@ class AgoraTokenService {
       
       // Get the actual URL that was used (from earlier in the function)
       // Reconstruct it the same way it was built
-      String apiBaseUrl = AppConfig.apiBaseUrl;
-      if (kIsWeb && !AppConfig.isProd) {
-        if (!apiBaseUrl.contains('localhost') && !apiBaseUrl.contains('127.0.0.1')) {
-          apiBaseUrl = 'http://localhost:3000/api';
-        }
+      String apiBaseUrl = AppConfig.effectiveApiBaseUrl;
+      
+      // Safety check: ensure we NEVER use app.prepskul.com/api
+      if (apiBaseUrl.contains('app.prepskul.com')) {
+        apiBaseUrl = 'https://www.prepskul.com/api';
       }
+      
       final errorUrl = '$apiBaseUrl/agora/token';
       
       // Provide more helpful error message based on error type
