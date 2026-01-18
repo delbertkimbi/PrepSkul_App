@@ -133,6 +133,7 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
                         engine: widget.engine,
                         uid: widget.localUid,
                         isLocal: true,
+                        sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera, // Explicitly use camera source for preview
                       )
                     : Container(
                         color: Colors.black,

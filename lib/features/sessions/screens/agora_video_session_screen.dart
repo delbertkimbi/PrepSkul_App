@@ -72,6 +72,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   StreamSubscription<Map<String, dynamic>>? _remoteAudioMutedSubscription;
   StreamSubscription<Map<String, dynamic>>? _screenSharingSubscription;
   StreamSubscription<int>? _userLeftSubscription;
+  StreamSubscription<Map<String, dynamic>>? _remoteNetworkQualitySubscription;
+  StreamSubscription<Map<String, dynamic>>? _reactionSubscription;
+  
+  // Network instability tracking
+  bool _remoteConnectionUnstable = false;
 
   @override
   void initState() {
@@ -82,6 +87,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
   @override
   void dispose() {
+    // CRITICAL: Ensure mic and camera are turned off when screen is disposed
+    // This is especially important on mobile devices where tracks might persist
+    // Call leaveChannel to ensure proper cleanup of all media tracks
+    _agoraService.leaveChannel().catchError((e) {
+      // Log error but don't block disposal - user is leaving anyway
+      LogService.warning('Error leaving channel during dispose: $e');
+    });
+    
     _stateSubscription?.cancel();
     _userJoinedSubscription?.cancel();
     _errorSubscription?.cancel();
@@ -89,6 +102,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     _remoteAudioMutedSubscription?.cancel();
     _screenSharingSubscription?.cancel();
     _userLeftSubscription?.cancel();
+    _remoteNetworkQualitySubscription?.cancel();
+    _reactionSubscription?.cancel();
     // Don't dispose AgoraService here - it's a singleton
     super.dispose();
   }
@@ -177,8 +192,23 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         userMessage = 'Unable to start video session. Please refresh the page and try again.';
       } else if (userMessage.contains('Failed to initialize')) {
         userMessage = 'Unable to start video session. Please check your internet connection and try again.';
-      } else if (userMessage.contains('permission') || userMessage.contains('Permission')) {
-        userMessage = 'Camera or microphone permission denied. Please allow access and try again.';
+      } else if (userMessage.contains('permission') || 
+                 userMessage.contains('Permission') ||
+                 userMessage.contains('NotAllowedError') ||
+                 userMessage.contains('NotAllowed') ||
+                 userMessage.contains('Permission denied')) {
+        userMessage = 'Camera and Microphone Permission Required\n\n'
+            'Your browser is blocking camera and microphone access.\n\n'
+            'To fix this:\n'
+            '1. Look at the address bar (top-left of your browser)\n'
+            '2. Click the camera/microphone icon (🔒 or 🎥 or 🎤)\n'
+            '3. Set both "Camera" and "Microphone" to "Allow"\n'
+            '4. Refresh this page (press F5 or click refresh)\n'
+            '5. Try joining the session again\n\n'
+            'If you don\'t see the icon:\n'
+            '• Chrome/Edge: Click the padlock icon → Site settings → Allow camera and microphone\n'
+            '• Firefox: Click the padlock icon → More Information → Permissions → Allow\n\n'
+            'After allowing permissions, refresh the page and try again.';
       } else if (userMessage.contains('localhost:3000')) {
         // If error mentions localhost, suggest checking if server is running
         userMessage = 'Unable to connect to video service.\n\n'
@@ -278,8 +308,40 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         safeSetState(() {
           _remoteUserLeft = true;
           _remoteUID = null; // Clear remote UID so profile card shows
+          _remoteConnectionUnstable = false; // Reset instability flag when user leaves
         });
         LogService.info('📤 Remote user left - showing profile card');
+      }
+    });
+    
+    // Remote network quality (for instability detection)
+    _remoteNetworkQualitySubscription = _agoraService.remoteNetworkQualityStream.listen((data) {
+      final uid = data['uid'] as int;
+      final isUnstable = data['isUnstable'] as bool? ?? false;
+      
+      if (uid == _remoteUID) {
+        safeSetState(() {
+          _remoteConnectionUnstable = isUnstable;
+        });
+        
+        if (isUnstable) {
+          LogService.warning('⚠️ Remote user connection is unstable');
+        } else {
+          LogService.info('✅ Remote user connection is stable');
+        }
+      }
+    });
+    
+    // Remote reactions
+    _reactionSubscription = _agoraService.reactionStream.listen((data) {
+      final uid = data['uid'] as int;
+      final emoji = data['emoji'] as String;
+      
+      // Only show reactions from the remote user we're connected to
+      if (uid == _remoteUID) {
+        LogService.info('🎉 Displaying remote reaction: $emoji from UID=$uid');
+        // Add reaction animation on screen
+        _addReactionAnimation(emoji);
       }
     });
   }
@@ -315,16 +377,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     try {
       if (_isScreenSharing) {
         await _agoraService.stopScreenSharing();
-        safeSetState(() {
-          _isScreenSharing = false;
-        });
+        // State will be updated via stream subscription in _setupListeners
+        // No need to manually update _isScreenSharing here
       } else {
         await _agoraService.startScreenSharing();
-        // Only update state if screen sharing actually started
-        // (if user cancelled, startScreenSharing returns silently)
-        safeSetState(() {
-          _isScreenSharing = true;
-        });
+        // State will be updated via stream subscription in _setupListeners
+        // The service emits via _screenSharingController, which triggers UI update
+        // No need to manually update _isScreenSharing here - rely on stream events
       }
     } catch (e) {
       // Check if user cancelled
@@ -347,9 +406,21 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
   /// Handle reaction emoji selection
   void _handleReaction(String emoji) {
-    // Add reaction animation
+    // Add local reaction animation
+    _addReactionAnimation(emoji);
+    
+    // Send reaction to remote users via Agora data stream
+    try {
+      _agoraService.sendReaction(emoji);
+    } catch (e) {
+      LogService.warning('Failed to send reaction: $e');
+    }
+  }
+
+  /// Helper method to add reaction animation (can be reused for local and remote)
+  void _addReactionAnimation(String emoji) {
     final screenSize = MediaQuery.of(context).size;
-    final reactionKey = UniqueKey(); // Use key to identify widget for removal
+    final reactionKey = UniqueKey();
     
     final reactionWidget = ReactionAnimation(
       key: reactionKey,
@@ -370,10 +441,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     safeSetState(() {
       _reactionAnimations.add(reactionWidget);
     });
-
-    // TODO: Send reaction to remote user via Agora data stream
-    // For now, reactions are only local
-    // In future: Use _agoraService.sendStreamMessage() to broadcast reactions
   }
 
   /// End call and leave session
@@ -515,16 +582,40 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       );
     }
 
-    // If screen sharing is active, show screen share
+    // CRITICAL: Check if remote user left FIRST before showing screen sharing
+    // This ensures we show profile card instead of blank screen after user leaves during screen share
+    if (_remoteUserLeft && (_isScreenSharing || _remoteIsScreenSharing)) {
+      // User left during screen sharing - show profile card instead of blank screen
+      return Container(
+        color: Colors.black,
+        child: const SizedBox.shrink(), // Profile card overlay will show
+      );
+    }
+
+    // If screen sharing is active, show screen share (not camera video)
     if (_isScreenSharing || _remoteIsScreenSharing) {
       final sharingUid = _remoteIsScreenSharing ? _remoteUID : _agoraService.currentUID;
-      if (sharingUid != null) {
+      if (sharingUid != null && !(_remoteIsScreenSharing && _remoteUserLeft)) {
         return SizedBox.expand(
           child: agora_widget.AgoraVideoViewWidget(
             engine: engine,
             uid: sharingUid,
             isLocal: sharingUid == _agoraService.currentUID,
             connection: _agoraService.currentConnection,
+          ),
+        );
+      } else if (_remoteUID != null && !_remoteUserLeft) {
+        // Fallback: If screen share UID is invalid but remote user exists, show camera instead
+        LogService.warning('⚠️ Screen sharing UID is null, falling back to camera view');
+        final connection = _agoraService.currentConnection;
+        return SizedBox.expand(
+          key: ValueKey('remote_camera_fallback_$_videoRebuildKey'),
+          child: agora_widget.AgoraVideoViewWidget(
+            engine: engine,
+            uid: _remoteUID,
+            isLocal: false,
+            connection: connection,
+            sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera, // Fallback to camera
           ),
         );
       }
@@ -659,6 +750,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             widget.userRole == 'tutor' 
                 ? SessionStateMessages.learnerLeft()
                 : SessionStateMessages.tutorLeft(),
+          // Remote connection unstable
+          if (_remoteConnectionUnstable && _remoteUID != null && !_remoteUserLeft)
+            widget.userRole == 'tutor'
+                ? SessionStateMessages.learnerConnectionUnstable()
+                : SessionStateMessages.tutorConnectionUnstable(),
         ],
       ),
     );

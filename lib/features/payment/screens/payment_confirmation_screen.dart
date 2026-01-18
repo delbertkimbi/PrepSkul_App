@@ -110,7 +110,17 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
               _paymentStatus = 'successful';
             } else if (status.isFailed) {
               _paymentStatus = 'failed';
-              _errorMessage = 'Payment failed. Please try again.';
+              // Provide user-friendly error message for failed payments
+              final statusStr = status.status?.toUpperCase() ?? '';
+              if (statusStr.contains('INSUFFICIENT') || statusStr.contains('BALANCE')) {
+                _errorMessage = 'Payment failed due to insufficient balance. Please check your mobile money account balance and try again.';
+              } else if (statusStr.contains('DECLINED') || statusStr.contains('REJECTED')) {
+                _errorMessage = 'Payment was declined. Please check your mobile money account and try again.';
+              } else if (statusStr.contains('CANCELLED') || statusStr.contains('CANCELED')) {
+                _errorMessage = 'Payment was cancelled. Please try again when ready.';
+              } else {
+                _errorMessage = 'Payment failed. Please check your mobile money account balance and try again.';
+              }
             } else if (status.status.toUpperCase() == 'EXPIRED') {
               _paymentStatus = 'failed';
               _errorMessage = 'Payment link expired. Please initiate a new payment.';

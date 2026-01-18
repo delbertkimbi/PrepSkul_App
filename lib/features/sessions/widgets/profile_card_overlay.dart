@@ -141,9 +141,10 @@ class ProfileCardOverlay extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!isLocal) ...[
+              if (!isLocal && !userLeft) ...[
+                // Only show "Camera is off" message when camera is off but user hasn't left
+                // "Left the call" message is shown at the top via SessionStateMessages
                 const SizedBox(height: 16),
-                // Camera off indicator
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

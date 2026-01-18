@@ -14,6 +14,10 @@
  *   - SUPABASE_ANON_KEY_PROD
  *   - SUPABASE_URL_DEV (optional, for dev builds)
  *   - SUPABASE_ANON_KEY_DEV (optional, for dev builds)
+ *   - FAPSHI_SANDBOX_API_USER (for sandbox payments)
+ *   - FAPSHI_SANDBOX_API_KEY (for sandbox payments)
+ *   - FAPSHI_COLLECTION_API_USER_LIVE (for production payments)
+ *   - FAPSHI_COLLECTION_API_KEY_LIVE (for production payments)
  */
 
 const fs = require('fs');
@@ -95,6 +99,10 @@ console.log('   Variables set:', Object.keys(envVars).filter(key => envVars[key]
  *   - SUPABASE_ANON_KEY_PROD
  *   - SUPABASE_URL_DEV (optional, for dev builds)
  *   - SUPABASE_ANON_KEY_DEV (optional, for dev builds)
+ *   - FAPSHI_SANDBOX_API_USER (for sandbox payments)
+ *   - FAPSHI_SANDBOX_API_KEY (for sandbox payments)
+ *   - FAPSHI_COLLECTION_API_USER_LIVE (for production payments)
+ *   - FAPSHI_COLLECTION_API_KEY_LIVE (for production payments)
  */
 
 const fs = require('fs');

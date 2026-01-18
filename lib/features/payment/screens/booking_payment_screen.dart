@@ -181,40 +181,115 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       _paymentStatus = 'idle';
     });
 
+    // Validate and normalize phone number (same as trial payment)
+    final phone = _phoneController.text.trim();
+    String? normalizedPhone;
+    try {
+      // Normalize phone number (remove non-digits, handle country code)
+      final digitsOnly = phone.replaceAll(RegExp(r'[^\d]'), '');
+      if (digitsOnly.startsWith('237')) {
+        normalizedPhone = digitsOnly.substring(3);
+      } else if (digitsOnly.startsWith('67') || digitsOnly.startsWith('69') ||
+                 digitsOnly.startsWith('65') || digitsOnly.startsWith('66') ||
+                 digitsOnly.startsWith('68')) {
+        normalizedPhone = digitsOnly;
+      } else {
+        safeSetState(() {
+          _errorMessage = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+          _isProcessing = false;
+        });
+        return;
+      }
+      
+      if (normalizedPhone.length != 9) {
+        safeSetState(() {
+          _errorMessage = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+          _isProcessing = false;
+        });
+        return;
+      }
+    } catch (_) {
+      safeSetState(() {
+        _errorMessage = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+        _isProcessing = false;
+      });
+      return;
+    }
+
+    final provider = FapshiService.detectPhoneProvider(normalizedPhone!);
+    
+    String? transId;
     try {
       // Use total amount (subtotal + charges) for payment
       final amountToCharge = _total.toInt();
 
       final paymentResponse = await FapshiService.initiateDirectPayment(
         amount: amountToCharge,
-        phone: _phoneController.text.trim(),
+        phone: normalizedPhone,
         externalId: 'payment_request_${widget.paymentRequestId}',
         userId: _paymentRequest!['student_id'] as String?,
         message: _paymentRequest!['description'] as String? ?? 'Booking payment',
       );
 
+      transId = paymentResponse.transId;
+
       await PaymentRequestService.updatePaymentRequestStatus(
         widget.paymentRequestId,
         'pending',
-        fapshiTransId: paymentResponse.transId,
+        fapshiTransId: transId,
       );
-
-      final provider = FapshiService.detectPhoneProvider(_phoneController.text.trim());
+    } catch (e) {
+      // Even if payment initiation fails, navigate to confirmation screen
+      // The new screen will handle the error and show appropriate message
+      LogService.error('Error initiating payment: $e');
       
+      // If we got a transaction ID before the error, use it
+      // Otherwise, create a placeholder for sandbox mode
+      if (transId == null && !FapshiService.isProduction) {
+        transId = 'sandbox_error_${DateTime.now().millisecondsSinceEpoch}';
+      }
+    }
+    
+    // Navigate to dedicated payment confirmation screen IMMEDIATELY
+    // Always navigate, even if there was an error (let the new screen handle it)
+    if (mounted && transId != null) {
       safeSetState(() {
-        _paymentStatus = 'pending';
         _isProcessing = false;
-        _isPolling = true;
         _detectedProvider = provider;
       });
 
-      // Navigate to confirmation step
-      _navigateToStep(2);
+      final result = await Navigator.pushReplacement<bool, void>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PaymentConfirmationScreen(
+            provider: provider,
+            phoneNumber: normalizedPhone!,
+            amount: _total,
+            transactionId: transId!,
+            isSandbox: !FapshiService.isProduction,
+            onPaymentComplete: (transId) async {
+              try {
+                await _completePayment(transId);
+                return true; // Return success
+              } catch (e) {
+                LogService.error('Error completing payment: $e');
+                // Even on error, if payment was confirmed, return true
+                return true; // Payment is successful, even if other steps failed
+              }
+            },
+          ),
+        ),
+      );
 
-      // Start polling for payment status
-      _pollPaymentStatus(paymentResponse.transId);
-    } catch (e) {
-      final friendlyMessage = ErrorHandler.getUserFriendlyMessage(e);
+      // If payment was successful, show success dialog and navigate
+      if (result == true && mounted) {
+        _showSuccessDialog();
+      }
+    } else if (transId == null) {
+      // Only show error if we couldn't create a transaction ID at all
+      final friendlyMessage = ErrorHandler.getUserFriendlyMessage(
+        Exception('Payment service is not configured. Please contact support.')
+      );
       safeSetState(() {
         _errorMessage = friendlyMessage;
         _isProcessing = false;

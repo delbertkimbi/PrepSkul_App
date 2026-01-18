@@ -110,8 +110,7 @@ class TrialSessionService {
       // Check if user already has an active trial session with this tutor
       // Skip this check if we're rescheduling an existing session (rescheduleSessionId is provided)
       if (rescheduleSessionId == null) {
-      // Check for pending, approved, or scheduled trials
-      // FIX: Add .limit(1) to prevent "multiple rows" error if duplicates exist
+      // Check for pending trials (always block pending regardless of date)
       final pendingTrials = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
@@ -121,59 +120,10 @@ class TrialSessionService {
           .limit(1)
           .maybeSingle();
 
-      final approvedTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'approved')
-          .limit(1)
-          .maybeSingle();
-
-      final scheduledTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'scheduled')
-          .limit(1)
-          .maybeSingle();
-
-      Map<String, dynamic>? existingTrial;
       if (pendingTrials != null) {
-        existingTrial = pendingTrials;
-      } else if (approvedTrials != null) {
-        existingTrial = approvedTrials;
-      } else if (scheduledTrials != null) {
-        existingTrial = scheduledTrials;
-      }
-
-      if (existingTrial != null) {
-        final status = existingTrial['status'] as String;
-        final scheduledDate = existingTrial['scheduled_date'] as String?;
-        final scheduledTime = existingTrial['scheduled_time'] as String?;
-
-        String message =
-            'You already have an active trial session with this tutor';
-        if (status == 'pending') {
-          message =
-              'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
-        } else if (status == 'approved') {
-          message =
-              'You already have an approved trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' scheduled for $scheduledDate at $scheduledTime';
-          }
-          message += '. Please complete this trial before booking another one.';
-        } else if (status == 'scheduled') {
-          message =
-              'You already have a scheduled trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' on $scheduledDate at $scheduledTime';
-          }
-          message += '. Please complete this trial before booking another one.';
-        }
-
+        final message =
+            'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
+        
         // In debug mode, allow multiple trials but log a warning
         if (kDebugMode) {
           LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
@@ -182,7 +132,94 @@ class TrialSessionService {
           // In production, enforce the one-trial-per-tutor rule
           throw Exception(message);
         }
+      }
+
+      // Check for approved or scheduled trials - only block if they are upcoming (not expired)
+      final approvedTrials = await _supabase
+          .from('trial_sessions')
+          .select('id, status, scheduled_date, scheduled_time')
+          .eq('tutor_id', validTutorId)
+          .eq('requester_id', userId)
+          .or('status.eq.approved,status.eq.scheduled')
+          .order('created_at', ascending: false);
+
+      if (approvedTrials.isNotEmpty) {
+        // Check each trial to see if it's upcoming
+        for (final trialData in approvedTrials) {
+          final status = trialData['status'] as String;
+          final scheduledDateStr = trialData['scheduled_date'] as String?;
+          final scheduledTimeStr = trialData['scheduled_time'] as String?;
+          
+          // For approved/scheduled trials, only block if they are upcoming
+          if (scheduledDateStr != null && scheduledTimeStr != null) {
+            try {
+              // Parse scheduled date and time
+              final scheduledDate = DateTime.parse(scheduledDateStr);
+              final timeParts = scheduledTimeStr.split(':');
+              final hour = int.tryParse(timeParts[0]) ?? 0;
+              final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+              final sessionDateTime = DateTime(
+                scheduledDate.year,
+                scheduledDate.month,
+                scheduledDate.day,
+                hour,
+                minute,
+              );
+              
+              // Check if session is upcoming (in the future)
+              final isUpcoming = sessionDateTime.isAfter(DateTime.now());
+              
+              if (isUpcoming) {
+                // Block booking - trial is upcoming
+                String message;
+                if (status == 'approved') {
+                  message = 'You already have an approved trial session with this tutor';
+                  message += ' scheduled for $scheduledDateStr at $scheduledTimeStr';
+                  message += '. Please complete this trial before booking another one.';
+                } else if (status == 'scheduled') {
+                  message = 'You already have a scheduled trial session with this tutor';
+                  message += ' on $scheduledDateStr at $scheduledTimeStr';
+                  message += '. Please complete this trial before booking another one.';
+                } else {
+                  message = 'You already have an active trial session with this tutor scheduled for $scheduledDateStr at $scheduledTimeStr. Please complete it before booking another one.';
+                }
+
+                // In debug mode, allow multiple trials but log a warning
+                if (kDebugMode) {
+                  LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
+                  // Continue with trial creation in debug mode
+                } else {
+                  // In production, enforce the one-trial-per-tutor rule
+                  throw Exception(message);
+                }
+              }
+              // If trial is expired, don't block - continue to next trial
+            } catch (e) {
+              // If parsing fails, assume it's not upcoming and continue
+              LogService.warning('Error parsing trial session date/time: $e');
+            }
+          } else {
+            // If no scheduled date/time but status is approved/scheduled, still block
+            String message;
+            if (status == 'approved') {
+              message = 'You already have an approved trial session with this tutor. Please complete this trial before booking another one.';
+            } else if (status == 'scheduled') {
+              message = 'You already have a scheduled trial session with this tutor. Please complete this trial before booking another one.';
+            } else {
+              message = 'You already have an active trial session with this tutor. Please complete it before booking another one.';
+            }
+
+            // In debug mode, allow multiple trials but log a warning
+            if (kDebugMode) {
+              LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
+              // Continue with trial creation in debug mode
+            } else {
+              // In production, enforce the one-trial-per-tutor rule
+              throw Exception(message);
+            }
+          }
         }
+      }
       } else {
         // If rescheduling, log that we're skipping the duplicate check
         LogService.debug('Rescheduling session $rescheduleSessionId - skipping duplicate trial check');

@@ -149,18 +149,28 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     
     // Calculate next step - skip step 4 (flexible session selector) if location is not hybrid
     int nextStep = _currentStep + 1;
-    if (nextStep == 4 && _selectedLocation != 'hybrid') {
+    final wasSkipping = nextStep == 4 && _selectedLocation != 'hybrid';
+    if (wasSkipping) {
       // Skip flexible step (4) if not hybrid, go directly to review (5)
       nextStep = 5;
+      LogService.info('📍 Skipping flexible step (4) - location is $_selectedLocation, going to review (5)');
     }
     
     if (nextStep < _totalSteps) {
-      safeSetState(() => _currentStep = nextStep);
-      _pageController.animateToPage(
-        _currentStep,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      safeSetState(() {
+        _currentStep = nextStep;
+      });
+      // Use jumpToPage for immediate navigation when skipping steps to avoid showing empty step 4
+      if (wasSkipping) {
+        // Direct jump when skipping from step 3 to 5
+        _pageController.jumpToPage(nextStep);
+      } else {
+        _pageController.animateToPage(
+          nextStep,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
   }
 
@@ -168,17 +178,27 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     if (_currentStep > 0) {
       // Calculate previous step - skip flexible step if not hybrid
       int prevStep = _currentStep - 1;
-      if (prevStep == 4 && _selectedLocation != 'hybrid') {
+      final wasSkipping = prevStep == 4 && _selectedLocation != 'hybrid';
+      if (wasSkipping) {
         // Skip flexible step (4) if not hybrid, go back to location (3)
         prevStep = 3;
+        LogService.info('📍 Skipping flexible step (4) on back - location is $_selectedLocation, going to location (3)');
       }
       
-      safeSetState(() => _currentStep = prevStep);
-      _pageController.animateToPage(
-        _currentStep,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      safeSetState(() {
+        _currentStep = prevStep;
+      });
+      // Use jumpToPage for immediate navigation when skipping steps to avoid showing empty step 4
+      if (wasSkipping) {
+        // Direct jump when skipping from step 5 to 3
+        _pageController.jumpToPage(prevStep);
+      } else {
+        _pageController.animateToPage(
+          prevStep,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
   }
 
@@ -297,7 +317,17 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             )
           : Container(
               // Empty container for non-hybrid - navigation will skip this step
+              // This should never be visible as navigation skips this step
               color: Colors.white,
+              child: Center(
+                child: Text(
+                  'Loading review...',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
             ),
 
       // Step 5: Booking Review
