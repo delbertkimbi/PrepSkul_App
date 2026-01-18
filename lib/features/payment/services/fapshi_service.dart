@@ -47,6 +47,15 @@ class FapshiService {
     String? message,
   }) async {
     try {
+      // Log payment mode for clarity
+      if (!isProduction) {
+        LogService.info('🟢 SANDBOX MODE: Payment will be SIMULATED - No real money will be charged');
+        LogService.info('🟢 Using sandbox environment: $_baseUrl');
+      } else {
+        LogService.warning('🔴 PRODUCTION MODE: REAL payment will be processed - REAL money will be charged');
+        LogService.warning('🔴 Using live environment: $_baseUrl');
+      }
+      
       // Validate API credentials
       if (_apiUser.isEmpty || _apiKey.isEmpty) {
         LogService.error('Fapshi API credentials are missing. Check your .env file.');
@@ -68,6 +77,9 @@ class FapshiService {
       if (!isProduction && _isSandboxTestNumber(normalizedPhone)) {
         LogService.warning('⚠️ Using sandbox test number: $normalizedPhone. Payment will auto-succeed/fail without sending actual payment request.');
       }
+
+      // Store normalized phone for error handling
+      final phoneForError = normalizedPhone;
 
       // Prepare request body
       final requestBody = <String, dynamic>{
@@ -137,12 +149,36 @@ class FapshiService {
       } else {
         // Try to parse error response
         String errorMessage = 'Payment request failed';
+        String? rawFapshiError; // Store raw error for better diagnostics
         try {
         final errorResponse = jsonDecode(response.body) as Map<String, dynamic>;
-          errorMessage = errorResponse['message'] as String? ?? 
-                        errorResponse['error'] as String? ?? 
-                        'Payment request failed';
+          rawFapshiError = errorResponse['message'] as String? ?? 
+                          errorResponse['error'] as String? ?? 
+                          errorResponse['errors']?.toString();
+          errorMessage = rawFapshiError ?? 'Payment request failed';
+          
+          // Log the actual Fapshi error for debugging
           LogService.error('Fapshi API error: $errorMessage (Status: ${response.statusCode})');
+          LogService.error('Fapshi raw response: ${response.body}');
+          
+          // Check for specific phone number errors from Fapshi
+          final lowerError = errorMessage.toLowerCase();
+          if (lowerError.contains('phone') || 
+              lowerError.contains('mobile') ||
+              lowerError.contains('number')) {
+            // Phone number related error - provide specific guidance
+            if (lowerError.contains('invalid') || lowerError.contains('not found') || lowerError.contains('not registered')) {
+              // Use phoneForError which is in scope
+              final provider = phoneForError.startsWith('67') || phoneForError.startsWith('65') || phoneForError.startsWith('66') || phoneForError.startsWith('68') ? 'MTN' : 'Orange';
+              errorMessage = 'The phone number you entered is not valid or not registered with $provider Mobile Money.\n\n'
+                  'Please check:\n'
+                  '• The number is correct (9 digits: ${phoneForError.substring(0, 2)}XXXXXXX)\n'
+                  '• The number is registered for Mobile Money\n'
+                  '• You\'re using the correct provider ($provider)';
+            } else {
+              errorMessage = 'Phone number error: $errorMessage';
+            }
+          }
         } on FormatException {
           // Response is not valid JSON
           LogService.error('Fapshi API returned non-JSON error response (Status: ${response.statusCode})');
@@ -155,7 +191,17 @@ class FapshiService {
               response.statusCode == 403) {
             errorMessage = 'Payment service authentication failed. Please contact support.';
           } else if (response.statusCode == 400) {
-            errorMessage = 'Invalid payment request. Please check your phone number and try again.';
+            // 400 Bad Request - could be phone number, amount, or other validation issue
+            // Check response body for clues
+            final bodyLower = response.body.toLowerCase();
+            if (bodyLower.contains('phone') || bodyLower.contains('mobile') || bodyLower.contains('number')) {
+              errorMessage = 'Invalid phone number. Please check:\n'
+                  '• Format: ${normalizedPhone.substring(0, 2)}XXXXXXX (9 digits)\n'
+                  '• Number is registered for Mobile Money\n'
+                  '• You\'re using the correct provider';
+            } else {
+              errorMessage = 'Invalid payment request. Please check your phone number and try again.';
+            }
           } else if (response.statusCode >= 500) {
             errorMessage = 'Payment service is temporarily unavailable. Please try again later.';
           } else {
@@ -270,13 +316,37 @@ class FapshiService {
     final lowerError = errorMessage.toLowerCase();
     
     // Phone number validation errors - provide clear format guidance
-    if (lowerError.contains('phone') && (lowerError.contains('valid') || lowerError.contains('mtn') || lowerError.contains('orange'))) {
-      return 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
+    // Only show phone number error if error explicitly mentions phone/number
+    if (lowerError.contains('phone') || lowerError.contains('mobile') || lowerError.contains('number')) {
+      if (lowerError.contains('invalid') || lowerError.contains('not found') || lowerError.contains('not registered') || lowerError.contains('format')) {
+        return 'The phone number you entered is not valid or not registered for Mobile Money.\n\n'
+            'Please check:\n'
+            '• The number is correct (9 digits: 67XXXXXXX for MTN or 69XXXXXXX for Orange)\n'
+            '• The number is registered for Mobile Money\n'
+            '• You\'re using the correct provider (MTN or Orange)';
+      } else if (lowerError.contains('valid') || lowerError.contains('mtn') || lowerError.contains('orange')) {
+        return 'Please enter a valid phone number.\n\nFormat: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n\nExample: 670000000 or 690000000';
+      }
+      // If error mentions phone but doesn't specify issue, show generic phone error
+      return 'There was an issue with the phone number. Please check:\n'
+          '• Format: 67XXXXXXX (MTN) or 69XXXXXXX (Orange)\n'
+          '• Number is registered for Mobile Money\n'
+          '• Number is correct';
     }
     
     // Amount validation errors
-    if (lowerError.contains('amount') && lowerError.contains('minimum')) {
-      return 'The minimum payment amount is 100 XAF. Please try again with a higher amount.';
+    if (lowerError.contains('amount')) {
+      if (lowerError.contains('minimum')) {
+        return 'The minimum payment amount is 100 XAF. Please try again with a higher amount.';
+      } else if (lowerError.contains('insufficient') || lowerError.contains('balance')) {
+        return 'Insufficient balance. Please check your Mobile Money balance and try again.';
+      }
+      return 'There was an issue with the payment amount. Please try again.';
+    }
+    
+    // Account/registration errors
+    if (lowerError.contains('not registered') || lowerError.contains('not found') || lowerError.contains('account')) {
+      return 'The phone number is not registered for Mobile Money. Please ensure your number is registered with ${lowerError.contains('mtn') ? 'MTN' : 'Orange'} Mobile Money.';
     }
     
     // 403 Forbidden errors - handle various scenarios
@@ -311,13 +381,25 @@ class FapshiService {
       return 'This payment link has expired. Please start a new payment to continue.';
     }
     
+    // If error message is already user-friendly and specific, use it as-is
+    // Don't replace with generic "check phone number" message
+    if (errorMessage.length > 20 && 
+        !lowerError.contains('exception') &&
+        !lowerError.contains('error:') &&
+        !lowerError.contains('failed:')) {
+      // Error message seems specific and user-friendly, use it
+      return errorMessage;
+    }
+    
     // Generic payment failures - provide actionable next steps
+    // Only show generic message if we can't determine the specific issue
     if (lowerError.contains('failed') || lowerError.contains('error')) {
-      return 'We couldn\'t process your payment. Please check your phone number and try again.';
+      return 'We couldn\'t process your payment. Please try again.\n\nIf this continues, contact our support team for assistance.';
     }
     
     // Default user-friendly message - clear, helpful, actionable
-    return 'We couldn\'t process your payment. Please check your phone number and try again.\n\nIf the problem continues, contact our support team for help.';
+    // Don't assume it's a phone number issue
+    return 'We couldn\'t process your payment. Please try again.\n\nIf the problem continues, contact our support team for help.';
   }
 
   /// Get payment transaction status

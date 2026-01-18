@@ -10,6 +10,7 @@ import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:flutter/foundation.dart';
 
 /// TrialSessionService
@@ -109,8 +110,7 @@ class TrialSessionService {
       // Check if user already has an active trial session with this tutor
       // Skip this check if we're rescheduling an existing session (rescheduleSessionId is provided)
       if (rescheduleSessionId == null) {
-      // Check for pending, approved, or scheduled trials
-      // FIX: Add .limit(1) to prevent "multiple rows" error if duplicates exist
+      // Check for pending trials (always block pending regardless of date)
       final pendingTrials = await _supabase
           .from('trial_sessions')
           .select('id, status, scheduled_date, scheduled_time')
@@ -120,59 +120,10 @@ class TrialSessionService {
           .limit(1)
           .maybeSingle();
 
-      final approvedTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'approved')
-          .limit(1)
-          .maybeSingle();
-
-      final scheduledTrials = await _supabase
-          .from('trial_sessions')
-          .select('id, status, scheduled_date, scheduled_time')
-          .eq('tutor_id', validTutorId)
-          .eq('requester_id', userId)
-          .eq('status', 'scheduled')
-          .limit(1)
-          .maybeSingle();
-
-      Map<String, dynamic>? existingTrial;
       if (pendingTrials != null) {
-        existingTrial = pendingTrials;
-      } else if (approvedTrials != null) {
-        existingTrial = approvedTrials;
-      } else if (scheduledTrials != null) {
-        existingTrial = scheduledTrials;
-      }
-
-      if (existingTrial != null) {
-        final status = existingTrial['status'] as String;
-        final scheduledDate = existingTrial['scheduled_date'] as String?;
-        final scheduledTime = existingTrial['scheduled_time'] as String?;
-
-        String message =
-            'You already have an active trial session with this tutor';
-        if (status == 'pending') {
-          message =
-              'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
-        } else if (status == 'approved') {
-          message =
-              'You already have an approved trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' scheduled for $scheduledDate at $scheduledTime';
-          }
-          message += '. Please complete this trial before booking another one.';
-        } else if (status == 'scheduled') {
-          message =
-              'You already have a scheduled trial session with this tutor';
-          if (scheduledDate != null && scheduledTime != null) {
-            message += ' on $scheduledDate at $scheduledTime';
-          }
-          message += '. Please complete this trial before booking another one.';
-        }
-
+        final message =
+            'You already have a pending trial session request with this tutor. Please wait for the tutor to respond or complete your existing trial before booking another one.';
+        
         // In debug mode, allow multiple trials but log a warning
         if (kDebugMode) {
           LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
@@ -181,7 +132,94 @@ class TrialSessionService {
           // In production, enforce the one-trial-per-tutor rule
           throw Exception(message);
         }
+      }
+
+      // Check for approved or scheduled trials - only block if they are upcoming (not expired)
+      final approvedTrials = await _supabase
+          .from('trial_sessions')
+          .select('id, status, scheduled_date, scheduled_time')
+          .eq('tutor_id', validTutorId)
+          .eq('requester_id', userId)
+          .or('status.eq.approved,status.eq.scheduled')
+          .order('created_at', ascending: false);
+
+      if (approvedTrials.isNotEmpty) {
+        // Check each trial to see if it's upcoming
+        for (final trialData in approvedTrials) {
+          final status = trialData['status'] as String;
+          final scheduledDateStr = trialData['scheduled_date'] as String?;
+          final scheduledTimeStr = trialData['scheduled_time'] as String?;
+          
+          // For approved/scheduled trials, only block if they are upcoming
+          if (scheduledDateStr != null && scheduledTimeStr != null) {
+            try {
+              // Parse scheduled date and time
+              final scheduledDate = DateTime.parse(scheduledDateStr);
+              final timeParts = scheduledTimeStr.split(':');
+              final hour = int.tryParse(timeParts[0]) ?? 0;
+              final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+              final sessionDateTime = DateTime(
+                scheduledDate.year,
+                scheduledDate.month,
+                scheduledDate.day,
+                hour,
+                minute,
+              );
+              
+              // Check if session is upcoming (in the future)
+              final isUpcoming = sessionDateTime.isAfter(DateTime.now());
+              
+              if (isUpcoming) {
+                // Block booking - trial is upcoming
+                String message;
+                if (status == 'approved') {
+                  message = 'You already have an approved trial session with this tutor';
+                  message += ' scheduled for $scheduledDateStr at $scheduledTimeStr';
+                  message += '. Please complete this trial before booking another one.';
+                } else if (status == 'scheduled') {
+                  message = 'You already have a scheduled trial session with this tutor';
+                  message += ' on $scheduledDateStr at $scheduledTimeStr';
+                  message += '. Please complete this trial before booking another one.';
+                } else {
+                  message = 'You already have an active trial session with this tutor scheduled for $scheduledDateStr at $scheduledTimeStr. Please complete it before booking another one.';
+                }
+
+                // In debug mode, allow multiple trials but log a warning
+                if (kDebugMode) {
+                  LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
+                  // Continue with trial creation in debug mode
+                } else {
+                  // In production, enforce the one-trial-per-tutor rule
+                  throw Exception(message);
+                }
+              }
+              // If trial is expired, don't block - continue to next trial
+            } catch (e) {
+              // If parsing fails, assume it's not upcoming and continue
+              LogService.warning('Error parsing trial session date/time: $e');
+            }
+          } else {
+            // If no scheduled date/time but status is approved/scheduled, still block
+            String message;
+            if (status == 'approved') {
+              message = 'You already have an approved trial session with this tutor. Please complete this trial before booking another one.';
+            } else if (status == 'scheduled') {
+              message = 'You already have a scheduled trial session with this tutor. Please complete this trial before booking another one.';
+            } else {
+              message = 'You already have an active trial session with this tutor. Please complete it before booking another one.';
+            }
+
+            // In debug mode, allow multiple trials but log a warning
+            if (kDebugMode) {
+              LogService.warning('[DEBUG] Multiple trial sessions allowed in debug mode. Original message: $message');
+              // Continue with trial creation in debug mode
+            } else {
+              // In production, enforce the one-trial-per-tutor rule
+              throw Exception(message);
+            }
+          }
         }
+      }
       } else {
         // If rescheduling, log that we're skipping the duplicate check
         LogService.debug('Rescheduling session $rescheduleSessionId - skipping duplicate trial check');
@@ -1402,12 +1440,15 @@ class TrialSessionService {
       );
 
       // Update trial session with transaction ID
+      // Note: Don't update payment_status - it should remain 'unpaid' until payment is confirmed
+      // The database constraint only allows: 'unpaid', 'paid', 'refunded'
+      // 'pending' is NOT a valid value for payment_status
       await _supabase
           .from('trial_sessions')
           .update({
             'fapshi_trans_id': paymentResponse.transId,
             'payment_initiated_at': DateTime.now().toIso8601String(),
-            'payment_status': 'pending',
+            // payment_status remains 'unpaid' until payment is confirmed via webhook or polling
           })
           .eq('id', sessionId);
 
@@ -1540,27 +1581,93 @@ class TrialSessionService {
       }
 
       // Create an individual session instance so trial appears in upcoming sessions
+      // Use the trial session ID as the individual session ID for proper linking
       try {
-        await _supabase.from('individual_sessions').insert({
-          'recurring_session_id': null,
-          'tutor_id': trial.tutorId,
-          'learner_id': trial.learnerId,
-          'parent_id': trial.parentId,
-          'status': 'scheduled',
-          'scheduled_date':
-              scheduledDate?.toIso8601String().split('T')[0] ??
-                  trial.scheduledDate.toIso8601String().split('T')[0],
-          'scheduled_time': scheduledTime,
-          'subject': trial.subject,
-          'duration_minutes': trial.durationMinutes,
-          'location': trial.location,
-          'meeting_link': meetLink,
-          'address': null,
-          'location_description': null,
-        });
-      } catch (e) {
-        LogService.warning('Error creating individual session for trial (will still keep trial record)', e);
-        // Continue - trial record is still valid even if individual_sessions creation fails
+        LogService.info('📅 Creating individual session for trial: $sessionId');
+        LogService.info('📅 Session details: tutor=${trial.tutorId}, learner=${trial.learnerId}, date=$scheduledDate, time=$scheduledTime');
+        
+        // Check if individual session already exists (idempotency)
+        final existingIndividual = await _supabase
+            .from('individual_sessions')
+            .select('id, status')
+            .eq('id', sessionId)
+            .maybeSingle();
+        
+        if (existingIndividual != null) {
+          LogService.info('✅ Individual session already exists for trial: $sessionId, status: ${existingIndividual['status']}');
+          // Update it to ensure it's in the correct state
+          await _supabase
+              .from('individual_sessions')
+              .update({
+                'status': 'scheduled',
+                'payment_status': 'paid',
+                'meeting_link': meetLink,
+                'updated_at': DateTime.now().toIso8601String(),
+              })
+              .eq('id', sessionId);
+          LogService.success('✅ Updated existing individual session for trial: $sessionId');
+        } else {
+          // Create new individual session with trial session ID
+          final sessionData = {
+            'id': sessionId, // Use trial session ID as individual session ID for linking
+            'recurring_session_id': null,
+            'tutor_id': trial.tutorId,
+            'learner_id': trial.learnerId,
+            'parent_id': trial.parentId,
+            'status': 'scheduled',
+            'scheduled_date':
+                scheduledDate?.toIso8601String().split('T')[0] ??
+                    trial.scheduledDate.toIso8601String().split('T')[0],
+            'scheduled_time': scheduledTime,
+            'subject': trial.subject,
+            'duration_minutes': trial.durationMinutes,
+            'location': trial.location,
+            'meeting_link': meetLink,
+            'address': null, // Trial sessions don't have address field in model
+            'location_description': null, // Trial sessions don't have location_description field in model
+            'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+          
+          LogService.debug('📅 Individual session data: $sessionData');
+          
+          final insertedSession = await _supabase
+              .from('individual_sessions')
+              .insert(sessionData)
+              .select('id, scheduled_date, status')
+              .single();
+          
+          LogService.success('✅ Individual session created for trial: ${insertedSession['id']}, date: ${insertedSession['scheduled_date']}, status: ${insertedSession['status']}');
+        }
+      } catch (e, stackTrace) {
+        LogService.error('❌ Error creating individual session for trial: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
+        
+        // Check if it's a duplicate key error (session already exists)
+        if (e.toString().contains('duplicate key') || 
+            e.toString().contains('unique constraint') ||
+            e.toString().contains('already exists')) {
+          LogService.warning('⚠️ Individual session already exists (likely created by webhook). Continuing...');
+          // Try to update it instead
+          try {
+            await _supabase
+                .from('individual_sessions')
+                .update({
+                  'status': 'scheduled',
+                  'meeting_link': meetLink,
+                  'updated_at': DateTime.now().toIso8601String(),
+                })
+                .eq('id', sessionId);
+            LogService.success('✅ Updated existing individual session for trial: $sessionId');
+          } catch (updateError) {
+            LogService.warning('⚠️ Could not update existing session: $updateError');
+            // Continue anyway - session exists
+          }
+        } else {
+          // For other errors, re-throw to ensure payment completion fails if session creation fails
+          // This ensures the user knows there was an issue
+          throw Exception('Failed to create session after payment: $e');
+        }
       }
 
       // Notify tutor that session is ready and payment received (outside catch block)
@@ -1614,6 +1721,21 @@ class TrialSessionService {
         title: 'Trial Payment Received',
         message: tutorMessage,
       );
+
+      // Create conversation for messaging after payment is confirmed
+      try {
+        LogService.info('💬 Creating conversation for paid trial session...');
+        await ConversationLifecycleService.createConversationForTrial(
+          trialSessionId: sessionId,
+          studentId: trial.learnerId,
+          tutorId: trial.tutorId,
+        );
+        LogService.success('✅ Conversation created successfully for trial session');
+      } catch (e, stackTrace) {
+        LogService.error('❌ Failed to create conversation for trial session: $e');
+        LogService.error('📚 Stack trace: $stackTrace');
+        // Don't fail payment completion if conversation creation fails
+      }
 
       LogService.success('Payment completed for trial: $sessionId', 'calendarOk=$calendarOk');
 

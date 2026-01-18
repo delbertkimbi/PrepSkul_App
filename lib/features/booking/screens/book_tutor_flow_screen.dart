@@ -128,25 +128,14 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   void _nextStep() {
     // Validate current step before proceeding
     if (!_canProceed()) {
-      // Show error messages for different steps
-      if (_currentStep == 3 && _selectedLocation == 'onsite' &&
+      // Show error message for location step if address is missing
+      if (_currentStep == 3 && 
+          _selectedLocation == 'onsite' &&
           (_onsiteAddress == null || _onsiteAddress!.trim().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Please select a location on the map to continue with onsite sessions',
-              style: GoogleFonts.poppins(),
-            ),
-            backgroundColor: Colors.red[600],
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      } else if (_currentStep == 4 && _selectedLocation == 'hybrid') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Please select locations for all sessions and provide addresses for onsite sessions',
+              'Please enter your address to continue with onsite sessions',
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: Colors.red[600],
@@ -158,16 +147,30 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       return;
     }
     
-    // If moving from step 3 (location) and hybrid is selected, skip to step 5 (review) if flexible step not needed
-    // Actually, we always show step 4 for hybrid, so no skip needed
+    // Calculate next step - skip step 4 (flexible session selector) if location is not hybrid
+    int nextStep = _currentStep + 1;
+    final wasSkipping = nextStep == 4 && _selectedLocation != 'hybrid';
+    if (wasSkipping) {
+      // Skip flexible step (4) if not hybrid, go directly to review (5)
+      nextStep = 5;
+      LogService.info('📍 Skipping flexible step (4) - location is $_selectedLocation, going to review (5)');
+    }
     
-    if (_currentStep < _totalSteps - 1) {
-      safeSetState(() => _currentStep++);
-      _pageController.animateToPage(
-        _currentStep,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+    if (nextStep < _totalSteps) {
+      safeSetState(() {
+        _currentStep = nextStep;
+      });
+      // Use jumpToPage for immediate navigation when skipping steps to avoid showing empty step 4
+      if (wasSkipping) {
+        // Direct jump when skipping from step 3 to 5
+        _pageController.jumpToPage(nextStep);
+      } else {
+        _pageController.animateToPage(
+          nextStep,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
   }
 
@@ -175,17 +178,27 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     if (_currentStep > 0) {
       // Calculate previous step - skip flexible step if not hybrid
       int prevStep = _currentStep - 1;
-      if (prevStep == 4 && _selectedLocation != 'hybrid') {
+      final wasSkipping = prevStep == 4 && _selectedLocation != 'hybrid';
+      if (wasSkipping) {
         // Skip flexible step (4) if not hybrid, go back to location (3)
         prevStep = 3;
+        LogService.info('📍 Skipping flexible step (4) on back - location is $_selectedLocation, going to location (3)');
       }
       
-      safeSetState(() => _currentStep = prevStep);
-      _pageController.animateToPage(
-        _currentStep,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      safeSetState(() {
+        _currentStep = prevStep;
+      });
+      // Use jumpToPage for immediate navigation when skipping steps to avoid showing empty step 4
+      if (wasSkipping) {
+        // Direct jump when skipping from step 5 to 3
+        _pageController.jumpToPage(prevStep);
+      } else {
+        _pageController.animateToPage(
+          prevStep,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
     }
   }
 
@@ -209,37 +222,131 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         return _selectedTimes.length == _selectedDays.length;
       case 3: // Location
         if (_selectedLocation == null) return false;
-        // For onsite, address is required
+        // Only onsite requires address (hybrid/flexible doesn't need address upfront)
         if (_selectedLocation == 'onsite') {
           return _onsiteAddress != null && _onsiteAddress!.trim().isNotEmpty;
         }
-        // For online or hybrid, no address needed at this step
+        // For online or hybrid/flexible, no address needed upfront
         return true;
-      case 4: // Flexible Session Locations (only if hybrid selected)
+      case 4: // Flexible Session Location Selector (only for hybrid)
         if (_selectedLocation != 'hybrid') return true; // Skip validation if not hybrid
-        // For hybrid, ensure all sessions have locations assigned
-        if (_sessionLocations.isEmpty) return false;
-        // Check that all selected day/time combinations have locations
-        for (final day in _selectedDays) {
-          final time = _selectedTimes[day];
-          if (time == null || time.isEmpty) return false;
-          final sessionKey = '$day-$time';
-          if (!_sessionLocations.containsKey(sessionKey)) return false;
-          // If onsite, ensure location details are provided
-          if (_sessionLocations[sessionKey] == 'onsite') {
-            if (!_locationDetails.containsKey(sessionKey) ||
-                _locationDetails[sessionKey]!['address'] == null ||
-                _locationDetails[sessionKey]!['address']!.isEmpty) {
-              return false;
-            }
-          }
-        }
-        return true;
+        return _sessionLocations.length == _selectedDays.length;
       case 5: // Review
         return _selectedPaymentPlan != null;
       default:
         return false;
     }
+  }
+
+  /// Build PageView children dynamically based on location selection
+  List<Widget> _buildPageViewChildren() {
+    return [
+      // Step 0: Frequency Selector
+      FrequencySelector(
+        tutor: widget.tutor,
+        initialFrequency: _selectedFrequency,
+        onFrequencySelected: (frequency) {
+          safeSetState(() {
+            _selectedFrequency = frequency;
+            // Reset days/times if frequency changes
+            if (_selectedDays.length > frequency) {
+              _selectedDays = _selectedDays.take(frequency).toList();
+              _selectedTimes.clear();
+            }
+          });
+        },
+      ),
+
+      // Step 1: Days Selector
+      DaysSelector(
+        tutor: widget.tutor,
+        requiredDays: _selectedFrequency ?? 1,
+        initialDays: _selectedDays,
+        onDaysSelected: (days) {
+          safeSetState(() {
+            _selectedDays = days;
+            // Clear times for days that were removed
+            _selectedTimes.removeWhere((day, time) => !days.contains(day));
+          });
+        },
+      ),
+
+      // Step 2: Time Grid Selector
+      TimeGridSelector(
+        tutor: widget.tutor,
+        selectedDays: _selectedDays,
+        initialTimes: _selectedTimes,
+        onTimesSelected: (times) {
+          safeSetState(() => _selectedTimes = times);
+        },
+      ),
+
+      // Step 3: Location Selector
+      LocationSelector(
+        tutor: widget.tutor,
+        initialLocation: _selectedLocation,
+        initialAddress: _onsiteAddress,
+        initialLocationDescription: _locationDescription,
+        onLocationSelected: (location, address, locationDescription) {
+          safeSetState(() {
+            _selectedLocation = location;
+            _onsiteAddress = address;
+            _locationDescription = locationDescription;
+            // If not hybrid, clear session locations
+            if (location != 'hybrid') {
+              _sessionLocations.clear();
+              _locationDetails.clear();
+            }
+          });
+        },
+      ),
+
+      // Step 4: Flexible Session Location Selector (only shown if hybrid selected)
+      _selectedLocation == 'hybrid'
+          ? FlexibleSessionLocationSelector(
+              selectedDays: _selectedDays,
+              selectedTimes: _selectedTimes,
+              initialSessionLocations: _sessionLocations,
+              initialLocationDetails: _locationDetails,
+              onLocationsSelected: (sessionLocations, locationDetails) {
+                safeSetState(() {
+                  _sessionLocations = sessionLocations;
+                  _locationDetails = locationDetails;
+                });
+              },
+            )
+          : Container(
+              // Empty container for non-hybrid - navigation will skip this step
+              // This should never be visible as navigation skips this step
+              color: Colors.white,
+              child: Center(
+                child: Text(
+                  'Loading review...',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
+            ),
+
+      // Step 5: Booking Review
+      BookingReview(
+        tutor: widget.tutor,
+        frequency: _selectedFrequency ?? 1,
+        selectedDays: _selectedDays,
+        selectedTimes: _selectedTimes,
+        location: _selectedLocation ?? 'online',
+        address: _onsiteAddress,
+        locationDescription: _locationDescription,
+        sessionLocations: _sessionLocations,
+        locationDetails: _locationDetails,
+        initialPaymentPlan: _selectedPaymentPlan,
+        onPaymentPlanSelected: (plan) {
+          safeSetState(() => _selectedPaymentPlan = plan);
+        },
+      ),
+    ];
   }
 
   Future<void> _submitBookingRequest() async {
@@ -289,7 +396,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         times: _selectedTimes,
         location: _selectedLocation!,
         address: _onsiteAddress,
-            locationDescription: _locationDescription,
+        locationDescription: _locationDescription,
         paymentPlan: _selectedPaymentPlan!,
         monthlyTotal: monthlyTotal,
       );
@@ -309,13 +416,109 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       if (!mounted) return;
       Navigator.pop(context);
 
-      // Use ErrorHandlerService for consistent error handling
-      ErrorHandlerService.showError(
-        context,
-        e,
-        'Failed to send booking request. Please try again.',
-      );
+      // Check if this is an existing booking request error
+      final errorString = e.toString();
+      if (errorString.contains('EXISTING_BOOKING_REQUEST')) {
+        // Extract request ID from error message
+        final requestIdMatch = RegExp(r'requestId=([a-f0-9-]+)').firstMatch(errorString);
+        final requestId = requestIdMatch?.group(1);
+        
+        // Extract message (everything after the second colon)
+        final messageMatch = RegExp(r'EXISTING_BOOKING_REQUEST:requestId=[^:]+:(.+)').firstMatch(errorString);
+        final message = messageMatch?.group(1) ?? 'You already have an existing booking with this tutor.';
+        
+        _showExistingBookingDialog(message, requestId);
+      } else {
+        // Use ErrorHandlerService for other errors
+        ErrorHandlerService.showError(
+          context,
+          e,
+          'Failed to send booking request. Please try again.',
+        );
+      }
     }
+  }
+
+  void _showExistingBookingDialog(String message, String? requestId) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.info_outline,
+              color: AppTheme.primaryColor,
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Existing Booking',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          message,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            height: 1.5,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'OK',
+              style: GoogleFonts.poppins(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          if (requestId != null)
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context); // Close dialog
+                Navigator.pop(context); // Close booking flow screen
+                
+                // Navigate to student navigation with requests tab and highlight the request
+                if (mounted) {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/student-nav',
+                    (route) => false,
+                    arguments: {
+                      'initialTab': 2, // Requests tab
+                      'highlightRequestId': requestId, // Highlight this request
+                    },
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(
+                'View Session',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   void _showSuccessDialog() {
@@ -434,111 +637,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       body: PageView(
         controller: _pageController,
         physics: const NeverScrollableScrollPhysics(), // Disable swipe
-        children: [
-          // Step 1: Frequency Selector
-          FrequencySelector(
-            tutor: widget.tutor,
-            initialFrequency: _selectedFrequency,
-            onFrequencySelected: (frequency) {
-              safeSetState(() {
-                _selectedFrequency = frequency;
-                // Reset days/times if frequency changes
-                if (_selectedDays.length > frequency) {
-                  _selectedDays = _selectedDays.take(frequency).toList();
-                  _selectedTimes.clear();
-                }
-              });
-            },
-          ),
-
-          // Step 2: Days Selector
-          DaysSelector(
-            tutor: widget.tutor,
-            requiredDays: _selectedFrequency ?? 1,
-            initialDays: _selectedDays,
-            onDaysSelected: (days) {
-              safeSetState(() {
-                _selectedDays = days;
-                // Clear times for days that were removed
-                _selectedTimes.removeWhere((day, time) => !days.contains(day));
-              });
-            },
-          ),
-
-          // Step 3: Time Grid Selector
-          TimeGridSelector(
-            tutor: widget.tutor,
-            selectedDays: _selectedDays,
-            initialTimes: _selectedTimes,
-            onTimesSelected: (times) {
-              safeSetState(() => _selectedTimes = times);
-            },
-          ),
-
-          // Step 4: Location Selector
-          LocationSelector(
-            tutor: widget.tutor,
-            initialLocation: _selectedLocation,
-            initialAddress: _onsiteAddress,
-            initialLocationDescription: _locationDescription,
-            onLocationSelected: (location, address, locationDescription) {
-              safeSetState(() {
-                _selectedLocation = location;
-                _onsiteAddress = address;
-                _locationDescription = locationDescription;
-                // If not hybrid, clear session locations
-                if (location != 'hybrid') {
-                  _sessionLocations.clear();
-                  _locationDetails.clear();
-                }
-              });
-            },
-          ),
-
-          // Step 5: Flexible Session Location Selector (only shown if hybrid selected)
-          _selectedLocation == 'hybrid'
-              ? FlexibleSessionLocationSelector(
-                  selectedDays: _selectedDays,
-                  selectedTimes: _selectedTimes,
-                  initialSessionLocations: _sessionLocations,
-                  initialLocationDetails: _locationDetails,
-                  onLocationsSelected: (sessionLocations, locationDetails) {
-                    safeSetState(() {
-                      _sessionLocations = sessionLocations;
-                      _locationDetails = locationDetails;
-                    });
-                  },
-                )
-              : Container(
-                  // Placeholder for non-hybrid - navigation will skip this step
-                  child: Center(
-                    child: Text(
-                      'Continue to review...',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ),
-                ),
-
-          // Step 6: Booking Review
-          BookingReview(
-            tutor: widget.tutor,
-            frequency: _selectedFrequency ?? 1,
-            selectedDays: _selectedDays,
-            selectedTimes: _selectedTimes,
-            location: _selectedLocation ?? 'online',
-            address: _onsiteAddress,
-            locationDescription: _locationDescription,
-            sessionLocations: _sessionLocations,
-            locationDetails: _locationDetails,
-            initialPaymentPlan: _selectedPaymentPlan,
-            onPaymentPlanSelected: (plan) {
-              safeSetState(() => _selectedPaymentPlan = plan);
-            },
-          ),
-        ],
+        children: _buildPageViewChildren(),
       ),
       bottomNavigationBar: Container(
         padding: const EdgeInsets.all(20),

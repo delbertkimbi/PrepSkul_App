@@ -15,17 +15,10 @@ import 'http_client_stub.dart' if (dart.library.html) 'http_client_web.dart';
 /// Service for interacting with skulMate API and database
 class SkulMateService {
   /// Get API base URL with smart fallback
-  /// In debug mode: tries localhost:3000 first, then falls back to production
-  /// In production: always uses production URL from AppConfig (https://prepskul.com/api)
+  /// Get API base URL (with localhost detection for local development)
+  /// Uses AppConfig.effectiveApiBaseUrl which automatically detects local development
   static String get _apiBaseUrl {
-    if (kDebugMode) {
-      // In debug mode, prefer localhost if available
-      // Will fall back to production if localhost fails
-      return 'http://localhost:3000/api';
-    } else {
-      // Production: use AppConfig which respects environment variables
-      return AppConfig.apiBaseUrl;
-    }
+    return AppConfig.effectiveApiBaseUrl;
   }
 
   /// Production API base URL (fallback)

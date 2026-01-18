@@ -1,7 +1,7 @@
 // Web-specific video helper
 // This file is only used on web platform
 
-import 'dart:html' as html show IFrameElement, window;
+import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
 import 'dart:js' as js;
 
@@ -9,12 +9,13 @@ import 'dart:js' as js;
 void registerYouTubeIframe(String viewType, String videoId) {
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
     final iframe = html.IFrameElement()
-      ..src = 'https://www.youtube.com/embed/$videoId?enablejsapi=1&rel=0&modestbranding=1&autoplay=1&mute=0'
+      ..src = 'https://www.youtube.com/embed/$videoId?enablejsapi=1&rel=0&modestbranding=1&autoplay=0&mute=0&controls=1&playsinline=1&fs=0&cc_load_policy=0&iv_load_policy=3'
       ..style.border = 'none'
       ..style.width = '100%'
       ..style.height = '100%'
-      ..allowFullscreen = true
+      ..allowFullscreen = false // Disable fullscreen to minimize YouTube branding
       ..allow = 'autoplay; encrypted-media';
+    
     return iframe;
   });
 }

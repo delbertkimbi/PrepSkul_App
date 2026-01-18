@@ -488,8 +488,22 @@ class NotificationNavigationService {
             '/payments/$paymentRequestId',
             replace: false,
           );
+        } else if (notificationType == 'booking_rejected') {
+          // For rejected bookings, navigate to Find Tutors tab (tab 1) for students/parents
+          // Tutors still go to requests tab
+          final role = userType == 'tutor'
+              ? 'tutor'
+              : (userType == 'parent' ? 'parent' : 'student');
+          final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+          // Students/parents go to Find Tutors tab (1), tutors go to Requests tab (1)
+          final tab = userType == 'tutor' ? 1 : 1; // Find Tutors tab for students/parents
+          await navService.navigateToRoute(
+            route,
+            arguments: {'initialTab': tab},
+            replace: false,
+          );
         } else {
-          // Navigate to requests/bookings tab
+          // Navigate to requests/bookings tab for other booking notifications
           final role = userType == 'tutor'
               ? 'tutor'
               : (userType == 'parent' ? 'parent' : 'student');

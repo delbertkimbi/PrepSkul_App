@@ -21,6 +21,8 @@ import '../../../core/widgets/empty_state_widget.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
 import '../../../features/sessions/services/meet_service.dart';
+import '../../../features/sessions/screens/agora_video_session_screen.dart';
+import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import 'tutor_session_detail_full_screen.dart';
 
 class TutorSessionsScreen extends StatefulWidget {
@@ -280,9 +282,23 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           // For individual sessions, fetch student name if missing
           if (session['_sessionType'] == 'individual') {
             final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-            if (recurringData != null && (session['student_name'] == null || session['student_name'] == 'Student')) {
+            
+            // First, try to get student name from recurring_sessions.learner_name
+            if (recurringData != null) {
+              final learnerName = recurringData['learner_name'] as String?;
+              if (learnerName != null && learnerName.trim().isNotEmpty && 
+                  learnerName.toLowerCase() != 'user' &&
+                  learnerName.toLowerCase() != 'student' &&
+                  learnerName.toLowerCase() != 'parent') {
+                session['student_name'] = learnerName.trim();
+                session['student_avatar_url'] = recurringData['learner_avatar_url'] as String?;
+                LogService.debug('✅ Using learner_name from recurring_sessions: ${learnerName.trim()}');
+              }
+            }
+            
+            // Fallback: If not found in recurring_sessions, fetch from profiles using learner_id/parent_id
+            if (session['student_name'] == null || session['student_name'] == 'Student') {
               try {
-                // Try to get student name from recurring_sessions or learner_id/parent_id
                 final learnerId = session['learner_id'] as String?;
                 final parentId = session['parent_id'] as String?;
                 final studentId = learnerId ?? parentId;
@@ -301,8 +317,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         fullName.toLowerCase() != 'student' &&
                         fullName.toLowerCase() != 'parent') {
                       session['student_name'] = fullName.trim();
-                      session['student_avatar_url'] = studentProfile['avatar_url'] as String?;
-                      LogService.debug('✅ Fetched student name for individual session: ${fullName.trim()}');
+                      if (session['student_avatar_url'] == null) {
+                        session['student_avatar_url'] = studentProfile['avatar_url'] as String?;
+                      }
+                      LogService.debug('✅ Fetched student name from profile for individual session: ${fullName.trim()}');
                     }
                   }
                 }
@@ -615,7 +633,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           Expanded(
             child: _isLoading
                 ? ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: 5,
                     itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
                   )
@@ -625,7 +643,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     onRefresh: _loadSessions,
                     color: AppTheme.primaryColor,
                     child: ListView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _sessions.length,
                       itemBuilder: (context, index) {
                         return _buildSessionCard(_sessions[index]);
@@ -835,8 +853,29 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       // Individual session data
       final recurringData =
           session['recurring_sessions'] as Map<String, dynamic>?;
-      studentName = recurringData?['student_name']?.toString() ?? 'Student';
-      studentAvatar = recurringData?['student_avatar_url']?.toString();
+      
+      // Try to get student name from recurring_sessions first (learner_name)
+      if (recurringData != null) {
+        final learnerName = recurringData['learner_name'] as String?;
+        if (learnerName != null && learnerName.trim().isNotEmpty && 
+            learnerName.toLowerCase() != 'student' &&
+            learnerName.toLowerCase() != 'user') {
+          studentName = learnerName.trim();
+          studentAvatar = recurringData['learner_avatar_url'] as String?;
+        }
+      }
+      
+      // Use pre-fetched student name from session map (fetched in _loadSessions)
+      // If still 'Student', try to get from session data
+      if (studentName == 'Student') {
+        final preFetchedName = session['student_name'] as String?;
+        if (preFetchedName != null && preFetchedName.trim().isNotEmpty && 
+            preFetchedName.toLowerCase() != 'student' &&
+            preFetchedName.toLowerCase() != 'user') {
+          studentName = preFetchedName.trim();
+          studentAvatar = session['student_avatar_url'] as String?;
+        }
+      }
       location = session['location'] as String? ?? 'online';
       // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
       address = session['address'] as String? ?? session['onsite_address'] as String?;
@@ -875,7 +914,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         (sessionDate != null && sessionDate!.isAfter(DateTime.now()));
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -945,7 +984,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               // Student info row
               Row(
                 children: [
@@ -982,7 +1021,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                             height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           subject ?? 'Session',
                           style: GoogleFonts.poppins(
@@ -1067,7 +1106,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                   },
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // Session details (date, time, location) - more compact
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1096,7 +1135,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                         ],
                       ),
                     if (sessionDate != null && sessionTime != null)
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                     // Location
                     Row(
                       children: [
@@ -1186,19 +1225,30 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               ],
               // Action buttons
               if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 Row(
                   children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
+                    // Agora Video Session button - show for ALL online sessions (no meetLink dependency)
+                    if (location == 'online')
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _joinMeeting(context, meetLink!),
+                          onPressed: () {
+                            final sessionId = session['id'] as String?;
+                            final sessionType = session['_sessionType'] as String?;
+                            LogService.info('🎥 [Join Agora] Session ID: $sessionId, Type: $sessionType');
+                            LogService.info('🎥 [Join Agora] Full session data: ${session.keys.toList()}');
+                            if (sessionId != null) {
+                              _joinAgoraSession(context, sessionId);
+                            } else {
+                              LogService.error('❌ [Join Agora] Session ID is null!');
+                            }
+                          },
                           icon: Icon(
                             status == 'in_progress' ? Icons.video_call : Icons.video_call,
                             size: status == 'in_progress' ? 20 : 18,
                           ),
                           label: Text(
-                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
+                            status == 'in_progress' ? 'Join Session' : 'Join Video Session',
                             style: GoogleFonts.poppins(
                               fontSize: status == 'in_progress' ? 14 : 13,
                               fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
@@ -1371,7 +1421,39 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           }
         } else {
           final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
-          studentName = recurringData?['student_name']?.toString() ?? 'Student';
+          if (recurringData != null) {
+            final learnerName = recurringData['learner_name'] as String?;
+            if (learnerName != null && learnerName.trim().isNotEmpty && 
+                learnerName.toLowerCase() != 'student' &&
+                learnerName.toLowerCase() != 'user') {
+              studentName = learnerName.trim();
+            }
+          }
+          if (studentName == 'Student') {
+            // Fallback to profiles if needed
+            final learnerId = session['learner_id'] as String?;
+            final parentId = session['parent_id'] as String?;
+            final studentId = learnerId ?? parentId;
+            if (studentId != null && studentId.isNotEmpty) {
+              try {
+                final studentProfile = await SupabaseService.client
+                    .from('profiles')
+                    .select('full_name')
+                    .eq('id', studentId)
+                    .maybeSingle();
+                if (studentProfile != null) {
+                  final fullName = studentProfile['full_name'] as String?;
+                  if (fullName != null && fullName.trim().isNotEmpty && 
+                      fullName.toLowerCase() != 'user' &&
+                      fullName.toLowerCase() != 'student') {
+                    studentName = fullName.trim();
+                  }
+                }
+              } catch (e) {
+                LogService.warning('Could not fetch student name: $e');
+              }
+            }
+          }
         }
       } catch (e) {
         LogService.warning('Could not fetch student name: $e');
@@ -1493,7 +1575,80 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     }
   }
 
-  /// Join Google Meet session
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
+    try {
+      LogService.info('🎥 [Join Agora] Tutor joining Agora video session: $sessionId');
+      
+      // Verify the session exists in the database before navigating
+      // Check both individual_sessions and trial_sessions
+      try {
+        // First, try individual_sessions
+        var sessionCheck = await SupabaseService.client
+            .from('individual_sessions')
+            .select('id, tutor_id, learner_id, parent_id, status')
+            .eq('id', sessionId)
+            .maybeSingle();
+        
+        // If not found in individual_sessions, check trial_sessions
+        if (sessionCheck == null) {
+          LogService.info('📋 [Join Agora] Session not found in individual_sessions, checking trial_sessions...');
+          sessionCheck = await SupabaseService.client
+              .from('trial_sessions')
+              .select('id, tutor_id, learner_id, parent_id, status')
+              .eq('id', sessionId)
+              .maybeSingle();
+          
+          if (sessionCheck != null) {
+            LogService.info('✅ [Join Agora] Session found in trial_sessions: ${sessionCheck['id']}, Status: ${sessionCheck['status']}');
+          }
+        } else {
+          LogService.info('✅ [Join Agora] Session found in individual_sessions: ${sessionCheck['id']}, Status: ${sessionCheck['status']}');
+        }
+        
+        if (sessionCheck == null) {
+          LogService.error('❌ [Join Agora] Session $sessionId not found in individual_sessions or trial_sessions!');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Session not found. Please refresh and try again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        LogService.error('❌ [Join Agora] Error verifying session: $e');
+        // Continue anyway - let the API handle the error
+      }
+      
+      // Navigate to pre-join screen first
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraPreJoinScreen(
+              sessionId: sessionId,
+              userRole: 'tutor',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Join Google Meet session (fallback for non-Agora sessions)
   Future<void> _joinMeeting(BuildContext context, String meetLink) async {
     try {
       final uri = Uri.parse(meetLink);
@@ -1622,6 +1777,19 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             backgroundColor: AppTheme.accentGreen,
           ),
         );
+        
+        // For online sessions, navigate to Agora video screen
+        if (isOnline) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: 'tutor',
+              ),
+            ),
+          );
+        }
       }
       _loadSessions(); // Refresh
     } catch (e) {
@@ -2470,7 +2638,70 @@ class _SessionDetailsSheet extends StatelessWidget {
 
   const _SessionDetailsSheet({required this.session});
 
-  /// Join Google Meet session
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
+    try {
+      LogService.info('🎥 Tutor joining Agora video session from details: $sessionId');
+      
+      // Verify the session exists (check both individual_sessions and trial_sessions)
+      try {
+        var sessionCheck = await SupabaseService.client
+            .from('individual_sessions')
+            .select('id')
+            .eq('id', sessionId)
+            .maybeSingle();
+        
+        if (sessionCheck == null) {
+          sessionCheck = await SupabaseService.client
+              .from('trial_sessions')
+              .select('id')
+              .eq('id', sessionId)
+              .maybeSingle();
+        }
+        
+        if (sessionCheck == null) {
+          LogService.error('❌ Session $sessionId not found');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Session not found. Please refresh and try again.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        LogService.warning('Error verifying session (continuing anyway): $e');
+      }
+      
+      // Navigate to Agora video session screen
+      if (context.mounted) {
+        Navigator.pop(context); // Close dialog first
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: 'tutor',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Join Google Meet session (fallback for non-Agora sessions)
   Future<void> _joinMeeting(BuildContext context, String meetLink) async {
     try {
       final uri = Uri.parse(meetLink);
@@ -2517,7 +2748,23 @@ class _SessionDetailsSheet extends StatelessWidget {
     if (isIndividualSession) {
       final recurringData =
           session['recurring_sessions'] as Map<String, dynamic>?;
-      studentName = recurringData?['student_name']?.toString() ?? 'Student';
+      if (recurringData != null) {
+        final learnerName = recurringData['learner_name'] as String?;
+        if (learnerName != null && learnerName.trim().isNotEmpty && 
+            learnerName.toLowerCase() != 'student' &&
+            learnerName.toLowerCase() != 'user') {
+          studentName = learnerName.trim();
+        }
+      }
+      // Use pre-fetched student name from session map (fetched in _loadSessions)
+      if (studentName == 'Student') {
+        final preFetchedName = session['student_name'] as String?;
+        if (preFetchedName != null && preFetchedName.trim().isNotEmpty && 
+            preFetchedName.toLowerCase() != 'student' &&
+            preFetchedName.toLowerCase() != 'user') {
+          studentName = preFetchedName.trim();
+        }
+      }
       location = session['location'] as String? ?? 'online';
       // Use 'address' column (matches database schema) with fallback to 'onsite_address' for compatibility
       address = session['address'] as String? ?? session['onsite_address'] as String?;
@@ -2638,44 +2885,43 @@ class _SessionDetailsSheet extends StatelessWidget {
                 'Status',
                 (session['status'] as String).toUpperCase(),
               ),
-              // Join Session Button (for in_progress sessions with meet link)
+              // Join Session Button (for in_progress sessions - Agora for all online)
               if ((session['status'] as String) == 'in_progress') ...[
                 const SizedBox(height: 24),
                 Builder(
                   builder: (context) {
-                    // Get meet link - check both trial and individual session formats
-                    final sessionType = session['_sessionType'] as String?;
-                    final isTrialSession = sessionType == 'trial';
-                    final meetLink = isTrialSession
-                        ? (session['meet_link'] as String?)
-                        : (session['meeting_link'] as String?);
-                    
-                    // Only show join button for online sessions with meet link
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty) {
-                      return ElevatedButton.icon(
-                        onPressed: () => _joinMeeting(context, meetLink),
-                        icon: const Icon(Icons.video_call, size: 20),
-                        label: Text(
-                          'Join Session',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                    // Show Agora button for ALL online sessions (no meetLink dependency)
+                    if (location == 'online') {
+                      final sessionId = isIndividualSession
+                          ? (session['id'] as String?)
+                          : (session['session_id'] as String?);
+                      
+                      if (sessionId != null) {
+                        return ElevatedButton.icon(
+                          onPressed: () => _joinAgoraSession(context, sessionId),
+                          icon: const Icon(Icons.video_call, size: 20),
+                          label: Text(
+                            'Join Session',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.accentGreen,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 16,
-                            horizontal: 24,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.accentGreen,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 16,
+                              horizontal: 24,
+                            ),
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 2,
                           ),
-                          minimumSize: const Size(double.infinity, 56),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 2,
-                        ),
-                      );
+                        );
+                      }
                     }
                     return const SizedBox.shrink();
                   },

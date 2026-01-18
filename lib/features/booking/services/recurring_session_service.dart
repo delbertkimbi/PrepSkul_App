@@ -26,9 +26,11 @@ class RecurringSessionService {
       final startDate = _calculateStartDate(bookingRequest);
 
       // Create recurring session data
+      // Note: request_id is set to NULL because the FK constraint references session_requests,
+      // but we're using booking_requests. The payment_request.recurring_session_id link is used instead.
       final sessionData = <String, dynamic>{
-        'request_id': bookingRequest.id,
-        'student_id': bookingRequest.studentId,
+        'request_id': null, // Cannot use bookingRequest.id due to FK constraint to session_requests
+        'learner_id': bookingRequest.studentId, // Database uses learner_id, not student_id
         'tutor_id': bookingRequest.tutorId,
         'frequency': bookingRequest.frequency,
         'days': bookingRequest.days,
@@ -42,13 +44,14 @@ class RecurringSessionService {
         'status': 'active',
         'total_sessions_completed': 0,
         'total_revenue': 0.0,
-        // Denormalized data
-        'student_name': bookingRequest.studentName,
-        'student_avatar_url': bookingRequest.studentAvatarUrl,
-        'student_type': bookingRequest.studentType,
+        // Denormalized data (use learner_* columns as per database schema)
+        'learner_name': bookingRequest.studentName,
+        'learner_avatar_url': bookingRequest.studentAvatarUrl,
+        'learner_type': bookingRequest.studentType,
         'tutor_name': bookingRequest.tutorName,
         'tutor_avatar_url': bookingRequest.tutorAvatarUrl,
         'tutor_rating': bookingRequest.tutorRating,
+        'subject': bookingRequest.subject ?? 'Tutoring Session', // Store subject in recurring_sessions
         'created_at': DateTime.now().toIso8601String(),
       };
 
@@ -84,68 +87,61 @@ class RecurringSessionService {
         }
       }
 
-      // Generate initial individual sessions (next 8 weeks)
-      // Sessions are created WITHOUT calendar events - user can add to calendar later
+      // NOTE: Individual sessions are NOT generated here on approval
+      // They will be generated AFTER the first payment is completed
+      // This ensures sessions only appear in the sessions tab after payment
+      // See: fapshi_webhook_service.dart _handlePaymentRequestPayment()
+      LogService.info('📝 Recurring session created - individual sessions will be generated after first payment');
+      
+      // Schedule session reminder notifications (24h, 1h, 15min before)
+      // Note: Reminders will be scheduled for individual sessions once they are generated after payment
       try {
-        await generateIndividualSessions(
-          recurringSessionId: response['id'] as String,
-          weeksAhead: 8,
-        );
-        LogService.success('Initial individual sessions generated (without calendar events)');
+        final tutorProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', bookingRequest.tutorId)
+            .maybeSingle();
+        final studentProfile = await _supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', bookingRequest.studentId)
+            .maybeSingle();
         
-        // Schedule session reminder notifications (24h, 1h, 15min before)
-        try {
-          final tutorProfile = await _supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', bookingRequest.tutorId)
-              .maybeSingle();
-          final studentProfile = await _supabase
-              .from('profiles')
-              .select('full_name')
-              .eq('id', bookingRequest.studentId)
-              .maybeSingle();
-          
-          final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
-          final studentName = studentProfile?['full_name'] as String? ?? 'Student';
-          
-          // Calculate first session start time
-          final firstSessionStart = _calculateStartDate(bookingRequest);
-          final firstDay = bookingRequest.days.first;
-          final firstTime = bookingRequest.times[firstDay] ?? '10:00 AM';
-          final timeParts = firstTime.replaceAll(' ', '').split(':');
-          final hour = int.tryParse(timeParts[0]) ?? 10;
-          final minute = int.tryParse(timeParts[1].replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-          final isPM = firstTime.toUpperCase().contains('PM');
-          final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
-          
-          final sessionStart = DateTime(
-            firstSessionStart.year,
-            firstSessionStart.month,
-            firstSessionStart.day,
-            hour24,
-            minute,
-          );
-          
-          // Schedule reminders for all individual sessions (will be scheduled when sessions are generated)
-          // For now, schedule for the first session
-          await NotificationHelperService.scheduleSessionReminders(
-            tutorId: bookingRequest.tutorId,
-            studentId: bookingRequest.studentId,
-            sessionId: response['id'] as String, // Use recurring session ID for now
-            sessionType: 'recurring',
-            tutorName: tutorName,
-            studentName: studentName,
-            sessionStart: sessionStart,
-            subject: bookingRequest.subject ?? 'Tutoring Session',
-          );
-        } catch (e) {
-          LogService.warning('Failed to schedule session reminders: $e');
-          // Don't fail session creation if reminder scheduling fails
-        }
+        final tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+        final studentName = studentProfile?['full_name'] as String? ?? 'Student';
+        
+        // Calculate first session start time
+        final firstSessionStart = _calculateStartDate(bookingRequest);
+        final firstDay = bookingRequest.days.first;
+        final firstTime = bookingRequest.times[firstDay] ?? '10:00 AM';
+        final timeParts = firstTime.replaceAll(' ', '').split(':');
+        final hour = int.tryParse(timeParts[0]) ?? 10;
+        final minute = int.tryParse(timeParts[1].replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+        final isPM = firstTime.toUpperCase().contains('PM');
+        final hour24 = isPM && hour != 12 ? hour + 12 : (hour == 12 && !isPM ? 0 : hour);
+        
+        final sessionStart = DateTime(
+          firstSessionStart.year,
+          firstSessionStart.month,
+          firstSessionStart.day,
+          hour24,
+          minute,
+        );
+        
+        // Schedule reminders for recurring session (will be updated when individual sessions are generated)
+        await NotificationHelperService.scheduleSessionReminders(
+          tutorId: bookingRequest.tutorId,
+          studentId: bookingRequest.studentId,
+          sessionId: response['id'] as String, // Use recurring session ID for now
+          sessionType: 'recurring',
+          tutorName: tutorName,
+          studentName: studentName,
+          sessionStart: sessionStart,
+          subject: bookingRequest.subject ?? 'Tutoring Session',
+        );
       } catch (e) {
-        LogService.warning('Failed to generate initial individual sessions: $e');
-        // Don't fail the recurring session creation if individual session generation fails
+        LogService.warning('Failed to schedule session reminders: $e');
+        // Don't fail session creation if reminder scheduling fails
       }
 
       return response;
@@ -282,11 +278,14 @@ class RecurringSessionService {
   ///
   /// Creates individual sessions for the next [weeksAhead] weeks
   /// based on the recurring session's schedule (days, times, frequency)
-  static Future<void> generateIndividualSessions({
+  /// Returns the number of sessions created
+  static Future<int> generateIndividualSessions({
     required String recurringSessionId,
     int weeksAhead = 8,
   }) async {
     try {
+      LogService.info('🚀 Starting session generation for recurring_session_id: $recurringSessionId, weeksAhead: $weeksAhead');
+      
       // Get recurring session details
       final recurringSession = await _supabase
           .from('recurring_sessions')
@@ -295,16 +294,32 @@ class RecurringSessionService {
           .maybeSingle();
       
       if (recurringSession == null) {
+        LogService.error('❌ Recurring session not found: $recurringSessionId');
         throw Exception('Recurring session not found: $recurringSessionId');
       }
 
+      LogService.info('✅ Found recurring session: ${recurringSession['id']}');
+      
       final startDate = DateTime.parse(recurringSession['start_date'] as String);
       final days = (recurringSession['days'] as List).cast<String>();
       final times = recurringSession['times'] as Map<String, dynamic>;
       final location = recurringSession['location'] as String;
       final address = recurringSession['address'] as String?;
       final tutorId = recurringSession['tutor_id'] as String;
-      final studentId = recurringSession['student_id'] as String;
+      // Database uses learner_id, not student_id
+      final studentId = recurringSession['learner_id'] as String? ?? recurringSession['student_id'] as String?;
+      
+      LogService.info('📅 Start date: $startDate');
+      LogService.info('📆 Days: $days');
+      LogService.info('⏰ Times: $times');
+      LogService.info('📍 Location: $location');
+      LogService.info('👤 Tutor ID: $tutorId');
+      LogService.info('👤 Student ID: $studentId');
+      
+      if (studentId == null) {
+        LogService.error('❌ Recurring session missing learner_id/student_id: $recurringSessionId');
+        throw Exception('Recurring session missing learner_id/student_id: $recurringSessionId');
+      }
 
       // Get subject from booking request or use default
       String subject = 'Tutoring Session';
@@ -328,6 +343,9 @@ class RecurringSessionService {
       final currentDate = DateTime(startDate.year, startDate.month, startDate.day);
       final targetDate = DateTime(endDate.year, endDate.month, endDate.day);
 
+      LogService.info('📊 Generation parameters: weeksAhead=$weeksAhead, currentDate=$currentDate, targetDate=$targetDate');
+      LogService.info('📊 Days to process: $days');
+
       // Iterate through each week
       for (var week = 0; week < weeksAhead; week++) {
         // For each day in the schedule
@@ -335,15 +353,35 @@ class RecurringSessionService {
           final dayIndex = _getDayIndex(day);
           final timeStr = times[day] as String?;
           
-          if (timeStr == null || timeStr.isEmpty) continue;
+          if (timeStr == null || timeStr.isEmpty) {
+            LogService.warning('⚠️ No time found for day: $day, skipping...');
+            continue;
+          }
+          
+          LogService.debug('📅 Processing: week=$week, day=$day, time=$timeStr, dayIndex=$dayIndex');
 
-          // Calculate date for this day
+          // Calculate date for this day in the current week
           final weekStart = currentDate.add(Duration(days: week * 7));
-          final daysOffset = (dayIndex - weekStart.weekday) % 7;
+          // Calculate days to add to get to the target day
+          // dayIndex: Monday=1, Tuesday=2, ..., Sunday=7
+          // weekStart.weekday: Monday=1, Tuesday=2, ..., Sunday=7
+          int daysOffset = (dayIndex - weekStart.weekday) % 7;
+          if (daysOffset < 0) {
+            daysOffset += 7; // Ensure positive
+          }
           final sessionDate = weekStart.add(Duration(days: daysOffset));
 
           // Skip if before start date or after end date
           if (sessionDate.isBefore(currentDate) || sessionDate.isAfter(targetDate)) {
+            LogService.debug('⏭️ Skipping session: $sessionDate (before start=$currentDate or after end=$targetDate)');
+            continue;
+          }
+          
+          // Only generate sessions from today forward (don't generate past sessions)
+          final today = DateTime.now();
+          final todayDate = DateTime(today.year, today.month, today.day);
+          if (sessionDate.isBefore(todayDate)) {
+            LogService.debug('⏭️ Skipping past session: $sessionDate (today=$todayDate)');
             continue;
           }
 
@@ -381,38 +419,124 @@ class RecurringSessionService {
           // If location is 'hybrid', default to 'online' (shouldn't happen, but safety check)
           final sessionLocation = location == 'hybrid' ? 'online' : location;
           
+          // Set learner_id and parent_id correctly based on learner_type
+          // If learner_type is 'learner': learner_id = studentId, parent_id = null
+          // If learner_type is 'parent': learner_id = null, parent_id = studentId
+          // Note: When a parent books, studentId is the parent's ID
+          // Database uses learner_type, not student_type (schema was migrated)
+          final learnerType = recurringSession['learner_type'] as String? ?? recurringSession['student_type'] as String?;
+          final learnerId = (learnerType == 'learner') ? studentId : null;
+          final parentId = (learnerType == 'parent') ? studentId : null;
+          
           final sessionData = <String, dynamic>{
             'recurring_session_id': recurringSessionId,
             'tutor_id': tutorId,
-            'learner_id': studentId,
-            'parent_id': recurringSession['student_type'] == 'parent' ? studentId : null,
+            'learner_id': learnerId,
+            'parent_id': parentId,
             'subject': subject,
             'scheduled_date': dateFormatted,
             'scheduled_time': timeFormatted,
             'duration_minutes': durationMinutes,
             'location': sessionLocation, // Only 'online' or 'onsite'
-            'onsite_address': sessionLocation == 'onsite' ? address : null,
+            'address': sessionLocation == 'onsite' ? address : null, // Column is 'address', not 'onsite_address'
             'status': 'scheduled',
             'created_at': DateTime.now().toIso8601String(),
           };
 
           sessionsToCreate.add(sessionData);
+          LogService.debug('✅ Added session: $dateFormatted $timeFormatted');
         }
       }
+
+      LogService.info('📊 Total sessions to create: ${sessionsToCreate.length}');
 
       // Batch insert sessions (in chunks of 100 to avoid payload limits)
       if (sessionsToCreate.isNotEmpty) {
         const chunkSize = 100;
+        int totalInserted = 0;
         for (var i = 0; i < sessionsToCreate.length; i += chunkSize) {
           final chunk = sessionsToCreate.skip(i).take(chunkSize).toList();
-          await _supabase.from('individual_sessions').insert(chunk);
+          try {
+            LogService.info('💾 Inserting chunk ${i ~/ chunkSize + 1} (${chunk.length} sessions)...');
+            LogService.debug('📋 Sample session data: ${chunk.first}');
+            
+            // Log current user context for RLS debugging
+            final currentUserId = _supabase.auth.currentUser?.id;
+            LogService.info('👤 Current user (auth.uid()): $currentUserId');
+            LogService.info('📋 Sample session tutor_id: ${chunk.first['tutor_id']}');
+            LogService.info('📋 Sample session learner_id: ${chunk.first['learner_id']}');
+            LogService.info('📋 Sample session parent_id: ${chunk.first['parent_id']}');
+            LogService.info('🔍 RLS Check: auth.uid() should match tutor_id, learner_id, or parent_id');
+            
+            // Validate user context matches before insert
+            if (currentUserId == null) {
+              throw Exception('No authenticated user found. Cannot insert sessions without user context.');
+            }
+            
+            // Check if current user matches any of the IDs in the session
+            final sampleSession = chunk.first;
+            final tutorId = sampleSession['tutor_id'] as String?;
+            final learnerId = sampleSession['learner_id'] as String?;
+            final parentId = sampleSession['parent_id'] as String?;
+            
+            final userMatches = currentUserId == tutorId || 
+                               currentUserId == learnerId || 
+                               currentUserId == parentId;
+            
+            if (!userMatches) {
+              LogService.warning('⚠️ User context mismatch detected:');
+              LogService.warning('   auth.uid(): $currentUserId');
+              LogService.warning('   tutor_id: $tutorId');
+              LogService.warning('   learner_id: $learnerId');
+              LogService.warning('   parent_id: $parentId');
+              LogService.warning('   RLS policy requires auth.uid() to match one of these IDs');
+              LogService.warning('   This insert may fail due to RLS policy violation');
+            } else {
+              LogService.info('✅ User context validated: auth.uid() matches session participant');
+            }
+            
+            final insertResponse = await _supabase.from('individual_sessions').insert(chunk).select('id');
+            totalInserted += chunk.length;
+            
+            LogService.success('✅ Inserted ${chunk.length} individual sessions (${totalInserted}/${sessionsToCreate.length})');
+            if (insertResponse.isNotEmpty) {
+              LogService.debug('✅ Sample inserted IDs: ${insertResponse.take(3).map((s) => s['id']).join(', ')}');
+            }
+          } catch (e, stackTrace) {
+            LogService.error('❌ Error inserting chunk ${i ~/ chunkSize + 1}: $e');
+            LogService.error('📚 Stack trace: $stackTrace');
+            LogService.error('❌ Failed to insert ${chunk.length} sessions. Sample dates: ${chunk.take(3).map((s) => '${s['scheduled_date']} ${s['scheduled_time']}').join(', ')}');
+            LogService.error('❌ Sample session data that failed: ${chunk.first}');
+            
+            // Enhanced RLS debugging
+            final currentUserId = _supabase.auth.currentUser?.id;
+            final sampleSession = chunk.first;
+            LogService.error('🔍 RLS Debug Info:');
+            LogService.error('   Current user (auth.uid()): $currentUserId');
+            LogService.error('   Session tutor_id: ${sampleSession['tutor_id']}');
+            LogService.error('   Session learner_id: ${sampleSession['learner_id']}');
+            LogService.error('   Session parent_id: ${sampleSession['parent_id']}');
+            LogService.error('   Match check: tutor_id=${currentUserId == sampleSession['tutor_id']}, learner_id=${currentUserId == sampleSession['learner_id']}, parent_id=${currentUserId == sampleSession['parent_id']}');
+            
+            if (e.toString().contains('row-level security')) {
+              LogService.error('⚠️ RLS Policy Violation Detected!');
+              LogService.error('   The INSERT policy requires: auth.uid() = tutor_id OR auth.uid() = learner_id OR auth.uid() = parent_id');
+              LogService.error('   Verify the INSERT policy exists: Run FIX_INDIVIDUAL_SESSIONS_RLS_COMPLETE.sql');
+            }
+            
+            rethrow; // Re-throw to be caught by outer catch
+          }
         }
-        LogService.success('Generated ${sessionsToCreate.length} individual sessions');
+        LogService.success('🎉 Successfully generated ${totalInserted} individual sessions for recurring session: $recurringSessionId');
+        return totalInserted;
       } else {
-        LogService.info('No new individual sessions to generate');
+        LogService.warning('⚠️ No new individual sessions to generate for recurring session: $recurringSessionId. This might indicate an issue with date calculation or schedule.');
+        LogService.warning('⚠️ Check: startDate=$startDate, days=$days, times=$times, weeksAhead=$weeksAhead');
+        return 0;
       }
-    } catch (e) {
-      LogService.error('Error generating individual sessions: $e');
+    } catch (e, stackTrace) {
+      LogService.error('❌ Error generating individual sessions: $e');
+      LogService.error('📚 Stack trace: $stackTrace');
       rethrow;
     }
   }

@@ -552,20 +552,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 16),
                   ],
                   // Personal Information Section (from survey)
-                  if (_surveyData != null &&
-                      (widget.userType == 'student' ||
-                          widget.userType == 'learner' ||
-                          widget.userType == 'parent')) ...[
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _buildNeumorphicSection(
-                        title: t.profileLearningInformation,
-                        icon: Icons.school_outlined,
-                        child: _buildLearningInfoSection(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // Learning information card removed temporarily
 
                   // Settings Section (Neumorphic style)
                   Padding(

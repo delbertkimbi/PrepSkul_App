@@ -39,12 +39,15 @@ import 'package:prepskul/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/widgets/initial_loading_screen.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:app_links/app_links.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
 import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
+import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
 import 'dart:async';
 
 void main() async {
@@ -517,6 +520,40 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       return;
     }
 
+    // Handle tutor detail deep links: /tutor/{tutorId}
+    // These are public routes (like Preply) - anyone can view tutor profiles
+    if (path.startsWith('/tutor/') && path != '/tutor' && !path.startsWith('/tutor/profile') && !path.startsWith('/tutor/dashboard') && !path.startsWith('/tutor/onboarding')) {
+      final tutorId = path.replaceFirst('/tutor/', '');
+      if (tutorId.isNotEmpty) {
+        LogService.debug('🔗 [DEEP_LINK] Tutor detail link detected: $tutorId');
+        final navService = NavigationService();
+        if (navService.isReady) {
+          // Fetch tutor data and navigate to tutor detail screen
+          try {
+            final tutor = await TutorService.fetchTutorById(tutorId);
+            if (tutor != null) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => TutorDetailScreen(tutor: tutor),
+                ),
+              );
+            } else {
+              LogService.warning('🔗 [DEEP_LINK] Tutor not found: $tutorId');
+              // Navigate to find tutors if tutor not found
+              navService.navigateToRoute('/find-tutors');
+            }
+          } catch (e) {
+            LogService.error('🔗 [DEEP_LINK] Error loading tutor: $e');
+            navService.navigateToRoute('/find-tutors');
+          }
+        } else {
+          // Queue for later
+          navService.queueDeepLink(uri);
+        }
+        return;
+      }
+    }
+
     // List of protected routes that require authentication
     // These routes should redirect to email login if user is not authenticated
     final protectedRoutes = [
@@ -524,7 +561,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       '/tutor/profile',
       '/tutor/dashboard',
       '/tutor/onboarding',
-      '/tutor',
+      '/tutor', // Only /tutor (without ID) is protected
       '/student',
       '/parent',
       '/bookings',
@@ -846,14 +883,44 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           case '/forgot-password':
             return _createFadeRoute(() => const ForgotPasswordScreen());
           case '/skulmate/upload':
-            return _createFadeRoute(() => SkulMateUploadScreen());
+            // SkulMate controlled by AppConfig feature flag
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(() => SkulMateUploadScreen());
+            } else {
+              return _createFadeRoute(() => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+                ),
+              ));
+            }
           case '/skulmate/library':
-            return _createFadeRoute(() => GameLibraryScreen());
+            // SkulMate controlled by AppConfig feature flag
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(() => GameLibraryScreen());
+            } else {
+              return _createFadeRoute(() => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+                ),
+              ));
+            }
           case '/skulmate/character-selection':
-            final args = settings.arguments as Map<String, dynamic>?;
-            return _createFadeRoute(() => CharacterSelectionScreen(
-                  isFirstTime: args?['isFirstTime'] ?? false,
-                ));
+            // SkulMate controlled by AppConfig feature flag
+            if (AppConfig.enableSkulMate) {
+              final args = settings.arguments as Map<String, dynamic>?;
+              return _createFadeRoute(() => CharacterSelectionScreen(
+                    isFirstTime: args?['isFirstTime'] ?? false,
+                  ));
+            } else {
+              return _createFadeRoute(() => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+                ),
+              ));
+            }
         }
 
         // Handle navigation routes with optional initialTab argument
@@ -1041,6 +1108,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               final result = await navService.determineInitialRoute();
               if (mounted) {
                 _navigateInstant(result.route, result.arguments);
+                // Remove splash after navigation
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (mounted) {
+                    WebSplashService.removeSplash();
+                  }
+                });
                 setState(() {
                   _navigationComplete = true;
                 });
@@ -1050,6 +1123,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               // If we can't determine route, try dashboard as last resort
               if (mounted) {
                 _navigateInstant('/dashboard', null);
+                // Remove splash after navigation
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  if (mounted) {
+                    WebSplashService.removeSplash();
+                  }
+                });
                 setState(() {
                   _navigationComplete = true;
                 });
@@ -1058,6 +1137,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           } else {
             // User is not authenticated - redirect to auth screen
             _navigateInstant('/auth-method-selection', null);
+            // Remove splash after navigation
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (mounted) {
+                WebSplashService.removeSplash();
+              }
+            });
             setState(() {
               _navigationComplete = true;
             });
@@ -1330,6 +1415,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               reverseTransitionDuration: Duration.zero,
             ),
           );
+          // Remove splash after fallback navigation
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              WebSplashService.removeSplash();
+            }
+          });
           setState(() {
             _navigationComplete = true;
           });
@@ -1347,11 +1438,21 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               reverseTransitionDuration: Duration.zero,
             ),
           );
+          // Remove splash after error navigation
+          Future.delayed(const Duration(milliseconds: 200), () {
+            if (mounted) {
+              WebSplashService.removeSplash();
+            }
+          });
           setState(() {
             _navigationComplete = true;
           });
         } catch (e2) {
           LogService.error('[INIT_LOAD] Error in fallback navigation: $e2');
+          // Still try to remove splash even if navigation fails
+          if (mounted) {
+            WebSplashService.removeSplash();
+          }
         }
       }
     }

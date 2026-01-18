@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
@@ -18,6 +19,8 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import '../../../features/skulmate/screens/game_library_screen.dart';
 import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
+import '../../../features/messaging/screens/conversations_list_screen.dart';
+import '../../../features/messaging/widgets/message_icon_badge.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -269,7 +272,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     return StatusBarUtils.withDarkStatusBar(
       Scaffold(
         backgroundColor: Colors.white,
-        floatingActionButton: FloatingActionButton.extended(
+        // SkulMate controlled by AppConfig feature flag
+        floatingActionButton: AppConfig.enableSkulMate ? FloatingActionButton.extended(
         onPressed: () async {
           // Check if user has any games
           try {
@@ -313,7 +317,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
           ),
         ),
         icon: const Icon(Icons.auto_awesome, color: Colors.white),
-      ),
+      ) : null,
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,6 +366,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                           ],
                         ),
                       ),
+                      const MessageIconBadge(iconColor: Colors.white),
+                      const SizedBox(width: 8),
                       const NotificationBell(iconColor: Colors.white),
                     ],
                   ),
@@ -419,36 +425,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
                   const SizedBox(height: 12),
                   _buildActionCard(
-                    icon: Icons.search,
-                    title: AppLocalizations.of(context)!.findPerfectTutor,
-                    subtitle: city != null
-                        ? AppLocalizations.of(context)!.browseTutorsIn(city ?? '')
-                        : AppLocalizations.of(context)!.discoverTutorsNearYou,
-                    color: AppTheme.primaryColor,
-                    onTap: () {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        _userType == 'parent' ? '/parent-nav' : '/student-nav',
-                        arguments: {'initialTab': 1},
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildActionCard(
-                    icon: Icons.inbox_outlined,
-                    title: AppLocalizations.of(context)!.myRequests,
-                    subtitle: 'View your booking requests',
-                    color: Colors.orange,
-                    onTap: () {
-                      Navigator.pushReplacementNamed(
-                        context,
-                        _userType == 'parent' ? '/parent-nav' : '/student-nav',
-                        arguments: {'initialTab': 2},
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _buildActionCard(
                     icon: Icons.calendar_today,
                     title: AppLocalizations.of(context)!.mySessions,
                     subtitle: 'View upcoming and completed sessions',
@@ -457,7 +433,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Navigator.pushNamed(context, '/my-sessions');
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildActionCard(
                     icon: Icons.payment,
                     title: AppLocalizations.of(context)!.paymentHistory,
@@ -469,7 +445,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                   // Learning Progress (for parents)
                   if (_userType == 'parent') ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     _buildActionCard(
                       icon: Icons.trending_up,
                       title: 'Learning Progress',

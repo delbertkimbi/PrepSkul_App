@@ -20,6 +20,8 @@ import 'tutor_admin_feedback_screen.dart';
 import 'tutor_onboarding_screen.dart';
 import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
+import '../../../features/messaging/screens/conversations_list_screen.dart';
+import '../../../features/messaging/widgets/message_icon_badge.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -341,8 +343,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         title: const AppLogoHeader(),
-        actions: const [
-          Padding(
+        actions: [
+          const MessageIconBadge(),
+          const Padding(
             padding: EdgeInsets.only(right: 16),
             child: NotificationBell(),
           ),
@@ -351,58 +354,10 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       body: _isLoading
           ? const TutorHomeSkeleton()
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Welcome Header with Approved Badge
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Welcome back, ${_getFirstName(_userInfo?['fullName']?.toString() ?? 'Tutor')}!',
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                      ),
-                      if (_approvalStatus == 'approved')
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentGreen.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppTheme.accentGreen.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.verified,
-                                size: 14,
-                                color: AppTheme.accentGreen,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Approved',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppTheme.accentGreen,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
                   // Onboarding Progress Tracker
                   // Show ONLY if: (skipped OR has saved progress) AND not yet submitted
                   // Hide after submission - only show Profile Completion widget then
@@ -579,7 +534,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       color: AppTheme.textDark,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildActionCard(
                     icon: Icons.inbox_outlined,
                     title: 'My Requests',
@@ -593,7 +548,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildActionCard(
                     icon: Icons.school_outlined,
                     title: 'My Sessions',
@@ -607,7 +562,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   _buildActionCard(
                     icon: Icons.payment,
                     title: 'Payment History',

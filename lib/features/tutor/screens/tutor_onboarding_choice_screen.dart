@@ -159,8 +159,8 @@ class _TutorOnboardingChoiceScreenState
                 errorBuilder: (context, error, stackTrace) {
                   // Fallback if image fails to load
                   return const Icon(
-                    Icons.school,
-                    size: 60,
+                  Icons.school,
+                  size: 60,
                     color: AppTheme.primaryColor,
                   );
                 },

@@ -34,7 +34,12 @@ import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/messaging/screens/chat_screen.dart';
+import 'package:prepskul/features/messaging/models/conversation_model.dart';
 
 /// My Sessions Screen
 ///
@@ -88,6 +93,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     _loadSessions();
     _checkCalendarConnection();
     _startCountdownTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload sessions when screen becomes visible (e.g., after payment)
+    // This ensures newly created sessions appear immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadSessions();
+      }
+    });
   }
 
   /// Initialize connectivity monitoring
@@ -502,6 +519,32 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
+  /// Fetch tutor name from profiles table
+  Future<String?> _fetchTutorName(String tutorId) async {
+    try {
+      final response = await SupabaseService.client
+          .from('profiles')
+          .select('full_name')
+          .eq('id', tutorId)
+          .maybeSingle();
+      
+      if (response != null) {
+        final name = response['full_name'] as String?;
+        // Filter out generic names
+        if (name != null && 
+            name.toLowerCase() != 'tutor' && 
+            name.toLowerCase() != 'user' && 
+            name.toLowerCase() != 'student' && 
+            name.toLowerCase() != 'parent') {
+          return name;
+        }
+      }
+    } catch (e) {
+      LogService.warning('Error fetching tutor name for $tutorId: $e');
+    }
+    return null;
+  }
+
   Map<String, dynamic>? _convertTrialToSessionMap(TrialSession trial) {
     // Convert TrialSession object to the Map format used by _buildSessionCard
     // Returns null if the trial shouldn't be shown (e.g., rejected/cancelled might be hidden if old?)
@@ -630,7 +673,50 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
-  Future<void> _joinMeeting(String? meetLink) async {
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(String sessionId) async {
+    try {
+      // Get current user role
+      final userProfile = await AuthService.getUserProfile();
+      final userType = userProfile?['user_type'] as String?;
+      final userRole = (userType == 'tutor') ? 'tutor' : 'learner';
+      
+      LogService.info('🎥 Joining Agora video session: $sessionId as $userRole');
+      
+      // Navigate to pre-join screen first
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraPreJoinScreen(
+              sessionId: sessionId,
+              userRole: userRole,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _joinMeeting(String? meetLink, {String? sessionId, String? location}) async {
+    // For online sessions, use Agora video instead of Google Meet
+    if (location == 'online' && sessionId != null) {
+      // Use Agora directly - no meetLink dependency
+      await _joinAgoraSession(sessionId);
+      return;
+    }
+
+    // Fallback to Google Meet for non-online sessions or if Agora fails
     if (meetLink == null || meetLink.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1019,6 +1105,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$balance sessions',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1056,9 +1151,45 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     
     // Get tutor name and avatar - prioritize recurring_sessions data, fallback to session data
-    final tutorName = recurringData?['tutor_name'] as String? 
-        ?? session['tutor_name'] as String? 
-        ?? (isTrial ? 'Tutor' : 'Tutor');
+    String? tutorName = recurringData?['tutor_name'] as String? 
+        ?? session['tutor_name'] as String?;
+    
+    // Filter out generic names like "Tutor", "user", "student", "parent"
+    if (tutorName != null && 
+        (tutorName.toLowerCase() == 'tutor' || 
+         tutorName.toLowerCase() == 'user' || 
+         tutorName.toLowerCase() == 'student' || 
+         tutorName.toLowerCase() == 'parent')) {
+      tutorName = null; // Will try to fetch from profiles
+    }
+    
+    // If still null or generic, try to fetch from profiles using tutor_id
+    if (tutorName == null && !isTrial) {
+      final tutorId = recurringData?['tutor_id'] as String? 
+          ?? session['tutor_id'] as String?;
+      if (tutorId != null) {
+        // Try to fetch synchronously from cache first, then async if needed
+        // For now, we'll fetch async and update on next build
+        _fetchTutorName(tutorId).then((name) {
+          if (name != null && mounted) {
+            safeSetState(() {
+              // Update the session map with fetched name
+              if (recurringData != null) {
+                recurringData['tutor_name'] = name;
+              } else {
+                session['tutor_name'] = name;
+              }
+            });
+          }
+        });
+      }
+    }
+    
+    // Final fallback - only use generic name if it's a trial, otherwise show loading
+    if (tutorName == null) {
+      tutorName = isTrial ? 'Tutor' : 'Loading...';
+    }
+    
     final tutorAvatar = recurringData?['tutor_avatar_url'] as String? 
         ?? session['tutor_avatar_url'] as String?;
     final subject = recurringData?['subject'] as String? 
@@ -1075,7 +1206,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final isExpired = status == 'expired';
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -1147,7 +1278,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               // Tutor info row
               Row(
                 children: [
@@ -1184,7 +1315,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                             height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           subject,
                           style: GoogleFonts.poppins(
@@ -1195,6 +1326,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ),
                       ],
                     ),
+                  ),
+                  // Chat button - show if session is valid (scheduled, in_progress, or completed)
+                  Builder(
+                    builder: (context) {
+                      final status = session['status'] as String?;
+                      final isSessionValid = status != null && 
+                          status != 'cancelled' && 
+                          status != 'expired';
+                      
+                      if (!isSessionValid) {
+                        return const SizedBox.shrink();
+                      }
+                      
+                      return IconButton(
+                        icon: const Icon(Icons.message, size: 22),
+                        color: AppTheme.primaryColor,
+                        tooltip: 'Message Tutor',
+                        onPressed: () => _navigateToChatFromSession(context, session),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1266,7 +1417,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   },
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // Session details (date, time, location) - more compact
               Container(
                 padding: const EdgeInsets.all(12),
@@ -1293,7 +1444,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               // Location
               Row(
                 children: [
@@ -1381,82 +1532,99 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ),
               ],
-              // Action buttons
-              if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _joinMeeting(meetLink),
-                          icon: Icon(
-                            status == 'in_progress' ? Icons.video_call : Icons.video_call,
-                            size: status == 'in_progress' ? 20 : 18,
-                          ),
-                          label: Text(
-                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
-                            style: GoogleFonts.poppins(
-                              fontSize: status == 'in_progress' ? 14 : 13,
-                              fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+              // Action buttons - Show for scheduled/in_progress sessions
+              // For trial sessions: Show join button if status is 'scheduled' or 'in_progress' (regardless of time check)
+              // For individual sessions: Show join button if isUpcoming AND (status is 'scheduled' or 'in_progress')
+              Builder(
+                builder: (context) {
+                  final shouldShowJoinButton = isTrial
+                      ? (status == 'scheduled' || status == 'in_progress') // Trial: Show if scheduled/in_progress
+                      : (isUpcoming && (status == 'scheduled' || status == 'in_progress')); // Individual: Show if upcoming AND scheduled/in_progress
+                  
+                  if (!shouldShowJoinButton) {
+                    return const SizedBox.shrink();
+                  }
+                  
+                  return Column(
+                    children: [
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          // Agora Video Session button - show for ALL online sessions (no meetLink dependency)
+                          if (location == 'online')
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _joinAgoraSession(sessionId),
+                                icon: Icon(
+                                  status == 'in_progress' ? Icons.video_call : Icons.video_call,
+                                  size: status == 'in_progress' ? 20 : 18,
+                                ),
+                                label: Text(
+                                  status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: status == 'in_progress' ? 14 : 13,
+                                    fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: status == 'in_progress' 
+                                      ? AppTheme.accentGreen 
+                                      : AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: status == 'in_progress' ? 14 : 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: status == 'in_progress' ? 2 : 0,
+                                ),
+                              ),
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: status == 'in_progress' 
-                                ? AppTheme.accentGreen 
-                                : AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(
-                              vertical: status == 'in_progress' ? 14 : 10,
+                          // Add to Calendar button - Show alongside Agora button for scheduled sessions
+                          // Show ONLY if:
+                          // 1. Session doesn't have calendar_event_id yet, AND
+                          // 2. User hasn't connected calendar (so they can connect), OR
+                          // 3. User has connected calendar (so they can add this session)
+                          if ((session['calendar_event_id'] == null || 
+                               (session['calendar_event_id'] as String? ?? '').isEmpty))
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: OutlinedButton.icon(
+                                onPressed: _isOffline
+                                    ? () => OfflineDialog.show(
+                                          context,
+                                          message: 'Adding to calendar requires an internet connection. Please check your connection and try again.',
+                                        )
+                                    : () => _addSessionToCalendar(session),
+                                icon: Icon(
+                                  _isCalendarConnected == true 
+                                      ? Icons.calendar_today 
+                                      : Icons.calendar_today_outlined,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  _isCalendarConnected == true
+                                      ? 'Add to Calendar'
+                                      : 'Connect & Add',
+                                  style: GoogleFonts.poppins(fontSize: 13),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.primaryColor,
+                                  side: BorderSide(color: AppTheme.primaryColor),
+                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            elevation: status == 'in_progress' ? 2 : 0,
-                          ),
-                        ),
+                        ],
                       ),
-                    // Add to Calendar button
-                    // Show ONLY if:
-                    // 1. Session doesn't have calendar_event_id yet, AND
-                    // 2. User hasn't connected calendar (so they can connect), OR
-                    // 3. User has connected calendar (so they can add this session)
-                    if ((session['calendar_event_id'] == null || 
-                         (session['calendar_event_id'] as String? ?? '').isEmpty))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: _isOffline
-                              ? () => OfflineDialog.show(
-                                    context,
-                                    message: 'Adding to calendar requires an internet connection. Please check your connection and try again.',
-                                  )
-                              : () => _addSessionToCalendar(session),
-                          icon: Icon(
-                            _isCalendarConnected == true 
-                                ? Icons.calendar_today 
-                                : Icons.calendar_today_outlined,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _isCalendarConnected == true
-                                ? 'Add to Calendar'
-                                : 'Connect & Add',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primaryColor,
-                            side: BorderSide(color: AppTheme.primaryColor),
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+                    ],
+                  );
+                },
+              ),
               // Feedback prompt for completed sessions
               if (isCompleted) ...[
                 const SizedBox(height: 16),
@@ -1644,19 +1812,25 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _joinMeeting(meetLink);
-                  },
-                  icon: const Icon(Icons.video_call, size: 18),
-                  label: Text('Join Meeting', style: GoogleFonts.poppins()),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  ),
+                    // Agora Video Session button - show for ALL online sessions
+                    if (location == 'online')
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _joinAgoraSession(sessionId);
+                        },
+                        icon: const Icon(Icons.video_call, size: 18),
+                        label: Text(
+                          status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+                          style: GoogleFonts.poppins(),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: status == 'in_progress' 
+                              ? AppTheme.accentGreen 
+                              : AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        ),
                       ),
                     // Add to Calendar button (if no calendar event exists)
                     if (session['calendar_event_id'] == null || 
@@ -1742,6 +1916,39 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final t = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
+        leading: Builder(
+          builder: (context) {
+            // Check if we can pop - if not, navigate to dashboard instead
+            if (Navigator.of(context).canPop()) {
+              return IconButton(
+                icon: const Icon(Icons.arrow_back),
+                color: Colors.white,
+                onPressed: () {
+                  // Simply pop - don't trigger any auth checks
+                  Navigator.of(context).pop();
+                },
+              );
+            } else {
+              // Can't pop - navigate to appropriate dashboard
+              return IconButton(
+                icon: const Icon(Icons.arrow_back),
+                color: Colors.white,
+                onPressed: () async {
+                  try {
+                    final userProfile = await AuthService.getUserProfile();
+                    final userType = userProfile?['user_type'] as String?;
+                    final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
+                    Navigator.pushReplacementNamed(context, route);
+                  } catch (e) {
+                    // Fallback to parent nav
+                    Navigator.pushReplacementNamed(context, '/parent-nav');
+                  }
+                },
+              );
+            }
+          },
+        ),
+        automaticallyImplyLeading: false,
         title: Text(
           t.mySessionsTitle,
           style: GoogleFonts.poppins(
@@ -1819,7 +2026,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onRefresh: _loadSessions,
                         child: ListView.builder(
                           controller: _upcomingScrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           itemCount: _upcomingSessions.length + 1, // +1 for credits widget
                           itemBuilder: (context, index) {
                             if (index == 0) {
@@ -1868,7 +2075,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onRefresh: _loadSessions,
                         child: ListView.builder(
                           controller: _pastScrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           itemCount: _pastSessions.length,
                           itemBuilder: (context, index) {
                             return _buildSessionCard(
@@ -1881,5 +2088,217 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               ],
             ),
     );
+  }
+
+  /// Get conversation ID for a session
+  Future<String?> _getConversationIdForSession(Map<String, dynamic> session) async {
+    try {
+      // Check if session is paid/approved (only show chat for valid sessions)
+      final status = session['status'] as String?;
+      if (status == null || status == 'cancelled' || status == 'expired') {
+        return null;
+      }
+
+      // Try individual session ID first
+      final individualSessionId = session['id'] as String?;
+      if (individualSessionId != null) {
+        final conversationId = await ConversationLifecycleService.getConversationIdForIndividual(individualSessionId);
+        if (conversationId != null) {
+          return conversationId;
+        }
+      }
+
+      // Try recurring session ID
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      if (recurringData != null) {
+        final recurringSessionId = recurringData['id'] as String?;
+        if (recurringSessionId != null) {
+          final conversationId = await ConversationLifecycleService.getConversationIdForRecurring(recurringSessionId);
+          if (conversationId != null) {
+            return conversationId;
+          }
+        }
+      }
+
+      // Try trial session ID (if this is a trial)
+      final trialData = session['trial_sessions'] as Map<String, dynamic>?;
+      if (trialData != null) {
+        final trialSessionId = trialData['id'] as String?;
+        if (trialSessionId != null) {
+          final conversationId = await ConversationLifecycleService.getConversationIdForTrial(trialSessionId);
+          if (conversationId != null) {
+            return conversationId;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      LogService.error('Error getting conversation ID for session: $e');
+      return null;
+    }
+  }
+
+  /// Navigate to chat from session card
+  Future<void> _navigateToChatFromSession(BuildContext context, Map<String, dynamic> session) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Get or create conversation
+      final supabase = SupabaseService.client;
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) {
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'You must be logged in to message.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get tutor ID from session
+      String? tutorId;
+      String? studentId = currentUserId;
+      
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      if (recurringData != null) {
+        tutorId = recurringData['tutor_id'] as String?;
+        studentId = recurringData['learner_id'] as String? ?? currentUserId;
+      }
+
+      if (tutorId == null) {
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to find tutor information.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get or create conversation
+      final conversationData = await ConversationLifecycleService.getOrCreateConversation(
+        recurringSessionId: recurringData?['id'] as String?,
+        individualSessionId: session['id'] as String?,
+        tutorId: tutorId,
+        studentId: studentId,
+      );
+
+      // Dismiss loading
+      if (mounted) Navigator.pop(context);
+
+      if (conversationData == null || conversationData['id'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to start conversation. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get full conversation data
+      final conversationResponse = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationData['id'] as String)
+          .maybeSingle();
+
+      if (conversationResponse == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Conversation not found. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get other user's profile info
+      final otherUserId = conversationResponse['student_id'] == currentUserId
+          ? conversationResponse['tutor_id']
+          : conversationResponse['student_id'];
+
+      final otherUserProfile = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', otherUserId)
+          .maybeSingle();
+
+      // Create Conversation object
+      final conversation = Conversation(
+        id: conversationResponse['id'] as String,
+        studentId: conversationResponse['student_id'] as String,
+        tutorId: conversationResponse['tutor_id'] as String,
+        bookingRequestId: conversationResponse['booking_request_id'] as String?,
+        recurringSessionId: conversationResponse['recurring_session_id'] as String?,
+        individualSessionId: conversationResponse['individual_session_id'] as String?,
+        trialSessionId: conversationResponse['trial_session_id'] as String?,
+        status: conversationResponse['status'] as String? ?? 'active',
+        expiresAt: conversationResponse['expires_at'] != null
+            ? DateTime.parse(conversationResponse['expires_at'] as String)
+            : null,
+        lastMessageAt: conversationResponse['last_message_at'] != null
+            ? DateTime.parse(conversationResponse['last_message_at'] as String)
+            : null,
+        createdAt: DateTime.parse(conversationResponse['created_at'] as String),
+        otherUserName: otherUserProfile?['full_name'] as String?,
+        otherUserAvatarUrl: otherUserProfile?['avatar_url'] as String?,
+      );
+
+      // Navigate to chat screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(conversation: conversation),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error navigating to chat from session: $e');
+      if (mounted) {
+        // Dismiss loading if still showing
+        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
