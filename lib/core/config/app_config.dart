@@ -38,6 +38,12 @@ class AppConfig {
   /// This only affects user authentication, not Google Calendar OAuth.
   static const bool enableGoogleSignIn = false; // ← Disabled until Google verification complete
   
+  /// Enable/disable Phone Sign-In for user authentication
+  /// 
+  /// Set to `false` until phone verification is fully tested and ready.
+  /// Phone login requires additional backend setup for SMS verification.
+  static const bool enablePhoneSignIn = true; // ← Enabled for phone OTP authentication
+  
   /// Enable/disable SkulMate feature
   /// 
   /// Set to `true` to enable SkulMate (game generation and library).

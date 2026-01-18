@@ -342,7 +342,15 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         automaticallyImplyLeading: false, // No back button in bottom nav
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const AppLogoHeader(),
+        centerTitle: false,
+        title: Text(
+          'PrepSkul',
+          style: GoogleFonts.poppins(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
+          ),
+        ),
         actions: [
           const MessageIconBadge(),
           const Padding(

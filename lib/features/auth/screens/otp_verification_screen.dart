@@ -160,6 +160,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         // For existing users, ensure onboarding_completed is set to true
         // (they've already seen onboarding if they're logging in)
         final prefs = await SharedPreferences.getInstance();
+        // Save auth method as 'phone' for phone login/signup
+        await prefs.setString('auth_method', 'phone');
         if (!isNewUser) {
           await prefs.setBool('onboarding_completed', true);
           LogService.success('Existing user login - set onboarding_completed to true');

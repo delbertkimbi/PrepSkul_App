@@ -330,6 +330,8 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                         ),
                                       ],
                                     ),
+                                    // Phone login option - only show if enabled
+                                    if (AppConfig.enablePhoneSignIn) ...[
                                     const SizedBox(height: 16),
                                     TextButton(
                                       onPressed: () {
@@ -346,6 +348,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                         ),
                                       ),
                                     ),
+                                    ],
                                   ],
                                 ),
                               ),

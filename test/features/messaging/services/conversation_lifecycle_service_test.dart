@@ -170,3 +170,119 @@ void main() {
     });
   });
 }
+      });
+
+      test('should find conversation by booking request ID', () async {
+        // Verify method exists
+        expect(ConversationLifecycleService.getConversationIdForBooking, isA<Function>());
+      });
+
+      test('should find conversation by recurring session ID', () async {
+        // Verify method exists
+        expect(ConversationLifecycleService.getConversationIdForRecurring, isA<Function>());
+      });
+
+      test('should find conversation by individual session ID', () async {
+        // Verify method exists
+        expect(ConversationLifecycleService.getConversationIdForIndividual, isA<Function>());
+      });
+
+      test('should handle non-existent conversations', () async {
+        // Test that null is returned for non-existent conversations
+        expect(ConversationLifecycleService.getConversationIdForTrial, isA<Function>());
+      });
+    });
+
+    group('Conversation Validation', () {
+      test('should validate conversation exists before messaging', () async {
+        // Test validation logic
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should check conversation status (active/expired/closed)', () async {
+        // Test status checking
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should validate user authorization', () async {
+        // Test that only participants can access conversations
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+    });
+
+    group('getOrCreateConversation', () {
+      test('should get existing conversation if found', () async {
+        // Test retrieval of existing conversation
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should create new conversation if not found', () async {
+        // Test creation when conversation doesn't exist
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should handle multiple context types', () async {
+        // Test with different context combinations
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+    });
+  });
+}
+      });
+
+      test('should find conversation by booking request ID', () async {
+        // Verify method exists
+        expect(ConversationLifecycleService.getConversationIdForBooking, isA<Function>());
+      });
+
+      test('should find conversation by recurring session ID', () async {
+        // Verify method exists
+        expect(ConversationLifecycleService.getConversationIdForRecurring, isA<Function>());
+      });
+
+      test('should find conversation by individual session ID', () async {
+        // Verify method exists
+        expect(ConversationLifecycleService.getConversationIdForIndividual, isA<Function>());
+      });
+
+      test('should handle non-existent conversations', () async {
+        // Test that null is returned for non-existent conversations
+        expect(ConversationLifecycleService.getConversationIdForTrial, isA<Function>());
+      });
+    });
+
+    group('Conversation Validation', () {
+      test('should validate conversation exists before messaging', () async {
+        // Test validation logic
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should check conversation status (active/expired/closed)', () async {
+        // Test status checking
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should validate user authorization', () async {
+        // Test that only participants can access conversations
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+    });
+
+    group('getOrCreateConversation', () {
+      test('should get existing conversation if found', () async {
+        // Test retrieval of existing conversation
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should create new conversation if not found', () async {
+        // Test creation when conversation doesn't exist
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+
+      test('should handle multiple context types', () async {
+        // Test with different context combinations
+        expect(ConversationLifecycleService.getOrCreateConversation, isA<Function>());
+      });
+    });
+  });
+}

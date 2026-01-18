@@ -433,38 +433,4 @@
   
   <script src="flutter_bootstrap.js" async></script>
 </body>
-      if (loader && !loader.classList.contains('hidden')) {
-        // Check if Flutter is actually loaded
-        const hasFlutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
-        if (hasFlutterApp) {
-          console.warn('Page loaded with Flutter app present but splash still visible, forcing removal');
-        } else {
-          console.warn('Page loaded but Flutter app not detected, forcing splash removal anyway');
-        }
-        loader.style.display = 'none';
-        loader.classList.add('hidden');
-        if (loader.parentNode) {
-          loader.remove();
-        }
-      }
-    });
-  </script>
-</head>
-<body>
-  <!-- Immediate Loading Screen -->
-  <div id="flutter-loading">
-    <div class="loader-container">
-      <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
-      </div>
-    </div>
-  </div>
-  
-  <!-- Agora Web SDK for video sessions - Load before Flutter bootstrap -->
-  <!-- Using iris-web-rtc for Web SDK v4.x compatibility with Flutter package -->
-  <!-- The Flutter agora_rtc_engine package requires iris-web-rtc.js (not AgoraRTC_N.js) -->
-  <!-- Load synchronously (no async/defer) to ensure it's available when Flutter initializes -->
-  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
-  
-  <script src="flutter_bootstrap.js" async></script>
-</body>
+</html>
