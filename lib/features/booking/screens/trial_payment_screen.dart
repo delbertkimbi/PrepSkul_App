@@ -7,8 +7,6 @@ import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
-import 'package:prepskul/features/payment/widgets/payment_instructions_widget.dart';
-import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
@@ -40,7 +38,6 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   String? _phoneError; // Phone number validation error
   String _paymentStatus = 'idle'; // idle, pending, successful, failed
   String? _lastTransactionId; // Used to retry Meet link generation
-  String? _detectedProvider; // MTN or Orange, detected from phone number
 
   @override
   void initState() {
@@ -127,99 +124,50 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       return;
     }
 
-    // Detect provider (MTN or Orange) for displaying correct instructions
-    final detectedProvider = FapshiService.detectPhoneProvider(normalizedPhone);
-
     safeSetState(() {
       _isProcessing = true;
       _errorMessage = null;
       _phoneError = null;
       _paymentStatus = 'idle';
-      _detectedProvider = detectedProvider; // Store provider for instructions
     });
 
-    String? transId;
     try {
       // Initiate payment via trial session service
       // Pass trial session to avoid unnecessary fetch
-      transId = await TrialSessionService.initiatePayment(
+      final transId = await TrialSessionService.initiatePayment(
         sessionId: widget.trialSession.id,
         phoneNumber: normalizedPhone, // Use validated and normalized phone number
         trialSession: widget.trialSession,
       );
-    } catch (e) {
-      // Even if payment initiation fails, navigate to confirmation screen
-      // The new screen will handle the error and show appropriate message
-      LogService.error('Error initiating payment: $e');
-      
-      // If we got a transaction ID before the error, use it
-      // Otherwise, create a placeholder for sandbox mode
-      if (transId == null && !FapshiService.isProduction) {
-        transId = 'sandbox_error_${DateTime.now().millisecondsSinceEpoch}';
-      }
-    }
-    
-      // Navigate to dedicated payment confirmation screen IMMEDIATELY
-      // Always navigate, even if there was an error (let the new screen handle it)
-      if (mounted && transId != null) {
-        final result = await Navigator.pushReplacement<bool, void>(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PaymentConfirmationScreen(
-              provider: detectedProvider,
-              phoneNumber: normalizedPhone,
-              amount: widget.trialSession.trialFee,
-              transactionId: transId!,
-              isSandbox: !FapshiService.isProduction,
-              onPaymentComplete: (transId) async {
-                // Complete payment and show celebration (handled in payment confirmation screen)
-                // Just return success/failure - don't show dialog here
-                try {
-                  // In sandbox mode, if transaction ID is a placeholder, still complete payment
-                  if (!FapshiService.isProduction && transId.startsWith('sandbox_')) {
-                    LogService.info('🧪 Sandbox mode: Completing payment with placeholder transaction ID');
-                    // Still update payment status even with placeholder ID
-                    try {
-                      await TrialSessionService.completePaymentAndGenerateMeet(
-                        sessionId: widget.trialSession.id,
-                        transactionId: transId,
-                      );
-                    } catch (e) {
-                      // Even if Meet link generation fails, payment is still successful
-                      LogService.warning('Payment confirmed but Meet link generation failed: $e');
-                    }
-                    return true; // Payment successful (even if calendar setup failed)
-                  }
-                  
-                  // Production or real transaction ID
-                  final calendarOk = await TrialSessionService.completePaymentAndGenerateMeet(
-                    sessionId: widget.trialSession.id,
-                    transactionId: transId,
-                  );
-                  // Return true even if calendar setup failed - payment is still successful
-                  return true;
-                } catch (e) {
-                  LogService.error('Error completing payment: $e');
-                  // Even on error, if payment was confirmed, return true
-                  // The error might be just calendar/Meet link generation
-                  return true; // Payment is successful, even if other steps failed
-                }
-              },
-            ),
-          ),
-        );
 
-        // If payment was successful, pop this screen
-        if (result == true && mounted) {
-          Navigator.pop(context, true);
-        }
-      } else if (mounted) {
-      // If we couldn't get a transaction ID, show error on current screen
       safeSetState(() {
+        _paymentStatus = 'pending';
         _isProcessing = false;
-        _errorMessage = 'Failed to initiate payment. Please try again.';
+        _isPolling = true;
+      });
+
+      // Start polling for payment status
+      _pollPaymentStatus(transId);
+    } catch (e) {
+      // FapshiService already provides user-friendly messages, so use them directly
+      // Remove "Exception: " prefix if present
+      String userMessage = e.toString().replaceFirst('Exception: ', '').trim();
+      
+      // If message is already user-friendly (contains helpful guidance), use as-is
+      // Otherwise, provide a generic helpful message
+      if (userMessage.isEmpty || 
+          userMessage.toLowerCase().contains('exception') ||
+          userMessage.toLowerCase().contains('error:') ||
+          userMessage.toLowerCase().contains('failed:')) {
+        userMessage = 'We couldn\'t process your payment. Please check your phone number and try again.\n\nIf this continues, contact our support team for assistance.';
+      }
+      
+      safeSetState(() {
+        _errorMessage = userMessage;
+        _isProcessing = false;
         _paymentStatus = 'failed';
       });
+      LogService.error('Payment initiation error: $e');
     }
   }
 
@@ -266,26 +214,26 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           
           if (!status.isPending) {
             // Payment is no longer pending
-            if (mounted) {
-              safeSetState(() {
-                _isPolling = false;
-                if (status.isSuccessful) {
-                  _paymentStatus = 'successful';
-                } else if (status.isFailed) {
-                  _paymentStatus = 'failed';
-                  _errorMessage = 'Payment failed. Please try again.';
+      if (mounted) {
+        safeSetState(() {
+          _isPolling = false;
+          if (status.isSuccessful) {
+            _paymentStatus = 'successful';
+          } else if (status.isFailed) {
+            _paymentStatus = 'failed';
+            _errorMessage = 'Payment failed. Please try again.';
                 } else if (status.status.toUpperCase() == 'EXPIRED') {
                   _paymentStatus = 'failed';
                   _errorMessage = 'Payment link expired. Please initiate a new payment.';
-                }
-              });
+          }
+        });
               
               // Complete payment if successful
-              if (status.isSuccessful) {
-                final success = await _completePayment(transId);
-                if (success && mounted) {
-                  Navigator.pop(context, true);
-                }
+        if (status.isSuccessful) {
+          final success = await _completePayment(transId);
+          if (success && mounted) {
+            Navigator.pop(context, true);
+          }
               }
             }
             return;
@@ -295,10 +243,8 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           // Continue polling - might be temporary network issue
         }
         
-        // Wait before next attempt (shorter interval in sandbox for faster auto-completion)
-        await Future.delayed(!FapshiService.isProduction 
-            ? const Duration(seconds: 2) // Faster in sandbox (2s instead of 3s)
-            : interval);
+        // Wait before next attempt
+        await Future.delayed(interval);
         attempts++;
         
         if (mounted && attempts % 5 == 0) {
@@ -696,8 +642,9 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                     _buildPhoneInput(),
                   const SizedBox(height: 24),
 
-                  // Payment Instructions are now shown on a separate screen
-                  // This section is removed - navigation happens immediately after payment initiation
+                  // Payment Status
+                  if (_paymentStatus == 'pending' || _isPolling)
+                    _buildPaymentPending(),
                   if (_paymentStatus == 'successful')
                     _buildPaymentSuccess(),
                   if (_paymentStatus == 'successful' && _errorMessage != null)
@@ -905,44 +852,6 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  // Processing indicator (shown below instructions card, not as overlay)
-  Widget _buildProcessingIndicator() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.primaryColor.withOpacity(0.2),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.5,
-              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Text(
-            'Processing payment...',
-            style: GoogleFonts.poppins(
-              fontSize: 15,
-              color: AppTheme.textDark,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
     );
   }
 

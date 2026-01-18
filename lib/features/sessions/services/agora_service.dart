@@ -388,20 +388,6 @@ class AgoraService {
         _isAudioEnabled = initialMicEnabled;
       }
 
-      // Create data stream for screen sharing notifications
-      try {
-        _dataStreamId = await _engine!.createDataStream(
-          const DataStreamConfig(
-            syncWithAudio: false,
-            ordered: true,
-          ),
-        );
-        LogService.success('✅ Data stream created for screen sharing notifications: $_dataStreamId');
-      } catch (e) {
-        LogService.warning('Could not create data stream: $e');
-        // Continue without data stream - screen sharing detection will be manual
-      }
-
       // Join channel
       // Note: Don't set state to connected here - wait for onJoinChannelSuccess event
       await _engine!.joinChannel(
@@ -924,9 +910,6 @@ class AgoraService {
       
       LogService.success('✅ Screen sharing stopped');
       _screenSharingController.add({'uid': _currentUID, 'sharing': false});
-      
-      // Notify remote users via data stream
-      _notifyRemoteUsersScreenSharing(false);
     } catch (e) {
       LogService.error('Failed to stop screen sharing: $e');
       _errorController.add('Failed to stop screen sharing: $e');

@@ -9,7 +9,6 @@ class ProfileCardOverlay extends StatelessWidget {
   final String name;
   final String role; // 'tutor' or 'learner'
   final bool isLocal; // true for local user, false for remote
-  final bool userLeft; // true if user left the call (for remote users)
 
   const ProfileCardOverlay({
     Key? key,
@@ -17,7 +16,6 @@ class ProfileCardOverlay extends StatelessWidget {
     required this.name,
     required this.role,
     this.isLocal = false,
-    this.userLeft = false,
   }) : super(key: key);
 
   /// Get initials from name

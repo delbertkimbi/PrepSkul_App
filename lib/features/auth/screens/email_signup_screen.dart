@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -482,22 +483,25 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 16),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pushReplacementNamed(
-                                          context,
-                                          '/beautiful-signup',
-                                        );
-                                      },
-                                      child: Text(
-                                        'Use phone number instead',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: AppTheme.primaryColor,
+                                    // Phone signup option - only show if enabled
+                                    if (AppConfig.enablePhoneSignIn) ...[
+                                      const SizedBox(height: 16),
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pushReplacementNamed(
+                                            context,
+                                            '/beautiful-signup',
+                                          );
+                                        },
+                                        child: Text(
+                                          'Use phone number instead',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            color: AppTheme.primaryColor,
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 ),
                               ),

@@ -77,10 +77,48 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Future<void> _loadAuthMethod() async {
     final prefs = await SharedPreferences.getInstance();
-    safeSetState(() {
-      _authMethod =
-          prefs.getString('auth_method') ?? 'phone'; // Default to phone
-    });
+    final storedMethod = prefs.getString('auth_method');
+    
+    // If stored method exists, use it
+    if (storedMethod != null) {
+      safeSetState(() {
+        _authMethod = storedMethod;
+      });
+      return;
+    }
+    
+    // Otherwise, detect from Supabase user data
+    try {
+      final user = await AuthService.getCurrentUser();
+      final email = user['email'] as String?;
+      final phone = user['phone'] as String?;
+      
+      // If user has phone but no email, they signed up with phone
+      // If user has email but no phone, they signed up with email
+      // If both exist, check which one is the primary identifier
+      String detectedMethod = 'phone'; // Default
+      
+      if (phone != null && phone.isNotEmpty && (email == null || email.isEmpty)) {
+        detectedMethod = 'phone';
+      } else if (email != null && email.isNotEmpty && (phone == null || phone.isEmpty)) {
+        detectedMethod = 'email';
+      } else if (phone != null && phone.isNotEmpty) {
+        // Has both, but phone likely means phone signup
+        detectedMethod = 'phone';
+      }
+      
+      // Save for future use
+      await prefs.setString('auth_method', detectedMethod);
+      
+      safeSetState(() {
+        _authMethod = detectedMethod;
+      });
+    } catch (e) {
+      LogService.warning('Error detecting auth method: $e');
+      safeSetState(() {
+        _authMethod = 'phone'; // Default to phone
+      });
+    }
   }
 
   // Initialize and load data from database

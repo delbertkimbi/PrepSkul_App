@@ -35,7 +35,6 @@ import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
-import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
@@ -683,12 +682,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       
       LogService.info('🎥 Joining Agora video session: $sessionId as $userRole');
       
-      // Navigate to pre-join screen first
+      // Navigate to Agora video session screen
       if (mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraPreJoinScreen(
+            builder: (context) => AgoraVideoSessionScreen(
               sessionId: sessionId,
               userRole: userRole,
             ),
@@ -1532,99 +1531,83 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ),
               ],
-              // Action buttons - Show for scheduled/in_progress sessions
-              // For trial sessions: Show join button if status is 'scheduled' or 'in_progress' (regardless of time check)
-              // For individual sessions: Show join button if isUpcoming AND (status is 'scheduled' or 'in_progress')
-              Builder(
-                builder: (context) {
-                  final shouldShowJoinButton = isTrial
-                      ? (status == 'scheduled' || status == 'in_progress') // Trial: Show if scheduled/in_progress
-                      : (isUpcoming && (status == 'scheduled' || status == 'in_progress')); // Individual: Show if upcoming AND scheduled/in_progress
-                  
-                  if (!shouldShowJoinButton) {
-                    return const SizedBox.shrink();
-                  }
-                  
-                  return Column(
-                    children: [
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          // Agora Video Session button - show for ALL online sessions (no meetLink dependency)
-                          if (location == 'online')
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () => _joinAgoraSession(sessionId),
-                                icon: Icon(
-                                  status == 'in_progress' ? Icons.video_call : Icons.video_call,
-                                  size: status == 'in_progress' ? 20 : 18,
-                                ),
-                                label: Text(
-                                  status == 'in_progress' ? 'Join Session' : 'Join Video Session',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: status == 'in_progress' ? 14 : 13,
-                                    fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: status == 'in_progress' 
-                                      ? AppTheme.accentGreen 
-                                      : AppTheme.primaryColor,
-                                  foregroundColor: Colors.white,
-                                  padding: EdgeInsets.symmetric(
-                                    vertical: status == 'in_progress' ? 14 : 10,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  elevation: status == 'in_progress' ? 2 : 0,
-                                ),
-                              ),
+              // Action buttons - Always show for scheduled/in_progress sessions
+              if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    // Agora Video Session button - show for ALL online sessions (no meetLink dependency)
+                    if (location == 'online')
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _joinAgoraSession(sessionId),
+                          icon: Icon(
+                            status == 'in_progress' ? Icons.video_call : Icons.video_call,
+                            size: status == 'in_progress' ? 20 : 18,
+                          ),
+                          label: Text(
+                            status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+                            style: GoogleFonts.poppins(
+                              fontSize: status == 'in_progress' ? 14 : 13,
+                              fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
                             ),
-                          // Add to Calendar button - Show alongside Agora button for scheduled sessions
-                          // Show ONLY if:
-                          // 1. Session doesn't have calendar_event_id yet, AND
-                          // 2. User hasn't connected calendar (so they can connect), OR
-                          // 3. User has connected calendar (so they can add this session)
-                          if ((session['calendar_event_id'] == null || 
-                               (session['calendar_event_id'] as String? ?? '').isEmpty))
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: OutlinedButton.icon(
-                                onPressed: _isOffline
-                                    ? () => OfflineDialog.show(
-                                          context,
-                                          message: 'Adding to calendar requires an internet connection. Please check your connection and try again.',
-                                        )
-                                    : () => _addSessionToCalendar(session),
-                                icon: Icon(
-                                  _isCalendarConnected == true 
-                                      ? Icons.calendar_today 
-                                      : Icons.calendar_today_outlined,
-                                  size: 18,
-                                ),
-                                label: Text(
-                                  _isCalendarConnected == true
-                                      ? 'Add to Calendar'
-                                      : 'Connect & Add',
-                                  style: GoogleFonts.poppins(fontSize: 13),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: AppTheme.primaryColor,
-                                  side: BorderSide(color: AppTheme.primaryColor),
-                                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                              ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: status == 'in_progress' 
+                                ? AppTheme.accentGreen 
+                                : AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(
+                              vertical: status == 'in_progress' ? 14 : 10,
                             ),
-                        ],
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            elevation: status == 'in_progress' ? 2 : 0,
+                          ),
+                        ),
                       ),
-                    ],
-                  );
-                },
-              ),
+                    // Add to Calendar button - Show alongside Agora button for scheduled sessions
+                    // Show ONLY if:
+                    // 1. Session doesn't have calendar_event_id yet, AND
+                    // 2. User hasn't connected calendar (so they can connect), OR
+                    // 3. User has connected calendar (so they can add this session)
+                    if ((session['calendar_event_id'] == null || 
+                         (session['calendar_event_id'] as String? ?? '').isEmpty))
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: _isOffline
+                              ? () => OfflineDialog.show(
+                                    context,
+                                    message: 'Adding to calendar requires an internet connection. Please check your connection and try again.',
+                                  )
+                              : () => _addSessionToCalendar(session),
+                          icon: Icon(
+                            _isCalendarConnected == true 
+                                ? Icons.calendar_today 
+                                : Icons.calendar_today_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            _isCalendarConnected == true
+                                ? 'Add to Calendar'
+                                : 'Connect & Add',
+                            style: GoogleFonts.poppins(fontSize: 13),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.primaryColor,
+                            side: BorderSide(color: AppTheme.primaryColor),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
               // Feedback prompt for completed sessions
               if (isCompleted) ...[
                 const SizedBox(height: 16),

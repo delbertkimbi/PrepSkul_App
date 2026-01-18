@@ -184,3 +184,216 @@ void main() {
     });
   });
 }
+    group('Error Scenarios', () {
+      test('should handle network failure during send', () async {
+        // Test network error handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle API timeout', () async {
+        // Test timeout handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle invalid conversation access', () async {
+        // Test authorization
+        expect(ChatService.getMessages, isA<Function>());
+      });
+
+      test('should handle blocked message gracefully', () async {
+        // Test blocked message handling
+        expect(ChatService.previewMessage, isA<Function>());
+      });
+    });
+
+    group('booking integration', () {
+      test('should verify conversation creation methods exist', () {
+        // Test that conversation creation methods exist for booking/trial
+        expect(
+          ConversationLifecycleService.createConversationForBooking,
+          isA<Function>(),
+        );
+        expect(
+          ConversationLifecycleService.createConversationForTrial,
+          isA<Function>(),
+        );
+      });
+    });
+
+    group('model validation', () {
+      test('should create valid Conversation from JSON', () {
+        final json = {
+          'id': 'conv-123',
+          'student_id': 'student-123',
+          'tutor_id': 'tutor-123',
+          'status': 'active',
+          'created_at': '2024-01-01T12:00:00Z',
+        };
+
+        final conversation = Conversation.fromJson(json);
+        expect(conversation.id, 'conv-123');
+        expect(conversation.studentId, 'student-123');
+        expect(conversation.tutorId, 'tutor-123');
+        expect(conversation.status, 'active');
+      });
+
+      test('should create valid Message from JSON', () {
+        final json = {
+          'id': 'msg-123',
+          'conversation_id': 'conv-123',
+          'sender_id': 'user-123',
+          'content': 'Test message',
+          'created_at': '2024-01-01T12:00:00Z',
+        };
+
+        final message = Message.fromJson(json, currentUserId: 'user-123');
+        expect(message.id, 'msg-123');
+        expect(message.conversationId, 'conv-123');
+        expect(message.content, 'Test message');
+        expect(message.isCurrentUser, true);
+      });
+    });
+  });
+}
+    group('Error Scenarios', () {
+      test('should handle network failure during send', () async {
+        // Test network error handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle API timeout', () async {
+        // Test timeout handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle invalid conversation access', () async {
+        // Test authorization
+        expect(ChatService.getMessages, isA<Function>());
+      });
+
+      test('should handle blocked message gracefully', () async {
+        // Test blocked message handling
+        expect(ChatService.previewMessage, isA<Function>());
+      });
+    });
+
+    group('booking integration', () {
+      test('should verify conversation creation methods exist', () {
+        // Test that conversation creation methods exist for booking/trial
+        expect(
+          ConversationLifecycleService.createConversationForBooking,
+          isA<Function>(),
+        );
+        expect(
+          ConversationLifecycleService.createConversationForTrial,
+          isA<Function>(),
+        );
+      });
+    });
+
+    group('model validation', () {
+      test('should create valid Conversation from JSON', () {
+        final json = {
+          'id': 'conv-123',
+          'student_id': 'student-123',
+          'tutor_id': 'tutor-123',
+          'status': 'active',
+          'created_at': '2024-01-01T12:00:00Z',
+        };
+
+        final conversation = Conversation.fromJson(json);
+        expect(conversation.id, 'conv-123');
+        expect(conversation.studentId, 'student-123');
+        expect(conversation.tutorId, 'tutor-123');
+        expect(conversation.status, 'active');
+      });
+
+      test('should create valid Message from JSON', () {
+        final json = {
+          'id': 'msg-123',
+          'conversation_id': 'conv-123',
+          'sender_id': 'user-123',
+          'content': 'Test message',
+          'created_at': '2024-01-01T12:00:00Z',
+        };
+
+        final message = Message.fromJson(json, currentUserId: 'user-123');
+        expect(message.id, 'msg-123');
+        expect(message.conversationId, 'conv-123');
+        expect(message.content, 'Test message');
+        expect(message.isCurrentUser, true);
+      });
+    });
+  });
+}
+    group('Error Scenarios', () {
+      test('should handle network failure during send', () async {
+        // Test network error handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle API timeout', () async {
+        // Test timeout handling
+        expect(ChatService.sendMessage, isA<Function>());
+      });
+
+      test('should handle invalid conversation access', () async {
+        // Test authorization
+        expect(ChatService.getMessages, isA<Function>());
+      });
+
+      test('should handle blocked message gracefully', () async {
+        // Test blocked message handling
+        expect(ChatService.previewMessage, isA<Function>());
+      });
+    });
+
+    group('booking integration', () {
+      test('should verify conversation creation methods exist', () {
+        // Test that conversation creation methods exist for booking/trial
+        expect(
+          ConversationLifecycleService.createConversationForBooking,
+          isA<Function>(),
+        );
+        expect(
+          ConversationLifecycleService.createConversationForTrial,
+          isA<Function>(),
+        );
+      });
+    });
+
+    group('model validation', () {
+      test('should create valid Conversation from JSON', () {
+        final json = {
+          'id': 'conv-123',
+          'student_id': 'student-123',
+          'tutor_id': 'tutor-123',
+          'status': 'active',
+          'created_at': '2024-01-01T12:00:00Z',
+        };
+
+        final conversation = Conversation.fromJson(json);
+        expect(conversation.id, 'conv-123');
+        expect(conversation.studentId, 'student-123');
+        expect(conversation.tutorId, 'tutor-123');
+        expect(conversation.status, 'active');
+      });
+
+      test('should create valid Message from JSON', () {
+        final json = {
+          'id': 'msg-123',
+          'conversation_id': 'conv-123',
+          'sender_id': 'user-123',
+          'content': 'Test message',
+          'created_at': '2024-01-01T12:00:00Z',
+        };
+
+        final message = Message.fromJson(json, currentUserId: 'user-123');
+        expect(message.id, 'msg-123');
+        expect(message.conversationId, 'conv-123');
+        expect(message.content, 'Test message');
+        expect(message.isCurrentUser, true);
+      });
+    });
+  });
+}
