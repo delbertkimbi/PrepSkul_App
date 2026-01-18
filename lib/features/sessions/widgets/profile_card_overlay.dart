@@ -143,20 +143,21 @@ class ProfileCardOverlay extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!isLocal) ...[
+              if (!isLocal && !userLeft) ...[
+                // Only show "Camera is off" message when camera is off but user hasn't left
+                // "Left the call" message is shown at the top via SessionStateMessages
                 const SizedBox(height: 16),
-                // Show appropriate message based on whether user left or camera is off
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      userLeft ? Icons.person_off : Icons.videocam_off,
-                      color: userLeft ? Colors.red.withOpacity(0.8) : Colors.orange.withOpacity(0.8),
+                      Icons.videocam_off,
+                      color: Colors.orange.withOpacity(0.8),
                       size: 16,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      userLeft ? 'Left the call' : 'Camera is off',
+                      'Camera is off',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Colors.white70,

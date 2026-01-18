@@ -181,5 +181,23 @@ class SessionStateMessages {
       color: Colors.blue,
     );
   }
+
+  static Widget tutorConnectionUnstable() {
+    return SessionStateMessage(
+      message: "Tutor's connection is unstable",
+      icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
+      color: Colors.orange,
+      duration: const Duration(seconds: 5),
+    );
+  }
+
+  static Widget learnerConnectionUnstable() {
+    return SessionStateMessage(
+      message: "Learner's connection is unstable",
+      icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
+      color: Colors.orange,
+      duration: const Duration(seconds: 5),
+    );
+  }
 }
 

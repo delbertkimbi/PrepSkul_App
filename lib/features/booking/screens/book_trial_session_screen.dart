@@ -475,7 +475,12 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context);
-      _showErrorDialog(e.toString().replaceFirst('Exception: ', ''));
+      // Clean up error message - remove "Exception:" prefix and any other technical prefixes
+      String errorMessage = e.toString();
+      errorMessage = errorMessage.replaceFirst(RegExp(r'^Exception:\s*'), '');
+      errorMessage = errorMessage.replaceFirst(RegExp(r'^Error:\s*'), '');
+      errorMessage = errorMessage.trim();
+      _showErrorDialog(errorMessage);
     }
   }
 
@@ -693,6 +698,35 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   }
 
   void _showErrorDialog([String? errorMessage]) {
+    // Determine title and message based on error
+    String title = 'Request Failed';
+    String message;
+    
+    if (errorMessage != null && errorMessage.isNotEmpty) {
+      // Use the actual error message from the service
+      message = errorMessage;
+      
+      // Update title based on error type for better UX
+      final errorLower = errorMessage.toLowerCase();
+      if (errorLower.contains('already have') || 
+          errorLower.contains('already exists') ||
+          errorLower.contains('pending trial') ||
+          errorLower.contains('approved trial') ||
+          errorLower.contains('scheduled trial')) {
+        title = 'Cannot Book Trial Session';
+      } else if (errorLower.contains('not authenticated') || 
+                 errorLower.contains('authentication')) {
+        title = 'Authentication Required';
+      } else if (errorLower.contains('network') || 
+                 errorLower.contains('connection') ||
+                 errorLower.contains('timeout')) {
+        title = 'Connection Problem';
+      }
+    } else {
+      // Fallback to generic message if no error message provided
+      message = 'Unable to send your trial request. Please try again.';
+    }
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -703,7 +737,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Request Failed',
+                title,
                 style: GoogleFonts.poppins(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -713,7 +747,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           ],
         ),
         content: Text(
-          'Unable to send your trial request. Please try again.',
+          message,
           style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
         ),
         actions: [

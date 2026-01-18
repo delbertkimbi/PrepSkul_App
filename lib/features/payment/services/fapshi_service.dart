@@ -47,6 +47,15 @@ class FapshiService {
     String? message,
   }) async {
     try {
+      // Log payment mode for clarity
+      if (!isProduction) {
+        LogService.info('🟢 SANDBOX MODE: Payment will be SIMULATED - No real money will be charged');
+        LogService.info('🟢 Using sandbox environment: $_baseUrl');
+      } else {
+        LogService.warning('🔴 PRODUCTION MODE: REAL payment will be processed - REAL money will be charged');
+        LogService.warning('🔴 Using live environment: $_baseUrl');
+      }
+      
       // Validate API credentials
       if (_apiUser.isEmpty || _apiKey.isEmpty) {
         LogService.error('Fapshi API credentials are missing. Check your .env file.');

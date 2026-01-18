@@ -43,6 +43,37 @@ class WindowEnvHelper {
         }
       }
       
+      // Fapshi API credentials
+      if (key == 'FAPSHI_SANDBOX_API_USER' || key == 'FAPSHI_COLLECTION_API_USER_LIVE') {
+        try {
+          directValue = js.context.callMethod('eval', [
+            '(typeof window !== "undefined" && window.env && window.env.$key) || null'
+          ])?.toString();
+          
+          if (directValue != null && directValue != 'null' && directValue.isNotEmpty) {
+            LogService.info('✅ [WINDOW_ENV] Found $key via direct eval');
+            return directValue;
+          }
+        } catch (e) {
+          LogService.debug('🔍 [WINDOW_ENV] Direct eval failed for Fapshi User: $e');
+        }
+      }
+      
+      if (key == 'FAPSHI_SANDBOX_API_KEY' || key == 'FAPSHI_COLLECTION_API_KEY_LIVE') {
+        try {
+          directValue = js.context.callMethod('eval', [
+            '(typeof window !== "undefined" && window.env && window.env.$key) || null'
+          ])?.toString();
+          
+          if (directValue != null && directValue != 'null' && directValue.isNotEmpty) {
+            LogService.info('✅ [WINDOW_ENV] Found $key via direct eval');
+            return directValue;
+          }
+        } catch (e) {
+          LogService.debug('🔍 [WINDOW_ENV] Direct eval failed for Fapshi Key: $e');
+        }
+      }
+      
       // Method 2: Object access (fallback)
       final context = js.context;
       if (context == null) {
@@ -87,6 +118,17 @@ class WindowEnvHelper {
             LogService.info('✅ [WINDOW_ENV] Found $key via JsObject = ${value.length > 20 ? value.substring(0, 20) + "..." : "SET"}');
             return value;
           }
+        }
+        
+        // Fapshi API credentials - try direct key access
+        try {
+          final value = envObj[key]?.toString();
+          if (value != null && value.isNotEmpty && value != 'null') {
+            LogService.info('✅ [WINDOW_ENV] Found $key via JsObject');
+            return value;
+          }
+        } catch (_) {
+          // Key not found in envObj - continue
         }
       } catch (e) {
         LogService.warning('⚠️ [WINDOW_ENV] JsObject access failed: $e');
