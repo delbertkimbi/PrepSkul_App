@@ -173,7 +173,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
 
                               // Phone Number Field
                               Text(
-                                'Phone Number (WhatsApp Number)',
+                                'Phone Number',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,

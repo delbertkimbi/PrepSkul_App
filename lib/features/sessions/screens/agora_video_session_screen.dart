@@ -609,13 +609,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         LogService.warning('⚠️ Screen sharing UID is null, falling back to camera view');
         final connection = _agoraService.currentConnection;
         return SizedBox.expand(
-          key: ValueKey('remote_camera_fallback_$_videoRebuildKey'),
+          key: ValueKey('remote_camera_fallback_$_remoteUID'),
           child: agora_widget.AgoraVideoViewWidget(
             engine: engine,
             uid: _remoteUID,
             isLocal: false,
             connection: connection,
-            sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera, // Fallback to camera
           ),
         );
       }

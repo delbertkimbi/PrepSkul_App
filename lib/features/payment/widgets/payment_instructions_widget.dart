@@ -10,11 +10,13 @@ import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 class PaymentInstructionsWidget extends StatelessWidget {
   final String? provider; // 'mtn' or 'orange'
   final String phoneNumber;
+  final double? amount; // Optional amount to display in instructions
 
   const PaymentInstructionsWidget({
     Key? key,
     required this.provider,
     required this.phoneNumber,
+    this.amount,
   }) : super(key: key);
 
   /// Get payment instructions for the provider
