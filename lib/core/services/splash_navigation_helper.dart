@@ -44,11 +44,24 @@ class SplashNavigationHelper {
   static Future<bool> tryRestoreSession() async {
     try {
       final hasSupabaseSession = SupabaseService.isAuthenticated;
-      final isLoggedIn = await AuthService.isLoggedIn();
-
-      if (hasSupabaseSession && !isLoggedIn) {
+      
+      // CRITICAL: Always verify against Supabase's actual current user
+      // This prevents account switching when sessions change
+      if (hasSupabaseSession) {
         final user = SupabaseService.currentUser;
         if (user != null) {
+          // Verify if local session matches Supabase session
+          final localUserId = await AuthService.getUserId();
+          
+          // If user IDs don't match, sync with Supabase (this handles account switching)
+          if (localUserId != user.id) {
+            LogService.warning(
+              '[NAV] User ID mismatch detected during session restore! '
+              'Local: $localUserId, Supabase: ${user.id}. Syncing...'
+            );
+          }
+          
+          // Always sync with Supabase's current session to prevent mismatches
           final profile = await SupabaseService.client
               .from('profiles')
               .select()
@@ -59,12 +72,31 @@ class SplashNavigationHelper {
             await AuthService.saveSession(
               userId: user.id,
               userRole: profile['user_type'] ?? 'learner',
-              phone: profile['phone_number'] ?? '',
-              fullName: profile['full_name'] ?? '',
+              phone: profile['phone_number'] ?? user.phone ?? '',
+              fullName: profile['full_name'] ?? user.email ?? 'User',
               surveyCompleted: profile['survey_completed'] ?? false,
             );
+            LogService.success('[NAV] Session restored and synced with Supabase');
+            return true;
+          } else {
+            // Profile not found - use Supabase user data
+            await AuthService.saveSession(
+              userId: user.id,
+              userRole: user.userMetadata?['user_type'] ?? 'student',
+              phone: user.phone ?? '',
+              fullName: user.userMetadata?['full_name'] ?? user.email ?? 'User',
+              surveyCompleted: false,
+            );
+            LogService.warning('[NAV] Profile not found, using Supabase user data');
             return true;
           }
+        }
+      } else {
+        // No Supabase session - clear local session if it exists
+        final isLoggedIn = await AuthService.isLoggedIn();
+        if (isLoggedIn) {
+          LogService.warning('[NAV] No Supabase session but local session exists - clearing local session');
+          await AuthService.logout();
         }
       }
       return false;

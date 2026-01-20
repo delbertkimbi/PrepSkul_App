@@ -493,7 +493,7 @@ class QualityAssuranceService {
         await NotificationService.createNotification(
           userId: userId,
           type: 'refund_processed',
-          title: '💰 Refund Processed',
+          title: 'Refund Processed',
           message: 'A refund of ${sessionFee?.toStringAsFixed(0) ?? 'N/A'} XAF has been processed for your session. Reason: $reason',
           priority: 'normal',
           actionUrl: '/payments',

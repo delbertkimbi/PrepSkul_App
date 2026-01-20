@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
@@ -2183,7 +2187,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
           ),
           child: TabBar(
@@ -5453,11 +5457,54 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       final userId = user['userId'] ?? 'test-user-123'; // DEBUG MODE
 
       // Upload to Supabase Storage
-      final String uploadedUrl = await StorageService.uploadDocument(
-        userId: userId,
-        documentFile: pickedFile,
-        documentType: documentType.toLowerCase().replaceAll(' ', '_'),
-      );
+      // Profile pictures go to profile-photos bucket, other documents go to documents bucket
+      final String uploadedUrl;
+      if (documentType == 'profile_picture') {
+        // For profile pictures, we need to upload to profile-photos bucket
+        // Handle both XFile (web) and File (mobile)
+        if (pickedFile is XFile) {
+          if (kIsWeb) {
+            // Web: read as bytes and upload to profile-photos bucket
+            final bytes = await pickedFile.readAsBytes();
+            final storagePath = '$userId/profile_picture.png';
+            await SupabaseService.client.storage
+                .from('profile-photos')
+                .uploadBinary(
+                  storagePath,
+                  bytes,
+                  fileOptions: FileOptions(
+                    contentType: 'image/png',
+                    upsert: true,
+                  ),
+                );
+            uploadedUrl = SupabaseService.client.storage
+                .from('profile-photos')
+                .getPublicUrl(storagePath);
+          } else {
+            // Mobile: convert XFile to File
+            final imageFile = File(pickedFile.path);
+            uploadedUrl = await StorageService.uploadProfilePhoto(
+              userId: userId,
+              imageFile: imageFile,
+              fileName: 'profile_picture.png',
+            );
+          }
+        } else {
+          // File object (mobile only)
+          final imageFile = pickedFile as File;
+          uploadedUrl = await StorageService.uploadProfilePhoto(
+            userId: userId,
+            imageFile: imageFile,
+            fileName: 'profile_picture.png',
+          );
+        }
+      } else {
+        uploadedUrl = await StorageService.uploadDocument(
+          userId: userId,
+          documentFile: pickedFile,
+          documentType: documentType.toLowerCase().replaceAll(' ', '_'),
+        );
+      }
 
       safeSetState(() {
         _uploadedDocuments[documentType] = uploadedUrl;

@@ -5,6 +5,7 @@ import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/widgets/notification_item.dart';
+import 'package:prepskul/features/notifications/widgets/notification_group_item.dart';
 import 'package:prepskul/features/notifications/screens/notification_preferences_screen.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
@@ -30,7 +31,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   int _currentPage = 0;
   static const int _pageSize = 20;
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
   String _filter = 'all'; // 'all', 'unread', 'booking', 'payment', 'session'
+  String _searchQuery = '';
   StreamSubscription? _notificationStream;
 
   @override
@@ -45,6 +48,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   void dispose() {
     _notificationStream?.cancel();
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -157,7 +161,197 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       filtered = filtered.where((n) => n['type'] == _filter).toList();
     }
 
+    // Apply search query
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((notification) {
+        final title = (notification['title'] as String? ?? '').toLowerCase();
+        final message = (notification['message'] as String? ?? '').toLowerCase();
+        final type = (notification['type'] as String? ?? '').toLowerCase();
+        
+        // Check metadata for sender names
+        final metadata = notification['metadata'] as Map<String, dynamic>?;
+        final senderName = (metadata?['sender_name'] as String? ?? '').toLowerCase();
+        final tutorName = (metadata?['tutor_name'] as String? ?? '').toLowerCase();
+        final studentName = (metadata?['student_name'] as String? ?? '').toLowerCase();
+        
+        return title.contains(query) ||
+               message.contains(query) ||
+               type.contains(query) ||
+               senderName.contains(query) ||
+               tutorName.contains(query) ||
+               studentName.contains(query);
+      }).toList();
+    }
+
     return filtered;
+  }
+
+  /// Smart grouping: Group similar notifications together
+  Map<String, List<dynamic>> get _smartGroupedNotifications {
+    final now = DateTime.now();
+    final oneHourAgo = now.subtract(const Duration(hours: 1));
+    
+    // Group notifications by type and time proximity
+    final Map<String, List<Map<String, dynamic>>> groups = {};
+    
+    for (final notification in _filteredNotifications) {
+      final type = notification['type'] as String? ?? 'general';
+      final createdAt = DateTime.parse(notification['created_at'] as String);
+      final metadata = notification['metadata'] as Map<String, dynamic>?;
+      
+      // Create a group key based on type and context
+      String groupKey = type;
+      
+      // For booking requests, group by type only (all booking requests together)
+      if (type.contains('booking_request')) {
+        groupKey = 'booking_request_group';
+      } else if (type.contains('payment')) {
+        groupKey = 'payment_group';
+      } else if (type.contains('session_reminder')) {
+        groupKey = 'session_reminder_group';
+      } else if (type.contains('onboarding_reminder')) {
+        // Group all onboarding reminders together
+        groupKey = 'onboarding_reminder_group';
+      } else if (type.contains('message') || type.contains('chat')) {
+        // Group messages by sender if available
+        final senderId = metadata?['sender_id'] as String?;
+        if (senderId != null) {
+          groupKey = 'message_$senderId';
+        } else {
+          groupKey = 'message_group';
+        }
+      }
+      
+      // Only group if notification is recent (within 1 hour)
+      final shouldGroup = createdAt.isAfter(oneHourAgo) && 
+                          _shouldGroupNotificationType(type);
+      
+      if (shouldGroup && groups.containsKey(groupKey)) {
+        // Add to existing group if within time window
+        final existingGroup = groups[groupKey]!;
+        final latestInGroup = existingGroup.first;
+        final latestTime = DateTime.parse(latestInGroup['created_at'] as String);
+        
+        // Group if within 1 hour of latest notification in group
+        if (createdAt.difference(latestTime).inHours < 1) {
+          existingGroup.add(notification);
+          // Sort by time (newest first)
+          existingGroup.sort((a, b) {
+            final timeA = DateTime.parse(a['created_at'] as String);
+            final timeB = DateTime.parse(b['created_at'] as String);
+            return timeB.compareTo(timeA);
+          });
+        } else {
+          // Too old, create new group
+          groups['${groupKey}_${createdAt.millisecondsSinceEpoch}'] = [notification];
+        }
+      } else {
+        // Create new group
+        groups['${groupKey}_${createdAt.millisecondsSinceEpoch}'] = [notification];
+      }
+    }
+    
+    // Convert groups to list and sort by latest notification time
+    final groupedList = groups.entries.map((entry) {
+      final notifications = entry.value;
+      if (notifications.length > 1) {
+        // Return group object
+        return {
+          'isGroup': true,
+          'notifications': notifications,
+          'type': notifications.first['type'] as String? ?? 'general',
+          'count': notifications.length,
+          'latestTime': DateTime.parse(notifications.first['created_at'] as String),
+        };
+      } else {
+        // Single notification
+        return {
+          'isGroup': false,
+          'notification': notifications.first,
+          'latestTime': DateTime.parse(notifications.first['created_at'] as String),
+        };
+      }
+    }).toList();
+    
+    // Sort by latest time (newest first)
+    groupedList.sort((a, b) {
+      final timeA = a['latestTime'] as DateTime;
+      final timeB = b['latestTime'] as DateTime;
+      return timeB.compareTo(timeA);
+    });
+    
+    // Now group by time periods (Today, Yesterday, etc.)
+    final timeGrouped = <String, List<dynamic>>{
+      'Today': [],
+      'Yesterday': [],
+      'This Week': [],
+      'Older': [],
+    };
+    
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final weekAgo = today.subtract(const Duration(days: 7));
+    
+    for (final item in groupedList) {
+      final latestTime = item['latestTime'] as DateTime;
+      final createdDate = DateTime(
+        latestTime.year,
+        latestTime.month,
+        latestTime.day,
+      );
+      
+      if (createdDate == today) {
+        timeGrouped['Today']!.add(item);
+      } else if (createdDate == yesterday) {
+        timeGrouped['Yesterday']!.add(item);
+      } else if (createdDate.isAfter(weekAgo)) {
+        timeGrouped['This Week']!.add(item);
+      } else {
+        timeGrouped['Older']!.add(item);
+      }
+    }
+    
+    // Remove empty groups
+    timeGrouped.removeWhere((key, value) => value.isEmpty);
+    
+    return timeGrouped;
+  }
+  
+  /// Check if notification type should be grouped
+  bool _shouldGroupNotificationType(String type) {
+    final groupableTypes = [
+      'booking_request',
+      'payment_received',
+      'payment_confirmed',
+      'session_reminder',
+      'session_starting_soon',
+      'tutor_message',
+      'message',
+      'onboarding_reminder', // Group duplicate onboarding reminders
+    ];
+    
+    return groupableTypes.any((groupableType) => type.contains(groupableType));
+  }
+  
+  /// Generate summary message for grouped notifications
+  String _getGroupSummaryMessage(String type, int count, List<Map<String, dynamic>> notifications) {
+    if (type.contains('booking_request')) {
+      return '$count new booking request${count > 1 ? 's' : ''}';
+    } else if (type.contains('payment')) {
+      return '$count payment notification${count > 1 ? 's' : ''}';
+    } else if (type.contains('session_reminder')) {
+      return '$count session reminder${count > 1 ? 's' : ''}';
+    } else if (type.contains('onboarding_reminder')) {
+      return 'Complete Your Profile to Get Verified';
+    } else if (type.contains('message')) {
+      final senderName = notifications.first['metadata']?['sender_name'] as String?;
+      if (senderName != null) {
+        return '$count new message${count > 1 ? 's' : ''} from $senderName';
+      }
+      return '$count new message${count > 1 ? 's' : ''}';
+    }
+    return '$count notification${count > 1 ? 's' : ''}';
   }
 
   Map<String, List<Map<String, dynamic>>> get _groupedNotifications {
@@ -254,6 +448,52 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       ),
       body: Column(
         children: [
+          // Search Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: Colors.white,
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search notifications...',
+                hintStyle: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textLight,
+                ),
+                prefixIcon: const Icon(Icons.search, color: AppTheme.textMedium),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: AppTheme.textMedium),
+                        onPressed: () {
+                          safeSetState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: AppTheme.softBackground,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+              ),
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.textDark,
+              ),
+              onChanged: (value) {
+                safeSetState(() {
+                  _searchQuery = value;
+                });
+              },
+            ),
+          ),
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -288,78 +528,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                 ? _buildEmptyState()
                 : RefreshIndicator(
                     onRefresh: _refreshNotifications,
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      itemCount: _groupedNotifications.length + 
-                                (_isLoadingMore ? 1 : 0) +
-                                (!_hasMore && _notifications.isNotEmpty ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        // Loading indicator at bottom
-                        if (index >= _groupedNotifications.length) {
-                          if (_isLoadingMore) {
-                            return const Padding(
-                              padding: EdgeInsets.all(16.0),
-                              child: Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-                          if (!_hasMore && _notifications.isNotEmpty) {
-                            return Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Center(
-                                child: Text(
-                                  'No more notifications',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    color: AppTheme.textMedium,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        }
-                        
-                        final group = _groupedNotifications.entries
-                            .toList()[index];
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: EdgeInsets.only(
-                                bottom: 12,
-                                top: index > 0 ? 24 : 0,
-                              ),
-                              child: Text(
-                                group.key,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.textMedium,
-                                ),
-                              ),
-                            ),
-                            ...group.value.map(
-                              (notification) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: NotificationItem(
-                                  notification: notification,
-                                  onTap: () {
-                                    // Handle notification tap (navigate to related content)
-                                    _handleNotificationTap(notification);
-                                  },
-                                  onDelete: () {
-                                    _loadNotifications(refresh: true);
-                                  },
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
+                    child: _buildSmartGroupedList(),
                   ),
           ),
         ],
@@ -384,6 +553,134 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
       ),
+    );
+  }
+
+  Widget _buildSmartGroupedList() {
+    final smartGroups = _smartGroupedNotifications;
+    int totalItems = 0;
+    
+    // Calculate total items (groups + time headers)
+    for (final timeGroup in smartGroups.entries) {
+      final listLength = (timeGroup.value as List).length;
+      totalItems += 1 + listLength; // 1 for header, rest for items
+    }
+    
+    final loadingIndicatorCount = (_isLoadingMore ? 1 : 0);
+    final endMessageCount = (!_hasMore && _notifications.isNotEmpty ? 1 : 0);
+    totalItems += loadingIndicatorCount + endMessageCount;
+    
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: totalItems,
+      itemBuilder: (context, index) {
+        final bottomThreshold = totalItems - loadingIndicatorCount - endMessageCount;
+        
+        // Loading indicator at bottom
+        if (index >= bottomThreshold) {
+          if (_isLoadingMore && index == totalItems - 2) {
+            return const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+          if (!_hasMore && _notifications.isNotEmpty && index == totalItems - 1) {
+            return Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Center(
+                child: Text(
+                  'No more notifications',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+              ),
+            );
+          }
+          return const SizedBox.shrink();
+        }
+        
+        // Find which time group and item we're rendering
+        int itemsSoFar = 0;
+        String? currentTimeGroup;
+        dynamic currentItem;
+        
+        for (final timeGroup in smartGroups.entries) {
+          final listLength = (timeGroup.value as List).length;
+          final groupSize = 1 + listLength; // 1 for header, rest for items
+          
+          if (index < itemsSoFar + groupSize) {
+            currentTimeGroup = timeGroup.key;
+            if (index == itemsSoFar) {
+              // Render time group header
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: 12,
+                  top: index > 0 ? 24 : 0,
+                ),
+                child: Text(
+                  currentTimeGroup!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+              );
+            } else {
+              // Render item in this time group
+              final itemIndex = index - itemsSoFar - 1;
+              final items = timeGroup.value as List;
+              currentItem = items[itemIndex];
+              break;
+            }
+          }
+          itemsSoFar += groupSize;
+        }
+        
+        if (currentItem == null) {
+          return const SizedBox.shrink();
+        }
+        
+        // Render grouped or individual notification
+        if (currentItem['isGroup'] == true) {
+          final notifications = currentItem['notifications'] as List<Map<String, dynamic>>;
+          final type = currentItem['type'] as String;
+          final summary = _getGroupSummaryMessage(type, notifications.length, notifications);
+          
+          return NotificationGroupItem(
+            notifications: notifications,
+            groupType: type,
+            summaryMessage: summary,
+            onTap: () {
+              if (notifications.length == 1) {
+                _handleNotificationTap(notifications.first);
+              }
+            },
+            onDelete: () {
+              _loadNotifications(refresh: true);
+            },
+          );
+        } else {
+          final notification = currentItem['notification'] as Map<String, dynamic>;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: NotificationItem(
+              notification: notification,
+              onTap: () {
+                _handleNotificationTap(notification);
+              },
+              onDelete: () {
+                _loadNotifications(refresh: true);
+              },
+            ),
+          );
+        }
+      },
     );
   }
 

@@ -61,8 +61,72 @@ class NotificationService {
     }
   }
 
+  /// Calculate smart priority score for a notification
+  /// Higher score = higher priority
+  static double _calculatePriorityScore(Map<String, dynamic> notification) {
+    double score = 0.0;
+    
+    // Base priority from database
+    final priority = notification['priority'] as String? ?? 'normal';
+    switch (priority) {
+      case 'urgent':
+        score += 100;
+        break;
+      case 'high':
+        score += 50;
+        break;
+      case 'normal':
+        score += 25;
+        break;
+      case 'low':
+        score += 10;
+        break;
+    }
+    
+    // Type-based priority
+    final type = notification['type'] as String? ?? 'general';
+    if (type.contains('payment') || type.contains('payout')) {
+      score += 40; // Payments are high priority
+    } else if (type.contains('session_starting') || type.contains('session_reminder')) {
+      score += 35; // Session reminders are time-sensitive
+    } else if (type.contains('booking_request')) {
+      score += 30; // Booking requests need quick response
+    } else if (type.contains('message') || type.contains('chat')) {
+      score += 20; // Messages are moderately important
+    } else if (type.contains('profile_approved')) {
+      score += 25; // Profile approval is important
+    }
+    
+    // Time sensitivity
+    final createdAt = DateTime.parse(notification['created_at'] as String);
+    final now = DateTime.now();
+    final ageInHours = now.difference(createdAt).inHours;
+    
+    if (ageInHours < 1) {
+      score += 20; // Very recent = higher priority
+    } else if (ageInHours < 6) {
+      score += 10; // Recent = moderate boost
+    } else if (ageInHours > 48) {
+      score -= 10; // Old = lower priority
+    }
+    
+    // Unread boost
+    if (notification['is_read'] == false) {
+      score += 15; // Unread notifications are more important
+    }
+    
+    // Action URL boost (actionable notifications are more important)
+    if (notification['action_url'] != null && 
+        (notification['action_url'] as String).isNotEmpty) {
+      score += 10;
+    }
+    
+    return score;
+  }
+
   /// Get all notifications for current user
   /// Filters out tutor-specific notifications for non-tutor users
+  /// Sorts by smart priority score
   static Future<List<Map<String, dynamic>>> getUserNotifications({
     bool? unreadOnly,
   }) async {
@@ -124,7 +188,34 @@ class NotificationService {
         }).toList();
       }
 
-      return notifications;
+      // Calculate priority scores and sort by them (highest first)
+      final notificationsWithScores = notifications.map((notification) {
+        final score = _calculatePriorityScore(notification);
+        return {
+          ...notification,
+          '_priority_score': score,
+        };
+      }).toList();
+      
+      // Sort by priority score (descending), then by created_at (descending)
+      notificationsWithScores.sort((a, b) {
+        final scoreA = a['_priority_score'] as double;
+        final scoreB = b['_priority_score'] as double;
+        if (scoreA != scoreB) {
+          return scoreB.compareTo(scoreA); // Higher score first
+        }
+        // If scores are equal, sort by time (newest first)
+        final timeA = DateTime.parse(a['created_at'] as String);
+        final timeB = DateTime.parse(b['created_at'] as String);
+        return timeB.compareTo(timeA);
+      });
+      
+      // Remove the temporary score field before returning
+      return notificationsWithScores.map((notification) {
+        final Map<String, dynamic> cleaned = Map.from(notification);
+        cleaned.remove('_priority_score');
+        return cleaned;
+      }).toList();
     } catch (e) {
       LogService.error('Error fetching notifications: $e');
       throw Exception('Failed to fetch notifications: $e');
@@ -202,11 +293,40 @@ class NotificationService {
         }).toList();
       }
 
+      // Calculate priority scores and sort by them (highest first)
+      final notificationsWithScores = notifications.map((notification) {
+        final score = _calculatePriorityScore(notification);
+        return {
+          ...notification,
+          '_priority_score': score,
+        };
+      }).toList();
+      
+      // Sort by priority score (descending), then by created_at (descending)
+      notificationsWithScores.sort((a, b) {
+        final scoreA = a['_priority_score'] as double;
+        final scoreB = b['_priority_score'] as double;
+        if (scoreA != scoreB) {
+          return scoreB.compareTo(scoreA); // Higher score first
+        }
+        // If scores are equal, sort by time (newest first)
+        final timeA = DateTime.parse(a['created_at'] as String);
+        final timeB = DateTime.parse(b['created_at'] as String);
+        return timeB.compareTo(timeA);
+      });
+      
+      // Remove the temporary score field before returning
+      final sortedNotifications = notificationsWithScores.map((notification) {
+        final Map<String, dynamic> cleaned = Map.from(notification);
+        cleaned.remove('_priority_score');
+        return cleaned;
+      }).toList();
+
       // Check if there are more notifications
-      final hasMore = notifications.length == limit;
+      final hasMore = sortedNotifications.length == limit;
 
       return {
-        'notifications': notifications,
+        'notifications': sortedNotifications,
         'hasMore': hasMore,
       };
     } catch (e) {

@@ -436,7 +436,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'payment_received',
-      title: '💰 Payment Received',
+      title: 'Payment Received',
       message: 'Payment received from $studentName. Tap to view details.',
       priority: 'normal',
       actionUrl: '/payments/$paymentId',
@@ -903,7 +903,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'earnings_added',
-      title: '💰 Earnings Added',
+      title: 'Earnings Added',
       message: '${earnings.toStringAsFixed(2)} XAF has been added to your pending balance. It will become active after payment confirmation.',
       priority: 'normal',
       actionUrl: '/earnings',
@@ -950,7 +950,7 @@ class NotificationHelperService {
         await NotificationService.createNotification(
           userId: userId,
           type: 'feedback_reminder',
-          title: '💬 Feedback Reminder',
+          title: 'Feedback Reminder',
           message: 'Please provide feedback for your completed session. It helps your tutor improve!',
           priority: 'normal',
           actionUrl: '/sessions/$sessionId/feedback',
@@ -969,7 +969,7 @@ class NotificationHelperService {
         await NotificationService.createNotification(
           userId: userId,
           type: 'feedback_reminder',
-          title: '💬 Feedback Reminder',
+          title: 'Feedback Reminder',
           message: 'Please provide feedback for your completed session. It helps your tutor improve!',
           priority: 'normal',
           actionUrl: '/sessions/$sessionId/feedback',
@@ -1075,7 +1075,7 @@ class NotificationHelperService {
     await NotificationService.createNotification(
       userId: tutorId,
       type: 'profile_approved',
-      title: '🎉 Profile Approved!',
+      title: 'Profile Approved 🎉 ',
       message: 'Congratulations! Your tutor profile has been approved and is now live. Students can now book sessions with you!',
       priority: 'high',
       actionUrl: '/tutor/profile',
@@ -1166,7 +1166,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'payment_received',
-      title: '💰 Payment Received',
+      title: 'Payment Received',
       message: 'A student has paid for their booking. Sessions are now active!',
       priority: 'normal',
       actionUrl: bookingRequestId != null ? '/tutor/bookings/$bookingRequestId' : '/tutor/bookings',
@@ -1240,7 +1240,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'trial_payment_received',
-      title: '💰 Trial Payment Received',
+      title: 'Trial Payment Received',
       message: 'A student has paid for their trial session in $subject. The session is now scheduled.',
       priority: 'normal',
       actionUrl: '/tutor/trials/$trialSessionId',
@@ -1294,7 +1294,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: studentId,
       type: 'sessions_created',
-      title: '📅 Sessions Created',
+      title: 'Sessions Created',
       message: '$sessionCount session${sessionCount > 1 ? 's' : ''} have been created for your booking with $tutorName. Sessions are now visible in your Sessions tab!',
       priority: 'high',
       actionUrl: '/sessions',
@@ -1327,7 +1327,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'sessions_created',
-      title: '📅 Sessions Created',
+      title: 'Sessions Created',
       message: '$sessionCount session${sessionCount > 1 ? 's' : ''} have been created for your booking with $studentName. Sessions are now visible in your Sessions tab!',
       priority: 'normal',
       actionUrl: '/tutor/sessions',
@@ -1382,7 +1382,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: userId,
       type: 'tutor_request_matched',
-      title: '🎉 Tutor Matched!',
+      title: 'Tutor Matched',
       message: 'We found a tutor for your request: $tutorName',
       priority: 'high',
       actionUrl: '/requests/$requestId',
@@ -1715,7 +1715,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: userId,
       type: 'low_credits_balance',
-      title: '💰 Low Credits Balance',
+      title: 'Low Credits Balance',
       message: 'Your credits balance (${balance.toStringAsFixed(0)}) is below the threshold (${threshold.toStringAsFixed(0)}). Please top up to continue using services.',
       priority: 'normal',
       actionUrl: paymentRequestId != null ? '/payments/$paymentRequestId' : '/credits',
@@ -1804,7 +1804,7 @@ class NotificationHelperService {
         icon = '🎉';
         break;
       case 'closed':
-        title = '✅ Request Closed';
+        title = 'Request Closed';
         message = 'Your tutor request has been closed.${adminNotes != null ? " Note: $adminNotes" : ""}';
         priority = 'normal';
         icon = '✅';

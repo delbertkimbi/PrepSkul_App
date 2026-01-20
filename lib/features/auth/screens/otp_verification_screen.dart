@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -569,6 +570,35 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             if (index == 5 && value.isNotEmpty) {
               _verifyOTP();
             }
+          },
+          onTap: () {
+            // Handle paste - check clipboard for 6-digit code
+            Clipboard.getData(Clipboard.kTextPlain).then((clipboardData) {
+              if (clipboardData?.text != null) {
+                final pastedText = clipboardData!.text!;
+                // Extract all digits from pasted text
+                final digits = pastedText.replaceAll(RegExp(r'[^\d]'), '');
+                if (digits.length >= 6) {
+                  // Fill all 6 fields with the first 6 digits
+                  for (int i = 0; i < 6 && i < digits.length; i++) {
+                    _otpControllers[i].text = digits[i];
+                  }
+                  // Focus on last field
+                  _focusNodes[5].requestFocus();
+                  // Auto-verify
+                  _verifyOTP();
+                } else if (digits.isNotEmpty) {
+                  // Fill available digits
+                  for (int i = 0; i < digits.length && i < 6; i++) {
+                    _otpControllers[i].text = digits[i];
+                  }
+                  // Focus on next empty field
+                  final nextIndex = digits.length < 6 ? digits.length : 5;
+                  _focusNodes[nextIndex].requestFocus();
+                }
+                safeSetState(() {});
+              }
+            });
           },
         ),
       ),

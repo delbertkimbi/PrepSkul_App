@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart';
@@ -18,6 +19,7 @@ import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/reschedule_request_review_screen.dart';
+import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -588,6 +590,45 @@ class NotificationNavigationService {
       case 'profile_improvement':
         // Navigate to profile screen
         await _navigateToProfile(userType: userType);
+        break;
+
+      case 'onboarding_reminder':
+      case 'onboarding_incomplete':
+        // Navigate to tutor onboarding screen
+        if (userType == 'tutor') {
+          final context = navService.context;
+          if (context != null) {
+            try {
+              // Get user's basic info to pass to onboarding
+              final userId = SupabaseService.currentUser?.id;
+              if (userId != null) {
+                final user = await AuthService.getCurrentUser();
+                final basicInfo = {
+                  'userId': userId,
+                  'email': user['email'] as String?,
+                  'phone': user['phone'] as String?,
+                  'fullName': user['fullName'] as String?,
+                };
+                
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TutorOnboardingScreen(basicInfo: basicInfo),
+                  ),
+                );
+              }
+            } catch (e) {
+              LogService.error('[NOTIF_NAV] Error navigating to onboarding: $e');
+              // Fallback to profile tab
+              await _navigateToProfile(userType: userType);
+            }
+          } else {
+            // Queue deep link if no context
+            navService.queueDeepLink(Uri(path: '/tutor/onboarding'));
+          }
+        } else {
+          // Non-tutors go to profile
+          await _navigateToProfile(userType: userType);
+        }
         break;
 
       case 'session_reschedule_request':

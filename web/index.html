@@ -228,102 +228,105 @@
     window.removeSplash = function() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
-        loader.classList.add('hidden');
-        setTimeout(function() {
-          if (loader && loader.parentNode) {
-            loader.remove();
+        // Wait for Flutter content to be visible before removing splash
+        // This prevents white/black screen flash
+        const checkFlutterReady = function() {
+          const flutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
+          const hasContent = flutterApp && flutterApp.offsetHeight > 0;
+          
+          if (hasContent) {
+            // Flutter content is ready - remove splash with fade
+            loader.classList.add('hidden');
+            setTimeout(function() {
+              if (loader && loader.parentNode) {
+                loader.remove();
+              }
+            }, 400); // Fade duration
+            console.log('Splash removed via removeSplash() - Flutter content ready');
+          } else {
+            // Flutter not ready yet - check again in 50ms
+            setTimeout(checkFlutterReady, 50);
           }
-        }, 200);
+        };
+        
+        // Start checking for Flutter content
+        checkFlutterReady();
       }
     };
 
-    // Immediate check: If Flutter is already loaded (hot restart scenario), remove splash immediately
-    // This runs immediately on script load to catch hot restart scenarios (0ms delay)
+    // Immediate check: If Flutter is already loaded (hot restart scenario), remove splash
+    // This runs immediately on script load to catch hot restart scenarios
     (function checkImmediate() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
-        // Multiple checks for Flutter presence (hot restart scenarios)
-        const hasFlutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
-        const hasBodyContent = document.body && document.body.children.length > 1;
-        const hasFlutterElements = document.querySelector('flt-scene-host, flt-glass-pane');
-        const hasFlutterBootstrap = typeof window.flutter !== 'undefined' || document.querySelector('script[src*="flutter_bootstrap"]');
-        const hasFlutterMain = document.querySelector('script[src*="main.dart.js"]');
+        // Check if Flutter content is actually rendered (has height)
+        const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
+        const isFlutterRendered = flutterApp && flutterApp.offsetHeight > 0;
         
-        if (hasFlutterApp || hasFlutterElements || hasBodyContent || hasFlutterBootstrap || hasFlutterMain) {
-          console.log('Flutter already loaded (hot restart), removing splash immediately');
-          loader.style.display = 'none'; // Immediate hide
+        if (isFlutterRendered) {
+          console.log('Flutter already rendered (hot restart), removing splash');
           loader.classList.add('hidden');
-          if (loader.parentNode) {
-            loader.remove(); // Remove immediately
-          }
+          setTimeout(function() {
+            if (loader && loader.parentNode) {
+              loader.remove();
+            }
+          }, 400); // Fade duration
           return;
         }
-        // Check again immediately (0ms) for hot restart - no delay
-        setTimeout(checkImmediate, 0);
+        // Check again after a short delay for hot restart
+        setTimeout(checkImmediate, 50);
       }
     })();
 
     // Note: We do NOT hide on 'flutter-first-frame' anymore.
     // Flutter will call window.removeSplash() when it is fully ready.
     
-    // CRITICAL: Fallback - hide after 1000ms if Flutter doesn't load/call removeSplash
-    // Increased timeout to account for slower loads, but still prevents logo from staying stuck
-    // This prevents the logo from staying stuck on screen after refresh or hot restart
+    // CRITICAL: Fallback - hide after 1500ms if Flutter doesn't load/call removeSplash
+    // Increased to 1500ms to ensure Flutter content is ready before removing
+    // This prevents white/black screen flash
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        // Check if Flutter is actually loaded before forcing removal
+        // Check if Flutter content is actually rendered before removing
         const hasFlutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
-        const hasFlutterWindow = typeof window.flutter !== 'undefined';
         const isFlutterRendered = hasFlutterApp && hasFlutterApp.offsetHeight > 0;
         
-        if (hasFlutterApp || hasFlutterWindow || isFlutterRendered) {
-          console.warn('Flutter loaded but did not call removeSplash within 1000ms, forcing removal');
+        if (isFlutterRendered) {
+          console.log('Flutter content ready, removing splash (1500ms fallback)');
+          loader.classList.add('hidden');
+          setTimeout(function() {
+            if (loader && loader.parentNode) {
+              loader.remove();
+            }
+          }, 400); // Fade duration
         } else {
-          console.warn('Flutter did not load within 1000ms, forcing splash removal anyway');
-        }
-        loader.style.display = 'none'; // Immediate hide
-        loader.classList.add('hidden');
-        if (loader.parentNode) {
-          loader.remove(); // Remove immediately
+          // Flutter not rendered yet - wait a bit more
+          console.log('Flutter not rendered yet, waiting...');
         }
       }
-    }, 1000);
+    }, 1500);
     
     // Additional aggressive removal: Check every 100ms starting immediately
-    // This ensures the splash is removed quickly on refresh and hot restart
+    // This ensures the splash is removed when Flutter content is ready
+    // Wait for actual rendered content to prevent white/black screen flash
     let checkCount = 0;
     const maxChecks = 30; // 30 * 100ms = 3 seconds max
     const checkInterval = setInterval(function() {
       checkCount++;
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        // Start checking immediately (no delay) for hot restart scenarios
-        // Check if Flutter has loaded by looking for Flutter app container
+        // Check if Flutter content is actually rendered (has height)
         const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app], body > flt-scene-host');
-        if (flutterApp) {
-          console.log('Flutter app detected, removing splash');
-          loader.style.display = 'none'; // Immediate hide
+        const isFlutterRendered = flutterApp && flutterApp.offsetHeight > 0;
+        
+        if (isFlutterRendered) {
+          console.log('Flutter content rendered, removing splash');
           loader.classList.add('hidden');
-          if (loader.parentNode) {
-            loader.remove(); // Remove immediately
-          }
-          clearInterval(checkInterval);
-          return;
-        }
-        // Also check if any Flutter widgets are rendered (more aggressive)
-        const hasFlutterContent = document.body && (
-          document.body.querySelector('flt-scene-host') ||
-          document.body.querySelector('flt-glass-pane') ||
-          document.body.children.length > 1 // More than just the loading div
-        );
-        if (hasFlutterContent) {
-          console.log('Flutter content detected, removing splash');
-          loader.style.display = 'none'; // Immediate hide
-          loader.classList.add('hidden');
-          if (loader.parentNode) {
-            loader.remove(); // Remove immediately
-          }
+          setTimeout(function() {
+            if (loader && loader.parentNode) {
+              loader.remove(); // Remove from DOM after fade
+            }
+          }, 400); // Fade duration
           clearInterval(checkInterval);
           return;
         }
@@ -335,8 +338,19 @@
       // Stop checking after max attempts
       if (checkCount >= maxChecks) {
         clearInterval(checkInterval);
+        // Force removal if still visible after max checks (but with fade)
+        const loader = document.getElementById('flutter-loading');
+        if (loader && !loader.classList.contains('hidden')) {
+          console.log('Max checks reached, forcing splash removal');
+          loader.classList.add('hidden');
+          setTimeout(function() {
+            if (loader && loader.parentNode) {
+              loader.remove();
+            }
+          }, 400);
+        }
       }
-    }, 100);
+    }, 100); // Check every 100ms
     
     // MutationObserver: Watch for Flutter elements being added to DOM (catches hot restart)
     // Specifically watch for flt-scene-host (most reliable indicator)
@@ -346,16 +360,18 @@
         if (loader && !loader.classList.contains('hidden')) {
           // Check specifically for flt-scene-host (most reliable Flutter indicator)
           const flutterSceneHost = document.querySelector('flt-scene-host');
-          const hasFlutterElements = flutterSceneHost || document.querySelector('flt-glass-pane, [data-flt-app]');
-          const hasFlutterMain = document.querySelector('script[src*="main.dart.js"]');
+          const isFlutterRendered = flutterSceneHost && flutterSceneHost.offsetHeight > 0;
           
-          if (flutterSceneHost || hasFlutterElements || hasFlutterMain) {
-            console.log('Flutter elements detected via MutationObserver (flt-scene-host), removing splash');
-            loader.style.display = 'none';
+          // Only remove if Flutter content is actually rendered (has height)
+          // This prevents white/black screen flash
+          if (isFlutterRendered) {
+            console.log('Flutter content rendered via MutationObserver, removing splash');
             loader.classList.add('hidden');
-            if (loader.parentNode) {
-              loader.remove();
-            }
+            setTimeout(function() {
+              if (loader && loader.parentNode) {
+                loader.remove();
+              }
+            }, 400); // Fade duration
             // Disconnect immediately after detection to prevent re-triggering
             observer.disconnect();
           }

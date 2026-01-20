@@ -671,7 +671,7 @@ class SessionPaymentService {
             await NotificationService.createNotification(
               userId: tutorId,
               type: 'earnings_activated',
-              title: '💰 Earnings Available',
+              title: 'Earnings Available',
               message: '${tutorEarnings.toStringAsFixed(0)} XAF has been moved to your active balance and is now available for withdrawal.',
               priority: 'normal',
               actionUrl: '/earnings',
@@ -713,7 +713,7 @@ class SessionPaymentService {
       await NotificationService.createNotification(
         userId: tutorId,
         type: 'payment_confirmed',
-        title: '💰 Payment Received',
+        title: 'Payment Received',
         message:
             'Payment for your session has been confirmed. Earnings are now available.',
         priority: 'normal',
@@ -739,7 +739,7 @@ class SessionPaymentService {
         await NotificationService.createNotification(
           userId: studentId as String,
           type: 'payment_confirmed',
-          title: '✅ Payment Confirmed',
+          title: 'Payment Confirmed',
           message: 'Your session payment has been confirmed.',
           priority: 'normal',
           actionUrl: '/sessions/$sessionId',
@@ -798,7 +798,7 @@ class SessionPaymentService {
       await NotificationService.createNotification(
         userId: tutorId,
         type: 'earnings_added',
-        title: '💰 Earnings Added',
+        title: 'Earnings Added',
         message:
             '${earnings.toStringAsFixed(2)} XAF has been added to your pending balance. It will become active after payment confirmation.',
         priority: 'normal',

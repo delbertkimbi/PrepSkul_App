@@ -213,7 +213,7 @@ class SessionRescheduleService {
           await _sendNotificationViaAPI(
             userId: otherPartyId as String,
             type: 'session_reschedule_request',
-            title: '📅 Session Reschedule Request',
+            title: 'Session Reschedule Request',
             message: '$requesterName has requested to reschedule a session. Please review and respond.',
             priority: 'high',
             actionUrl: '/sessions/${response['id']}/reschedule',

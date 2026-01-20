@@ -193,16 +193,18 @@ void main() async {
     // Run app AFTER all critical initialization is complete
     runApp(const PrepSkulApp());
     
-    // CRITICAL: Remove HTML splash screen immediately after Flutter starts (web only)
-    // This ensures the splash is removed even if navigation is delayed
+    // CRITICAL: Remove HTML splash screen after Flutter content is rendered (web only)
+    // Wait a bit to ensure Flutter content is visible before removing splash
+    // This prevents white/black screen flash
     if (kIsWeb) {
-      // Use a small delay to ensure Flutter is ready to call JavaScript
-      Future.delayed(const Duration(milliseconds: 500), () {
+      // Wait for Flutter to render first frame before removing splash
+      // This ensures smooth transition from splash to app content
+      Future.delayed(const Duration(milliseconds: 300), () {
         try {
           WebSplashService.removeSplash();
-          LogService.debug('✅ HTML splash screen removed (early)');
+          LogService.debug('✅ HTML splash screen removed (after Flutter ready)');
         } catch (e) {
-          LogService.debug('⚠️ Could not remove splash early: $e');
+          LogService.debug('⚠️ Could not remove splash: $e');
         }
       });
     }
@@ -1465,8 +1467,13 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_navigationComplete) {
       return const SizedBox.shrink();
     }
-    // Always show animated loading screen until navigation completes
-    // The navigation will replace this screen, so no need to check _navigationComplete
+    // On web, don't show Flutter loading screen if HTML splash is still visible
+    // The HTML splash already shows the logo, so we skip the Flutter one to avoid duplication
+    // Just show a minimal white screen that will be replaced by navigation
+    if (kIsWeb) {
+      return const Material(color: Colors.white, child: SizedBox.shrink());
+    }
+    // On mobile, show animated loading screen until navigation completes
     // Use a Material widget to ensure proper background color during transition
     return Material(color: Colors.white, child: const InitialLoadingScreen());
   }

@@ -211,16 +211,130 @@ class AuthService {
   /// Alias for logout (for consistency with clearSession naming)
   static Future<void> clearSession() => logout();
 
-  /// Get current user data (from local session)
+  /// Get current user data (verified against Supabase auth)
+  /// Always syncs with Supabase's actual current user to prevent account switching issues
   static Future<Map<String, dynamic>> getCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    return {
-      'userId': prefs.getString(_keyUserId),
-      'userRole': prefs.getString(_keyUserRole),
-      'phone': prefs.getString(_keyUserPhone),
-      'fullName': prefs.getString(_keyUserName),
-      'surveyCompleted': prefs.getBool(_keySurveyCompleted) ?? false,
-    };
+    try {
+      // CRITICAL: Always verify against Supabase's actual current user
+      // This prevents account switching issues when sessions change
+      final supabaseUser = SupabaseService.currentUser;
+      
+      if (supabaseUser == null) {
+        // No Supabase session - clear local data and return empty
+        LogService.warning('⚠️ No Supabase session found - clearing local session');
+        await logout();
+        return {
+          'userId': null,
+          'userRole': null,
+          'phone': null,
+          'fullName': null,
+          'surveyCompleted': false,
+        };
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final localUserId = prefs.getString(_keyUserId);
+      final supabaseUserId = supabaseUser.id;
+
+      // CRITICAL: If user IDs don't match, sync with Supabase
+      // This handles cases where the session changed (e.g., hot restart with different account)
+      if (localUserId != supabaseUserId) {
+        LogService.warning(
+          '⚠️ User ID mismatch detected! '
+          'Local: $localUserId, Supabase: $supabaseUserId. '
+          'Syncing with Supabase session...'
+        );
+
+        // Fetch user profile from database to sync
+        try {
+          final profile = await SupabaseService.client
+              .from('profiles')
+              .select('user_type, full_name, phone_number, survey_completed')
+              .eq('id', supabaseUserId)
+              .maybeSingle();
+
+          if (profile != null) {
+            // Sync local storage with actual Supabase session
+            // Ensure proper type casting for survey_completed
+            final surveyCompleted = (profile['survey_completed'] is bool) 
+                ? profile['survey_completed'] as bool 
+                : false;
+            
+            await saveSession(
+              userId: supabaseUserId,
+              userRole: profile['user_type'] as String? ?? 'student',
+              phone: profile['phone_number'] as String? ?? supabaseUser.phone ?? '',
+              fullName: profile['full_name'] as String? ?? supabaseUser.email ?? 'User',
+              surveyCompleted: surveyCompleted,
+              rememberMe: true,
+            );
+
+            LogService.success('✅ Session synced with Supabase: ${profile['full_name']}');
+            
+            return {
+              'userId': supabaseUserId,
+              'userRole': profile['user_type'] as String? ?? 'student',
+              'phone': profile['phone_number'] as String? ?? supabaseUser.phone ?? '',
+              'fullName': profile['full_name'] as String? ?? supabaseUser.email ?? 'User',
+              'surveyCompleted': surveyCompleted,
+            };
+          } else {
+            // Profile not found - use Supabase user data
+            final email = supabaseUser.email ?? '';
+            final phone = supabaseUser.phone ?? '';
+            
+            final fullName = (supabaseUser.userMetadata?['full_name'] as String?) ?? 
+                             (email.isNotEmpty ? email : 'User');
+            
+            await saveSession(
+              userId: supabaseUserId,
+              userRole: supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
+              phone: phone,
+              fullName: fullName,
+              surveyCompleted: false,
+              rememberMe: true,
+            );
+
+            return {
+              'userId': supabaseUserId,
+              'userRole': supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
+              'phone': phone,
+              'fullName': fullName,
+              'surveyCompleted': false,
+            };
+          }
+        } catch (e) {
+          LogService.error('Error syncing session: $e');
+          // Fallback to Supabase user data
+          return {
+            'userId': supabaseUserId,
+            'userRole': supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
+            'phone': supabaseUser.phone ?? '',
+            'fullName': supabaseUser.email ?? 'User',
+            'surveyCompleted': false,
+          };
+        }
+      }
+
+      // User IDs match - return local data (which should be in sync)
+      return {
+        'userId': prefs.getString(_keyUserId),
+        'userRole': prefs.getString(_keyUserRole),
+        'phone': prefs.getString(_keyUserPhone),
+        'fullName': prefs.getString(_keyUserName),
+        'surveyCompleted': prefs.getBool(_keySurveyCompleted) ?? false,
+      };
+    } catch (e) {
+      LogService.error('Error getting current user: $e');
+      // Return empty on error
+      return {
+        'userId': null,
+        'userRole': null,
+        'phone': null,
+        'fullName': null,
+        'surveyCompleted': false,
+      };
+    }
   }
 
   /// Get user's full profile from database
