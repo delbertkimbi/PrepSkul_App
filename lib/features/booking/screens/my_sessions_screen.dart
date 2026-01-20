@@ -12,7 +12,7 @@ import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
 import '../services/individual_session_service.dart';
 import '../services/session_feedback_service.dart';
-import 'session_feedback_screen.dart';
+import 'session_feedback_flow_screen.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/services/session_transcript_service.dart';
 // TODO: Fix import path
@@ -39,6 +39,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// My Sessions Screen
 ///
@@ -641,7 +642,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SessionFeedbackScreen(sessionId: sessionId),
+        builder: (context) => SessionFeedbackFlowScreen(sessionId: sessionId),
       ),
     );
 
@@ -763,7 +764,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             builder: (context) => AlertDialog(
               title: Row(
                 children: [
-                  Icon(Icons.calendar_today, color: AppTheme.primaryColor),
+                  Icon(PhosphorIcons.calendar(), color: AppTheme.primaryColor),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -836,7 +837,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.white),
+                    Icon(PhosphorIcons.checkCircle(), color: Colors.white),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -1339,7 +1340,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       }
                       
                       return IconButton(
-                        icon: const Icon(Icons.message, size: 22),
+                        icon: Icon(PhosphorIcons.chatCircle(), size: 22),
                         color: AppTheme.primaryColor,
                         tooltip: 'Message Tutor',
                         onPressed: () => _navigateToChatFromSession(context, session),
@@ -1393,7 +1394,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           child: Row(
                             children: [
                               Icon(
-                                Icons.play_circle_filled_rounded,
+                                PhosphorIcons.playCircle(),
                                 color: AppTheme.accentGreen,
                                 size: 18,
                               ),
@@ -1429,7 +1430,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               // Date and time
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  Icon(PhosphorIcons.calendar(), size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1448,7 +1449,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               Row(
                 children: [
                   Icon(
-                    location == 'online' ? Icons.video_call : Icons.location_on,
+                    location == 'online' ? PhosphorIcons.videoCamera() : PhosphorIcons.mapPin(),
                     size: 16,
                     color: Colors.grey[600],
                   ),
@@ -1481,7 +1482,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         child: Row(
                           children: [
                             Icon(
-                              Icons.timer_outlined,
+                              PhosphorIcons.timer(),
                               size: 18,
                               color: AppTheme.primaryColor,
                             ),
@@ -1542,7 +1543,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         child: ElevatedButton.icon(
                           onPressed: () => _joinAgoraSession(sessionId),
                           icon: Icon(
-                            status == 'in_progress' ? Icons.video_call : Icons.video_call,
+                            status == 'in_progress' ? PhosphorIcons.videoCamera() : PhosphorIcons.videoCamera(),
                             size: status == 'in_progress' ? 20 : 18,
                           ),
                           label: Text(
@@ -1585,8 +1586,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                               : () => _addSessionToCalendar(session),
                           icon: Icon(
                             _isCalendarConnected == true 
-                                ? Icons.calendar_today 
-                                : Icons.calendar_today_outlined,
+                                ? PhosphorIcons.calendar() 
+                                : PhosphorIcons.calendar(),
                             size: 18,
                           ),
                           label: Text(
@@ -1627,7 +1628,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   child: Row(
                     children: [
                       Icon(
-                        hasFeedback ? Icons.check_circle : Icons.feedback,
+                        hasFeedback ? PhosphorIcons.checkCircle() : PhosphorIcons.chatCircle(),
                         color: hasFeedback ? Colors.green[700] : AppTheme.primaryColor,
                         size: 20,
                       ),
@@ -1731,7 +1732,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
+            Icon(PhosphorIcons.info(), color: AppTheme.primaryColor, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -1802,7 +1803,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           Navigator.pop(context);
                           _joinAgoraSession(sessionId);
                         },
-                        icon: const Icon(Icons.video_call, size: 18),
+                        icon: Icon(PhosphorIcons.videoCamera(), size: 18),
                         label: Text(
                           status == 'in_progress' ? 'Join Session' : 'Join Video Session',
                           style: GoogleFonts.poppins(),
@@ -1904,7 +1905,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             // Check if we can pop - if not, navigate to dashboard instead
             if (Navigator.of(context).canPop()) {
               return IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: Icon(PhosphorIcons.arrowLeft()),
                 color: Colors.white,
                 onPressed: () {
                   // Simply pop - don't trigger any auth checks
@@ -1914,7 +1915,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             } else {
               // Can't pop - navigate to appropriate dashboard
               return IconButton(
-                icon: const Icon(Icons.arrow_back),
+                icon: Icon(PhosphorIcons.arrowLeft()),
                 color: Colors.white,
                 onPressed: () async {
                   try {
@@ -1981,7 +1982,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.calendar_today_outlined,
+                              PhosphorIcons.calendar(),
                               size: 64,
                               color: Colors.grey[400],
                             ),

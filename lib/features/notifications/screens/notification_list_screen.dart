@@ -11,6 +11,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'dart:async';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Notification List Screen
 ///
@@ -31,9 +32,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   int _currentPage = 0;
   static const int _pageSize = 20;
   final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
   String _filter = 'all'; // 'all', 'unread', 'booking', 'payment', 'session'
-  String _searchQuery = '';
   StreamSubscription? _notificationStream;
 
   @override
@@ -48,7 +47,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   void dispose() {
     _notificationStream?.cancel();
     _scrollController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -161,28 +159,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       filtered = filtered.where((n) => n['type'] == _filter).toList();
     }
 
-    // Apply search query
-    if (_searchQuery.isNotEmpty) {
-      final query = _searchQuery.toLowerCase();
-      filtered = filtered.where((notification) {
-        final title = (notification['title'] as String? ?? '').toLowerCase();
-        final message = (notification['message'] as String? ?? '').toLowerCase();
-        final type = (notification['type'] as String? ?? '').toLowerCase();
-        
-        // Check metadata for sender names
-        final metadata = notification['metadata'] as Map<String, dynamic>?;
-        final senderName = (metadata?['sender_name'] as String? ?? '').toLowerCase();
-        final tutorName = (metadata?['tutor_name'] as String? ?? '').toLowerCase();
-        final studentName = (metadata?['student_name'] as String? ?? '').toLowerCase();
-        
-        return title.contains(query) ||
-               message.contains(query) ||
-               type.contains(query) ||
-               senderName.contains(query) ||
-               tutorName.contains(query) ||
-               studentName.contains(query);
-      }).toList();
-    }
+    // Search functionality removed - no longer needed
 
     return filtered;
   }
@@ -409,7 +386,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -422,7 +399,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppTheme.textDark),
+            icon: Icon(PhosphorIcons.gear(), color: AppTheme.textDark),
             onPressed: () {
               Navigator.push(
                 context,
@@ -448,52 +425,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: Colors.white,
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search notifications...',
-                hintStyle: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: AppTheme.textLight,
-                ),
-                prefixIcon: const Icon(Icons.search, color: AppTheme.textMedium),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: AppTheme.textMedium),
-                        onPressed: () {
-                          safeSetState(() {
-                            _searchController.clear();
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: AppTheme.softBackground,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-              ),
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: AppTheme.textDark,
-              ),
-              onChanged: (value) {
-                safeSetState(() {
-                  _searchQuery = value;
-                });
-              },
-            ),
-          ),
           // Filter Chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

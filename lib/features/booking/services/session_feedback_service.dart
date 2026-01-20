@@ -40,6 +40,7 @@ class SessionFeedbackService {
           .select('''
             learner_id, 
             parent_id, 
+            tutor_id,
             status, 
             recurring_session_id,
             location
@@ -51,11 +52,12 @@ class SessionFeedbackService {
         throw Exception('Session not found: $sessionId');
       }
 
-      // Authorization check - must be the student or parent
+      // Authorization check - must be the student, parent, or tutor
       final isStudent = session['learner_id'] == userId;
       final isParent = session['parent_id'] == userId;
+      final isTutor = session['tutor_id'] == userId;
 
-      if (!isStudent && !isParent) {
+      if (!isStudent && !isParent && !isTutor) {
         throw Exception('Unauthorized: Not a participant in this session');
       }
 
@@ -67,31 +69,49 @@ class SessionFeedbackService {
       // Check if feedback already exists
       final existingFeedback = await _supabase
           .from('session_feedback')
-          .select('id, student_feedback_submitted_at')
+          .select('id, student_feedback_submitted_at, tutor_feedback_submitted_at')
           .eq('session_id', sessionId)
           .maybeSingle();
 
       final now = DateTime.now();
       final feedbackData = <String, dynamic>{
-        'student_rating': rating,
-        'student_feedback_submitted_at': now.toIso8601String(),
         'updated_at': now.toIso8601String(),
       };
 
-      if (review != null && review.isNotEmpty) {
-        feedbackData['student_review'] = review;
+      // Store feedback based on user role
+      if (isTutor) {
+        // Tutor feedback
+        feedbackData['tutor_rating'] = rating;
+        feedbackData['tutor_feedback_submitted_at'] = now.toIso8601String();
+        if (review != null && review.isNotEmpty) {
+          feedbackData['tutor_notes'] = review; // Use tutor_notes for tutor review
+        }
+        if (whatWentWell != null && whatWentWell.isNotEmpty) {
+          feedbackData['tutor_progress_notes'] = whatWentWell; // Use progress_notes
+        }
+      } else {
+        // Student/Parent feedback
+        feedbackData['student_rating'] = rating;
+        feedbackData['student_feedback_submitted_at'] = now.toIso8601String();
       }
 
-      if (whatWentWell != null && whatWentWell.isNotEmpty) {
-        feedbackData['student_what_went_well'] = whatWentWell;
-      }
+      // Only add student-specific fields if not a tutor
+      if (!isTutor) {
+        if (review != null && review.isNotEmpty) {
+          feedbackData['student_review'] = review;
+        }
 
-      if (whatCouldImprove != null && whatCouldImprove.isNotEmpty) {
-        feedbackData['student_what_could_improve'] = whatCouldImprove;
-      }
+        if (whatWentWell != null && whatWentWell.isNotEmpty) {
+          feedbackData['student_what_went_well'] = whatWentWell;
+        }
 
-      if (wouldRecommend != null) {
-        feedbackData['student_would_recommend'] = wouldRecommend;
+        if (whatCouldImprove != null && whatCouldImprove.isNotEmpty) {
+          feedbackData['student_what_could_improve'] = whatCouldImprove;
+        }
+
+        if (wouldRecommend != null) {
+          feedbackData['student_would_recommend'] = wouldRecommend;
+        }
       }
 
       if (session['recurring_session_id'] != null) {
@@ -169,12 +189,42 @@ class SessionFeedbackService {
         }
       }
 
-      // Process feedback to update tutor rating
-      await processFeedback(sessionId);
-
-      LogService.success('Student feedback submitted for session: $sessionId');
+      // Process feedback to update tutor rating (only for student/parent feedback)
+      if (!isTutor) {
+        await processFeedback(sessionId);
+        LogService.success('Student feedback submitted for session: $sessionId');
+      } else {
+        // Notify student/parent when tutor gives feedback
+        final learnerId = session['learner_id'] as String?;
+        final parentId = session['parent_id'] as String?;
+        if (learnerId != null) {
+          await NotificationService.createNotification(
+            userId: learnerId,
+            type: 'tutor_feedback',
+            title: 'Tutor Feedback Received',
+            message: 'Your tutor has provided feedback on your session.',
+            priority: 'normal',
+            actionUrl: '/sessions/$sessionId',
+            actionText: 'View Feedback',
+            metadata: {'session_id': sessionId},
+          );
+        }
+        if (parentId != null && parentId != learnerId) {
+          await NotificationService.createNotification(
+            userId: parentId,
+            type: 'tutor_feedback',
+            title: 'Tutor Feedback Received',
+            message: 'Your tutor has provided feedback on your child\'s session.',
+            priority: 'normal',
+            actionUrl: '/sessions/$sessionId',
+            actionText: 'View Feedback',
+            metadata: {'session_id': sessionId},
+          );
+        }
+        LogService.success('Tutor feedback submitted for session: $sessionId');
+      }
     } catch (e) {
-      LogService.error('Error submitting student feedback: $e');
+      LogService.error('Error submitting feedback: $e');
       rethrow;
     }
   }
@@ -502,7 +552,7 @@ class SessionFeedbackService {
 
       final session = await _supabase
           .from('individual_sessions')
-          .select('learner_id, parent_id, status, session_ended_at')
+          .select('learner_id, parent_id, tutor_id, status, session_ended_at')
           .eq('id', sessionId)
           .maybeSingle();
 
@@ -510,10 +560,11 @@ class SessionFeedbackService {
         throw Exception('Session not found: $sessionId');
       }
 
-      // Must be student or parent
+      // Must be student, parent, or tutor
       final isStudent = session['learner_id'] == userId;
       final isParent = session['parent_id'] == userId;
-      if (!isStudent && !isParent) {
+      final isTutor = session['tutor_id'] == userId;
+      if (!isStudent && !isParent && !isTutor) {
         return false;
       }
 

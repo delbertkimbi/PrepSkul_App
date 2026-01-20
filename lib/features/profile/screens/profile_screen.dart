@@ -17,6 +17,7 @@ import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -426,7 +427,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           _profilePhotoUrl == null ||
                                               _profilePhotoUrl!.isEmpty
                                           ? Icon(
-                                              Icons.person,
+                                              PhosphorIcons.user(),
                                               size: 47,
                                               color: Colors.white.withOpacity(
                                                 0.9,
@@ -458,7 +459,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ],
                                       ),
                                       child: Icon(
-                                        Icons.camera_alt,
+                                        PhosphorIcons.camera(),
                                         color: AppTheme.primaryColor,
                                         size: 16,
                                       ),
@@ -517,7 +518,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Expanded(
                           child: _buildNeumorphicInfoCard(
-                            icon: Icons.email_outlined,
+                            icon: PhosphorIcons.envelope(),
                             label: 'Email',
                             value: _userInfo?['email']?.toString() ?? 'Not set',
                           ),
@@ -525,7 +526,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildNeumorphicInfoCard(
-                            icon: Icons.phone_outlined,
+                            icon: PhosphorIcons.phone(),
                             label: 'Phone',
                             value: _formatPhoneNumber(
                               _userInfo?['phone']?.toString() ?? 'Not set',
@@ -559,11 +560,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: _buildNeumorphicSection(
                       title: t.profileSettings,
-                      icon: Icons.settings_outlined,
+                      icon: PhosphorIcons.gear(),
                       child: Column(
                         children: [
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.edit_outlined,
+                            icon: PhosphorIcons.pencil(),
                             title: t.profileEditProfile,
                             subtitle: t.profileEditProfileSubtitle,
                             onTap: () async {
@@ -583,7 +584,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           
                           if (widget.userType == 'tutor') ...[
                             _buildNeumorphicSettingsItem(
-                              icon: Icons.school_outlined,
+                              icon: PhosphorIcons.graduationCap(),
                               title: t.profileEditTutorInfo,
                               subtitle: t.profileEditTutorInfoSubtitle,
                               onTap: () async {
@@ -619,7 +620,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(height: 12),
                             _buildNeumorphicSettingsItem(
-                              icon: Icons.visibility_outlined,
+                              icon: PhosphorIcons.eye(),
                               title: t.profilePreviewProfile,
                               subtitle: t.profilePreviewProfileSubtitle,
                               onTap: () {
@@ -651,7 +652,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 12),
                           ],
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.notifications_outlined,
+                            icon: PhosphorIcons.bell(),
                             title: t.profileNotifications,
                             subtitle: t.profileNotificationsSubtitle,
                             onTap: () {
@@ -665,7 +666,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.language_outlined,
+                            icon: PhosphorIcons.translate(),
                             title: t.profileLanguage,
                             subtitle: t.profileLanguageSubtitle,
                             onTap: () {
@@ -678,7 +679,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.help_outline,
+                            icon: PhosphorIcons.question(),
                             title: t.profileHelpSupport,
                             subtitle: t.profileHelpSupportSubtitle,
                             onTap: () {
@@ -727,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.logout, color: Colors.red, size: 20),
+                            Icon(PhosphorIcons.signOut(), color: Colors.red, size: 20),
                             const SizedBox(width: 8),
                             Text(
                               t.profileLogout,
@@ -929,7 +930,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: AppTheme.textLight, size: 20),
+              Icon(PhosphorIcons.caretRight(), color: AppTheme.textLight, size: 20),
             ],
           ),
         ),
@@ -1060,7 +1061,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
-                    Icons.track_changes_rounded,
+                    PhosphorIcons.trendUp(),
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),
@@ -1103,7 +1104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
-                      Icons.menu_book_rounded,
+                      PhosphorIcons.bookOpen(),
                       size: 14,
                       color: AppTheme.primaryColor,
                     ),
@@ -1160,7 +1161,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
-                      Icons.stars_rounded,
+                      PhosphorIcons.star(),
                       size: 14,
                       color: AppTheme.primaryColor,
                     ),
@@ -1218,7 +1219,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
-                    Icons.flag_rounded,
+                    PhosphorIcons.flag(),
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),
@@ -1309,7 +1310,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
-                    Icons.psychology_rounded,
+                    PhosphorIcons.brain(),
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),

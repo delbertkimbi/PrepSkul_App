@@ -49,6 +49,7 @@ import 'package:prepskul/features/skulmate/screens/character_selection_screen.da
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'dart:async';
+import 'package:prepskul/core/services/supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -196,13 +197,16 @@ void main() async {
     // CRITICAL: Remove HTML splash screen after Flutter content is rendered (web only)
     // Wait a bit to ensure Flutter content is visible before removing splash
     // This prevents white/black screen flash
+    // Note: The InitialLoadingWrapper will also call removeSplash() after navigation
+    // This is just a fallback in case navigation is delayed
     if (kIsWeb) {
       // Wait for Flutter to render first frame before removing splash
       // This ensures smooth transition from splash to app content
-      Future.delayed(const Duration(milliseconds: 300), () {
+      // Increased delay to ensure Flutter engine is fully ready
+      Future.delayed(const Duration(milliseconds: 500), () {
         try {
           WebSplashService.removeSplash();
-          LogService.debug('✅ HTML splash screen removed (after Flutter ready)');
+          LogService.debug('✅ HTML splash screen removed (fallback after Flutter ready)');
         } catch (e) {
           LogService.debug('⚠️ Could not remove splash: $e');
         }

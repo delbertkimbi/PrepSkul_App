@@ -5,6 +5,7 @@ import 'package:prepskul/core/services/notification_navigation_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/widgets/notification_item.dart';
 import 'package:intl/intl.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Notification Group Item Widget
 /// 
@@ -72,15 +73,15 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
 
   IconData _getCategoryIcon(String type) {
     if (type.contains('booking')) {
-      return Icons.book_online;
+      return PhosphorIcons.bookOpen();
     } else if (type.contains('payment')) {
-      return Icons.payment;
+      return PhosphorIcons.creditCard();
     } else if (type.contains('session')) {
-      return Icons.access_time;
+      return PhosphorIcons.clock();
     } else if (type.contains('message')) {
-      return Icons.chat;
+      return PhosphorIcons.chatCircle();
     }
-    return Icons.notifications;
+    return PhosphorIcons.bell();
   }
 
   Future<void> _markAllAsRead() async {
@@ -245,8 +246,8 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
                   if (widget.notifications.length > 1)
                     Icon(
                       _isExpanded
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
+                          ? PhosphorIcons.caretUp()
+                          : PhosphorIcons.caretDown(),
                       color: AppTheme.textMedium,
                       size: 20,
                     ),
@@ -280,7 +281,7 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.done_all,
+                              PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
                               size: 16,
                               color: AppTheme.primaryColor,
                             ),

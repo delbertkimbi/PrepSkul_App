@@ -55,13 +55,15 @@
   <link rel="icon" type="image/jpeg" sizes="16x16" href="logo.jpg"/>
   <link rel="shortcut icon" type="image/jpeg" href="logo.jpg"/>
   <link rel="apple-touch-icon" sizes="180x180" href="logo.jpg"/>
+  
+  <!-- Preload splash screen logo for instant display -->
+  <link rel="preload" as="image" href="app_logo(blue).png" />
 
   <title>PrepSkul: Find Trusted Home and Online Tutors in Cameroon</title>
   <link rel="manifest" href="manifest.json">
   
   <style>
-    /* Immediate Loading Screen - Shows before Flutter loads */
-    /* This prevents white screen flash and shows animated logo immediately */
+    /* Simple Loading Screen */
     #flutter-loading {
       position: fixed;
       top: 0;
@@ -73,9 +75,7 @@
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      transition: opacity 0.4s ease-out;
-      /* Ensure it's visible immediately - no delay */
-      opacity: 1;
+      transition: opacity 0.3s ease-out;
     }
     
     #flutter-loading.hidden {
@@ -108,9 +108,6 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      /* Prevent image loading delay */
-      image-rendering: -webkit-optimize-contrast;
-      image-rendering: crisp-edges;
     }
     
     /* Rounded corners for images in the page */
@@ -143,7 +140,7 @@
             ctx.clearRect(0, 0, size, size);
             
             // Create rounded rectangle path
-            const radius = Math.min(size * 0.15, 12); // 15% of size or 12px max
+            const radius = Math.min(size * 0.15, 12);
             ctx.beginPath();
             ctx.moveTo(radius, 0);
             ctx.lineTo(size - radius, 0);
@@ -180,15 +177,11 @@
           console.warn('Could not load favicon for rounding');
         };
         
-        // Try to load the favicon - use absolute path if relative fails
         const faviconSrc = favicon.href;
-        // Remove query params for initial load
         const baseSrc = faviconSrc.split('?')[0];
-        // Try relative path first, then absolute if that fails
         img.src = baseSrc + '?v=2&t=' + Date.now();
       }
       
-      // Run immediately and also on DOMContentLoaded
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', roundFavicon);
       } else {
@@ -198,253 +191,50 @@
   </script>
   
   <script>
-    // ============================================
-    // Environment Variables (Production)
-    // ============================================
-    // For production builds, inject environment variables here
-    // These are set at build time by your CI/CD or hosting platform
-    // Example for Vercel: Use environment variables and inject via build script
-    // window.env = window.env || {};
+    // Environment Variables
     window.env = {
-    NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
-  };
-    // Supabase Configuration
-    // These will be injected at build time or set via hosting platform
-    // For local development, these can be set manually or loaded from a config file
-    // For production (Vercel), set these in Vercel Dashboard → Environment Variables
-    // and inject them here via a build script or server-side rendering
+      NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
+    };
     
-    // Example injection (replace with actual values or build-time injection):
-    // window.env.SUPABASE_URL_PROD = 'your-supabase-url';
-    // window.env.SUPABASE_ANON_KEY_PROD = 'your-supabase-anon-key';
-    // window.env.SUPABASE_URL_DEV = 'your-dev-supabase-url';
-    // window.env.SUPABASE_ANON_KEY_DEV = 'your-dev-supabase-anon-key';
-    
-    // ============================================
-    // Splash Screen Management
-    // ============================================
-    // Expose function to remove splash screen from Flutter
+    // Simple splash screen removal - Flutter calls this when ready
     window.removeSplash = function() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
-        // Wait for Flutter content to be visible before removing splash
-        // This prevents white/black screen flash
-        const checkFlutterReady = function() {
-          const flutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
-          const hasContent = flutterApp && flutterApp.offsetHeight > 0;
-          
-          if (hasContent) {
-            // Flutter content is ready - remove splash with fade
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400); // Fade duration
-            console.log('Splash removed via removeSplash() - Flutter content ready');
-          } else {
-            // Flutter not ready yet - check again in 50ms
-            setTimeout(checkFlutterReady, 50);
+        loader.classList.add('hidden');
+        setTimeout(function() {
+          if (loader && loader.parentNode) {
+            loader.remove();
           }
-        };
-        
-        // Start checking for Flutter content
-        checkFlutterReady();
+        }, 300);
       }
     };
-
-    // Immediate check: If Flutter is already loaded (hot restart scenario), remove splash
-    // This runs immediately on script load to catch hot restart scenarios
-    (function checkImmediate() {
-      const loader = document.getElementById('flutter-loading');
-      if (loader) {
-        // Check if Flutter content is actually rendered (has height)
-        const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
-        const isFlutterRendered = flutterApp && flutterApp.offsetHeight > 0;
-        
-        if (isFlutterRendered) {
-          console.log('Flutter already rendered (hot restart), removing splash');
-          loader.classList.add('hidden');
-          setTimeout(function() {
-            if (loader && loader.parentNode) {
-              loader.remove();
-            }
-          }, 400); // Fade duration
-          return;
-        }
-        // Check again after a short delay for hot restart
-        setTimeout(checkImmediate, 50);
-      }
-    })();
-
-    // Note: We do NOT hide on 'flutter-first-frame' anymore.
-    // Flutter will call window.removeSplash() when it is fully ready.
     
-    // CRITICAL: Fallback - hide after 1500ms if Flutter doesn't load/call removeSplash
-    // Increased to 1500ms to ensure Flutter content is ready before removing
-    // This prevents white/black screen flash
+    // Fallback: Remove splash after 3 seconds max (prevents stuck logo)
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        // Check if Flutter content is actually rendered before removing
-        const hasFlutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
-        const isFlutterRendered = hasFlutterApp && hasFlutterApp.offsetHeight > 0;
-        
-        if (isFlutterRendered) {
-          console.log('Flutter content ready, removing splash (1500ms fallback)');
-          loader.classList.add('hidden');
-          setTimeout(function() {
-            if (loader && loader.parentNode) {
-              loader.remove();
-            }
-          }, 400); // Fade duration
-        } else {
-          // Flutter not rendered yet - wait a bit more
-          console.log('Flutter not rendered yet, waiting...');
-        }
-      }
-    }, 1500);
-    
-    // Additional aggressive removal: Check every 100ms starting immediately
-    // This ensures the splash is removed when Flutter content is ready
-    // Wait for actual rendered content to prevent white/black screen flash
-    let checkCount = 0;
-    const maxChecks = 30; // 30 * 100ms = 3 seconds max
-    const checkInterval = setInterval(function() {
-      checkCount++;
-      const loader = document.getElementById('flutter-loading');
-      if (loader && !loader.classList.contains('hidden')) {
-        // Check if Flutter content is actually rendered (has height)
-        const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app], body > flt-scene-host');
-        const isFlutterRendered = flutterApp && flutterApp.offsetHeight > 0;
-        
-        if (isFlutterRendered) {
-          console.log('Flutter content rendered, removing splash');
-          loader.classList.add('hidden');
-          setTimeout(function() {
-            if (loader && loader.parentNode) {
-              loader.remove(); // Remove from DOM after fade
-            }
-          }, 400); // Fade duration
-          clearInterval(checkInterval);
-          return;
-        }
-      } else {
-        // Splash already hidden, stop checking
-        clearInterval(checkInterval);
-      }
-      
-      // Stop checking after max attempts
-      if (checkCount >= maxChecks) {
-        clearInterval(checkInterval);
-        // Force removal if still visible after max checks (but with fade)
-        const loader = document.getElementById('flutter-loading');
-        if (loader && !loader.classList.contains('hidden')) {
-          console.log('Max checks reached, forcing splash removal');
-          loader.classList.add('hidden');
-          setTimeout(function() {
-            if (loader && loader.parentNode) {
-              loader.remove();
-            }
-          }, 400);
-        }
-      }
-    }, 100); // Check every 100ms
-    
-    // MutationObserver: Watch for Flutter elements being added to DOM (catches hot restart)
-    // Specifically watch for flt-scene-host (most reliable indicator)
-    if (typeof MutationObserver !== 'undefined') {
-      const observer = new MutationObserver(function(mutations) {
-        const loader = document.getElementById('flutter-loading');
-        if (loader && !loader.classList.contains('hidden')) {
-          // Check specifically for flt-scene-host (most reliable Flutter indicator)
-          const flutterSceneHost = document.querySelector('flt-scene-host');
-          const isFlutterRendered = flutterSceneHost && flutterSceneHost.offsetHeight > 0;
-          
-          // Only remove if Flutter content is actually rendered (has height)
-          // This prevents white/black screen flash
-          if (isFlutterRendered) {
-            console.log('Flutter content rendered via MutationObserver, removing splash');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400); // Fade duration
-            // Disconnect immediately after detection to prevent re-triggering
-            observer.disconnect();
-          }
-        }
-      });
-      
-      // Start observing body for child additions
-      if (document.body) {
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true
-        });
-      } else {
-        document.addEventListener('DOMContentLoaded', function() {
-          observer.observe(document.body, {
-            childList: true,
-            subtree: true
-          });
-        });
-      }
-    }
-
-    // Additional safety: Remove on page visibility change (user switches tabs/refreshes)
-    document.addEventListener('visibilitychange', function() {
-      if (!document.hidden) {
-        // Page became visible - ensure splash is removed immediately
-        const loader = document.getElementById('flutter-loading');
-        if (loader && !loader.classList.contains('hidden')) {
-          console.warn('Splash still visible after visibility change, removing');
-          loader.style.display = 'none';
-          loader.classList.add('hidden');
-          if (loader.parentNode) {
+        loader.classList.add('hidden');
+        setTimeout(function() {
+          if (loader && loader.parentNode) {
             loader.remove();
           }
-        }
+        }, 300);
       }
-    });
-    
-    // Page load event listener: Force removal if splash still visible after page fully loads
-    // This catches cases where Flutter loads but doesn't call removeSplash()
-    window.addEventListener('load', function() {
-      const loader = document.getElementById('flutter-loading');
-      if (loader && !loader.classList.contains('hidden')) {
-        // Check if Flutter is actually loaded
-        const hasFlutterApp = document.querySelector('flt-scene-host, flt-glass-pane');
-        if (hasFlutterApp) {
-          console.warn('Page loaded with Flutter app present but splash still visible, forcing removal');
-        } else {
-          console.warn('Page loaded but Flutter app not detected, forcing splash removal anyway');
-        }
-        loader.style.display = 'none';
-        loader.classList.add('hidden');
-        if (loader.parentNode) {
-          loader.remove();
-        }
-      }
-    });
+    }, 3000);
   </script>
 </head>
 <body>
-  <!-- Immediate Loading Screen -->
+  <!-- Simple Loading Screen -->
   <div id="flutter-loading">
     <div class="loader-container">
       <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
+        <img src="app_logo(blue).png" alt="PrepSkul Logo" />
       </div>
     </div>
   </div>
   
-  <!-- Agora Web SDK for video sessions - Load before Flutter bootstrap -->
-  <!-- Using iris-web-rtc for Web SDK v4.x compatibility with Flutter package -->
-  <!-- The Flutter agora_rtc_engine package requires iris-web-rtc.js (not AgoraRTC_N.js) -->
-  <!-- Load synchronously (no async/defer) to ensure it's available when Flutter initializes -->
+  <!-- Agora Web SDK for video sessions -->
   <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
   
   <script src="flutter_bootstrap.js" async></script>

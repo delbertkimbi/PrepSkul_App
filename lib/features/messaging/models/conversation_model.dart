@@ -24,6 +24,7 @@ class Conversation {
   final int unreadCount;
   final String? lastMessagePreview;
   final DateTime? lastMessageTime;
+  final DateTime? otherUserLastSeen; // For active status tracking
 
   Conversation({
     required this.id,
@@ -42,6 +43,7 @@ class Conversation {
     this.unreadCount = 0,
     this.lastMessagePreview,
     this.lastMessageTime,
+    this.otherUserLastSeen,
   });
 
   /// Create from JSON (from Supabase)
@@ -69,7 +71,18 @@ class Conversation {
       lastMessageTime: json['last_message_time'] != null
           ? DateTime.parse(json['last_message_time'] as String)
           : null,
+      otherUserLastSeen: json['other_user_last_seen'] != null
+          ? DateTime.parse(json['other_user_last_seen'] as String)
+          : null,
     );
+  }
+
+  /// Check if other user is currently active (online within last 5 minutes)
+  bool get isOtherUserActive {
+    if (otherUserLastSeen == null) return false;
+    final now = DateTime.now();
+    final difference = now.difference(otherUserLastSeen!);
+    return difference.inMinutes < 5; // Active if seen within last 5 minutes
   }
 
   /// Convert to JSON

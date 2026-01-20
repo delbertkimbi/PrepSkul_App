@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/notifications/screens/notification_list_screen.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Notification Bell Widget
 /// 
@@ -82,8 +83,8 @@ class _NotificationBellState extends State<NotificationBell> {
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              Icons.notifications_outlined,
+            child: PhosphorIcon(
+              PhosphorIcons.bell(),
               color: widget.iconColor ?? AppTheme.textDark,
               size: 24,
             ),

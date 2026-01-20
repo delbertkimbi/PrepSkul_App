@@ -961,9 +961,10 @@ class ChatService {
   static Future<Map<String, dynamic>> _getUserProfile(String userId) async {
     try {
       // First, get the profile with user_type to determine if we need to check tutor_profiles
+      // Also fetch last_seen for active status tracking
       final profileResponse = await _supabase
           .from('profiles')
-          .select('full_name, avatar_url, user_type')
+          .select('full_name, avatar_url, user_type, last_seen')
           .eq('id', userId)
           .maybeSingle();
       
@@ -973,6 +974,7 @@ class ChatService {
       }
       
       // For tutors, also check tutor_profiles.profile_photo_url (which is the primary source)
+      // For students/parents, use avatar_url from profiles or profile-photos bucket
       String? avatarUrl = profileResponse['avatar_url'] as String?;
       final userType = profileResponse['user_type'] as String?;
       
@@ -996,6 +998,21 @@ class ChatService {
           LogService.warning('⚠️ Error fetching tutor profile for user $userId: $e');
           // Continue with avatar_url from profiles
         }
+      } else {
+        // For students/parents, avatar_url should already be in profiles table
+        // If it's a relative path, try to construct full Supabase Storage URL
+        if (avatarUrl != null && avatarUrl.isNotEmpty && !avatarUrl.startsWith('http')) {
+          // Try to get full URL from storage
+          try {
+            final storageUrl = _supabase.storage.from('profile-photos').getPublicUrl(avatarUrl);
+            if (storageUrl != null) {
+              avatarUrl = storageUrl;
+              LogService.debug('📸 Constructed full storage URL for student/parent $userId: $avatarUrl');
+            }
+          } catch (e) {
+            LogService.debug('📸 Could not construct storage URL, using as-is: $avatarUrl');
+          }
+        }
       }
       String? validAvatarUrl;
       if (avatarUrl != null && avatarUrl.isNotEmpty) {
@@ -1014,6 +1031,7 @@ class ChatService {
       return {
         'full_name': profileResponse['full_name'],
         'avatar_url': validAvatarUrl,
+        'last_seen': profileResponse['last_seen'],
       };
     } catch (e) {
       LogService.error('Error getting user profile: $e');

@@ -16,6 +16,7 @@ import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Payment History Screen
 ///
@@ -422,7 +423,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(PhosphorIcons.arrowLeft(), color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -680,7 +681,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  Icon(PhosphorIcons.calendar(), size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Text(
                     'Due: ${_formatDate(dueDate)}',
@@ -1011,24 +1012,24 @@ Widget _buildStatusBadge(BuildContext context, String status) {
       case 'pending':
         color = Colors.orange;
         label = t.paymentHistoryStatusPending;
-        icon = Icons.pending;
+        icon = PhosphorIcons.clock();
         break;
       case 'failed':
         color = Colors.red;
         label = t.paymentHistoryStatusFailed;
-        icon = Icons.error;
+        icon = PhosphorIcons.warning();
         break;
       case 'unpaid':
       case 'expired':
         color = Colors.red;
         label = 'Expired';
-        icon = Icons.cancel;
+        icon = PhosphorIcons.xCircle();
         break;
 
       default:
         color = Colors.grey;
         label = status.toUpperCase();
-        icon = Icons.info;
+        icon = PhosphorIcons.info();
     }
 
     return Container(
@@ -1061,7 +1062,7 @@ Widget _buildStatusBadge(BuildContext context, String status) {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.payment_outlined, size: 64, color: Colors.grey[400]),
+          Icon(PhosphorIcons.creditCard(), size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             message,

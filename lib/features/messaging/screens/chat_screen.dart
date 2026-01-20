@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'dart:async';
 import '../services/chat_service.dart';
 import '../services/conversation_lifecycle_service.dart';
@@ -506,6 +507,23 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  String _formatLastSeen(DateTime lastSeen) {
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen);
+    
+    if (difference.inMinutes < 1) {
+      return 'Active';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return DateFormat('MMM d').format(lastSeen);
+    }
+  }
+
   String _formatMessageTime(DateTime time) {
     final now = DateTime.now();
     final difference = now.difference(time);
@@ -540,12 +558,12 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: const Color(0xFFF0F2F5), // WhatsApp-like background
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark),
+          leading: IconButton(
+          icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
@@ -588,12 +606,21 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: AppTheme.textDark,
                     ),
                   ),
-                  if (widget.conversation.status == 'active')
+                  // Show active status based on last_seen (within 5 minutes = active)
+                  if (widget.conversation.isOtherUserActive)
                     Text(
                       'Active',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: Colors.green[600],
+                      ),
+                    )
+                  else if (widget.conversation.otherUserLastSeen != null)
+                    Text(
+                      _formatLastSeen(widget.conversation.otherUserLastSeen!),
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[600],
                       ),
                     ),
                 ],
@@ -626,7 +653,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: AppTheme.textDark),
+            icon: Icon(PhosphorIcons.dotsThreeVertical(), color: AppTheme.textDark),
             onSelected: (value) {
               if (value == 'archive') {
                 _handleArchiveAction();
@@ -781,7 +808,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 18),
+                    icon: Icon(PhosphorIcons.x(), size: 18),
                     color: Colors.red[700],
                     onPressed: () {
                       setState(() {
@@ -853,8 +880,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : Icon(
-                              Icons.send,
+                          : PhosphorIcon(
+                              PhosphorIcons.paperPlaneTilt(),
                               color: _hasText ? Colors.white : AppTheme.primaryColor.withOpacity(0.5),
                               size: 20,
                             ),
@@ -878,7 +905,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Align(
       alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: 4),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
@@ -888,22 +915,22 @@ class _ChatScreenState extends State<ChatScreen> {
               : CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: isCurrentUser 
                     ? AppTheme.primaryColor 
                     : Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isCurrentUser ? 16 : 4),
-                  bottomRight: Radius.circular(isCurrentUser ? 4 : 16),
+                  topLeft: const Radius.circular(12),
+                  topRight: const Radius.circular(12),
+                  bottomLeft: Radius.circular(isCurrentUser ? 12 : 4),
+                  bottomRight: Radius.circular(isCurrentUser ? 4 : 12),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
                   ),
                 ],
               ),
@@ -913,9 +940,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   Text(
                     message.content,
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 14.5,
                       color: isCurrentUser ? Colors.white : AppTheme.textDark,
-                      height: 1.4,
+                      height: 1.5,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -933,15 +961,40 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       if (isCurrentUser) ...[
                         const SizedBox(width: 4),
-                        Icon(
-                          message.isRead 
-                              ? Icons.done_all 
-                              : Icons.done,
-                          size: 14,
-                          color: message.isRead
-                              ? Colors.blue[300]
-                              : Colors.white.withOpacity(0.7),
-                        ),
+                        // WhatsApp-style ticks: single gray (sent), double gray (delivered), double blue (read)
+                        if (message.isRead)
+                          // Double check (read) - show two check icons overlapping, second one blue
+                          SizedBox(
+                            width: 18, // Fixed width to contain both icons
+                            height: 14,
+                            child: Stack(
+                              children: [
+                                Positioned(
+                                  left: 0,
+                                  child: PhosphorIcon(
+                                    PhosphorIcons.check(),
+                                    size: 14,
+                                    color: Colors.white.withOpacity(0.7),
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 4, // Overlap by 4px
+                                  child: PhosphorIcon(
+                                    PhosphorIcons.check(),
+                                    size: 14,
+                                    color: Colors.blue[400]!, // Blue for read
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          // Single check (sent/delivered) - gray
+                          PhosphorIcon(
+                            PhosphorIcons.check(),
+                            size: 14,
+                            color: Colors.white.withOpacity(0.7),
+                          ),
                       ],
                     ],
                   ),

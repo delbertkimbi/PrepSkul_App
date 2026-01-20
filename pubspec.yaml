@@ -65,6 +65,7 @@ dependencies:
   intl: ^0.20.2
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0
+  phosphor_flutter: ^2.1.0  # Soft, modern icons for better UI
   
   # Calendar and Scheduling
   table_calendar: ^3.0.9

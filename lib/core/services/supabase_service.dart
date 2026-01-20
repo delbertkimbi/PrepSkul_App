@@ -81,6 +81,22 @@ class SupabaseService {
     await client.auth.signOut();
   }
 
+  /// Update user's last_seen timestamp for active status tracking
+  static Future<void> updateLastSeen() async {
+    try {
+      final userId = currentUser?.id;
+      if (userId == null) return;
+      
+      await client
+          .from('profiles')
+          .update({'last_seen': DateTime.now().toIso8601String()})
+          .eq('id', userId);
+    } catch (e) {
+      // Silently fail - this is not critical
+      LogService.debug('Failed to update last_seen: $e');
+    }
+  }
+
   // Phone Authentication
 
   /// Send OTP to phone number

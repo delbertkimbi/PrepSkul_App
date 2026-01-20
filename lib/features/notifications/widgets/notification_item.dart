@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/notification_analytics_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Notification Item Widget
 /// 
@@ -83,28 +84,28 @@ class _NotificationItemState extends State<NotificationItem> {
       case 'booking_request':
       case 'booking_accepted':
       case 'booking_rejected':
-        return Icons.book_online;
+        return PhosphorIcons.bookOpen();
       case 'trial_request':
       case 'trial_accepted':
       case 'trial_rejected':
-        return Icons.school;
+        return PhosphorIcons.graduationCap();
       case 'payment_received':
       case 'payment_successful':
       case 'payment_failed':
-        return Icons.payment;
+        return PhosphorIcons.creditCard();
       case 'session_completed':
       case 'session_reminder':
       case 'session_starting_soon':
-        return Icons.access_time;
+        return PhosphorIcons.clock();
       case 'profile_approved':
-        return Icons.check_circle;
+        return PhosphorIcons.checkCircle();
       case 'profile_rejected':
       case 'profile_improvement':
-        return Icons.edit_note;
+        return PhosphorIcons.pencil();
       case 'review_received':
-        return Icons.star;
+        return PhosphorIcons.star();
       default:
-        return Icons.notifications;
+        return PhosphorIcons.bell();
     }
   }
 
@@ -332,6 +333,7 @@ class _NotificationItemState extends State<NotificationItem> {
     final timeAgo = _getTimeAgo(createdAt);
     final priority = widget.notification['priority'] as String? ?? 'normal';
     final actionText = widget.notification['action_text'] as String?;
+    final actionUrl = widget.notification['action_url'] as String?;
 
     // Extract metadata for avatar and image preview
     final metadata = widget.notification['metadata'] as Map<String, dynamic>?;
@@ -350,8 +352,8 @@ class _NotificationItemState extends State<NotificationItem> {
           color: Colors.red,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(
-          Icons.delete,
+        child: Icon(
+          PhosphorIcons.trash(),
           color: Colors.white,
         ),
       ),
@@ -359,7 +361,7 @@ class _NotificationItemState extends State<NotificationItem> {
         await NotificationService.deleteNotification(widget.notification['id'] as String);
         widget.onDelete?.call();
       },
-      child: GestureDetector(
+      child: InkWell(
         onTap: () {
           final notificationId = widget.notification['id'] as String;
           final notificationType = widget.notification['type'] as String? ?? 'general';
@@ -373,172 +375,156 @@ class _NotificationItemState extends State<NotificationItem> {
           if (!isRead) {
             NotificationService.markAsRead(notificationId);
           }
+          
+          // Navigate to action URL if it exists
+          if (actionUrl != null && actionUrl.isNotEmpty) {
+            NotificationNavigationService.navigateToAction(
+              context: context,
+              actionUrl: actionUrl,
+              notificationType: notificationType,
+              metadata: metadata,
+            );
+          }
+          
           widget.onTap?.call();
         },
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: _getPriorityBorderColor(priority, isRead),
-              width: _getPriorityBorderWidth(priority, isRead),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 1),
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                // Subtle background color difference: light grey for read, white for unread
+                color: isRead ? Colors.grey[50] : Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: isRead 
+                      ? Colors.grey[200]! 
+                      : _getPriorityBorderColor(priority, isRead),
+                  width: isRead ? 0.5 : _getPriorityBorderWidth(priority, isRead),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isRead ? 0.01 : 0.03),
+                    blurRadius: isRead ? 2 : 6,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // User Avatar (always show if sender info available, otherwise show icon)
-              _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
-              const SizedBox(width: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // User Avatar (always show if sender info available, otherwise show icon)
+                _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
+                const SizedBox(width: 12),
 
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
-                              color: AppTheme.textDark,
-                              letterSpacing: -0.2,
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
+                                color: AppTheme.textDark,
+                                letterSpacing: -0.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (!isRead)
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(left: 8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        _getEnhancedMessage(message, metadata),
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w400,
+                          color: AppTheme.textMedium,
+                          height: 1.4,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      // Image preview (if available)
+                      if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            width: double.infinity,
+                            height: 150,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              height: 150,
+                              color: AppTheme.softBackground,
+                              child: const Center(
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              height: 150,
+                              color: AppTheme.softBackground,
+                              child: Icon(
+                                PhosphorIcons.imageSquare(),
+                                color: AppTheme.textLight,
+                              ),
+                            ),
                           ),
                         ),
-                        if (!isRead)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(left: 8),
-                            decoration: const BoxDecoration(
-                              color: AppTheme.primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
                       ],
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      _getEnhancedMessage(message, metadata),
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w400,
-                        color: AppTheme.textMedium,
-                        height: 1.4,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // Image preview (if available)
-                    if (imageUrl != null && imageUrl.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          width: double.infinity,
-                          height: 150,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) => Container(
-                            height: 150,
-                            color: AppTheme.softBackground,
-                            child: const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          errorWidget: (context, url, error) => Container(
-                            height: 150,
-                            color: AppTheme.softBackground,
-                            child: const Icon(
-                              Icons.image_not_supported,
-                              color: AppTheme.textLight,
-                            ),
-                          ),
+                      Text(
+                        timeAgo,
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w400,
+                          color: AppTheme.textLight,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Text(
-                          timeAgo,
-                          style: GoogleFonts.poppins(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w400,
-                            color: AppTheme.textLight,
-                          ),
-                        ),
-                        if (actionText != null) ...[
-                          const SizedBox(width: 10),
-                          GestureDetector(
-                            onTap: () {
-                              // Stop event propagation to prevent card tap
-                              final notificationId = widget.notification['id'] as String;
-                              final actionUrl = widget.notification['action_url'] as String?;
-                              final notificationType = widget.notification['type'] as String?;
-                              
-                              // Track analytics
-                              if (actionUrl != null && actionUrl.isNotEmpty) {
-                                NotificationAnalyticsService.trackActionClicked(
-                                  notificationId: notificationId,
-                                  notificationType: notificationType ?? 'general',
-                                  actionUrl: actionUrl,
-                                );
-                                
-                                NotificationNavigationService.navigateToAction(
-                                  context: context,
-                                  actionUrl: actionUrl,
-                                  notificationType: notificationType,
-                                  metadata: metadata,
-                                );
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: AppTheme.primaryColor.withOpacity(0.15),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                actionText,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ),
+            // Subtle left border indicator for unread (like Facebook/LinkedIn)
+            if (!isRead)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(14),
+                      bottomLeft: Radius.circular(14),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
