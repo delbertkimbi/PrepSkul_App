@@ -51,6 +51,9 @@ class ChatService {
   static final Map<String, RealtimeChannel> _activeChannels = {};
   static final Map<String, StreamController<List<Message>>> _messageStreams = {};
   static final Map<String, StreamController<List<Conversation>>> _conversationStreams = {};
+  
+  // Track current message lists per conversation for incremental updates
+  static final Map<String, List<Message>> _currentMessageLists = {};
 
   /// Send a message
   /// 
@@ -585,6 +588,8 @@ class ChatService {
     // Initial load
     getMessages(conversationId: conversationId).then((messages) {
       if (!controller.isClosed) {
+        // Store initial message list
+        _currentMessageLists[conversationId] = List.from(messages);
         controller.add(messages);
       }
     }).catchError((error) {
@@ -607,16 +612,8 @@ class ChatService {
         value: conversationId,
       ),
       callback: (payload) {
-        // Reload messages when changes occur
-        getMessages(conversationId: conversationId).then((messages) {
-          if (!controller.isClosed) {
-            controller.add(messages);
-          }
-        }).catchError((error) {
-          if (!controller.isClosed) {
-            LogService.error('Error reloading messages: $error');
-          }
-        });
+        // Process incremental update instead of reloading all messages
+        _processMessageChange(conversationId, payload, userId, controller);
       },
     ).subscribe();
 
@@ -627,9 +624,115 @@ class ChatService {
       channel.unsubscribe();
       _activeChannels.remove('messages_$conversationId');
       _messageStreams.remove(conversationId);
+      _currentMessageLists.remove(conversationId);
     };
 
     return controller.stream;
+  }
+
+  /// Process incremental message change from PostgresChangeEvent
+  static Future<void> _processMessageChange(
+    String conversationId,
+    Map<String, dynamic> payload,
+    String userId,
+    StreamController<List<Message>> controller,
+  ) async {
+    if (controller.isClosed) return;
+
+    try {
+      final eventType = payload['eventType'] as String?;
+      final newRecord = payload['new'] as Map<String, dynamic>?;
+      final oldRecord = payload['old'] as Map<String, dynamic>?;
+
+      // Get current message list for this conversation
+      final currentMessages = _currentMessageLists[conversationId] ?? [];
+
+      if (eventType == 'INSERT' && newRecord != null) {
+        // New message inserted - fetch sender profile and add to list
+        final messageData = await _enrichMessageWithSender(newRecord, userId);
+        final newMessage = Message.fromJson(messageData, currentUserId: userId);
+        
+        // Add to list (messages are sorted by createdAt, so insert in correct position)
+        final updatedMessages = List<Message>.from(currentMessages);
+        updatedMessages.add(newMessage);
+        updatedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        
+        _currentMessageLists[conversationId] = updatedMessages;
+        if (!controller.isClosed) {
+          controller.add(updatedMessages);
+        }
+      } else if (eventType == 'UPDATE' && newRecord != null) {
+        // Message updated (e.g., read receipt)
+        final messageId = newRecord['id'] as String;
+        final messageIndex = currentMessages.indexWhere((m) => m.id == messageId);
+        
+        if (messageIndex != -1) {
+          // Update existing message
+          final messageData = await _enrichMessageWithSender(newRecord, userId);
+          final updatedMessage = Message.fromJson(messageData, currentUserId: userId);
+          
+          final updatedMessages = List<Message>.from(currentMessages);
+          updatedMessages[messageIndex] = updatedMessage;
+          
+          _currentMessageLists[conversationId] = updatedMessages;
+          if (!controller.isClosed) {
+            controller.add(updatedMessages);
+          }
+        } else {
+          // Message not in current list (might be from pagination), reload to be safe
+          LogService.warning('Updated message not found in current list, reloading');
+          final messages = await getMessages(conversationId: conversationId);
+          _currentMessageLists[conversationId] = messages;
+          if (!controller.isClosed) {
+            controller.add(messages);
+          }
+        }
+      } else if (eventType == 'DELETE' && oldRecord != null) {
+        // Message deleted - remove from list
+        final messageId = oldRecord['id'] as String;
+        final updatedMessages = currentMessages.where((m) => m.id != messageId).toList();
+        
+        _currentMessageLists[conversationId] = updatedMessages;
+        if (!controller.isClosed) {
+          controller.add(updatedMessages);
+        }
+      }
+    } catch (error) {
+      LogService.error('Error processing message change: $error');
+      // Fallback: reload all messages on error
+      try {
+        final messages = await getMessages(conversationId: conversationId);
+        _currentMessageLists[conversationId] = messages;
+        if (!controller.isClosed) {
+          controller.add(messages);
+        }
+      } catch (e) {
+        LogService.error('Error reloading messages after change processing error: $e');
+      }
+    }
+  }
+
+  /// Enrich message data with sender profile information
+  static Future<Map<String, dynamic>> _enrichMessageWithSender(
+    Map<String, dynamic> messageData,
+    String userId,
+  ) async {
+    try {
+      final senderId = messageData['sender_id'] as String;
+      
+      // Fetch sender profile
+      final senderProfile = await _getUserProfile(senderId);
+      
+      return {
+        ...messageData,
+        'sender_name': senderProfile['full_name'],
+        'sender_avatar_url': senderProfile['avatar_url'],
+      };
+    } catch (e) {
+      LogService.error('Error enriching message with sender: $e');
+      // Return message data without sender info if fetch fails
+      return messageData;
+    }
   }
 
   /// Watch conversations in real-time

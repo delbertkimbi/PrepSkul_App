@@ -243,9 +243,7 @@ void main() {
       test('should find conversation by individual session ID', () async {
         // Verify method exists
         expect(ConversationLifecycleService.getConversationIdForIndividual, isA<Function>());
-      });
-
-      test('should handle non-existent conversations', () async {
+      });      test('should handle non-existent conversations', () async {
         // Test that null is returned for non-existent conversations
         expect(ConversationLifecycleService.getConversationIdForTrial, isA<Function>());
       });

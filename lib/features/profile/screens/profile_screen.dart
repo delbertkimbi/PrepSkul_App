@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
+import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import 'edit_profile_screen.dart';
@@ -168,14 +169,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
           user['phone']?.toString() ??
           'Not set';
 
-      // Get email with priority: Auth email > profiles.email > stored signup email > 'Not set'
+      // Get email with priority: Auth email > profiles.email > stored signup email > onboarding progress > 'Not set'
       final prefs = await SharedPreferences.getInstance();
       final storedEmail = prefs.getString('signup_email');
-      final email =
-          authEmail ??
+      
+      // Check if email exists in auth but not in profiles - sync it if needed
+      String? email = authEmail ??
           profileResponse?['email']?.toString() ??
-          storedEmail ??
-          'Not set';
+          storedEmail;
+      
+      // Also check auth user metadata for email (some signup flows store it there)
+      final metadataEmail = authUser?.userMetadata?['email']?.toString();
+      if (email == null && metadataEmail != null && metadataEmail.isNotEmpty) {
+        email = metadataEmail;
+      }
+      
+      // For tutors, also check onboarding progress for email (in case it was collected but not synced)
+      if (widget.userType == 'tutor' && (email == null || email.isEmpty || email == 'Not set')) {
+        try {
+          final onboardingProgress = await TutorOnboardingProgressService.loadProgress(userId);
+          if (onboardingProgress != null) {
+            final step0Data = onboardingProgress['step_0'] as Map<String, dynamic>?;
+            final onboardingEmail = step0Data?['email']?.toString();
+            if (onboardingEmail != null && onboardingEmail.isNotEmpty && onboardingEmail.contains('@')) {
+              email = onboardingEmail;
+              LogService.debug('Found email in onboarding progress: $email');
+            }
+          }
+        } catch (e) {
+          LogService.debug('Error checking onboarding progress for email: $e');
+        }
+      }
+      
+      // If we have email from any source but profiles table doesn't have it, update profiles
+      final currentProfileEmail = profileResponse?['email']?.toString();
+      final needsEmailSync = email != null && 
+          email.isNotEmpty && 
+          email != 'Not set' && 
+          email.contains('@') &&
+          (currentProfileEmail == null || 
+           currentProfileEmail.isEmpty ||
+           currentProfileEmail == 'Not set');
+      
+      if (needsEmailSync) {
+        try {
+          await SupabaseService.client
+              .from('profiles')
+              .update({'email': email})
+              .eq('id', userId);
+          LogService.success('Synced email to profiles table: $email');
+          // Reload profile response to get updated email
+          profileResponse = await SupabaseService.client
+              .from('profiles')
+              .select('avatar_url, full_name, email, phone_number')
+              .eq('id', userId)
+              .maybeSingle();
+          // Use the synced email
+          email = profileResponse?['email']?.toString() ?? email;
+        } catch (e) {
+          LogService.warning('Error syncing email to profiles: $e');
+        }
+      }
+      
+      // Final fallback
+      email = email ?? 'Not set';
 
       // Get full name from database (most up-to-date)
       // Priority: profile > stored signup data > session > auth metadata > email extraction > empty

@@ -381,7 +381,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.softBackground,
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -480,7 +480,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       selectedColor: AppTheme.primaryColor.withOpacity(0.2),
       checkmarkColor: AppTheme.primaryColor,
       labelStyle: GoogleFonts.poppins(
-        fontSize: 13,
+        fontSize: 15, // Increased from 13 (added 2)
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
       ),
@@ -525,7 +525,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                 child: Text(
                   'No more notifications',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 16, // Increased from 14 (added 2)
                     color: AppTheme.textMedium,
                   ),
                 ),
@@ -556,7 +556,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                 child: Text(
                   currentTimeGroup!,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 16, // Increased from 14 (added 2)
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textMedium,
                   ),

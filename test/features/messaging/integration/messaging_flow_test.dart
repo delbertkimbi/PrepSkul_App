@@ -360,9 +360,7 @@ void main() {
           isA<Function>(),
         );
       });
-    });
-
-    group('model validation', () {
+    });    group('model validation', () {
       test('should create valid Conversation from JSON', () {
         final json = {
           'id': 'conv-123',

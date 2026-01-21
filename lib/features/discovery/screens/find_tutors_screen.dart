@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
@@ -660,14 +661,19 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       ),
       body: Column(
         children: [
-          // Search Section
+          // Search Section - Responsive
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            padding: EdgeInsets.fromLTRB(
+              ResponsiveHelper.responsiveHorizontalPadding(context),
+              ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12),
+              ResponsiveHelper.responsiveHorizontalPadding(context),
+              ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+            ),
             child: Column(
               children: [
-                // Search Bar
+                // Search Bar - Responsive
                 Container(
-                  height: 52,
+                  height: ResponsiveHelper.responsiveSpacing(context, mobile: 48, tablet: 52, desktop: 56),
                   decoration: BoxDecoration(
                     color: Colors.grey[100],
                     borderRadius: BorderRadius.circular(26),
@@ -689,25 +695,25 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     },
                     style: GoogleFonts.poppins(
                       color: Colors.black,
-                      fontSize: 15,
+                      fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
                     ),
                     decoration: InputDecoration(
                       hintText: 'Search by name or subject',
                       hintStyle: GoogleFonts.poppins(
                         color: Colors.grey[500],
-                        fontSize: 15,
+                        fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
                       ),
                       prefixIcon: Icon(
                         Icons.search,
                         color: Colors.grey[600],
-                        size: 22,
+                        size: ResponsiveHelper.responsiveIconSize(context, mobile: 22, tablet: 24, desktop: 26),
                       ),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: Icon(
                                 Icons.close,
                                 color: Colors.grey[600],
-                                size: 20,
+                                size: ResponsiveHelper.responsiveIconSize(context, mobile: 20, tablet: 22, desktop: 24),
                               ),
                               onPressed: () {
                                 _searchController.clear();
@@ -717,20 +723,20 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             )
                           : null,
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                        vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18),
                       ),
                     ),
                   ),
                 ),
 
-                // Active Filters
+                // Active Filters - Responsive
                 if (_selectedSubject != null ||
                     _selectedPriceRange != null ||
                     _minRating > 0)
                   Padding(
-                    padding: const EdgeInsets.only(top: 12),
+                    padding: EdgeInsets.only(top: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                     child: Row(
                       children: [
                         Expanded(
@@ -744,14 +750,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                     _filterTutors();
                                   }),
                                 if (_selectedPriceRange != null) ...[
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                                   _buildFilterChip(_selectedPriceRange!, () {
                                     safeSetState(() => _selectedPriceRange = null);
                                     _filterTutors();
                                   }),
                                 ],
                                 if (_minRating > 0) ...[
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                                   _buildFilterChip(
                                     '${_minRating.toInt()}+ ⭐',
                                     () {
@@ -771,7 +777,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             style: GoogleFonts.poppins(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                              fontSize: ResponsiveHelper.responsiveBodySize(context),
                             ),
                           ),
                         ),
@@ -785,9 +791,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
           ),
 
-          // Results Count and Cache Info
+          // Results Count and Cache Info - Responsive
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10),
+              ),
               child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -795,7 +804,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   Text(
                     'Found ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: ResponsiveHelper.responsiveBodySize(context),
                       fontWeight: FontWeight.w600,
                       color: Colors.grey[700],
                     ),
@@ -821,28 +830,64 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           message: 'Refresh requires an internet connection. Please check your connection and try again.',
                         )
                     : _loadTutors,
-                    child: ListView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        // Show loading indicator at bottom when loading more
-                        if (_isLoadingMore && index == _filteredTutors.length) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: CircularProgressIndicator(),
+                    child: ResponsiveHelper.isMobile(context)
+                        ? ListView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              0,
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              ResponsiveHelper.responsiveVerticalPadding(context),
                             ),
-                          );
-                        }
-                        
-                        if (index >= _filteredTutors.length) {
-                          return const SizedBox.shrink();
-                        }
-                        
-                        return _buildTutorCard(_filteredTutors[index]);
-                      },
-                    ),
+                            itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              // Show loading indicator at bottom when loading more
+                              if (_isLoadingMore && index == _filteredTutors.length) {
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              }
+                              
+                              if (index >= _filteredTutors.length) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              return _buildTutorCard(_filteredTutors[index]);
+                            },
+                          )
+                        : GridView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              0,
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              ResponsiveHelper.responsiveVerticalPadding(context),
+                            ),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: ResponsiveHelper.responsiveGridColumns(context),
+                              crossAxisSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+                              mainAxisSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+                              childAspectRatio: ResponsiveHelper.isTablet(context) ? 0.75 : 0.7,
+                            ),
+                            itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              // Show loading indicator at bottom when loading more
+                              if (_isLoadingMore && index == _filteredTutors.length) {
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+                              
+                              if (index >= _filteredTutors.length) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              return _buildTutorCard(_filteredTutors[index]);
+                            },
+                          ),
                   ),
           ),
         ],
@@ -949,8 +994,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       }
     }
 
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
+    final avatarSize = ResponsiveHelper.responsiveSpacing(context, mobile: 60, tablet: 70, desktop: 80);
+    final cardMargin = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: cardMargin),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -986,19 +1035,19 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                 },
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(cardPadding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar (Larger & clickable)
+                    // Avatar (Larger & clickable) - Responsive
                     GestureDetector(
                       onTap: () => _showProfileImage(context, tutor),
                       child: Container(
-                        width: 70,
-                        height: 70,
+                        width: avatarSize,
+                        height: avatarSize,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: AppTheme.primaryColor.withOpacity(0.1), // Background for fallback
@@ -1022,8 +1071,8 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    // Info
+                    SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                    // Info - Responsive
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,7 +1083,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                 child: Text(
                                   name,
                                   style: GoogleFonts.poppins(
-                                    fontSize: 16,
+                                    fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
                                     fontWeight: FontWeight.w700,
                                     color: Colors.black,
                                   ),
@@ -1043,24 +1092,24 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               if (tutor['is_verified'] == true)
                                 Icon(
                                   Icons.verified,
-                                  size: 18,
+                                  size: ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22),
                                   color: AppTheme.primaryColor,
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
                           Row(
                             children: [
                               Icon(
                                 Icons.star,
-                                size: 16,
+                                size: ResponsiveHelper.responsiveIconSize(context, mobile: 16, tablet: 18, desktop: 20),
                                 color: Colors.amber[700],
                               ),
-                              const SizedBox(width: 4),
+                              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 5, desktop: 6)),
                               Text(
                                 rating > 0 ? rating.toStringAsFixed(1) : 'N/A',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: ResponsiveHelper.responsiveBodySize(context),
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black,
                                 ),
@@ -1069,7 +1118,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               Text(
                                 ' ($totalReviews)',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 13,
+                                  fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                                   color: Colors.grey[600],
                                 ),
                               ),
@@ -1080,19 +1129,19 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                // Subjects
+                SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+                // Subjects - Responsive
                 Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
+                  spacing: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10),
+                  runSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10),
                   children:
                       (tutor['subjects'] as List?)
                           ?.take(3)
                           .map(
                             (subject) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14),
+                                vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 5, tablet: 6, desktop: 7),
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.grey[100],
@@ -1101,7 +1150,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                               child: Text(
                                 subject.toString(),
                                 style: GoogleFonts.poppins(
-                                  fontSize: 12,
+                                  fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
                                   fontWeight: FontWeight.w500,
                                   color: Colors.grey[700],
                                 ),
@@ -1111,37 +1160,37 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           .toList() ??
                       [],
                 ),
-                const SizedBox(height: 12),
-                // Bio (personal statement, with "Hello!" removed for cards)
+                SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+                // Bio (personal statement, with "Hello!" removed for cards) - Responsive
                 if (displayBio.isNotEmpty)
                 Text(
                     displayBio,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.poppins(
-                    fontSize: 13,
+                    fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                     color: Colors.grey[600],
                     height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 12),
-                // Bottom Info Row - Focus on value, not pricing
+                SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+                // Bottom Info Row - Focus on value, not pricing - Responsive
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Sessions completed (bold as requested)
+                    // Sessions completed (bold as requested) - Responsive
                     Row(
                       children: [
                         Icon(
                           Icons.school_outlined,
-                          size: 16,
+                          size: ResponsiveHelper.responsiveIconSize(context, mobile: 16, tablet: 18, desktop: 20),
                           color: Colors.grey[600],
                         ),
-                        const SizedBox(width: 4),
+                        SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 5, desktop: 6)),
                         Text(
                           '$completedSessions',
                           style: GoogleFonts.poppins(
-                            fontSize: 12,
+                            fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
                             color: Colors.grey[700],
                             fontWeight: FontWeight.w700, // Bold as requested
                           ),
@@ -1149,7 +1198,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                         Text(
                           ' lessons',
                           style: GoogleFonts.poppins(
-                            fontSize: 12,
+                            fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
                             color: Colors.grey[600],
                             fontWeight: FontWeight.w500,
                           ),

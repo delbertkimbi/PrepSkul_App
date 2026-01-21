@@ -210,10 +210,12 @@
       }
     };
     
-    // Fallback: Remove splash after 3 seconds max (prevents stuck logo)
+    // Fallback: Remove splash after 5 seconds max (prevents stuck logo)
+    // Increased timeout to give Flutter more time to initialize and show content
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
+        console.warn('Flutter did not call removeSplash within 5000ms, forcing removal');
         loader.classList.add('hidden');
         setTimeout(function() {
           if (loader && loader.parentNode) {
@@ -221,7 +223,7 @@
           }
         }, 300);
       }
-    }, 3000);
+    }, 5000);
   </script>
 </head>
 <body>

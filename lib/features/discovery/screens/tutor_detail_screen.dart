@@ -27,6 +27,7 @@ import 'package:prepskul/features/messaging/services/conversation_lifecycle_serv
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:prepskul/core/services/share_service.dart';
 
 class TutorDetailScreen extends StatefulWidget {
   final Map<String, dynamic> tutor;
@@ -2429,7 +2430,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   /// Navigate to chat with this tutor
-  /// Share tutor profile with unique deep link
+  /// Share tutor profile with rich preview (image + deep link)
+  /// Similar to Facebook, LinkedIn, YouTube sharing
   Future<void> _shareTutor() async {
     try {
       // Use refreshed tutor data if available, otherwise fall back to widget.tutor
@@ -2462,33 +2464,30 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                        widget.tutor['profiles']?['full_name'] ?? 
                        'Tutor';
       
-      // Get tutor subject
-      final subjects = tutorData['subjects'] ?? widget.tutor['subjects'];
-      final tutorSubject = (subjects is List && subjects.isNotEmpty)
-          ? subjects[0].toString()
-          : (subjects is String && subjects.isNotEmpty)
-              ? subjects
-              : 'Tutor';
+      // Get tutor avatar URL
+      final tutorAvatarUrl = tutorData['avatar_url'] ?? 
+                            tutorData['profiles']?['avatar_url'] ??
+                            widget.tutor['avatar_url'] ?? 
+                            widget.tutor['profiles']?['avatar_url'];
+      
+      // Get tutor subjects
+      final subjectsData = tutorData['subjects'] ?? widget.tutor['subjects'];
+      final List<String> subjectsList = subjectsData is List
+          ? List<String>.from(subjectsData.map((s) => s.toString()))
+          : (subjectsData is String && subjectsData.isNotEmpty
+              ? [subjectsData]
+              : []);
 
-      // Create unique deep link for this tutor
-      // Format: https://www.prepskul.com/tutor/{tutorId} (production)
-      // For local development: prepskul://tutor/{tutorId}
-      final baseUrl = kDebugMode 
-          ? 'prepskul://tutor/$tutorId'
-          : 'https://www.prepskul.com/tutor/$tutorId';
-      
-      final shareText = 'Check out $tutorName on PrepSkul!\n\n$baseUrl';
-      
-      final result = await Share.share(
-        shareText,
-        subject: '$tutorName - $tutorSubject Tutor on PrepSkul',
+      // Use ShareService for rich sharing with image and deep link
+      await ShareService.shareTutorProfile(
+        tutorData: tutorData,
+        tutorId: tutorId,
+        tutorName: tutorName,
+        tutorAvatarUrl: tutorAvatarUrl,
+        subjects: subjectsList,
       );
       
-      if (result.status == ShareResultStatus.success) {
-        LogService.success('Tutor profile shared successfully');
-      } else if (result.status == ShareResultStatus.dismissed) {
-        LogService.debug('Share dialog dismissed');
-      }
+      LogService.success('Tutor profile shared successfully');
     } catch (e) {
       LogService.error('Error sharing tutor: $e');
       if (mounted) {

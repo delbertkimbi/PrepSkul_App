@@ -838,11 +838,38 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _hasTraining = data['hasTraining'] ?? false;
         break;
       case 2:
-          _selectedCity = data['selectedCity'];
-          _selectedQuarter = data['selectedQuarter'];
-          _customQuarter = data['customQuarter'];
-        if (data['selectedQuarter'] == null && data['customQuarter'] != null) {
-          _isCustomQuarter = true;
+        // Location - validate city exists in AppData.cities
+        final cityValue = data['selectedCity'];
+        if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+          _selectedCity = cityValue;
+          _availableQuarters = AppData.cities[cityValue] ?? [];
+          
+          // Validate quarter exists in available quarters
+          final quarterValue = data['selectedQuarter'];
+          if (quarterValue != null && _availableQuarters.contains(quarterValue)) {
+            _selectedQuarter = quarterValue;
+            _isCustomQuarter = false;
+          } else if (quarterValue != null) {
+            // Quarter doesn't exist in list - treat as custom
+            _customQuarter = quarterValue.toString();
+            _isCustomQuarter = true;
+            _selectedQuarter = null;
+          } else {
+            _selectedQuarter = null;
+            _isCustomQuarter = data['customQuarter'] != null && data['customQuarter'].toString().isNotEmpty;
+            if (_isCustomQuarter) {
+              _customQuarter = data['customQuarter']?.toString() ?? '';
+            }
+          }
+        } else {
+          // City doesn't exist in AppData - reset location
+          _selectedCity = null;
+          _selectedQuarter = null;
+          _availableQuarters = [];
+          _isCustomQuarter = false;
+          if (cityValue != null) {
+            LogService.warning('[ONBOARDING] Invalid city value from auto-save: $cityValue. Resetting location.');
+          }
         }
         break;
       case 3:
@@ -945,9 +972,36 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       _institutionController.text = data['institution'] ?? '';
       _fieldOfStudyController.text = data['fieldOfStudy'] ?? '';
       _hasTraining = data['hasTraining'] ?? false;
-      _selectedCity = data['selectedCity'];
-      _selectedQuarter = data['selectedQuarter'];
-      _customQuarter = data['customQuarter'];
+      // Location - validate city exists in AppData.cities
+      final cityValue = data['selectedCity'];
+      if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+        _selectedCity = cityValue;
+        _availableQuarters = AppData.cities[cityValue] ?? [];
+        
+        // Validate quarter exists in available quarters
+        final quarterValue = data['selectedQuarter'];
+        if (quarterValue != null && _availableQuarters.contains(quarterValue)) {
+          _selectedQuarter = quarterValue;
+          _isCustomQuarter = false;
+        } else if (quarterValue != null) {
+          // Quarter doesn't exist in list - treat as custom
+          _customQuarter = quarterValue.toString();
+          _isCustomQuarter = true;
+          _selectedQuarter = null;
+        } else {
+          _selectedQuarter = null;
+          _isCustomQuarter = false;
+        }
+      } else {
+        // City doesn't exist in AppData - reset location
+        _selectedCity = null;
+        _selectedQuarter = null;
+        _availableQuarters = [];
+        if (cityValue != null) {
+          LogService.warning('[ONBOARDING] Invalid city value from SharedPreferences: $cityValue. Resetting location.');
+        }
+      }
+      _customQuarter = data['customQuarter'] ?? '';
       _selectedTutoringAreas = List<String>.from(data['selectedTutoringAreas'] ?? []);
       _selectedLearnerLevels = List<String>.from(data['selectedLearnerLevels'] ?? []);
       _selectedSpecializations = List<String>.from(data['selectedSpecializations'] ?? []);
@@ -963,10 +1017,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _agreesToPaymentPolicy = data['agreesToPaymentPolicy'] ?? false;
           _agreesToVerification = data['agreesToVerification'] ?? false;
         });
-
-        if (_selectedCity != null) {
-          _availableQuarters = AppData.cities[_selectedCity!] ?? [];
-        }
 
         if (_currentStep > 0) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1012,13 +1062,34 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         _fieldOfStudyController.text = data['field_of_study']?.toString() ?? '';
         _hasTraining = data['has_training'] ?? false;
 
-        // Location
-        _selectedCity = data['city'];
-        _selectedQuarter = data['quarter'];
-        _customQuarter = data['custom_quarter']?.toString() ?? '';
-        if (_selectedCity != null) {
-          _availableQuarters = AppData.cities[_selectedCity!] ?? [];
+        // Location - validate city exists in AppData.cities
+        final cityValue = data['city'];
+        if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+          _selectedCity = cityValue;
+          _availableQuarters = AppData.cities[cityValue] ?? [];
+          
+          // Validate quarter exists in available quarters
+          final quarterValue = data['quarter'];
+          if (quarterValue != null && _availableQuarters.contains(quarterValue)) {
+            _selectedQuarter = quarterValue;
+            _isCustomQuarter = false;
+          } else if (quarterValue != null) {
+            // Quarter doesn't exist in list - treat as custom
+            _customQuarter = quarterValue.toString();
+            _isCustomQuarter = true;
+            _selectedQuarter = null;
+          } else {
+            _selectedQuarter = null;
+            _isCustomQuarter = false;
+          }
+        } else {
+          // City doesn't exist in AppData - reset location
+          _selectedCity = null;
+          _selectedQuarter = null;
+          _availableQuarters = [];
+          LogService.warning('[ONBOARDING] Invalid city value: $cityValue. Resetting location.');
         }
+        _customQuarter = data['custom_quarter']?.toString() ?? '';
 
         // Teaching Focus
         _selectedTutoringAreas = List<String>.from(
@@ -4976,6 +5047,21 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     required Function(String?) onChanged,
     bool isRequired = false,
   }) {
+    // Validate value exists in items to prevent dropdown errors
+    // If value doesn't exist or there are duplicates, set to null
+    String? validatedValue = value;
+    if (value != null) {
+      final matchingItems = items.where((item) => item == value).toList();
+      if (matchingItems.length != 1) {
+        // Value doesn't exist or has duplicates - reset to null
+        validatedValue = null;
+        LogService.warning('[DROPDOWN] Value "$value" not found in items or has duplicates. Resetting to null.');
+      }
+    }
+    
+    // Remove duplicates from items list
+    final uniqueItems = items.toSet().toList();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -5004,7 +5090,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: value,
+          value: validatedValue,
           onChanged: onChanged,
           decoration: InputDecoration(
             filled: true,
@@ -5029,7 +5115,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               vertical: 16,
             ),
           ),
-          items: items.map((item) {
+          items: uniqueItems.map((item) {
             return DropdownMenuItem<String>(value: item, child: Text(item));
           }).toList(),
         ),

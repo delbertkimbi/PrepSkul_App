@@ -64,7 +64,7 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
     } else if (type.contains('payment')) {
       return Colors.green;
     } else if (type.contains('session')) {
-      return Colors.purple;
+      return AppTheme.primaryColor; // Deep blue instead of purple
     } else if (type.contains('message')) {
       return Colors.orange;
     }
@@ -184,7 +184,7 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
                               child: Text(
                                 widget.summaryMessage,
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: 16, // Increased from 14 (added 2)
                                   fontWeight: hasUnread
                                       ? FontWeight.w600
                                       : FontWeight.w500,
@@ -213,7 +213,7 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
                             Text(
                               timeAgo,
                               style: GoogleFonts.poppins(
-                                fontSize: 11,
+                                fontSize: 13, // Increased from 11 (added 2)
                                 fontWeight: FontWeight.w400,
                                 color: AppTheme.textLight,
                               ),
@@ -231,7 +231,7 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
                               child: Text(
                                 '$count ${count == 1 ? 'notification' : 'notifications'}',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 10,
+                                  fontSize: 12, // Increased from 10 (added 2)
                                   fontWeight: FontWeight.w600,
                                   color: categoryColor,
                                 ),
@@ -289,7 +289,7 @@ class _NotificationGroupItemState extends State<NotificationGroupItem> {
                             Text(
                               'Mark all as read',
                               style: GoogleFonts.poppins(
-                                fontSize: 12,
+                                fontSize: 14, // Increased from 12 (added 2)
                                 fontWeight: FontWeight.w600,
                                 color: AppTheme.primaryColor,
                               ),

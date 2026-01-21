@@ -192,14 +192,14 @@ class _NotificationItemState extends State<NotificationItem> {
     // If we have sender info, show avatar (even without profile pic)
     if (displayName != null || senderAvatarUrl != null || senderInitials != null) {
       return Container(
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: AppTheme.primaryColor, // Deep blue background
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           child: senderAvatarUrl != null && senderAvatarUrl.isNotEmpty
               ? CachedNetworkImage(
                   imageUrl: senderAvatarUrl,
@@ -210,8 +210,8 @@ class _NotificationItemState extends State<NotificationItem> {
                       child: Text(
                         displayInitials ?? '?',
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                           color: Colors.white,
                         ),
                       ),
@@ -223,8 +223,8 @@ class _NotificationItemState extends State<NotificationItem> {
                       child: Text(
                         displayInitials ?? '?',
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                           color: Colors.white,
                         ),
                       ),
@@ -237,8 +237,8 @@ class _NotificationItemState extends State<NotificationItem> {
                     child: Text(
                       displayInitials ?? '?',
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                         color: Colors.white,
                       ),
                     ),
@@ -250,16 +250,16 @@ class _NotificationItemState extends State<NotificationItem> {
     
     // No sender info - show Material icon with brand color background
       return Container(
-        width: 40,
-        height: 40,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
-          color: AppTheme.primaryColor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20),
+          color: AppTheme.primaryColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(18),
         ),
       child: Center(
         child: Icon(
           _getIconData(widget.notification['type'] as String?),
-          size: 22,
+          size: 18,
           color: AppTheme.primaryColor,
         ),
       ),
@@ -388,24 +388,24 @@ class _NotificationItemState extends State<NotificationItem> {
           
           widget.onTap?.call();
         },
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
             Container(
               decoration: BoxDecoration(
-                // Subtle background color difference: light grey for read, white for unread
-                color: isRead ? Colors.grey[50] : Colors.white,
-                borderRadius: BorderRadius.circular(14),
+                // Subtle deep blue tint for unread, white for read
+                color: isRead ? Colors.white : AppTheme.primaryColor.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isRead 
                       ? Colors.grey[200]! 
-                      : _getPriorityBorderColor(priority, isRead),
-                  width: isRead ? 0.5 : _getPriorityBorderWidth(priority, isRead),
+                      : AppTheme.primaryColor.withOpacity(0.15),
+                  width: isRead ? 0.5 : 1,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(isRead ? 0.01 : 0.03),
-                    blurRadius: isRead ? 2 : 6,
+                    color: Colors.black.withOpacity(isRead ? 0.01 : 0.02),
+                    blurRadius: isRead ? 1 : 3,
                     offset: const Offset(0, 1),
                   ),
                 ],
@@ -417,7 +417,7 @@ class _NotificationItemState extends State<NotificationItem> {
               children: [
                 // User Avatar (always show if sender info available, otherwise show icon)
                 _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
 
                 // Content
                 Expanded(
@@ -430,10 +430,10 @@ class _NotificationItemState extends State<NotificationItem> {
                             child: Text(
                               title,
                               style: GoogleFonts.poppins(
-                                fontSize: 13,
+                                fontSize: 14, // Increased from 12 (added 2)
                                 fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
                                 color: AppTheme.textDark,
-                                letterSpacing: -0.2,
+                                letterSpacing: -0.1,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -451,14 +451,15 @@ class _NotificationItemState extends State<NotificationItem> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 4),
                       Text(
                         _getEnhancedMessage(message, metadata),
                         style: GoogleFonts.poppins(
-                          fontSize: 11,
+                          fontSize: 12, // Increased from 10 (added 2)
                           fontWeight: FontWeight.w400,
                           color: AppTheme.textMedium,
                           height: 1.4,
+                          letterSpacing: -0.1,
                         ),
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
@@ -491,13 +492,14 @@ class _NotificationItemState extends State<NotificationItem> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 6),
                       Text(
                         timeAgo,
                         style: GoogleFonts.poppins(
-                          fontSize: 10,
+                          fontSize: 11, // Increased from 9 (added 2)
                           fontWeight: FontWeight.w400,
                           color: AppTheme.textLight,
+                          letterSpacing: -0.1,
                         ),
                       ),
                     ],
@@ -507,7 +509,7 @@ class _NotificationItemState extends State<NotificationItem> {
             ),
           ),
           ),
-            // Subtle left border indicator for unread (like Facebook/LinkedIn)
+            // Subtle left border indicator for unread (deep blue)
             if (!isRead)
               Positioned(
                 left: 0,
@@ -518,8 +520,8 @@ class _NotificationItemState extends State<NotificationItem> {
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor,
                     borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(14),
-                      bottomLeft: Radius.circular(14),
+                      topLeft: Radius.circular(12),
+                      bottomLeft: Radius.circular(12),
                     ),
                   ),
                 ),

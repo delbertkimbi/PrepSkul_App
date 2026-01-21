@@ -194,24 +194,9 @@ void main() async {
     // Run app AFTER all critical initialization is complete
     runApp(const PrepSkulApp());
     
-    // CRITICAL: Remove HTML splash screen after Flutter content is rendered (web only)
-    // Wait a bit to ensure Flutter content is visible before removing splash
-    // This prevents white/black screen flash
-    // Note: The InitialLoadingWrapper will also call removeSplash() after navigation
-    // This is just a fallback in case navigation is delayed
-    if (kIsWeb) {
-      // Wait for Flutter to render first frame before removing splash
-      // This ensures smooth transition from splash to app content
-      // Increased delay to ensure Flutter engine is fully ready
-      Future.delayed(const Duration(milliseconds: 500), () {
-        try {
-          WebSplashService.removeSplash();
-          LogService.debug('✅ HTML splash screen removed (fallback after Flutter ready)');
-        } catch (e) {
-          LogService.debug('⚠️ Could not remove splash: $e');
-        }
-      });
-    }
+    // CRITICAL: Don't remove HTML splash screen here on web
+    // The InitialLoadingWrapper will handle removing it after navigation completes
+    // This prevents white screen flash between HTML splash and Flutter content
   }
 
 /// Initialize push notifications
@@ -532,6 +517,25 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       final tutorId = path.replaceFirst('/tutor/', '');
       if (tutorId.isNotEmpty) {
         LogService.debug('🔗 [DEEP_LINK] Tutor detail link detected: $tutorId');
+        
+        // Check if user is authenticated
+        final isAuthenticated = SupabaseService.isAuthenticated;
+        
+        if (!isAuthenticated) {
+          // Store pending tutor link for navigation after signup/login
+          LogService.debug('🔗 [DEEP_LINK] User not authenticated, storing pending tutor link: $tutorId');
+          await NavigationService.storePendingTutorLink(tutorId);
+          // Navigate to auth screen - after auth, they'll be redirected to tutor profile
+          final navService = NavigationService();
+          if (navService.isReady) {
+            await navService.navigateToRoute('/auth-method-selection');
+          } else {
+            navService.queueDeepLink(Uri(path: '/auth-method-selection'));
+          }
+          return;
+        }
+        
+        // User is authenticated - navigate directly to tutor profile
         final navService = NavigationService();
         if (navService.isReady) {
           // Fetch tutor data and navigate to tutor detail screen
@@ -1055,6 +1059,49 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             );
           }
         }
+        // Tutor detail route: /tutor/{tutorId}
+        if (settings.name?.startsWith('/tutor/') == true && 
+            settings.name != '/tutor' && 
+            !settings.name!.startsWith('/tutor/profile') && 
+            !settings.name!.startsWith('/tutor/dashboard') && 
+            !settings.name!.startsWith('/tutor/onboarding')) {
+          final tutorId = settings.name!.replaceFirst('/tutor/', '');
+          if (tutorId.isNotEmpty) {
+            final args = settings.arguments as Map<String, dynamic>?;
+            return MaterialPageRoute(
+              builder: (context) => FutureBuilder<Map<String, dynamic>?>(
+                future: TutorService.fetchTutorById(tutorId),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Scaffold(
+                      appBar: AppBar(title: const Text('Loading Tutor...')),
+                      body: const Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError || snapshot.data == null) {
+                    return Scaffold(
+                      appBar: AppBar(title: const Text('Tutor Not Found')),
+                      body: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('Tutor profile not found.'),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pushReplacementNamed(context, '/find-tutors'),
+                              child: const Text('Browse Tutors'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return TutorDetailScreen(tutor: snapshot.data!);
+                },
+              ),
+            );
+          }
+        }
         return null;
       },
 
@@ -1092,10 +1139,23 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
   @override
   void initState() {
     super.initState();
-    // Start navigation after a brief delay to ensure UI is ready
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeAndNavigate();
-    });
+    // On web, keep HTML splash visible until Flutter content is ready
+    // This prevents white screen flash
+    if (kIsWeb) {
+      // Wait for Flutter to render InitialLoadingScreen before removing HTML splash
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Give Flutter time to render the InitialLoadingScreen
+        Future.delayed(const Duration(milliseconds: 100), () {
+          // Now start navigation
+          _initializeAndNavigate();
+        });
+      });
+    } else {
+      // Mobile: Start navigation immediately
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _initializeAndNavigate();
+      });
+    }
     
     // Safety timeout - ensure loading screen is replaced after maximum 5 seconds
     Future.delayed(const Duration(seconds: 5), () async {
@@ -1114,12 +1174,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               final result = await navService.determineInitialRoute();
               if (mounted) {
                 _navigateInstant(result.route, result.arguments);
-                // Remove splash after navigation
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  if (mounted) {
-                    WebSplashService.removeSplash();
-                  }
-                });
+                // Splash removal is now handled inside _navigateInstant for web
                 setState(() {
                   _navigationComplete = true;
                 });
@@ -1129,12 +1184,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               // If we can't determine route, try dashboard as last resort
               if (mounted) {
                 _navigateInstant('/dashboard', null);
-                // Remove splash after navigation
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  if (mounted) {
-                    WebSplashService.removeSplash();
-                  }
-                });
+                // Splash removal is now handled inside _navigateInstant for web
                 setState(() {
                   _navigationComplete = true;
                 });
@@ -1143,12 +1193,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           } else {
             // User is not authenticated - redirect to auth screen
             _navigateInstant('/auth-method-selection', null);
-            // Remove splash after navigation
-            Future.delayed(const Duration(milliseconds: 200), () {
-              if (mounted) {
-                WebSplashService.removeSplash();
-              }
-            });
+            // Splash removal is now handled inside _navigateInstant for web
             setState(() {
               _navigationComplete = true;
             });
@@ -1194,10 +1239,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             // Navigate to determined route (could be onboarding, survey, or dashboard)
             if (mounted) {
               _navigateInstant(result.route, result.arguments);
-              // Remove splash after navigation to ensure it's hidden
-              Future.delayed(const Duration(milliseconds: 100), () {
-                WebSplashService.removeSplash();
-              });
+              // Splash removal is now handled inside _navigateInstant for web
+              // No need to remove here - it will be removed after screen renders
             }
             if (mounted) {
               setState(() {
@@ -1217,11 +1260,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 final navService = NavigationService();
                 if (navService.isReady) {
                   _navigateInstant('/onboarding', null);
-                  Future.delayed(const Duration(milliseconds: 200), () {
-                    if (mounted) {
-                      WebSplashService.removeSplash();
-                    }
-                  });
+                  // Splash removal is now handled inside _navigateInstant for web
                   return;
                 }
               }
@@ -1234,11 +1273,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 final result = await navService.determineInitialRoute();
                 if (mounted) {
                   _navigateInstant(result.route, result.arguments);
-                  Future.delayed(const Duration(milliseconds: 200), () {
-                    if (mounted) {
-                      WebSplashService.removeSplash();
-                    }
-                  });
+                  // Splash removal is now handled inside _navigateInstant for web
                 }
                 return;
               } catch (e2) {
@@ -1286,10 +1321,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           // This ensures the loading screen persists until the new screen is fully rendered
           if (mounted) {
             _navigateInstant(result.route, result.arguments);
-            // Remove splash after navigation to ensure it's hidden
-            Future.delayed(const Duration(milliseconds: 100), () {
-              WebSplashService.removeSplash();
-            });
+            // Splash removal is now handled inside _navigateInstant for web
+            // No need to remove here - it will be removed after screen renders
           }
           
           if (mounted) {
@@ -1303,8 +1336,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           if (mounted && navService.isReady) {
             final result = await navService.determineInitialRoute();
             if (mounted) {
-              WebSplashService.removeSplash();
               _navigateInstant(result.route, result.arguments);
+              // Splash removal is now handled inside _navigateInstant for web
+              // No need to remove here - it will be removed after screen renders
             }
           }
         }
@@ -1315,11 +1349,8 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           final navService = NavigationService();
           if (navService.isReady) {
             _navigateInstant('/auth-method-selection', null);
-            Future.delayed(const Duration(milliseconds: 200), () {
-              if (mounted) {
-                WebSplashService.removeSplash();
-              }
-            });
+            // Splash removal is now handled inside _navigateInstant for web
+            // No need to remove here - it will be removed after screen renders
           }
         }
       }
@@ -1388,7 +1419,18 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             setState(() {
               _navigationComplete = true;
             });
+            // On web, wait for the new screen to render before removing HTML splash
+            if (kIsWeb) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    WebSplashService.removeSplash();
+                  }
+                });
+              });
+            }
           }
+          return; // Exit early since NavigationService handled it
         } else {
           // NavigationService not ready, fallback to auth screen
           page = const AuthMethodSelectionScreen();
@@ -1409,24 +1451,40 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           setState(() {
             _navigationComplete = true;
           });
+          // On web, wait for the new screen to render before removing HTML splash
+          // This prevents white screen flash
+          if (kIsWeb) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              // Wait for the new screen to fully render
+              Future.delayed(const Duration(milliseconds: 500), () {
+                if (mounted) {
+                  WebSplashService.removeSplash();
+                }
+              });
+            });
+          }
         }
       } else {
-        // If page is null, fallback to auth screen
-        LogService.warning('[INIT_LOAD] Page is null for route $routeName, falling back to auth');
-        if (mounted) {
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
-              transitionDuration: Duration.zero,
-              reverseTransitionDuration: Duration.zero,
-            ),
-          );
-          // Remove splash after fallback navigation
-          Future.delayed(const Duration(milliseconds: 200), () {
-            if (mounted) {
-              WebSplashService.removeSplash();
+          // If page is null, fallback to auth screen
+          LogService.warning('[INIT_LOAD] Page is null for route $routeName, falling back to auth');
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+            // On web, wait for the new screen to render before removing HTML splash
+            if (kIsWeb) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted) {
+                    WebSplashService.removeSplash();
+                  }
+                });
+              });
             }
-          });
           setState(() {
             _navigationComplete = true;
           });
@@ -1434,30 +1492,39 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       }
     } catch (e) {
       LogService.error('[INIT_LOAD] Error in _navigateInstant: $e');
-      // Fallback navigation on error
-      if (mounted) {
-        try {
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
-              transitionDuration: Duration.zero,
-              reverseTransitionDuration: Duration.zero,
-            ),
-          );
-          // Remove splash after error navigation
-          Future.delayed(const Duration(milliseconds: 200), () {
-            if (mounted) {
-              WebSplashService.removeSplash();
-            }
-          });
+          // Fallback navigation on error
+          if (mounted) {
+            try {
+              Navigator.of(context).pushReplacement(
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ),
+              );
+              // On web, wait for the new screen to render before removing HTML splash
+              if (kIsWeb) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    if (mounted) {
+                      WebSplashService.removeSplash();
+                    }
+                  });
+                });
+              }
           setState(() {
             _navigationComplete = true;
           });
         } catch (e2) {
           LogService.error('[INIT_LOAD] Error in fallback navigation: $e2');
           // Still try to remove splash even if navigation fails
+          // Increased delay on web to ensure Flutter content is fully rendered before removing HTML splash
           if (mounted) {
-            WebSplashService.removeSplash();
+            Future.delayed(Duration(milliseconds: kIsWeb ? 300 : 100), () {
+              if (mounted) {
+                WebSplashService.removeSplash();
+              }
+            });
           }
         }
       }
@@ -1471,14 +1538,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_navigationComplete) {
       return const SizedBox.shrink();
     }
-    // On web, don't show Flutter loading screen if HTML splash is still visible
-    // The HTML splash already shows the logo, so we skip the Flutter one to avoid duplication
-    // Just show a minimal white screen that will be replaced by navigation
-    if (kIsWeb) {
-      return const Material(color: Colors.white, child: SizedBox.shrink());
-    }
-    // On mobile, show animated loading screen until navigation completes
-    // Use a Material widget to ensure proper background color during transition
+    // Show the InitialLoadingScreen on all platforms
+    // On web, the HTML splash will be removed once Flutter content is ready
+    // This ensures smooth transition and prevents white screen flash
     return Material(color: Colors.white, child: const InitialLoadingScreen());
   }
 }

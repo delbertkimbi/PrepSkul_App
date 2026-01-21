@@ -20,6 +20,10 @@ import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/tutor_booking_detail_screen.dart';
 import 'package:prepskul/features/booking/screens/reschedule_request_review_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
+import 'package:prepskul/features/admin/screens/admin_dashboard_screen.dart';
+import 'package:prepskul/features/admin/screens/admin_tutor_detail_screen.dart';
+import 'package:prepskul/features/admin/screens/admin_user_detail_screen.dart';
+import 'package:prepskul/features/admin/screens/admin_tutor_request_detail_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -67,7 +71,10 @@ class NotificationNavigationService {
       final userType = profile?['user_type'] as String?;
 
       // Route based on path
-      if (pathSegments[0] == 'bookings') {
+      if (pathSegments[0] == 'admin') {
+        // Admin routes
+        await _navigateToAdminRoute(pathSegments, userType, metadata);
+      } else if (pathSegments[0] == 'bookings') {
         await _navigateToBooking(pathSegments, userType);
       } else if (pathSegments[0] == 'trial-sessions') {
         await _navigateToTrialSession(pathSegments, userType);
@@ -592,6 +599,47 @@ class NotificationNavigationService {
         await _navigateToProfile(userType: userType);
         break;
 
+      case 'user_signup':
+      case 'survey_completed':
+        // Admin notifications - navigate to admin detail screens
+        if (userType == 'admin') {
+          final userId = metadata?['user_id'] as String?;
+          final userTypeFromMeta = metadata?['user_type'] as String?;
+          if (userId != null) {
+            final context = navService.context;
+            if (context != null) {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdminUserDetailScreen(
+                    userId: userId,
+                    userType: userTypeFromMeta,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+        break;
+
+      case 'tutor_request':
+        // Admin notifications - navigate to tutor request detail
+        if (userType == 'admin') {
+          final requestId = metadata?['request_id'] as String?;
+          if (requestId != null) {
+            final context = navService.context;
+            if (context != null) {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdminTutorRequestDetailScreen(
+                    requestId: requestId,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+        break;
+
       case 'onboarding_reminder':
       case 'onboarding_incomplete':
         // Navigate to tutor onboarding screen
@@ -714,6 +762,77 @@ class NotificationNavigationService {
           route,
           arguments: {'initialTab': 2}, // Sessions tab
           replace: false,
+        );
+      }
+    }
+  }
+
+  /// Navigate to admin section based on notification action
+  static Future<void> _navigateToAdminRoute(
+    List<String> pathSegments,
+    String? userType,
+    Map<String, dynamic>? metadata,
+  ) async {
+    if (userType != 'admin') {
+      LogService.warning('[NOTIF_NAV] User is not admin, cannot navigate to admin section');
+      return;
+    }
+
+    final navService = NavigationService();
+    final context = navService.context;
+
+    if (context == null) {
+      LogService.warning('[NOTIF_NAV] No context for admin navigation');
+      return;
+    }
+
+    try {
+      if (pathSegments.length >= 3) {
+        final section = pathSegments[1];
+        final id = pathSegments[2];
+
+        if (section == 'tutors') {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AdminTutorDetailScreen(tutorId: id),
+            ),
+          );
+        } else if (section == 'students' || section == 'parents') {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AdminUserDetailScreen(
+                userId: id,
+                userType: section == 'students' ? 'student' : 'parent',
+              ),
+            ),
+          );
+        } else if (section == 'tutor-requests') {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AdminTutorRequestDetailScreen(requestId: id),
+            ),
+          );
+        } else {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const AdminDashboardScreen(),
+            ),
+          );
+        }
+      } else {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const AdminDashboardScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('[NOTIF_NAV] Error navigating to admin section: $e');
+      if (context != null) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const AdminDashboardScreen(),
+          ),
         );
       }
     }
