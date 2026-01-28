@@ -1,10 +1,5 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:share_plus/share_plus.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:prepskul/core/config/app_config.dart';
 
 /// Share Service
 /// 
@@ -13,8 +8,9 @@ import 'package:prepskul/core/config/app_config.dart';
 class ShareService {
   /// Share tutor profile with rich preview
   /// 
-  /// Downloads tutor avatar, creates rich share with image attachment,
-  /// and includes custom message with deep link
+  /// Shares the tutor profile URL which will automatically generate rich link previews
+  /// (like Preply) using Open Graph meta tags from the web page.
+  /// Platforms (WhatsApp, Facebook, etc.) will fetch og:image, og:title, and og:description
   static Future<void> shareTutorProfile({
     required Map<String, dynamic> tutorData,
     required String tutorId,
@@ -29,10 +25,6 @@ class ShareService {
                    tutorData['profiles']?['full_name'] ?? 
                    'Tutor';
       
-      final avatarUrl = tutorAvatarUrl ?? 
-                       tutorData['avatar_url'] ?? 
-                       tutorData['profiles']?['avatar_url'];
-      
       final tutorSubjects = subjects ?? 
                            (tutorData['subjects'] is List 
                              ? List<String>.from(tutorData['subjects'] as List)
@@ -40,87 +32,38 @@ class ShareService {
                                  ? [tutorData['subjects'] as String]
                                  : []));
       
-      // Generate deep link
-      final deepLink = _getDeepLink(tutorId);
+      // Generate web URL (not deep link) - this will show rich previews
+      final webUrl = _getWebUrl(tutorId);
       
-      // Create share message
-      final shareMessage = _createShareMessage(name, tutorSubjects, deepLink);
+      // Create share message with URL
+      // The URL alone will trigger rich previews via Open Graph meta tags
+      final subjectsText = tutorSubjects.isNotEmpty 
+          ? tutorSubjects.join(', ')
+          : 'Tutor';
       
-      // Try rich share with image (mobile only)
-      if (!kIsWeb && avatarUrl != null && avatarUrl.isNotEmpty) {
-        try {
-          final imageFile = await _downloadTutorImage(avatarUrl);
-          if (imageFile != null) {
-            await Share.shareXFiles(
-              [XFile(imageFile.path)],
-              text: shareMessage,
-              subject: '$name - ${tutorSubjects.isNotEmpty ? tutorSubjects.join(', ') : 'Tutor'} on PrepSkul',
-            );
-            LogService.success('Tutor profile shared with image');
-            // Clean up temp file after a delay
-            Future.delayed(const Duration(seconds: 5), () {
-              try {
-                imageFile.deleteSync();
-              } catch (e) {
-                LogService.debug('Error deleting temp image: $e');
-              }
-            });
-            return;
-          }
-        } catch (e) {
-          LogService.warning('Failed to share with image, falling back to text share: $e');
-        }
-      }
+      final shareMessage = 'Check out $name on PrepSkul!\n'
+                          '$subjectsText tutor\n\n'
+                          '$webUrl';
       
-      // Fallback to native share with link preview
+      // Share just the URL - platforms will automatically fetch Open Graph metadata
+      // This creates rich link previews with tutor's profile picture, name, and bio
       await Share.share(
         shareMessage,
-        subject: '$name - ${tutorSubjects.isNotEmpty ? tutorSubjects.join(', ') : 'Tutor'} on PrepSkul',
+        subject: '$name - $subjectsText Tutor on PrepSkul',
       );
-      LogService.success('Tutor profile shared');
+      LogService.success('Tutor profile shared with rich link preview');
     } catch (e) {
       LogService.error('Error sharing tutor profile: $e');
       rethrow;
     }
   }
 
-  /// Download tutor image to temporary file
-  static Future<File?> _downloadTutorImage(String imageUrl) async {
-    try {
-      final response = await http.get(Uri.parse(imageUrl));
-      if (response.statusCode == 200) {
-        final tempDir = await getTemporaryDirectory();
-        final fileName = 'tutor_share_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final file = File('${tempDir.path}/$fileName');
-        await file.writeAsBytes(response.bodyBytes);
-        return file;
-      }
-      return null;
-    } catch (e) {
-      LogService.warning('Error downloading tutor image: $e');
-      return null;
-    }
-  }
-
-  /// Create share message with tutor information
-  static String _createShareMessage(
-    String tutorName,
-    List<String> subjects,
-    String deepLink,
-  ) {
-    final subjectsText = subjects.isNotEmpty 
-        ? subjects.join(', ')
-        : 'Tutor';
-    
-    return 'Book $tutorName on PrepSkul!\n'
-           '$subjectsText tutor\n'
-           '$deepLink';
-  }
-
-  /// Generate deep link URL for tutor profile
-  static String _getDeepLink(String tutorId) {
-    // Use app.prepskul.com for production deep links
-    // This will work for both web and mobile (mobile will redirect to app)
+  /// Generate web URL for tutor profile
+  /// This URL will show rich link previews via Open Graph meta tags
+  static String _getWebUrl(String tutorId) {
+    // Use app.prepskul.com which has proper Open Graph meta tags
+    // Platforms will automatically fetch og:image (tutor avatar), og:title (tutor name), 
+    // and og:description (tutor bio) from the web page
     return 'https://app.prepskul.com/tutor/$tutorId';
   }
 }

@@ -84,6 +84,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
   void _selectAnswer(int answerIndex) {
     if (_selectedAnswerIndex != null) return; // Already answered
+
     final question = widget.game.items[_currentQuestionIndex];
     final correctAnswerIndex = question.correctAnswer is int 
         ? question.correctAnswer as int 
@@ -141,9 +142,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
     if (isPerfectScore) {
       _confettiController.play();
       _soundService.playComplete();
-    }
-    
-    final stats = await GameStatsService.addGameResult(
+    }    final stats = await GameStatsService.addGameResult(
       correctAnswers: _score,
       totalQuestions: totalQuestions,
       timeTakenSeconds: timeTaken,
