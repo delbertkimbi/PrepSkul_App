@@ -23,16 +23,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
   List<LeaderboardEntry> _entries = [];
   bool _isLoading = true;
   final GamesServicesController _gamesServices = GamesServicesController();
-  bool _platformAvailable = false;
-
-  @override
+  bool _platformAvailable = false;  @override
   void initState() {
     super.initState();
     _checkPlatformAvailability();
     _loadLeaderboard();
-  }
-
-  Future<void> _checkPlatformAvailability() async {
+  }  Future<void> _checkPlatformAvailability() async {
     if (!kIsWeb) {
       final available = _gamesServices.isAvailable;
       safeSetState(() {

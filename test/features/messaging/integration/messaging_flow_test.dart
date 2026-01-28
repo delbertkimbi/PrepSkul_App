@@ -275,9 +275,7 @@ void main() {
         // Test blocked message handling
         expect(ChatService.previewMessage, isA<Function>());
       });
-    });
-
-    group('booking integration', () {
+    });    group('booking integration', () {
       test('should verify conversation creation methods exist', () {
         // Test that conversation creation methods exist for booking/trial
         expect(

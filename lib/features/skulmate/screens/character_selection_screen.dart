@@ -21,15 +21,11 @@ class CharacterSelectionScreen extends StatefulWidget {
 
 class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
   AgeGroup? _selectedAgeGroup;
-  SkulMateCharacter? _selectedCharacter;
-
-  @override
+  SkulMateCharacter? _selectedCharacter;  @override
   void initState() {
     super.initState();
     _loadCurrentCharacter();
-  }
-
-  Future<void> _loadCurrentCharacter() async {
+  }  Future<void> _loadCurrentCharacter() async {
     final character = await CharacterSelectionService.getSelectedCharacter();
     safeSetState(() {
       _selectedCharacter = character;

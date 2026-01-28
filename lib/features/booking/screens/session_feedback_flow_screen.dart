@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
+import '../../../core/services/supabase_service.dart';
 import '../services/session_feedback_service.dart';
 
 /// Session Feedback Flow Screen
@@ -29,17 +30,26 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   final _reviewController = TextEditingController();
   final _whatWentWellController = TextEditingController();
   final _whatCouldImproveController = TextEditingController();
+  // Tutor-specific fields
+  final _whatWasTaughtController = TextEditingController();
+  final _learnerProgressController = TextEditingController();
+  final _homeworkAssignedController = TextEditingController();
+  final _nextFocusAreasController = TextEditingController();
   bool? _wouldRecommend;
   bool? _learningObjectivesMet;
   int? _studentProgressRating;
   bool? _wouldContinueLessons;
+  int? _studentEngagement; // For tutors
   bool _isSubmitting = false;
   bool _canSubmit = false;
+  bool _isTutor = false;
+  bool _isLoadingRole = true;
 
   @override
   void initState() {
     super.initState();
     _checkCanSubmit();
+    _checkUserRole();
   }
 
   @override
@@ -47,7 +57,39 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     _reviewController.dispose();
     _whatWentWellController.dispose();
     _whatCouldImproveController.dispose();
+    _whatWasTaughtController.dispose();
+    _learnerProgressController.dispose();
+    _homeworkAssignedController.dispose();
+    _nextFocusAreasController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkUserRole() async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final session = await SupabaseService.client
+          .from('individual_sessions')
+          .select('tutor_id, learner_id, parent_id')
+          .eq('id', widget.sessionId)
+          .maybeSingle();
+
+      if (session != null) {
+        safeSetState(() {
+          _isTutor = session['tutor_id'] == userId;
+          _isLoadingRole = false;
+        });
+      } else {
+        safeSetState(() {
+          _isLoadingRole = false;
+        });
+      }
+    } catch (e) {
+      safeSetState(() {
+        _isLoadingRole = false;
+      });
+    }
   }
 
   Future<void> _checkCanSubmit() async {
@@ -63,23 +105,45 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     safeSetState(() => _isSubmitting = true);
 
     try {
-      await SessionFeedbackService.submitStudentFeedback(
-        sessionId: widget.sessionId,
-        rating: _selectedRating!,
-        review: _reviewController.text.trim().isEmpty
-            ? null
-            : _reviewController.text.trim(),
-        whatWentWell: _whatWentWellController.text.trim().isEmpty
-            ? null
-            : _whatWentWellController.text.trim(),
-        whatCouldImprove: _whatCouldImproveController.text.trim().isEmpty
-            ? null
-            : _whatCouldImproveController.text.trim(),
-        wouldRecommend: _wouldRecommend,
-        learningObjectivesMet: _learningObjectivesMet,
-        studentProgressRating: _studentProgressRating,
-        wouldContinueLessons: _wouldContinueLessons,
-      );
+      if (_isTutor) {
+        // Tutor feedback submission
+        await SessionFeedbackService.submitStudentFeedback(
+          sessionId: widget.sessionId,
+          rating: _selectedRating!,
+          whatWasTaught: _whatWasTaughtController.text.trim().isEmpty
+              ? null
+              : _whatWasTaughtController.text.trim(),
+          learnerProgress: _learnerProgressController.text.trim().isEmpty
+              ? null
+              : _learnerProgressController.text.trim(),
+          homeworkAssigned: _homeworkAssignedController.text.trim().isEmpty
+              ? null
+              : _homeworkAssignedController.text.trim(),
+          nextFocusAreas: _nextFocusAreasController.text.trim().isEmpty
+              ? null
+              : _nextFocusAreasController.text.trim(),
+          studentEngagement: _studentEngagement,
+        );
+      } else {
+        // Student feedback submission
+        await SessionFeedbackService.submitStudentFeedback(
+          sessionId: widget.sessionId,
+          rating: _selectedRating!,
+          review: _reviewController.text.trim().isEmpty
+              ? null
+              : _reviewController.text.trim(),
+          whatWentWell: _whatWentWellController.text.trim().isEmpty
+              ? null
+              : _whatWentWellController.text.trim(),
+          whatCouldImprove: _whatCouldImproveController.text.trim().isEmpty
+              ? null
+              : _whatCouldImproveController.text.trim(),
+          wouldRecommend: _wouldRecommend,
+          learningObjectivesMet: _learningObjectivesMet,
+          studentProgressRating: _studentProgressRating,
+          wouldContinueLessons: _wouldContinueLessons,
+        );
+      }
 
       if (mounted) {
         Navigator.of(context).pop(true);
@@ -138,6 +202,12 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     });
   }
 
+  void _exitFeedbackFlow() {
+    Navigator.of(context).popUntil(
+      (route) => route.settings.name != '/session-feedback-flow',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_canSubmit) {
@@ -181,14 +251,19 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       );
     }
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        _exitFeedbackFlow();
+        return false;
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text('Session Feedback', style: GoogleFonts.poppins()),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
           icon: Icon(PhosphorIcons.arrowLeft()),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _exitFeedbackFlow,
         ),
       ),
       backgroundColor: AppTheme.softBackground,
@@ -248,7 +323,8 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                           : _nextStep,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        minimumSize: const Size(double.infinity, 56),
                       ),
                       child: _isSubmitting
                           ? const SizedBox(
@@ -275,6 +351,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -352,7 +429,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'How was your session?',
+          _isTutor ? 'Rate this session' : 'How was your session?',
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -361,7 +438,9 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Your feedback helps us improve and helps your tutor grow.',
+          _isTutor 
+              ? 'Help us track session quality and learner progress.'
+              : 'Your feedback helps us improve and helps your tutor grow.',
           style: GoogleFonts.poppins(
             fontSize: 13,
             color: AppTheme.textMedium,
@@ -420,6 +499,48 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   }
 
   Widget _buildReviewStep() {
+    if (_isTutor) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'What was covered in this session?',
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Document what topics and concepts were taught.',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: AppTheme.textMedium,
+            ),
+          ),
+          const SizedBox(height: 24),
+          TextField(
+            controller: _whatWasTaughtController,
+            maxLines: 5,
+            decoration: InputDecoration(
+              hintText: 'Example: Covered quadratic equations, factoring methods, and solved 5 practice problems...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -433,7 +554,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'This is optional, but your detailed feedback is valuable.',
+          'What did you learn or find helpful in this session?',
           style: GoogleFonts.poppins(
             fontSize: 13,
             color: AppTheme.textMedium,
@@ -444,7 +565,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           controller: _reviewController,
           maxLines: 6,
           decoration: InputDecoration(
-            hintText: 'Share your experience with this tutor...',
+            hintText: 'Example: The tutor explained calculus concepts clearly and helped me understand derivatives...',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -462,6 +583,163 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   }
 
   Widget _buildDetailsStep() {
+    if (_isTutor) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Learner progress & next steps',
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Track learner progress and plan ahead.',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: AppTheme.textMedium,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Learner Progress
+          Text(
+            'How is the learner progressing?',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _learnerProgressController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Example: Student showed strong understanding of algebra basics, needs more practice with word problems...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Student Engagement
+          Text(
+            'How engaged was the learner? (1-5)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              final engagement = index + 1;
+              return GestureDetector(
+                onTap: () => safeSetState(() => _studentEngagement = engagement),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _studentEngagement == engagement
+                        ? AppTheme.primaryColor
+                        : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _studentEngagement == engagement
+                          ? AppTheme.primaryColor
+                          : Colors.grey[300]!,
+                      width: 2,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$engagement',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: _studentEngagement == engagement
+                            ? Colors.white
+                            : Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 20),
+          // Homework Assigned
+          Text(
+            'Homework or assignments given (optional)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _homeworkAssignedController,
+            maxLines: 2,
+            decoration: InputDecoration(
+              hintText: 'Example: Complete exercises 1-10 on page 45, review chapter 3...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+          // Next Focus Areas
+          Text(
+            'What to focus on next session (optional)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _nextFocusAreasController,
+            maxLines: 2,
+            decoration: InputDecoration(
+              hintText: 'Example: Continue with quadratic equations, introduce graphing, practice problem-solving...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: Colors.grey[300]!),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -484,7 +762,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         const SizedBox(height: 24),
         // What Went Well
         Text(
-          'What went well?',
+          'What did you find most helpful?',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -496,7 +774,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           controller: _whatWentWellController,
           maxLines: 3,
           decoration: InputDecoration(
-            hintText: 'What did you like about the session?',
+            hintText: 'Example: Clear explanations, helpful examples, patient teaching style...',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),
@@ -512,7 +790,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         const SizedBox(height: 20),
         // What Could Improve
         Text(
-          'What could improve?',
+          'What could be improved?',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -524,7 +802,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           controller: _whatCouldImproveController,
           maxLines: 3,
           decoration: InputDecoration(
-            hintText: 'Any suggestions for improvement?',
+            hintText: 'Example: More practice problems, slower pace on difficult topics...',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: Colors.grey[300]!),

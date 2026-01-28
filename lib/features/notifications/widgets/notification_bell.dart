@@ -62,8 +62,9 @@ class _NotificationBellState extends State<NotificationBell> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
+        // Use root navigator to avoid nested navigation issues
+        final rootNavigator = Navigator.of(context, rootNavigator: false);
+        rootNavigator.push(
           MaterialPageRoute(
             builder: (context) => const NotificationListScreen(),
           ),

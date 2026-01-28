@@ -17,6 +17,7 @@ class SessionFeedbackService {
   /// Submit student feedback for a session
   ///
   /// Collects rating, review, and recommendations from student
+  /// Also handles tutor feedback with tutor-specific fields
   static Future<void> submitStudentFeedback({
     required String sessionId,
     required int rating, // 1-5
@@ -27,6 +28,12 @@ class SessionFeedbackService {
     bool? learningObjectivesMet,
     int? studentProgressRating, // 1-5
     bool? wouldContinueLessons,
+    // Tutor-specific fields
+    String? whatWasTaught, // For tutors: what was covered
+    String? learnerProgress, // For tutors: learner progress notes
+    String? homeworkAssigned, // For tutors: homework given
+    String? nextFocusAreas, // For tutors: next session focus
+    int? studentEngagement, // For tutors: 1-5 engagement rating
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -81,13 +88,30 @@ class SessionFeedbackService {
       // Store feedback based on user role
       if (isTutor) {
         // Tutor feedback
-        feedbackData['tutor_rating'] = rating;
         feedbackData['tutor_feedback_submitted_at'] = now.toIso8601String();
-        if (review != null && review.isNotEmpty) {
-          feedbackData['tutor_notes'] = review; // Use tutor_notes for tutor review
+        // What was taught (from whatWasTaught or review)
+        if (whatWasTaught != null && whatWasTaught.isNotEmpty) {
+          feedbackData['tutor_notes'] = whatWasTaught;
+        } else if (review != null && review.isNotEmpty) {
+          feedbackData['tutor_notes'] = review;
         }
-        if (whatWentWell != null && whatWentWell.isNotEmpty) {
-          feedbackData['tutor_progress_notes'] = whatWentWell; // Use progress_notes
+        // Learner progress (from learnerProgress or whatWentWell)
+        if (learnerProgress != null && learnerProgress.isNotEmpty) {
+          feedbackData['tutor_progress_notes'] = learnerProgress;
+        } else if (whatWentWell != null && whatWentWell.isNotEmpty) {
+          feedbackData['tutor_progress_notes'] = whatWentWell;
+        }
+        // Homework assigned
+        if (homeworkAssigned != null && homeworkAssigned.isNotEmpty) {
+          feedbackData['tutor_homework_assigned'] = homeworkAssigned;
+        }
+        // Next focus areas
+        if (nextFocusAreas != null && nextFocusAreas.isNotEmpty) {
+          feedbackData['tutor_next_focus_areas'] = nextFocusAreas;
+        }
+        // Student engagement rating
+        if (studentEngagement != null) {
+          feedbackData['tutor_student_engagement'] = studentEngagement;
         }
       } else {
         // Student/Parent feedback

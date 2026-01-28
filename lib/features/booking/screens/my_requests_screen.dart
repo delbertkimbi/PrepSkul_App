@@ -56,6 +56,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   final ScrollController _scrollController = ScrollController();
   String? _highlightRequestId;
   bool _isNavigating = false; // Flag to prevent refresh during navigation
+  String? _cachedUserType; // Cache user type to avoid repeated fetches
 
   @override
   void initState() {
@@ -63,6 +64,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     _tabController = TabController(length: 5, vsync: this);
     _highlightRequestId = widget.highlightRequestId;
     _initializeConnectivity();
+    _loadUserType(); // Load user type early
     _loadRequests();
   }
 
@@ -153,6 +155,42 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     // Pattern: [RESCHEDULE REQUEST: ...]
     final reschedulePattern = RegExp(r'\n?\n?\[RESCHEDULE REQUEST:.*?\]', dotAll: true);
     return goal.replaceAll(reschedulePattern, '').trim();
+  }
+
+  /// Get current user type (student, parent, tutor)
+  /// Uses cached value if available, otherwise defaults to 'student'
+  String _getUserType() {
+    if (_cachedUserType != null) return _cachedUserType!;
+    
+    // Try to fetch from profile (async, but we return cached/default for now)
+    _loadUserType();
+    return 'student'; // Default to student until loaded
+  }
+
+  /// Load user type from profile and cache it
+  Future<void> _loadUserType() async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) {
+        _cachedUserType = 'student';
+        return;
+      }
+      
+      final profile = await SupabaseService.client
+          .from('profiles')
+          .select('user_type')
+          .eq('id', userId)
+          .maybeSingle();
+      
+      if (profile != null && mounted) {
+        _cachedUserType = profile['user_type']?.toString() ?? 'student';
+      } else {
+        _cachedUserType = 'student';
+      }
+    } catch (e) {
+      LogService.warning('Error loading user type: $e');
+      _cachedUserType = 'student';
+    }
   }
 
   // Cache tutor info for trial sessions
@@ -596,8 +634,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final totalPending =
         pendingBookingCount + pendingCustomCount + pendingTrialCount;
 
-    // FAB shows in Custom Request tab to allow creating new requests
-    final showFAB = _selectedFilter == 'custom';
+    // FAB shows in Custom Request tab only if:
+    // 1. Selected filter is 'custom'
+    // 2. At least one custom request exists
+    // 3. User is not a student (students have button on card already)
+    final showFAB = _selectedFilter == 'custom' && 
+                    _customRequests.isNotEmpty &&
+                    _getUserType() != 'student';
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
@@ -608,15 +651,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         title: Text(
           t.myRequestsTitle,
           style: GoogleFonts.poppins(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(60),
+          preferredSize: const Size.fromHeight(56),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             color: Colors.white,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -625,13 +668,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   _buildFilterChip(context, 'all', t.myRequestsFilterAll),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip(context, 'pending', t.myRequestsFilterPending),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip(context, 'custom', t.myRequestsFilterCustom),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip(context, 'trial', t.myRequestsFilterTrial),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip(context, 'booking', t.myRequestsFilterBooking),
                 ],
               ),
@@ -672,7 +715,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
-                  fontSize: 13,
+                  fontSize: 11,
                 ),
               ),
             )
@@ -1026,23 +1069,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         }
                       });
                     },
-                    icon: const Icon(Icons.add, size: 20),
+                    icon: const Icon(Icons.add, size: 18),
                     label: Text(
                       'Request a Tutor',
                       style: GoogleFonts.poppins(
                         fontWeight: FontWeight.w600,
-                        fontSize: 15,
+                        fontSize: 13,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 14,
+                        horizontal: 22,
+                        vertical: 12,
                       ),
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(18),
                       ),
                     ),
                   ),
@@ -1119,7 +1163,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     
     // Card is always clickable to show details
     return _buildNeomorphicCard(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 14),
       border: isHighlighted ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
       child: InkWell(
         onTap: () {
@@ -1133,7 +1177,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             _loadRequests();
           });
         },
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         child: _buildBookingCardContent(context, request, displayStatus),
       ),
     );
@@ -1145,7 +1189,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
             ? LinearGradient(
                 colors: [
@@ -1158,7 +1202,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             : null,
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1169,7 +1213,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 Stack(
                   children: [
                     CircleAvatar(
-                      radius: 24,
+                      radius: 22,
                       backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                       backgroundImage: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
                           ? CachedNetworkImageProvider(request.tutorAvatarUrl!)
@@ -1180,7 +1224,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                         ? request.tutorName[0].toUpperCase()
                                         : 'T',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 18,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                   color: AppTheme.primaryColor,
                               ),
@@ -1192,8 +1236,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       right: 0,
                       bottom: 0,
                       child: Container(
-                        width: 14,
-                        height: 14,
+                        width: 12,
+                        height: 12,
                         decoration: BoxDecoration(
                           color: _getStatusColor(displayStatus),
                           shape: BoxShape.circle,
@@ -1203,7 +1247,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ],
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 // Tutor name and rating
                 Expanded(
                   child: Column(
@@ -1215,7 +1259,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             child: Text(
                               request.tutorName,
                               style: GoogleFonts.poppins(
-                                fontSize: 16,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.textDark,
                               ),
@@ -1225,10 +1269,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           ),
                           // Status badge (compact, modern)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: _getStatusColor(displayStatus).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(6),
                               border: Border.all(
                                 color: _getStatusColor(displayStatus).withOpacity(0.3),
                                 width: 1,
@@ -1237,7 +1281,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             child: Text(
                               _getStatusLabel(displayStatus),
                               style: GoogleFonts.poppins(
-                                fontSize: 10,
+                                fontSize: 8,
                                 fontWeight: FontWeight.w600,
                                 color: _getStatusColor(displayStatus),
                               ),
@@ -1250,7 +1294,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                         children: [
                           Icon(
                             Icons.star_rounded,
-                            size: 14,
+                            size: 12,
                             color: Colors.amber[600],
                           ),
                           const SizedBox(width: 4),
@@ -1259,22 +1303,22 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 ? request.tutorRating.toStringAsFixed(1)
                                 : 'New',
                             style: GoogleFonts.poppins(
-                              fontSize: 12,
+                              fontSize: 10,
                               fontWeight: FontWeight.w600,
                               color: Colors.grey[700],
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                             decoration: BoxDecoration(
                               color: AppTheme.primaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               subject,
                               style: GoogleFonts.poppins(
-                                fontSize: 10,
+                                fontSize: 8,
                                 fontWeight: FontWeight.w500,
                                 color: AppTheme.primaryColor,
                               ),
@@ -1288,14 +1332,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               ],
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             
             // Session details - flat horizontal layout (no elevation)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
                 color: Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
@@ -1411,16 +1455,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            elevation: 2,
+                            elevation: 0,
                           ),
                           child: Text(
                             t.myRequestsPayNow,
                             style: GoogleFonts.poppins(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -1487,11 +1531,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               }
                             }
                           },
-                          icon: const Icon(Icons.calendar_today, size: 18),
+                          icon: const Icon(Icons.calendar_today, size: 16),
                           label: Text(
                             'View Session',
                             style: GoogleFonts.poppins(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1501,7 +1545,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            elevation: 2,
+                            elevation: 0,
                           ),
                         );
                       }
@@ -1616,17 +1660,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     ),
                   ),
                   const Spacer(),
-                  // Status badge - use _buildStatusChip for consistency
-                  _buildStatusChip(context, request.status),
+                  // Status badge - smaller for custom requests
+                  _buildStatusChip(context, request.status, isCompact: true),
                 ],
               ),
               const SizedBox(height: 16),
-              // Subject title - larger and bolder
+              // Subject title - reduced size
               Text(
                 request.formattedSubjects,
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                   height: 1.2,
                 ),
@@ -2191,7 +2235,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                elevation: 2,
+                                elevation: 0,
                               ),
                               child: Text(
                                 t.myRequestsPayNow,
@@ -2232,11 +2276,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.calendar_today, size: 18),
+                              icon: const Icon(Icons.calendar_today, size: 16),
                               label: Text(
                                 'View Session',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -2246,7 +2290,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                elevation: 2,
+                                elevation: 0,
                               ),
                             );
                           }
@@ -2952,7 +2996,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return _buildStatusChip(context, request.status);
   }
 
-  Widget _buildStatusChip(BuildContext context, String status) {
+  Widget _buildStatusChip(BuildContext context, String status, {bool isCompact = false}) {
     Color chipColor;
     final t = AppLocalizations.of(context)!;
     String label;
@@ -2993,16 +3037,19 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 6 : 8,
+        vertical: isCompact ? 3 : 4,
+      ),
       decoration: BoxDecoration(
         color: chipColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(isCompact ? 6 : 8),
         border: Border.all(color: chipColor.withOpacity(0.3)),
       ),
       child: Text(
         label,
         style: GoogleFonts.poppins(
-          fontSize: 10,
+          fontSize: isCompact ? 9 : 10,
           fontWeight: FontWeight.w600,
           color: chipColor,
         ),

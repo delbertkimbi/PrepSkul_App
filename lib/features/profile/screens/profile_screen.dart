@@ -434,7 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          vertical: 20,
+                          vertical: 16,
                           horizontal: 20,
                         ),
                         child: Column(
@@ -471,7 +471,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ],
                                     ),
                                     child: CircleAvatar(
-                                      radius: 50,
+                                      radius: 42,
                                       backgroundColor: Colors.white.withOpacity(
                                         0.2,
                                       ),
@@ -485,7 +485,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               _profilePhotoUrl!.isEmpty
                                           ? Icon(
                                               PhosphorIcons.user(),
-                                              size: 47,
+                                              size: 40,
                                               color: Colors.white.withOpacity(
                                                 0.9,
                                               ),
@@ -497,7 +497,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     bottom: 0,
                                     right: 0,
                                     child: Container(
-                                      padding: const EdgeInsets.all(6),
+                                      padding: const EdgeInsets.all(5),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
                                         shape: BoxShape.circle,
@@ -518,35 +518,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       child: Icon(
                                         PhosphorIcons.camera(),
                                         color: AppTheme.primaryColor,
-                                        size: 16,
+                                        size: 14,
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 10),
                             // Name (Full name) - Less bold
                             Text(
                               _userInfo?['fullName']?.toString() ?? 'User',
                               style: GoogleFonts.poppins(
-                                fontSize: 20,
-                                fontWeight:
-                                    FontWeight.w600, // Reduced from w700
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
                                 color: Colors.white,
                                 letterSpacing: -0.3,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             // Role Badge
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 6,
+                                horizontal: 14,
+                                vertical: 5,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(18),
                                 border: Border.all(
                                   color: Colors.white.withOpacity(0.3),
                                   width: 1.5,
@@ -555,7 +554,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Text(
                                 widget.userType.toUpperCase(),
                                 style: GoogleFonts.poppins(
-                                  fontSize: 11,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
                                   letterSpacing: 1.2,
@@ -815,10 +814,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String value,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.white.withOpacity(0.6),
@@ -838,26 +837,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 18),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 11,
               color: AppTheme.textMedium,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             value.length > 15 ? '${value.substring(0, 15)}...' : value,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),

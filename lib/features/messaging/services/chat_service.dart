@@ -8,6 +8,8 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
+import 'message_cache_service.dart';
+import 'message_queue_service.dart';
 
 /// Chat Service
 /// 
@@ -17,6 +19,10 @@ import '../models/message_model.dart';
 /// - Get messages for a conversation
 /// - Mark messages as read
 /// - Real-time subscriptions for messages and conversations
+/// 
+/// SECURITY NOTE: All database queries use Supabase's built-in parameterized queries.
+/// Methods like .eq(), .select(), .insert(), .update() automatically prevent SQL injection.
+/// User input is never directly concatenated into SQL queries.
 class ChatService {
   static final SupabaseClient _supabase = SupabaseService.client;
   
@@ -54,6 +60,16 @@ class ChatService {
   
   // Track current message lists per conversation for incremental updates
   static final Map<String, List<Message>> _currentMessageLists = {};
+  
+  // Track last access time for LRU eviction
+  static final Map<String, DateTime> _channelLastAccess = {};
+  
+  // Maximum number of active channels (to prevent memory issues)
+  static const int _maxActiveChannels = 10;
+  
+  // Single user message channel (replaces per-conversation channels)
+  static RealtimeChannel? _userMessageChannel;
+  static String? _currentUserId;
 
   /// Send a message
   /// 
@@ -61,6 +77,7 @@ class ChatService {
   static Future<Message> sendMessage({
     required String conversationId,
     required String content,
+    String? replyToMessageId,
   }) async {
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -81,9 +98,10 @@ class ChatService {
       }
       
       // Increase timeout for localhost (local development can be slower)
+      // Also increase timeout for production to handle slower network conditions
       final timeoutDuration = apiUrl.contains('localhost') || apiUrl.contains('127.0.0.1')
           ? const Duration(seconds: 30)
-          : const Duration(seconds: 10);
+          : const Duration(seconds: 20);
       
       final response = await http.post(
         Uri.parse(apiUrl),
@@ -94,6 +112,7 @@ class ChatService {
         body: jsonEncode({
           'conversationId': conversationId,
           'content': content.trim(),
+          if (replyToMessageId != null) 'replyToMessageId': replyToMessageId,
         }),
       ).timeout(
         timeoutDuration,
@@ -161,6 +180,20 @@ class ChatService {
       
     } catch (e) {
       LogService.error('Error sending message: $e');
+      // Queue message for retry if it's a network error
+      final errorString = e.toString().toLowerCase();
+      if (errorString.contains('network') || 
+          errorString.contains('connection') ||
+          errorString.contains('timeout')) {
+        try {
+          await MessageQueueService.queueMessage(
+            conversationId: conversationId,
+            content: content,
+          );
+        } catch (queueError) {
+          LogService.error('Error queueing message: $queueError');
+        }
+      }
       rethrow;
     }
   }
@@ -480,10 +513,14 @@ class ChatService {
   }
 
   /// Get messages for a conversation
+  /// 
+  /// If offset is 0, checks cache first for faster initial load.
+  /// For pagination (offset > 0), always fetches from database.
   static Future<List<Message>> getMessages({
     required String conversationId,
     int limit = 50,
     int offset = 0,
+    bool useCache = true,
   }) async {
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -491,41 +528,94 @@ class ChatService {
         throw Exception('User not authenticated');
       }
 
-      // Get messages with sender profile info
-      final response = await _supabase
-          .from('messages')
-          .select('''
-            *,
-            sender:profiles!messages_sender_id_fkey(
-              full_name,
-              avatar_url
-            )
-          ''')
-          .eq('conversation_id', conversationId)
-          .order('created_at', ascending: false)
-          .range(offset, offset + limit - 1);
-
-      if (response.isEmpty) {
-        return [];
+      // For initial load (offset 0), try cache first
+      if (offset == 0 && useCache) {
+        final cachedMessages = await MessageCacheService.getCachedMessages(conversationId, currentUserId: userId);
+        if (cachedMessages != null && cachedMessages.isNotEmpty) {
+          LogService.info('Serving ${cachedMessages.length} messages from cache');
+          // Return cached messages, but still fetch fresh data in background
+          _refreshMessagesInBackground(conversationId, limit, offset, userId);
+          return cachedMessages;
+        }
       }
 
-      final messages = <Message>[];
-      for (final msgData in response) {
-        final senderData = msgData['sender'] as Map<String, dynamic>?;
-        
-        messages.add(Message.fromJson({
-          ...msgData,
-          'sender_name': senderData?['full_name'],
-          'sender_avatar_url': senderData?['avatar_url'],
-        }, currentUserId: userId));
-      }
-
-      // Reverse to get chronological order (oldest first)
-      return messages.reversed.toList();
+      // Fetch from database
+      return await _fetchMessagesFromDatabase(conversationId, limit, offset, userId);
     } catch (e) {
       LogService.error('Error getting messages: $e');
+      // If database fetch fails and we have cache, try serving from cache
+      if (offset == 0) {
+        final cachedMessages = await MessageCacheService.getCachedMessages(conversationId, currentUserId: SupabaseService.currentUser?.id);
+        if (cachedMessages != null && cachedMessages.isNotEmpty) {
+          LogService.warning('Database fetch failed, serving from cache');
+          return cachedMessages;
+        }
+      }
       rethrow;
     }
+  }
+
+  /// Fetch messages from database
+  static Future<List<Message>> _fetchMessagesFromDatabase(
+    String conversationId,
+    int limit,
+    int offset,
+    String userId,
+  ) async {
+    // Get messages with sender profile info
+    final response = await _supabase
+        .from('messages')
+        .select('''
+          *,
+          sender:profiles!messages_sender_id_fkey(
+            full_name,
+            avatar_url
+          )
+        ''')
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: false)
+        .range(offset, offset + limit - 1);
+
+    if (response.isEmpty) {
+      return [];
+    }
+
+    final messages = <Message>[];
+    for (final msgData in response) {
+      final senderData = msgData['sender'] as Map<String, dynamic>?;
+      
+      messages.add(Message.fromJson({
+        ...msgData,
+        'sender_name': senderData?['full_name'],
+        'sender_avatar_url': senderData?['avatar_url'],
+      }, currentUserId: userId));
+    }
+
+    // Reverse to get chronological order (oldest first)
+    final result = messages.reversed.toList();
+
+    // Cache messages if this is the initial load (offset 0)
+    if (offset == 0) {
+      MessageCacheService.cacheMessages(conversationId, result).catchError((e) {
+        LogService.error('Error caching messages: $e');
+      });
+    }
+
+    return result;
+  }
+
+  /// Refresh messages in background after serving from cache
+  static void _refreshMessagesInBackground(
+    String conversationId,
+    int limit,
+    int offset,
+    String userId,
+  ) {
+    _fetchMessagesFromDatabase(conversationId, limit, offset, userId).then((messages) {
+      LogService.info('Background refresh completed: ${messages.length} messages');
+    }).catchError((e) {
+      LogService.error('Background refresh failed: $e');
+    });
   }
 
   /// Mark messages as read
@@ -570,11 +660,15 @@ class ChatService {
   }
 
   /// Watch messages in real-time for a conversation
+  /// Uses single subscription per user for better scalability
   static Stream<List<Message>> watchMessages(String conversationId) {
     final userId = SupabaseService.currentUser?.id;
     if (userId == null) {
       return Stream.value([]);
     }
+
+    // Initialize user channel if needed
+    _initializeUserMessageChannel(userId);
 
     // Return existing stream if available
     if (_messageStreams.containsKey(conversationId)) {
@@ -585,8 +679,8 @@ class ChatService {
     final controller = StreamController<List<Message>>.broadcast();
     _messageStreams[conversationId] = controller;
 
-    // Initial load
-    getMessages(conversationId: conversationId).then((messages) {
+    // Initial load (will use cache if available)
+    getMessages(conversationId: conversationId, useCache: true).then((messages) {
       if (!controller.isClosed) {
         // Store initial message list
         _currentMessageLists[conversationId] = List.from(messages);
@@ -599,50 +693,91 @@ class ChatService {
       }
     });
 
-    // Subscribe to Realtime changes
-    final channel = _supabase.channel('messages_$conversationId');
+    // Clean up when stream is cancelled
+    controller.onCancel = () {
+      _messageStreams.remove(conversationId);
+      _currentMessageLists.remove(conversationId);
+      _channelLastAccess.remove(conversationId);
+      
+      // If no more message streams, cleanup user channel
+      if (_messageStreams.isEmpty && _userMessageChannel != null) {
+        _userMessageChannel!.unsubscribe();
+        _userMessageChannel = null;
+        _activeChannels.remove('messages_user_$userId');
+      }
+    };
     
-    channel.onPostgresChanges(
+    // Update last access time
+    _channelLastAccess[conversationId] = DateTime.now();
+
+    return controller.stream;
+  }
+
+  /// Initialize single user message channel for all conversations
+  static void _initializeUserMessageChannel(String userId) {
+    // If channel already exists and user hasn't changed, reuse it
+    if (_userMessageChannel != null && _currentUserId == userId) {
+      return;
+    }
+
+    // Cleanup old channel if user changed
+    if (_userMessageChannel != null && _currentUserId != userId) {
+      _userMessageChannel!.unsubscribe();
+      _activeChannels.remove('messages_user_$_currentUserId');
+    }
+
+    _currentUserId = userId;
+    final channelKey = 'messages_user_$userId';
+
+    // Create single channel for all user's messages
+    _userMessageChannel = _supabase.channel(channelKey);
+    
+    // Subscribe to all messages where user is a participant
+    // Filter by conversation_id in application layer
+    _userMessageChannel!.onPostgresChanges(
       event: PostgresChangeEvent.all,
       schema: 'public',
       table: 'messages',
-      filter: PostgresChangeFilter(
-        type: PostgresChangeFilterType.eq,
-        column: 'conversation_id',
-        value: conversationId,
-      ),
       callback: (payload) {
-        // Process incremental update instead of reloading all messages
-        _processMessageChange(conversationId, payload, userId, controller);
+        // Extract conversation_id from payload
+        // PostgresChangePayload has newRecord and oldRecord properties
+        final newRecord = payload.newRecord;
+        final oldRecord = payload.oldRecord;
+        
+        String? conversationId;
+        if (newRecord != null) {
+          conversationId = newRecord['conversation_id'] as String?;
+        } else if (oldRecord != null) {
+          conversationId = oldRecord['conversation_id'] as String?;
+        }
+
+        if (conversationId == null) return;
+
+        // Route event to appropriate conversation stream
+        final controller = _messageStreams[conversationId];
+        if (controller != null && !controller.isClosed) {
+          _processMessageChange(conversationId, payload, userId, controller);
+        }
       },
     ).subscribe();
 
-    _activeChannels['messages_$conversationId'] = channel;
-
-    // Clean up when stream is cancelled
-    controller.onCancel = () {
-      channel.unsubscribe();
-      _activeChannels.remove('messages_$conversationId');
-      _messageStreams.remove(conversationId);
-      _currentMessageLists.remove(conversationId);
-    };
-
-    return controller.stream;
+    _activeChannels[channelKey] = _userMessageChannel!;
+    LogService.info('Initialized single user message channel for user: $userId');
   }
 
   /// Process incremental message change from PostgresChangeEvent
   static Future<void> _processMessageChange(
     String conversationId,
-    Map<String, dynamic> payload,
+    PostgresChangePayload payload,
     String userId,
     StreamController<List<Message>> controller,
   ) async {
     if (controller.isClosed) return;
 
     try {
-      final eventType = payload['eventType'] as String?;
-      final newRecord = payload['new'] as Map<String, dynamic>?;
-      final oldRecord = payload['old'] as Map<String, dynamic>?;
+      final eventType = payload.eventType;
+      final newRecord = payload.newRecord;
+      final oldRecord = payload.oldRecord;
 
       // Get current message list for this conversation
       final currentMessages = _currentMessageLists[conversationId] ?? [];
@@ -658,6 +793,12 @@ class ChatService {
         updatedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         
         _currentMessageLists[conversationId] = updatedMessages;
+        
+        // Update cache
+        MessageCacheService.addCachedMessage(conversationId, newMessage).catchError((e) {
+          LogService.error('Error updating cache for new message: $e');
+        });
+        
         if (!controller.isClosed) {
           controller.add(updatedMessages);
         }
@@ -675,6 +816,12 @@ class ChatService {
           updatedMessages[messageIndex] = updatedMessage;
           
           _currentMessageLists[conversationId] = updatedMessages;
+          
+          // Update cache
+          MessageCacheService.updateCachedMessage(conversationId, updatedMessage).catchError((e) {
+            LogService.error('Error updating cache for updated message: $e');
+          });
+          
           if (!controller.isClosed) {
             controller.add(updatedMessages);
           }
@@ -693,6 +840,12 @@ class ChatService {
         final updatedMessages = currentMessages.where((m) => m.id != messageId).toList();
         
         _currentMessageLists[conversationId] = updatedMessages;
+        
+        // Update cache
+        MessageCacheService.removeCachedMessage(conversationId, messageId).catchError((e) {
+          LogService.error('Error updating cache for deleted message: $e');
+        });
+        
         if (!controller.isClosed) {
           controller.add(updatedMessages);
         }
@@ -825,17 +978,30 @@ class ChatService {
       channel.unsubscribe();
       _activeChannels.remove('conversations_$userId');
       _conversationStreams.remove(streamKey);
+      _channelLastAccess.remove('conversations_$userId');
     };
+    
+    // Update last access time
+    _channelLastAccess['conversations_$userId'] = DateTime.now();
 
     return controller.stream;
   }
 
   /// Unsubscribe from a conversation's message stream
   static void unsubscribeFromMessages(String conversationId) {
-    final channel = _activeChannels.remove('messages_$conversationId');
-    channel?.unsubscribe();
     _messageStreams[conversationId]?.close();
     _messageStreams.remove(conversationId);
+    _currentMessageLists.remove(conversationId);
+    _channelLastAccess.remove(conversationId);
+    
+    // If no more message streams, cleanup user channel
+    final userId = SupabaseService.currentUser?.id;
+    if (_messageStreams.isEmpty && _userMessageChannel != null && userId != null) {
+      _userMessageChannel!.unsubscribe();
+      _userMessageChannel = null;
+      _activeChannels.remove('messages_user_$userId');
+      _currentUserId = null;
+    }
   }
 
   /// Unsubscribe from conversations stream
@@ -1058,6 +1224,81 @@ class ChatService {
       LogService.error('Error getting archived conversations: $e');
       rethrow;
     }
+  }
+
+  /// Cleanup inactive channels using LRU eviction
+  /// Keeps only the most recently accessed channels
+  static void _cleanupInactiveChannels() {
+    if (_activeChannels.length <= _maxActiveChannels) {
+      return;
+    }
+
+    // Sort channels by last access time (oldest first)
+    final sortedChannels = _channelLastAccess.entries.toList()
+      ..sort((a, b) => a.value.compareTo(b.value));
+
+    // Remove oldest channels until we're under the limit
+    final channelsToRemove = sortedChannels
+        .take(_activeChannels.length - _maxActiveChannels)
+        .toList();
+
+    for (final entry in channelsToRemove) {
+      final channelKey = entry.key;
+      final channel = _activeChannels[channelKey];
+      
+      if (channel != null) {
+        LogService.info('Cleaning up inactive channel: $channelKey');
+        channel.unsubscribe();
+        _activeChannels.remove(channelKey);
+        _channelLastAccess.remove(channelKey);
+        
+        // Also cleanup associated stream controllers and message lists
+        if (channelKey.startsWith('messages_')) {
+          final conversationId = channelKey.replaceFirst('messages_', '');
+          _messageStreams[conversationId]?.close();
+          _messageStreams.remove(conversationId);
+          _currentMessageLists.remove(conversationId);
+        } else if (channelKey.startsWith('conversations_')) {
+          _conversationStreams['conversations_all']?.close();
+          _conversationStreams.remove('conversations_all');
+        }
+      }
+    }
+  }
+
+  /// Cleanup all channels (called on app lifecycle events)
+  static void cleanupAllChannels() {
+    LogService.info('Cleaning up all messaging channels');
+    
+    // Cleanup user message channel
+    _userMessageChannel?.unsubscribe();
+    _userMessageChannel = null;
+    _currentUserId = null;
+    
+    for (final channel in _activeChannels.values) {
+      channel.unsubscribe();
+    }
+    
+    _activeChannels.clear();
+    
+    for (final controller in _messageStreams.values) {
+      controller.close();
+    }
+    _messageStreams.clear();
+    
+    for (final controller in _conversationStreams.values) {
+      controller.close();
+    }
+    _conversationStreams.clear();
+    
+    _currentMessageLists.clear();
+    _channelLastAccess.clear();
+  }
+
+  /// Cleanup channels when app goes to background
+  static void onAppPaused() {
+    LogService.info('App paused - cleaning up inactive messaging channels');
+    _cleanupInactiveChannels();
   }
 
   /// Get user profile

@@ -25,7 +25,7 @@ import 'package:prepskul/features/tutor/screens/tutor_onboarding_choice_screen.d
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/payment/screens/payment_history_screen.dart';
 import 'package:prepskul/features/booking/screens/my_sessions_screen.dart';
-import 'package:prepskul/features/booking/screens/session_feedback_screen.dart';
+import 'package:prepskul/features/booking/screens/session_feedback_flow_screen.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/language_switcher.dart';
 import 'package:prepskul/core/navigation/main_navigation.dart';
@@ -50,6 +50,8 @@ import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'dart:async';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1055,7 +1057,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           if (pathParts.length >= 3) {
             final sessionId = pathParts[2]; // /sessions/{sessionId}/feedback
             return MaterialPageRoute(
-              builder: (context) => SessionFeedbackScreen(sessionId: sessionId),
+              settings: const RouteSettings(name: '/session-feedback-flow'),
+              builder: (context) => SessionFeedbackFlowScreen(sessionId: sessionId),
             );
           }
         }
@@ -1206,6 +1209,41 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
   Future<void> _initializeAndNavigate() async {
     if (_isNavigating || _navigationComplete) return;
     _isNavigating = true;
+
+    // Check connectivity FIRST - if offline, use cached data immediately
+    bool isOffline = false;
+    try {
+      final connectivity = ConnectivityService();
+      await connectivity.initialize();
+      final isOnline = await connectivity.checkConnectivity();
+      isOffline = !isOnline;
+      
+      if (isOffline) {
+        LogService.info('[INIT_LOAD] Offline detected - checking cached auth session');
+        
+        // Check for cached auth session
+        final prefs = await SharedPreferences.getInstance();
+        final cachedIsLoggedIn = prefs.getBool('is_logged_in') ?? false;
+        
+        if (cachedIsLoggedIn && SupabaseService.isAuthenticated) {
+          // User was logged in - proceed with cached session immediately
+          LogService.info('[INIT_LOAD] Cached session found - proceeding offline without network delay');
+          // Skip network waits and proceed directly to navigation
+        } else if (!cachedIsLoggedIn) {
+          // No cached session - can't proceed offline, show auth immediately
+          LogService.info('[INIT_LOAD] No cached session - showing auth screen immediately');
+          if (mounted) {
+            _navigateInstant('/auth-method-selection', null);
+            setState(() {
+              _navigationComplete = true;
+            });
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      LogService.warning('[INIT_LOAD] Error checking connectivity: $e - proceeding normally');
+    }
 
     // CRITICAL: Check authentication synchronously FIRST to avoid login screen flash
     // This prevents showing login screen for authenticated users during hot restart

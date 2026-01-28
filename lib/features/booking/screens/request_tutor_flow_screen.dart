@@ -429,7 +429,7 @@ safeSetState(() {
         title: Text(
           'Request a Tutor',
           style: GoogleFonts.poppins(
-            fontSize: 15,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: Colors.black,
           ),
@@ -439,7 +439,7 @@ safeSetState(() {
         children: [
           // Progress indicator
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             child: Row(
               children: List.generate(_totalSteps, (index) {
                 return Expanded(
@@ -477,7 +477,7 @@ safeSetState(() {
 
           // Navigation buttons
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
@@ -495,7 +495,7 @@ safeSetState(() {
                     child: OutlinedButton(
                       onPressed: _previousStep,
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         side: BorderSide(color: AppTheme.primaryColor),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -603,7 +603,7 @@ safeSetState(() {
                 child: Text(
             'What subject do you need help with?',
             style: GoogleFonts.poppins(
-                    fontSize: 15,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
                     height: 1.2,
@@ -617,7 +617,7 @@ safeSetState(() {
                         Text(
               'Select a subject you need tutoring for',
                       style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 9,
                             color: AppTheme.textMedium,
                 fontWeight: FontWeight.w500,
             ),
@@ -692,7 +692,7 @@ safeSetState(() {
                       Text(
                         subject,
                         style: GoogleFonts.poppins(
-                              fontSize: 12,
+                              fontSize: 10,
                           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                               color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                         ),
@@ -791,7 +791,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorEducationLevel,
             style: GoogleFonts.poppins(
-                  fontSize: 15,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
@@ -819,7 +819,7 @@ safeSetState(() {
                 borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: isSelected 
                         ? AppTheme.primaryColor.withOpacity(0.1)
@@ -835,7 +835,7 @@ safeSetState(() {
                   child: Row(
                 children: [
                       Container(
-                        padding: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           color: isSelected
                               ? AppTheme.primaryColor.withOpacity(0.15)
@@ -853,7 +853,7 @@ safeSetState(() {
                         child: Text(
                     level,
                     style: GoogleFonts.poppins(
-                            fontSize: 11,
+                            fontSize: 9,
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                             color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                           ),
@@ -888,7 +888,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorSpecificRequirements,
             style: GoogleFonts.poppins(
-                  fontSize: 15,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -924,7 +924,7 @@ safeSetState(() {
                 borderRadius: BorderRadius.circular(12),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected 
                         ? AppTheme.primaryColor.withOpacity(0.1)
@@ -952,7 +952,7 @@ safeSetState(() {
                       child: Text(
                         req['label'] as String,
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 10,
                             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                             color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
                           ),
@@ -1053,7 +1053,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorTutorPreferences,
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
@@ -1226,7 +1226,7 @@ safeSetState(() {
                           Text(
                             qual,
                             style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 9,
                       fontWeight: FontWeight.w500,
                               color: isSelected ? Colors.white : AppTheme.textDark,
                             ),
@@ -1275,7 +1275,7 @@ safeSetState(() {
           Text(
             AppLocalizations.of(context)!.requestTutorScheduleLocation,
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -1333,7 +1333,7 @@ safeSetState(() {
                       Text(
                         day,
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 10,
                   fontWeight: FontWeight.w500,
                           color: isSelected ? Colors.white : AppTheme.textDark,
                         ),
@@ -1431,7 +1431,7 @@ safeSetState(() {
           Text(
             'Review Your Request',
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -1542,7 +1542,7 @@ safeSetState(() {
                   child: Text(
                     'Select a reason to help us find the best tutor for you',
                     style: GoogleFonts.poppins(
-                      fontSize: 12,
+                      fontSize: 10,
                       color: AppTheme.textMedium,
                     ),
                   ),
@@ -2082,7 +2082,7 @@ safeSetState(() {
                     errorTitle,
                     style: GoogleFonts.poppins(
                       fontWeight: FontWeight.w600,
-                      fontSize: 15,
+                      fontSize: 13,
                       color: AppTheme.textDark,
                     ),
                   ),
@@ -2331,7 +2331,7 @@ safeSetState(() {
                   child: Text(
               AppLocalizations.of(context)!.requestTutorSendWhatsApp,
               style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
                   ),
@@ -2446,7 +2446,7 @@ safeSetState(() {
             Text(
                     isEdit ? 'Request Updated!' : 'Request Submitted!',
               style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textDark,
               ),
@@ -2483,7 +2483,7 @@ safeSetState(() {
                 child: Text(
                   AppLocalizations.of(context)!.requestTutorDone,
                   style: GoogleFonts.poppins(
-                    fontSize: 15,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),

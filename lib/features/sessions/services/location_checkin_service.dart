@@ -2,6 +2,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/storage_service.dart';
 
 /// Location Check-In Service
 ///
@@ -462,6 +463,57 @@ class LocationCheckInService {
     } catch (e) {
       LogService.error('Error getting attendance record: $e');
       return null;
+    }
+  }
+
+  /// Upload selfie for presence validation
+  ///
+  /// Stores the image in Supabase Storage and attempts to attach it to
+  /// the session_attendance record (if the column exists).
+  static Future<Map<String, dynamic>> uploadPresenceSelfie({
+    required String sessionId,
+    required String userId,
+    required String userType,
+    required dynamic selfieFile,
+  }) async {
+    try {
+      final photoUrl = await StorageService.uploadDocument(
+        userId: userId,
+        documentFile: selfieFile,
+        documentType: 'session_selfie_$sessionId',
+      );
+
+      try {
+        final attendance = await _supabase
+            .from('session_attendance')
+            .select('id')
+            .eq('session_id', sessionId)
+            .eq('user_id', userId)
+            .eq('user_type', userType)
+            .maybeSingle();
+
+        if (attendance != null) {
+          await _supabase.from('session_attendance').update({
+            'check_in_photo_url': photoUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', attendance['id']);
+        }
+      } catch (e) {
+        LogService.warning('Selfie uploaded but not saved to attendance: $e');
+      }
+
+      return {
+        'success': true,
+        'photo_url': photoUrl,
+        'message': 'Selfie uploaded successfully',
+      };
+    } catch (e) {
+      LogService.error('Error uploading presence selfie: $e');
+      return {
+        'success': false,
+        'message': 'Failed to upload selfie. Please try again.',
+        'error': e.toString(),
+      };
     }
   }
 

@@ -271,13 +271,14 @@ class _MainNavigationState extends State<MainNavigation> {
         selectedItemColor: AppTheme.primaryColor,
         unselectedItemColor: AppTheme.textMedium,
         selectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w400,
         ),
+        iconSize: 22,
         items: items,
         ),
       ),

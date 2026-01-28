@@ -11,11 +11,22 @@ import 'dart:async';
 import '../services/chat_service.dart';
 import '../services/conversation_lifecycle_service.dart';
 import '../services/chat_suggestion_service.dart';
+import '../services/typing_service.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 import '../widgets/action_suggestion_banner.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
+
+/// Message status enum for UI
+enum MessageStatus {
+  sending,
+  sent,
+  delivered,
+  read,
+  failed,
+}
 
 /// Chat Screen
 /// 
@@ -33,7 +44,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   List<Message> _messages = [];
@@ -53,18 +64,49 @@ class _ChatScreenState extends State<ChatScreen> {
   Timer? _typingDebounceTimer; // For typing indicators
   Timer? _messageBatchTimer; // For message batching
   List<String> _pendingMessages = []; // Messages waiting to be sent
+  Set<String> _loadedMessageIds = {}; // Track loaded message IDs for pagination
+  Set<String> _optimisticMessageIds = {}; // Track optimistic message IDs for deduplication
+  Map<String, Timer> _optimisticMessageTimers = {}; // Timers to remove optimistic messages after timeout
+  StreamSubscription? _typingStream;
+  bool _isOtherUserTyping = false;
+  Message? _replyingToMessage; // Message being replied to
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadMessages();
     _subscribeToMessages();
     _loadSuggestions();
     _checkArchiveStatus();
-    // Listen to text changes to update button state
+    _initializeTyping();
+    // Listen to text changes to update button state and typing
     _messageController.addListener(_onTextChanged);
     // Listen to scroll for lazy loading
     _scrollController.addListener(_onScroll);
+  }
+
+  /// Initialize typing service
+  void _initializeTyping() {
+    TypingService.initialize(widget.conversation.id);
+    
+    // Listen for typing events
+    _typingStream = TypingService.watchTyping(widget.conversation.id).listen((isTyping) {
+      if (mounted) {
+        setState(() {
+          _isOtherUserTyping = isTyping;
+        });
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // App went to background - cleanup inactive channels
+      ChatService.onAppPaused();
+    }
   }
 
   /// Handle scroll events for lazy loading
@@ -99,13 +141,7 @@ class _ChatScreenState extends State<ChatScreen> {
           setState(() {
             _isArchived = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Conversation unarchived'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
+          ErrorHandlerService.showSuccess(context, 'Conversation unarchived');
         }
       } else {
         await ChatService.archiveConversation(widget.conversation.id);
@@ -113,23 +149,16 @@ class _ChatScreenState extends State<ChatScreen> {
           setState(() {
             _isArchived = true;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Conversation archived'),
-              backgroundColor: Colors.blue,
-              duration: Duration(seconds: 2),
-            ),
-          );
+          ErrorHandlerService.showSuccess(context, 'Conversation archived');
         }
       }
     } catch (e) {
       LogService.error('Error archiving/unarchiving conversation: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to ${_isArchived ? 'unarchive' : 'archive'} conversation'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to ${_isArchived ? 'unarchive' : 'archive'} conversation',
         );
       }
     }
@@ -141,6 +170,13 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _hasText = hasText;
       });
+    }
+    
+    // Send typing event when user types
+    if (hasText) {
+      TypingService.sendTypingEvent(widget.conversation.id);
+    } else {
+      TypingService.stopTyping(widget.conversation.id);
     }
   }
   
@@ -175,11 +211,11 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       LogService.error('Error navigating to book trial: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load tutor information. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to load tutor information. Please try again.',
+          _navigateToBookTrial,
         );
       }
     }
@@ -187,9 +223,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _typingDebounceTimer?.cancel();
     _messageBatchTimer?.cancel();
+    // Cancel all optimistic message timers
+    for (final timer in _optimisticMessageTimers.values) {
+      timer.cancel();
+    }
+    _optimisticMessageTimers.clear();
     _messageStream?.cancel();
+    _typingStream?.cancel();
+    TypingService.stopTyping(widget.conversation.id);
     ChatService.unsubscribeFromMessages(widget.conversation.id);
     _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
@@ -220,15 +264,17 @@ class _ChatScreenState extends State<ChatScreen> {
           _currentOffset = messages.length;
           // If we got fewer messages than requested, no more available
           _hasMoreMessages = messages.length >= _messagesPerPage;
+          // Track loaded message IDs
+          _loadedMessageIds = messages.map((m) => m.id).toSet();
         });
         
         // Mark messages as read when chat screen opens
         _markMessagesAsRead();
         
-        // Scroll to bottom
+        // Scroll to bottom on initial load
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+            _scrollToBottom(animated: false);
           }
         });
       }
@@ -263,9 +309,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (mounted && newMessages.isNotEmpty) {
         safeSetState(() {
-          // Prepend new messages to existing list
-          _messages = [...newMessages, ..._messages];
-          _currentOffset += newMessages.length;
+          // Prepend new messages to existing list (only if not already loaded)
+          final newMessageIds = newMessages.map((m) => m.id).toSet();
+          final uniqueNewMessages = newMessages.where((m) => !_loadedMessageIds.contains(m.id)).toList();
+          
+          if (uniqueNewMessages.isNotEmpty) {
+            _messages = [...uniqueNewMessages, ..._messages];
+            _currentOffset += uniqueNewMessages.length;
+            _loadedMessageIds.addAll(newMessageIds);
+          }
+          
           _hasMoreMessages = newMessages.length >= _messagesPerPage;
           _isLoadingMore = false;
         });
@@ -297,50 +350,94 @@ class _ChatScreenState extends State<ChatScreen> {
   void _subscribeToMessages() {
     _messageStream = ChatService.watchMessages(widget.conversation.id).listen((messages) {
       if (mounted) {
-        // Remove optimistic (temp_) messages when real messages arrive
-        // Real messages from server will replace optimistic ones
-        final realMessages = messages.where((m) => !m.id.startsWith('temp_')).toList();
-        final optimisticMessages = _messages.where((m) => m.id.startsWith('temp_')).toList();
-        
-        // Merge: real messages + optimistic messages that haven't been confirmed yet
-        // Improved matching: content + senderId + timestamp (within 10s window for slow networks)
-        final mergedMessages = <Message>[];
+        // Merge real-time updates with existing paginated list
+        _mergeRealTimeMessages(messages);
+      }
+    });
+  }
+
+  /// Merge real-time message updates with existing paginated list
+  /// Preserves pagination state and only adds/updates messages that are new or changed
+  /// Uses ID-based deduplication for optimistic messages
+  void _mergeRealTimeMessages(List<Message> realTimeMessages) {
+    // Separate real messages from optimistic messages
+    final realMessages = realTimeMessages.where((m) => !m.id.startsWith('temp_')).toList();
+    
+    // Start with existing messages (preserving pagination)
+    final mergedMessages = List<Message>.from(_messages);
+    
+    // Track optimistic messages to remove (process after all real messages are added)
+    final optimisticToRemove = <String>{};
+    
+    // Process each real-time message
         for (final realMsg in realMessages) {
+      // Check if message already exists in our list
+      final existingIndex = mergedMessages.indexWhere((m) => m.id == realMsg.id);
+      
+      if (existingIndex != -1) {
+        // Update existing message (e.g., read receipt update)
+        mergedMessages[existingIndex] = realMsg;
+      } else {
+        // New message - add it if it's within our loaded range
+        // For pagination: only add if it's newer than the oldest loaded message
+        // or if we're at the bottom (no pagination loaded)
+        if (_messages.isEmpty || 
+            realMsg.createdAt.isAfter(_messages.last.createdAt) ||
+            realMsg.createdAt.isAtSameMomentAs(_messages.last.createdAt)) {
+          // New message at the end - add it
           mergedMessages.add(realMsg);
-          // Remove optimistic message with same content if it exists
-          // Use 10 second window to account for network delays
-          optimisticMessages.removeWhere((opt) => 
-            opt.content.trim() == realMsg.content.trim() && 
-            opt.senderId == realMsg.senderId &&
-            (realMsg.createdAt.difference(opt.createdAt).inSeconds.abs() < 10)
-          );
+          _loadedMessageIds.add(realMsg.id);
+          
+          // Try to match with optimistic messages (more lenient matching)
+          // Match optimistic messages even if content is slightly different (handles formatting)
+          for (final optMsg in mergedMessages.where((m) => m.id.startsWith('temp_'))) {
+            // Match by content (normalized), sender, conversation, and time window (within 60 seconds for better matching)
+            final optContent = optMsg.content.trim().toLowerCase();
+            final realContent = realMsg.content.trim().toLowerCase();
+            final contentMatch = optContent == realContent || 
+                                (optContent.length > 10 && realContent.length > 10 && 
+                                 (optContent.contains(realContent.substring(0, optContent.length > realContent.length ? realContent.length : optContent.length)) ||
+                                  realContent.contains(optContent.substring(0, realContent.length > optContent.length ? optContent.length : realContent.length))));
+            final senderMatch = optMsg.senderId == realMsg.senderId;
+            final conversationMatch = optMsg.conversationId == realMsg.conversationId;
+            final timeWindow = realMsg.createdAt.difference(optMsg.createdAt).inSeconds.abs() < 60; // Increased window
+            
+            if (contentMatch && senderMatch && conversationMatch && timeWindow) {
+              optimisticToRemove.add(optMsg.id);
+              LogService.debug('✅ Matched optimistic message ${optMsg.id} with real message ${realMsg.id}');
+            }
+          }
         }
-        // Add remaining optimistic messages (not yet confirmed)
-        // Keep them until real message arrives or timeout
-        mergedMessages.addAll(optimisticMessages);
-        
-        // Sort by creation time
+        // If message is older than our oldest loaded message, it's from pagination
+        // and we don't add it here (it will be loaded via pagination if user scrolls up)
+      }
+    }
+    
+    // Remove matched optimistic messages (after processing all real messages)
+    for (final optId in optimisticToRemove) {
+      mergedMessages.removeWhere((m) => m.id == optId);
+      _optimisticMessageIds.remove(optId);
+      _optimisticMessageTimers[optId]?.cancel();
+      _optimisticMessageTimers.remove(optId);
+      LogService.debug('🗑️ Removed optimistic message: $optId');
+    }
+    
+    // Sort by creation time to maintain order
         mergedMessages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         
         safeSetState(() {
           _messages = mergedMessages;
         });
         
-        // Scroll to bottom on new message
+    // Smart scroll: only auto-scroll if user is near bottom
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              _scrollController.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
+      if (_scrollController.hasClients && _isNearBottom()) {
+        _scrollToBottom(animated: true);
           }
         });
         
         // Mark messages as read
         _markMessagesAsRead();
-      }
-    });
   }
 
   Future<void> _markMessagesAsRead() async {
@@ -369,11 +466,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final isValid = await ConversationLifecycleService.isConversationValid(widget.conversation.id);
     if (!isValid) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This conversation is no longer active'),
-            backgroundColor: Colors.orange,
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          'This conversation is no longer active',
+          'This conversation is no longer active',
         );
       }
       return;
@@ -386,8 +482,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final currentUserAvatarUrl = SupabaseService.currentUser?.userMetadata?['avatar_url'] as String?;
 
     // Create optimistic message (show immediately)
+    final optimisticId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
     final optimisticMessage = Message(
-      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      id: optimisticId,
       conversationId: widget.conversation.id,
       senderId: currentUserId ?? '',
       content: content,
@@ -398,6 +495,31 @@ class _ChatScreenState extends State<ChatScreen> {
       moderationStatus: 'pending', // Mark as pending until confirmed
     );
 
+    // Track optimistic message ID
+    _optimisticMessageIds.add(optimisticId);
+
+    // Set timeout to remove optimistic message if real message doesn't arrive (increased to 30s to prevent disappearing)
+    _optimisticMessageTimers[optimisticId] = Timer(const Duration(seconds: 30), () {
+      if (mounted && _optimisticMessageIds.contains(optimisticId)) {
+        // Only remove if we're sure it failed (check if real message exists)
+        final realMessageExists = _messages.any((m) => 
+          !m.id.startsWith('temp_') && 
+          m.content.trim() == optimisticMessage.content.trim() &&
+          m.senderId == optimisticMessage.senderId &&
+          (m.createdAt.difference(optimisticMessage.createdAt).inSeconds.abs() < 30)
+        );
+        
+        if (!realMessageExists) {
+          safeSetState(() {
+            _messages = _messages.where((m) => m.id != optimisticId).toList();
+            _optimisticMessageIds.remove(optimisticId);
+          });
+          _optimisticMessageTimers.remove(optimisticId);
+          LogService.warning('Removed optimistic message after timeout: $optimisticId');
+        }
+      }
+    });
+
     // Add optimistic message to UI immediately for instant feedback
     safeSetState(() {
       _messages = [..._messages, optimisticMessage];
@@ -405,17 +527,19 @@ class _ChatScreenState extends State<ChatScreen> {
       _errorMessage = null;
     });
 
-    // Clear input immediately
+    // Clear input and reply state immediately
     _messageController.clear();
+    safeSetState(() {
+      _replyingToMessage = null;
+    });
 
-    // Scroll to bottom immediately
+    // Stop typing indicator
+    TypingService.stopTyping(widget.conversation.id);
+
+    // Scroll to bottom immediately (user just sent a message)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        _scrollToBottom(animated: true);
       }
     });
 
@@ -430,12 +554,10 @@ class _ChatScreenState extends State<ChatScreen> {
             _messages = _messages.where((m) => m.id != optimisticMessage.id).toList();
             _isSending = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(preview['warnings']?.first ?? 'Message contains prohibited content'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
+          ErrorHandlerService.showErrorSnackbar(
+            context,
+            preview['warnings']?.first ?? 'Message contains prohibited content',
+            'Message contains prohibited content',
           );
         }
         return;
@@ -446,7 +568,24 @@ class _ChatScreenState extends State<ChatScreen> {
       ChatService.sendMessage(
         conversationId: widget.conversation.id,
         content: content,
-      ).catchError((error) {
+        replyToMessageId: _replyingToMessage?.id,
+      ).then((_) {
+        // Success - immediately update optimistic message to show "sent" status
+        // This prevents messages from staying in "sending" state if realtime is slow
+        if (mounted && _optimisticMessageIds.contains(optimisticId)) {
+          safeSetState(() {
+            final optIndex = _messages.indexWhere((m) => m.id == optimisticId);
+            if (optIndex != -1) {
+              // Update optimistic message to show as "sent" (moderationStatus = approved means sent)
+              _messages[optIndex] = _messages[optIndex].copyWith(
+                moderationStatus: 'approved',
+              );
+              LogService.debug('✅ Updated optimistic message to sent status: $optimisticId');
+            }
+          });
+        }
+        // Real message will arrive via realtime subscription and replace the optimistic one
+      }).catchError((error) {
         // Only handle errors - success is handled by realtime subscription
         LogService.error('Error sending message: $error');
         if (mounted) {
@@ -456,38 +595,19 @@ class _ChatScreenState extends State<ChatScreen> {
             _errorMessage = errorMsg;
             _isSending = false;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMsg),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-            ),
+          ErrorHandlerService.showErrorSnackbar(
+            context,
+            error,
+            'Failed to send message',
+            () => _sendMessage(),
           );
         }
+        return null; // Return null to satisfy catchError return type
       });
 
       // The real message will arrive via realtime subscription and replace the optimistic one
-      // Fallback: If real message doesn't arrive within 10 seconds (slow networks), keep optimistic message
-      // This ensures messages don't disappear even if realtime is slow
-      Future.delayed(const Duration(seconds: 10), () {
-        if (mounted) {
-          // Check if real message with same content has arrived
-          final realMessageExists = _messages.any((m) => 
-            !m.id.startsWith('temp_') && 
-            m.content.trim() == optimisticMessage.content.trim() &&
-            m.senderId == optimisticMessage.senderId &&
-            (m.createdAt.difference(optimisticMessage.createdAt).inSeconds.abs() < 10)
-          );
-          
-          // Only remove optimistic message if real one hasn't arrived
-          // If real message hasn't arrived, keep optimistic (better UX than disappearing message)
-          if (!realMessageExists) {
-            // Don't remove - keep optimistic message as fallback
-            // Real message will eventually arrive and replace it
-            LogService.warning('Real message not received within 10s, keeping optimistic message');
-          }
-        }
-      });
+      // Don't remove optimistic message prematurely - let it stay until real message arrives
+      // This prevents messages from disappearing
     } catch (e) {
       // Handle any errors from preview message
       LogService.error('Error in message send flow: $e');
@@ -496,12 +616,11 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages = _messages.where((m) => m.id != optimisticMessage.id).toList();
           _isSending = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to send message. Please try again.'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to send message. Please try again.',
+          () => _sendMessage(),
         );
       }
     }
@@ -522,6 +641,191 @@ class _ChatScreenState extends State<ChatScreen> {
     } else {
       return DateFormat('MMM d').format(lastSeen);
     }
+  }
+
+  /// Check if user is near bottom of scroll (within 100px)
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return false;
+    
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    final distanceFromBottom = maxScroll - currentScroll;
+    
+    // Consider "near bottom" if within 100px
+    return distanceFromBottom < 100;
+  }
+
+  /// Scroll to bottom of message list
+  void _scrollToBottom({bool animated = true}) {
+    if (!_scrollController.hasClients) return;
+    
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    
+    if (animated) {
+      _scrollController.animateTo(
+        maxScroll,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    } else {
+      _scrollController.jumpTo(maxScroll);
+    }
+  }
+
+  /// Build empty state with contextual messages
+  Widget _buildEmptyState() {
+    // Check if conversation is archived
+    if (_isArchived) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.archive_outlined,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'This conversation is archived',
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Unarchive to continue the conversation',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          ),
+        );
+      }
+
+    // Default empty state for new conversation
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.chat_bubble_outline,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No messages yet',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Start the conversation by sending a message!',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (_showBookTrialButton) ...[
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _navigateToBookTrial,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                child: Text(
+                  'Book a Trial Session',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build skeleton loader for initial message load
+  Widget _buildSkeletonLoader() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        final isRight = index % 3 == 0; // Alternate left/right
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            mainAxisAlignment: isRight ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              if (!isRight) ...[
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.grey[300],
+                ),
+                const SizedBox(width: 8),
+              ],
+              Container(
+                width: MediaQuery.of(context).size.width * 0.6,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 14,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      height: 14,
+                      width: MediaQuery.of(context).size.width * 0.4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isRight) ...[
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.grey[300],
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
   }
 
   String _formatMessageTime(DateTime time) {
@@ -558,18 +862,18 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5), // WhatsApp-like background
+      backgroundColor: Colors.grey[50], // Seamless background
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-          leading: IconButton(
+        leading: IconButton(
           icon: Icon(PhosphorIcons.arrowLeft(), color: AppTheme.textDark),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
           children: [
             CircleAvatar(
-              radius: 18,
+              radius: 16,
               backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
               backgroundImage: widget.conversation.otherUserAvatarUrl != null &&
                       widget.conversation.otherUserAvatarUrl!.isNotEmpty &&
@@ -586,14 +890,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           ? widget.conversation.otherUserName![0].toUpperCase()
                           : 'U',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
                       ),
                     )
                   : null,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -601,7 +905,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Text(
                     widget.conversation.otherUserName ?? 'Unknown User',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
@@ -611,15 +915,24 @@ class _ChatScreenState extends State<ChatScreen> {
                     Text(
                       'Active',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 10,
                         color: Colors.green[600],
+                      ),
+                    )
+                  else if (_isOtherUserTyping)
+                    Text(
+                      'Typing...',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: Colors.green[600],
+                        fontStyle: FontStyle.italic,
                       ),
                     )
                   else if (widget.conversation.otherUserLastSeen != null)
                     Text(
                       _formatLastSeen(widget.conversation.otherUserLastSeen!),
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 10,
                         color: Colors.grey[600],
                       ),
                     ),
@@ -640,7 +953,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Text(
                     'Book trial',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: AppTheme.textDark,
                       decoration: TextDecoration.underline,
@@ -666,14 +979,14 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     Icon(
                       _isArchived ? Icons.unarchive : Icons.archive_outlined,
-                      size: 20,
+                      size: 18,
                       color: AppTheme.textDark,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Text(
                       _isArchived ? 'Unarchive' : 'Archive',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: AppTheme.textDark,
                       ),
                     ),
@@ -689,36 +1002,9 @@ class _ChatScreenState extends State<ChatScreen> {
           // Messages list
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? _buildSkeletonLoader()
                 : _messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline,
-                              size: 64,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No messages yet',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Start the conversation!',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
+                    ? _buildEmptyState()
                     : ListView.builder(
                         controller: _scrollController,
                         padding: const EdgeInsets.all(16),
@@ -728,10 +1014,25 @@ class _ChatScreenState extends State<ChatScreen> {
                         itemBuilder: (context, index) {
                           // Show loading indicator at top when loading more
                           if (_isLoadingMore && index == 0) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 16),
-                              child: Center(
-                                child: CircularProgressIndicator(),
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Loading more...',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                           }
@@ -765,7 +1066,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             children: [
                               if (showTimeSeparator)
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
@@ -820,11 +1121,71 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           
-          // Message input
+          // Reply banner (if replying)
+          if (_replyingToMessage != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Replying to ${_replyingToMessage!.isCurrentUser ? 'You' : (_replyingToMessage!.senderName ?? 'Unknown')}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _replyingToMessage!.content,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: Colors.grey[700],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(PhosphorIcons.x(), size: 18, color: Colors.grey[600]),
+                    onPressed: () {
+                      safeSetState(() {
+                        _replyingToMessage = null;
+                      });
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+          
+          // Message input - seamless single color like WhatsApp/Preply
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Colors.grey[50],
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -837,6 +1198,15 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(
+                          color: Colors.grey[200]!,
+                          width: 1,
+                        ),
+                      ),
                     child: TextField(
                       controller: _messageController,
                       maxLines: null,
@@ -850,7 +1220,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           fontSize: 14,
                         ),
                         filled: true,
-                        fillColor: Colors.grey[100],
+                          fillColor: Colors.white,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
@@ -858,6 +1228,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
+                          ),
                         ),
                       ),
                     ),
@@ -871,20 +1242,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      icon: _isSending
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : PhosphorIcon(
-                              PhosphorIcons.paperPlaneTilt(),
-                              color: _hasText ? Colors.white : AppTheme.primaryColor.withOpacity(0.5),
-                              size: 20,
-                            ),
+                      icon: PhosphorIcon(
+                        PhosphorIcons.paperPlaneTilt(),
+                        color: _hasText ? Colors.white : Colors.white.withOpacity(0.5),
+                        size: 20,
+                      ),
                       onPressed: _isSending || !_hasText
                           ? null
                           : _sendMessage,
@@ -901,110 +1263,282 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(Message message) {
     final isCurrentUser = message.isCurrentUser;
+    final isOptimistic = message.id.startsWith('temp_');
+    final messageStatus = _getMessageStatus(message);
+    final hasReply = message.replyToMessageId != null;
     
     return Align(
       alignment: isCurrentUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
+        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
-        child: Column(
-          crossAxisAlignment: isCurrentUser 
-              ? CrossAxisAlignment.end 
-              : CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: isCurrentUser 
-                    ? AppTheme.primaryColor 
-                    : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(12),
-                  topRight: const Radius.circular(12),
-                  bottomLeft: Radius.circular(isCurrentUser ? 12 : 4),
-                  bottomRight: Radius.circular(isCurrentUser ? 4 : 12),
+        child: GestureDetector(
+          onLongPress: () {
+            // Long press to reply
+            safeSetState(() {
+              _replyingToMessage = message;
+            });
+          },
+          onTap: messageStatus == MessageStatus.failed && isCurrentUser
+              ? () => _retryFailedMessage(message)
+              : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: isCurrentUser 
+                  ? AppTheme.primaryColor 
+                  : Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              // Neumorphic shadow effect
+              boxShadow: [
+                // Light shadow (top-left)
+                BoxShadow(
+                  color: isCurrentUser 
+                      ? Colors.black.withOpacity(0.1)
+                      : Colors.white,
+                  blurRadius: 6,
+                  offset: const Offset(-2, -2),
+                  spreadRadius: 0,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 2,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message.content,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14.5,
-                      color: isCurrentUser ? Colors.white : AppTheme.textDark,
-                      height: 1.5,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        DateFormat('HH:mm').format(message.createdAt),
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          color: isCurrentUser 
-                              ? Colors.white.withOpacity(0.7)
-                              : Colors.grey[600],
+                // Dark shadow (bottom-right)
+                BoxShadow(
+                  color: isCurrentUser
+                      ? Colors.black.withOpacity(0.15)
+                      : Colors.black.withOpacity(0.05),
+                  blurRadius: 6,
+                  offset: const Offset(2, 2),
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Reply preview if this message is a reply
+                if (hasReply) ...[
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    margin: const EdgeInsets.only(bottom: 6),
+                    decoration: BoxDecoration(
+                      color: isCurrentUser
+                          ? Colors.white.withOpacity(0.2)
+                          : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border(
+                        left: BorderSide(
+                          color: isCurrentUser
+                              ? Colors.white.withOpacity(0.5)
+                              : AppTheme.primaryColor,
+                          width: 2,
                         ),
                       ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          message.replyToSenderName ?? 'Unknown',
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: isCurrentUser
+                                ? Colors.white
+                                : AppTheme.primaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          message.replyToContent ?? '',
+                          style: GoogleFonts.poppins(
+                            fontSize: 9,
+                            color: isCurrentUser
+                                ? Colors.white.withOpacity(0.8)
+                                : Colors.grey[700],
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                // Message content
+                Text(
+                  message.content,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: isCurrentUser ? Colors.white : AppTheme.textDark,
+                    height: 1.3,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                // Timestamp and status
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      DateFormat('HH:mm').format(message.createdAt),
+                      style: GoogleFonts.poppins(
+                        fontSize: 9,
+                        color: isCurrentUser 
+                            ? Colors.white.withOpacity(0.7)
+                            : Colors.grey[600],
+                      ),
+                    ),
                       if (isCurrentUser) ...[
                         const SizedBox(width: 4),
-                        // WhatsApp-style ticks: single gray (sent), double gray (delivered), double blue (read)
-                        if (message.isRead)
-                          // Double check (read) - show two check icons overlapping, second one blue
-                          SizedBox(
-                            width: 18, // Fixed width to contain both icons
-                            height: 14,
-                            child: Stack(
-                              children: [
-                                Positioned(
-                                  left: 0,
-                                  child: PhosphorIcon(
-                                    PhosphorIcons.check(),
-                                    size: 14,
-                                    color: Colors.white.withOpacity(0.7),
-                                  ),
-                                ),
-                                Positioned(
-                                  left: 4, // Overlap by 4px
-                                  child: PhosphorIcon(
-                                    PhosphorIcons.check(),
-                                    size: 14,
-                                    color: Colors.blue[400]!, // Blue for read
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          // Single check (sent/delivered) - gray
-                          PhosphorIcon(
-                            PhosphorIcons.check(),
-                            size: 14,
-                            color: Colors.white.withOpacity(0.7),
-                          ),
+                      _buildMessageStatusIndicator(messageStatus, message),
                       ],
                     ],
                   ),
                 ],
               ),
-            ),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  /// Get message status based on message state
+  MessageStatus _getMessageStatus(Message message) {
+    final isOptimistic = message.id.startsWith('temp_');
+    
+    if (isOptimistic) {
+      // Like WhatsApp: show checkmark immediately, no progress indicator
+      // If optimistic message has been successfully sent (moderationStatus = approved),
+      // show it as "sent" instead of "sending"
+      if (message.moderationStatus == 'approved') {
+        return MessageStatus.sent;
+      }
+      // Show as sent immediately (like WhatsApp) - no "sending" state
+      return MessageStatus.sent;
+    }
+    
+    // Check if message is in queue (failed)
+    // This would require checking MessageQueueService, but for now we'll use moderation status
+    if (message.moderationStatus == 'failed') {
+      return MessageStatus.failed;
+    }
+    
+    if (message.isRead) {
+      return MessageStatus.read;
+    }
+    
+    // Default to sent (delivered if we had delivery receipts)
+    return MessageStatus.sent;
+  }
+
+  /// Build message status indicator widget
+  Widget _buildMessageStatusIndicator(MessageStatus status, Message message) {
+    switch (status) {
+      case MessageStatus.sending:
+        // Like WhatsApp: show checkmark immediately, no progress indicator
+        return PhosphorIcon(
+          PhosphorIcons.check(),
+          size: 12,
+          color: Colors.white.withOpacity(0.7),
+        );
+      
+      case MessageStatus.sent:
+        return PhosphorIcon(
+          PhosphorIcons.check(),
+          size: 12,
+          color: Colors.white.withOpacity(0.7),
+        );
+      
+      case MessageStatus.delivered:
+        return SizedBox(
+          width: 16,
+          height: 12,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PhosphorIcon(
+                PhosphorIcons.check(),
+                size: 14,
+                color: Colors.white.withOpacity(0.7),
+              ),
+              const SizedBox(width: 2),
+              PhosphorIcon(
+                PhosphorIcons.check(),
+                size: 14,
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ],
+          ),
+        );
+      
+      case MessageStatus.read:
+        // Both ticks should be blue when message is read - positioned close together like WhatsApp
+        return SizedBox(
+          width: 18,
+          height: 14,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: 0,
+                child: PhosphorIcon(
+                  PhosphorIcons.check(),
+                  size: 12,
+                  color: Colors.blue[400]!,
+                ),
+              ),
+              Positioned(
+                left: 6, // Overlap slightly for WhatsApp-like appearance
+                child: PhosphorIcon(
+                  PhosphorIcons.check(),
+                  size: 12,
+                  color: Colors.blue[400]!,
+                ),
+              ),
+            ],
+          ),
+        );
+      
+      case MessageStatus.failed:
+        return GestureDetector(
+          onTap: () => _retryFailedMessage(message),
+          child: Tooltip(
+            message: 'Tap to retry',
+            child: Icon(
+              Icons.error_outline,
+              size: 14,
+              color: Colors.red[300],
+        ),
+      ),
+    );
+    }
+  }
+
+  /// Retry sending a failed message
+  Future<void> _retryFailedMessage(Message message) async {
+    try {
+      // Remove failed message from UI
+      safeSetState(() {
+        _messages = _messages.where((m) => m.id != message.id).toList();
+      });
+
+      // Retry sending
+      await ChatService.sendMessage(
+        conversationId: message.conversationId,
+        content: message.content,
+      );
+    } catch (e) {
+      LogService.error('Error retrying message: $e');
+      if (mounted) {
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to retry message',
+          () => _retryFailedMessage(message),
+        );
+      }
+    }
   }
 }
 

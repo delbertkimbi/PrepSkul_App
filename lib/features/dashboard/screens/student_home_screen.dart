@@ -473,20 +473,20 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
                                     color: AppTheme.accentGreen.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
                                     PhosphorIcons.trendUp(),
                                     color: AppTheme.accentGreen,
-                                    size: 24,
+                                    size: 22,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     'Learning Progress',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 18,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                       color: AppTheme.textDark,
                                     ),
@@ -501,12 +501,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 Text(
                                   'Coming Soon!',
                                   style: GoogleFonts.poppins(
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.textDark,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 10),
                                 Text(
                                   'We\'re building an amazing feature that will help you track your child\'s learning journey, view their progress across subjects, see improvement trends, and celebrate their achievements.',
                                   style: GoogleFonts.poppins(
@@ -604,17 +604,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required String value,
     required Color color,
   }) {
-    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32);
-    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 22, tablet: 26, desktop: 30);
+    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
     final valueSize = ResponsiveHelper.isSmallHeight(context) 
-        ? ResponsiveHelper.responsiveSubheadingSize(context) + 2
-        : ResponsiveHelper.responsiveSubheadingSize(context) + 4;
+        ? ResponsiveHelper.responsiveSubheadingSize(context)
+        : ResponsiveHelper.responsiveSubheadingSize(context) + 2;
     
     return Container(
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Column(
@@ -652,23 +652,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
-    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 21, tablet: 24, desktop: 26);
-    final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 19, tablet: 22, desktop: 24);
+    final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12);
     
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey[200]!),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
@@ -679,11 +679,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
               padding: EdgeInsets.all(iconPadding),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: color, size: iconSize),
             ),
-            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
+            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -711,7 +711,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             ),
             Icon(
               PhosphorIcons.caretRight(), 
-              size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18), 
+              size: ResponsiveHelper.responsiveIconSize(context, mobile: 12, tablet: 14, desktop: 16), 
               color: Colors.grey[400]
             ),
           ],

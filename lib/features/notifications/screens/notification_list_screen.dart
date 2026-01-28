@@ -401,8 +401,8 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           IconButton(
             icon: Icon(PhosphorIcons.gear(), color: AppTheme.textDark),
             onPressed: () {
-              Navigator.push(
-                context,
+              // Use root navigator to avoid nested navigation issues
+              Navigator.of(context, rootNavigator: false).push(
                 MaterialPageRoute(
                   builder: (context) => const NotificationPreferencesScreen(),
                 ),
@@ -479,8 +479,11 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       },
       selectedColor: AppTheme.primaryColor.withOpacity(0.2),
       checkmarkColor: AppTheme.primaryColor,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       labelStyle: GoogleFonts.poppins(
-        fontSize: 15, // Increased from 13 (added 2)
+        fontSize: 13,
         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
         color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
       ),

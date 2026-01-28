@@ -58,6 +58,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   final ConnectivityService _connectivity = ConnectivityService();
   Map<String, dynamic>? _refreshedTutorData; // Store refreshed tutor data
   bool _isFavorited = false; // Track favorite state
+  bool _aboutExpanded = false; // Track if About section is expanded
 
   @override
   void initState() {
@@ -286,6 +287,35 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           safeSetState(() {
             _videoUrl = newVideoUrl;
             _videoId = newVideoId;
+            // Preload video controller to reduce play button delay
+            if (!kIsWeb && _youtubeController == null) {
+              // Pre-initialize controller in background for faster play
+              Future.microtask(() {
+                if (mounted && _videoId == newVideoId) {
+                  try {
+                    _youtubeController = YoutubePlayerController(
+                      initialVideoId: newVideoId,
+                      flags: const YoutubePlayerFlags(
+                        autoPlay: false, // Don't auto-play, just preload
+                        mute: false,
+                        enableCaption: false,
+                        controlsVisibleAtStart: false,
+                        hideControls: true,
+                        hideThumbnail: true,
+                        loop: false,
+                        forceHD: false,
+                        startAt: 0,
+                        showLiveFullscreenButton: false,
+                        useHybridComposition: true,
+                      ),
+                    );
+                    LogService.debug('📹 Video controller preloaded for faster play');
+                  } catch (e) {
+                    LogService.warning('Error preloading video controller: $e');
+                  }
+                }
+              });
+            }
             
             // If video ID changed OR this is the first time, reset video initialization
             if (videoIdChanged || isFirstTime) {
@@ -345,22 +375,32 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         });
       } else {
         // For mobile, use YoutubePlayerController with optimized settings for faster loading
+        // Use preloaded controller if available, otherwise create new one
+        if (_youtubeController == null || _youtubeController!.initialVideoId != _videoId) {
+          _youtubeController?.dispose();
           _youtubeController = YoutubePlayerController(
-          initialVideoId: _videoId!,
-            flags: const YoutubePlayerFlags(
-            autoPlay: true, // Auto-play immediately when ready (user clicked play button)
-              mute: false,
-            enableCaption: false, // Disable captions for faster loading
-            controlsVisibleAtStart: false, // Hide controls initially for distraction-free viewing
-            hideControls: true, // Auto-hide controls after a few seconds
-            hideThumbnail: true, // Hide thumbnail once video starts for faster transition
-            loop: false,
-            forceHD: false, // Don't force HD - let YouTube decide for faster loading
-            startAt: 0,
-            showLiveFullscreenButton: false, // Hide fullscreen button for cleaner UI
-            useHybridComposition: true, // Better performance on Android
-          ),
-        );
+            initialVideoId: _videoId!,
+              flags: const YoutubePlayerFlags(
+              autoPlay: true, // Auto-play immediately when ready (user clicked play button)
+                mute: false,
+              enableCaption: false, // Disable captions for faster loading
+              controlsVisibleAtStart: false, // Hide controls initially for distraction-free viewing
+              hideControls: true, // Auto-hide controls after a few seconds
+              hideThumbnail: true, // Hide thumbnail once video starts for faster transition
+              loop: false,
+              forceHD: false, // Don't force HD - let YouTube decide for faster loading
+              startAt: 0,
+              showLiveFullscreenButton: false, // Hide fullscreen button for cleaner UI
+              useHybridComposition: true, // Better performance on Android
+              // Optimize for faster loading
+              disableDragSeek: false,
+              isLive: false,
+            ),
+          );
+        } else {
+          // Controller already exists and matches video ID - just play it
+          _youtubeController!.play();
+        }
         
         safeSetState(() {
           _isVideoInitialized = true;
@@ -1024,8 +1064,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.schedule, size: 18, color: Colors.grey[600]),
-              const SizedBox(width: 8),
+              Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 6),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1033,7 +1073,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     Text(
                       'Available Schedule',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey[800],
                       ),
@@ -1218,8 +1258,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     : AppTheme.primaryColor,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
+                minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 elevation: 0,
               ),
@@ -1240,49 +1281,114 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   Widget _buildQuickStat(IconData icon, String value, String label) {
     return Column(
       children: [
-        Icon(icon, size: 24, color: AppTheme.primaryColor),
-        const SizedBox(height: 6),
+        Icon(icon, size: 22, color: AppTheme.primaryColor),
+        const SizedBox(height: 4),
         Text(
           value,
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w700,
             color: Colors.black,
           ),
         ),
         Text(
           label,
-          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
+          style: GoogleFonts.poppins(fontSize: 10, color: Colors.grey[600]),
         ),
       ],
     );
   }
 
   Widget _buildSection(String title, String content, IconData icon) {
+    // For About section, add read more functionality if text exceeds 3 lines
+    final isAboutSection = title == 'About';
+    final bool needsReadMore = isAboutSection && content.length > 150; // Approximate 3 lines
+    
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
             style: GoogleFonts.poppins(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
               color: Colors.black,
             ),
           ),
-          const SizedBox(height: 12),
-          Text(
-            content,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[700],
-              height: 1.6,
+          const SizedBox(height: 10),
+          if (isAboutSection && needsReadMore)
+            _buildAboutWithReadMore(content)
+          else
+            Text(
+              content,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.grey[700],
+                height: 1.6,
+              ),
             ),
-          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAboutWithReadMore(String content) {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final isExpanded = _aboutExpanded;
+        final textStyle = GoogleFonts.poppins(
+          fontSize: 12,
+          color: Colors.grey[700],
+          height: 1.6,
+        );
+        
+        // Calculate if text exceeds 3 lines
+        final textPainter = TextPainter(
+          text: TextSpan(text: content, style: textStyle),
+          maxLines: 3,
+          textDirection: TextDirection.ltr,
+        );
+        textPainter.layout(maxWidth: MediaQuery.of(context).size.width - 56);
+        final exceeds3Lines = textPainter.didExceedMaxLines;
+        
+        if (!exceeds3Lines) {
+          // Text fits in 3 lines, no need for read more
+          return Text(
+            content,
+            style: textStyle,
+          );
+        }
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              content,
+              style: textStyle,
+              maxLines: isExpanded ? null : 3,
+              overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _aboutExpanded = !_aboutExpanded;
+                });
+              },
+              child: Text(
+                isExpanded ? 'Show less' : 'Read more',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1560,25 +1666,77 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     if (availability == null || availability.isEmpty) {
       return Text(
         'Schedule not available',
-        style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
+        style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
       );
     }
 
-    // Format availability as day: times
+    // Format availability nicely in a structured grid/list
     final scheduleItems = <Widget>[];
-    availability.forEach((day, times) {
+    final daysOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    
+    // Sort days by order
+    final sortedDays = availability.keys.toList()
+      ..sort((a, b) {
+        final aIndex = daysOrder.indexOf(a);
+        final bIndex = daysOrder.indexOf(b);
+        if (aIndex == -1 && bIndex == -1) return a.compareTo(b);
+        if (aIndex == -1) return 1;
+        if (bIndex == -1) return -1;
+        return aIndex.compareTo(bIndex);
+      });
+    
+    sortedDays.forEach((day) {
+      final times = availability[day];
       if (times != null) {
         final timesList = times is List ? times : [times];
         if (timesList.isNotEmpty) {
           scheduleItems.add(
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                '$day: ${timesList.join(', ')}',
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: Colors.grey[600],
-                ),
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.grey[200]!, width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    day,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: timesList.map((time) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.grey[300]!,
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          time.toString(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
             ),
           );
@@ -1589,7 +1747,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     if (scheduleItems.isEmpty) {
       return Text(
         'Schedule not available',
-        style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
+        style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
       );
     }
 
@@ -1785,8 +1943,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 ),
         // Play button at bottom right - always visible and clickable
         Positioned(
-          bottom: 16,
-          right: 16,
+          bottom: 14,
+          right: 14,
           child: Material(
             color: Colors.transparent,
             child: InkWell(
@@ -1794,10 +1952,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 // Initialize video when user taps play button
                 _initializeVideo();
               },
-              borderRadius: BorderRadius.circular(28),
+              borderRadius: BorderRadius.circular(24),
               child: Container(
-                width: 56,
-                height: 56,
+                width: 54,
+                height: 54,
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor, // Deep blue play button
                   shape: BoxShape.circle,
@@ -1805,7 +1963,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 child: const Icon(
                   Icons.play_arrow,
                   color: Colors.white,
-                      size: 32,
+                      size: 30,
                 ),
               ),
             ),
@@ -1910,27 +2068,32 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
   /// Load reviews for this tutor
   Future<void> _loadReviews() async {
+    safeSetState(() => _isLoadingReviews = true);
     try {
-      safeSetState(() => _isLoadingReviews = true);
-      
       final tutorId = widget.tutor['user_id'] ?? widget.tutor['id'];
       if (tutorId == null) {
-        safeSetState(() => _isLoadingReviews = false);
         return;
       }
-      
-      final reviews = await SessionFeedbackService.getTutorReviews(tutorId.toString());
-      final ratingStats = await SessionFeedbackService.getTutorRatingStats(tutorId.toString());
-      
-      if (mounted) {
-        safeSetState(() {
-          _reviews = reviews;
-          _ratingStats = ratingStats;
-          _isLoadingReviews = false;
-        });
-      }
+
+      final results = await Future.wait<dynamic>([
+        SessionFeedbackService.getTutorReviews(tutorId.toString()),
+        SessionFeedbackService.getTutorRatingStats(tutorId.toString()),
+      ]).timeout(const Duration(seconds: 12));
+
+      if (!mounted) return;
+      safeSetState(() {
+        _reviews = results[0] as List<Map<String, dynamic>>;
+        _ratingStats = results[1] as Map<String, dynamic>?;
+      });
     } catch (e) {
       LogService.error('Error loading reviews: $e');
+      if (mounted) {
+        safeSetState(() {
+          _reviews = [];
+          _ratingStats = null;
+        });
+      }
+    } finally {
       if (mounted) {
         safeSetState(() => _isLoadingReviews = false);
       }
@@ -2506,6 +2669,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   }
 
   Future<void> _navigateToChat(BuildContext context) async {
+    bool loadingShown = false;
     try {
       final currentUserId = SupabaseService.currentUser?.id;
       if (currentUserId == null) {
@@ -2521,8 +2685,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         return;
       }
 
-      final tutorId = widget.tutor['id']?.toString() ?? widget.tutor['user_id']?.toString();
-      if (tutorId == null) {
+      final tutorData = _currentTutorData;
+      final tutorUserId = tutorData['user_id']?.toString() ?? tutorData['id']?.toString();
+      if (tutorUserId == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -2541,6 +2706,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         barrierDismissible: false,
         builder: (context) => const Center(child: CircularProgressIndicator()),
       );
+      loadingShown = true;
 
       final supabase = SupabaseService.client;
 
@@ -2550,8 +2716,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           .from('conversations')
           .select('*')
           .eq('student_id', currentUserId)
-          .eq('tutor_id', tutorId)
+          .eq('tutor_id', tutorUserId)
           .eq('status', 'active')
+          .order('last_message_at', ascending: false)
+          .limit(1)
           .maybeSingle();
 
       // If not found, try to find by recurring session
@@ -2560,7 +2728,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             .from('recurring_sessions')
             .select('id')
             .eq('learner_id', currentUserId)
-            .eq('tutor_id', tutorId)
+            .eq('tutor_id', tutorUserId)
             .eq('status', 'active')
             .limit(1)
             .maybeSingle();
@@ -2574,6 +2742,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 .from('conversations')
                 .select('*')
                 .eq('id', conversationId)
+                .order('last_message_at', ascending: false)
+                .limit(1)
                 .maybeSingle();
           }
         }
@@ -2585,7 +2755,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             .from('trial_sessions')
             .select('id')
             .eq('learner_id', currentUserId)
-            .eq('tutor_id', tutorId)
+            .eq('tutor_id', tutorUserId)
             .inFilter('status', ['pending', 'approved', 'scheduled'])
             .limit(1)
             .maybeSingle();
@@ -2599,6 +2769,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 .from('conversations')
                 .select('*')
                 .eq('id', conversationId)
+                .order('last_message_at', ascending: false)
+                .limit(1)
                 .maybeSingle();
           }
         }
@@ -2610,7 +2782,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
             .from('booking_requests')
             .select('id')
             .eq('student_id', currentUserId)
-            .eq('tutor_id', tutorId)
+            .eq('tutor_id', tutorUserId)
             .inFilter('status', ['pending', 'approved'])
             .limit(1)
             .maybeSingle();
@@ -2624,13 +2796,17 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 .from('conversations')
                 .select('*')
                 .eq('id', conversationId)
+                .order('last_message_at', ascending: false)
+                .limit(1)
                 .maybeSingle();
           }
         }
       }
 
       // Dismiss loading
-      if (mounted) Navigator.pop(context);
+      if (loadingShown && mounted && Navigator.of(context).canPop()) {
+        Navigator.pop(context);
+      }
 
       if (conversationResponse == null) {
         if (mounted) {
@@ -2651,7 +2827,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       final tutorProfile = await supabase
           .from('profiles')
           .select('full_name, avatar_url')
-          .eq('id', tutorId)
+          .eq('id', tutorUserId)
           .maybeSingle();
 
       // Create Conversation object
@@ -2688,7 +2864,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       LogService.error('Error navigating to chat: $e');
       if (mounted) {
         // Dismiss loading if still showing
-        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        if (loadingShown && Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
         
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

@@ -324,10 +324,23 @@ class _NotificationItemState extends State<NotificationItem> {
     return message;
   }
 
+  /// Remove emojis from notification title
+  String _stripEmojis(String text) {
+    // Remove common emoji patterns
+    return text
+        .replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}]', unicode: true), '') // Emoticons
+        .replaceAll(RegExp(r'[\u{2600}-\u{26FF}]', unicode: true), '') // Misc symbols
+        .replaceAll(RegExp(r'[\u{2700}-\u{27BF}]', unicode: true), '') // Dingbats
+        .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}]', unicode: true), '') // Emoticons
+        .replaceAll(RegExp(r'[\u{1F680}-\u{1F6FF}]', unicode: true), '') // Transport
+        .trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRead = widget.notification['is_read'] == true;
-    final title = widget.notification['title'] as String? ?? 'Notification';
+    final rawTitle = widget.notification['title'] as String? ?? 'Notification';
+    final title = _stripEmojis(rawTitle); // Remove emojis from title
     final message = widget.notification['message'] as String? ?? '';
     final createdAt = DateTime.parse(widget.notification['created_at'] as String);
     final timeAgo = _getTimeAgo(createdAt);

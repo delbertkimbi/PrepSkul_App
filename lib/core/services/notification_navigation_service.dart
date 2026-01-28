@@ -61,14 +61,17 @@ class NotificationNavigationService {
         return;
       }
 
-      // Get user profile to determine role
+      // Get user profile to determine role and admin status
       final profile = await SupabaseService.client
           .from('profiles')
-          .select('user_type')
+          .select('user_type, is_admin')
           .eq('id', userId)
           .maybeSingle();
 
-      final userType = profile?['user_type'] as String?;
+      final userTypeRaw = profile?['user_type'] as String?;
+      final isAdmin = profile?['is_admin'] as bool? ?? false;
+      // Determine effective user type - account for is_admin flag
+      final userType = (isAdmin || userTypeRaw == 'admin') ? 'admin' : userTypeRaw;
 
       // Route based on path
       if (pathSegments[0] == 'admin') {
@@ -602,6 +605,7 @@ class NotificationNavigationService {
       case 'user_signup':
       case 'survey_completed':
         // Admin notifications - navigate to admin detail screens
+        // Check both user_type and is_admin (handled by userType calculation above)
         if (userType == 'admin') {
           final userId = metadata?['user_id'] as String?;
           final userTypeFromMeta = metadata?['user_type'] as String?;
@@ -623,6 +627,7 @@ class NotificationNavigationService {
 
       case 'tutor_request':
         // Admin notifications - navigate to tutor request detail
+        // Check both user_type and is_admin (handled by userType calculation above)
         if (userType == 'admin') {
           final requestId = metadata?['request_id'] as String?;
           if (requestId != null) {

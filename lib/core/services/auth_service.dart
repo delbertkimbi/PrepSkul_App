@@ -591,14 +591,30 @@ class AuthService {
       // Handle auth errors (e.g., refresh token failures)
       LogService.error('🔐 Auth state error: $error');
       final errorStr = error.toString().toLowerCase();
-      if (errorStr.contains('refresh_token') || 
-          errorStr.contains('invalid') ||
-          errorStr.contains('expired')) {
+      
+      // Check if this is a network/offline error - don't clear session for these
+      final isNetworkError = errorStr.contains('socketexception') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('network is unreachable') ||
+          errorStr.contains('no route to host') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('clientexception') ||
+          (errorStr.contains('authretryablefetchexception') && 
+           (errorStr.contains('socketexception') || errorStr.contains('clientexception')));
+      
+      // Only clear session if it's actually invalid/expired, NOT if it's a network error
+      if (!isNetworkError && 
+          (errorStr.contains('refresh_token') || 
+           errorStr.contains('invalid') ||
+           errorStr.contains('expired'))) {
         LogService.warning('🔐 Invalid/expired session detected - clearing auth state');
         // Clear local auth state
         SharedPreferences.getInstance().then((prefs) async {
           await prefs.setBool(_keyIsLoggedIn, false);
         });
+      } else if (isNetworkError) {
+        // Network error - preserve session, user is offline
+        LogService.info('🔐 Network error detected (offline) - preserving cached session');
       }
     });
   }

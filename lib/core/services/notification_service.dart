@@ -151,6 +151,16 @@ class NotificationService {
       final response = await query.order('created_at', ascending: false);
       var notifications = (response as List).cast<Map<String, dynamic>>();
 
+      // Check if user is admin
+      final profile = await _supabase
+          .from('profiles')
+          .select('is_admin, user_type')
+          .eq('id', userId)
+          .maybeSingle();
+      final isAdmin = profile?['is_admin'] as bool? ?? false;
+      final userType = profile?['user_type'] as String?;
+      final isAdminUser = isAdmin || userType == 'admin';
+
       // Filter out tutor-specific notifications for non-tutor users
       if (userRole != 'tutor') {
         final tutorSpecificTypes = [
@@ -185,6 +195,47 @@ class NotificationService {
           );
           
           return !hasTutorKeyword;
+        }).toList();
+      }
+
+      // Filter out admin-specific notifications for non-admin users
+      if (!isAdminUser) {
+        final adminSpecificTypes = [
+          'user_signup',
+          'tutor_request',
+          'tutor_request_matched',
+          'tutor_request_updated',
+          'tutor_request_deleted',
+          'tutor_request_status_changed',
+        ];
+        
+        notifications = notifications.where((notification) {
+          final type = notification['type'] as String?;
+          final title = (notification['title'] as String? ?? '').toLowerCase();
+          final message = (notification['message'] as String? ?? '').toLowerCase();
+          final actionUrl = (notification['action_url'] as String? ?? '').toLowerCase();
+          
+          // Filter out admin-specific notification types
+          if (type != null && adminSpecificTypes.contains(type)) {
+            return false;
+          }
+          
+          // Filter out notifications with admin-specific keywords
+          final adminKeywords = [
+            'new user signup',
+            'tutor request',
+            'has submitted a new tutor request',
+            'has completed their survey',
+          ];
+          
+          final hasAdminKeyword = adminKeywords.any((keyword) => 
+            title.contains(keyword) || message.contains(keyword)
+          );
+          
+          // Filter out notifications with admin action URLs
+          final hasAdminActionUrl = actionUrl.contains('/admin/');
+          
+          return !hasAdminKeyword && !hasAdminActionUrl;
         }).toList();
       }
 
@@ -243,6 +294,16 @@ class NotificationService {
       // Get user role to filter tutor-specific notifications
       final userRole = await AuthService.getUserRole();
 
+      // Check if user is admin
+      final profile = await _supabase
+          .from('profiles')
+          .select('is_admin, user_type')
+          .eq('id', userId)
+          .maybeSingle();
+      final isAdmin = profile?['is_admin'] as bool? ?? false;
+      final userType = profile?['user_type'] as String?;
+      final isAdminUser = isAdmin || userType == 'admin';
+
       var query = _supabase
           .from('notifications')
           .select()
@@ -290,6 +351,47 @@ class NotificationService {
           );
           
           return !hasTutorKeyword;
+        }).toList();
+      }
+
+      // Filter out admin-specific notifications for non-admin users
+      if (!isAdminUser) {
+        final adminSpecificTypes = [
+          'user_signup',
+          'tutor_request',
+          'tutor_request_matched',
+          'tutor_request_updated',
+          'tutor_request_deleted',
+          'tutor_request_status_changed',
+        ];
+        
+        notifications = notifications.where((notification) {
+          final type = notification['type'] as String?;
+          final title = (notification['title'] as String? ?? '').toLowerCase();
+          final message = (notification['message'] as String? ?? '').toLowerCase();
+          final actionUrl = (notification['action_url'] as String? ?? '').toLowerCase();
+          
+          // Filter out admin-specific notification types
+          if (type != null && adminSpecificTypes.contains(type)) {
+            return false;
+          }
+          
+          // Filter out notifications with admin-specific keywords
+          final adminKeywords = [
+            'new user signup',
+            'tutor request',
+            'has submitted a new tutor request',
+            'has completed their survey',
+          ];
+          
+          final hasAdminKeyword = adminKeywords.any((keyword) => 
+            title.contains(keyword) || message.contains(keyword)
+          );
+          
+          // Filter out notifications with admin action URLs
+          final hasAdminActionUrl = actionUrl.contains('/admin/');
+          
+          return !hasAdminKeyword && !hasAdminActionUrl;
         }).toList();
       }
 

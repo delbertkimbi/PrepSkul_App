@@ -343,22 +343,22 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const CircularProgressIndicator(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Text(
                 widget.isReschedule && widget.rescheduleSessionId != null
                     ? 'Updating trial request...'
                     : 'Sending trial request...',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: Colors.black,
                 ),
@@ -553,7 +553,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                     color: hadDiscount 
                         ? Colors.green.withOpacity(0.1)
@@ -562,37 +562,37 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               ),
               child: Icon(
                     hadDiscount ? Icons.celebration : Icons.check_circle,
-                size: 60,
+                size: 58,
                     color: hadDiscount ? Colors.orange[600] : Colors.green[600],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Text(
                   hadDiscount ? '🎉 Discount Applied!' : 'Trial Request Sent!',
               style: GoogleFonts.poppins(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.w700,
                 color: Colors.black,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               'Your trial session request has been sent to ${widget.tutor['full_name']}!',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 color: Colors.grey[700],
                 height: 1.5,
               ),
             ),
                 // Show discounted price if discount was applied
                 if (hadDiscount) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.green[200]!),
                     ),
                     child: Column(
@@ -603,28 +603,28 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                             Text(
                               'Original Price:',
                               style: GoogleFonts.poppins(
-                                fontSize: 13,
+                                fontSize: 11,
                                 color: Colors.grey[700],
                               ),
                             ),
                             Text(
                               PricingService.formatPrice(_basePrice),
                               style: GoogleFonts.poppins(
-                                fontSize: 13,
+                                fontSize: 11,
                                 color: Colors.grey[600],
                                 decoration: TextDecoration.lineThrough,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               'Your Price:',
                               style: GoogleFonts.poppins(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.green[800],
                               ),
@@ -632,7 +632,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                             Text(
                               PricingService.formatPrice(_trialFee),
                               style: GoogleFonts.poppins(
-                                fontSize: 18,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.green[700],
                               ),
@@ -646,7 +646,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                             Text(
                               'You saved ${PricingService.formatPrice(_basePrice - _trialFee)}!',
                               style: GoogleFonts.poppins(
-                                fontSize: 12,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.green[700],
                               ),
@@ -657,7 +657,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     ),
                   ),
                 ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
@@ -674,15 +674,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
                 child: Text(
                   'View My Requests',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
@@ -730,16 +731,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Row(
           children: [
-            Icon(Icons.error_outline, color: AppTheme.primaryColor, size: 28),
-            const SizedBox(width: 12),
+            Icon(Icons.error_outline, color: AppTheme.primaryColor, size: 26),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 title,
                 style: GoogleFonts.poppins(
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -748,7 +749,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         ),
         content: Text(
           message,
-          style: GoogleFonts.poppins(fontSize: 14, height: 1.5),
+          style: GoogleFonts.poppins(fontSize: 12, height: 1.5),
         ),
         actions: [
           TextButton(
@@ -799,7 +800,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             Text(
               widget.isReschedule ? 'Reschedule Trial Session' : 'Book Trial Session',
               style: GoogleFonts.poppins(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: Colors.black,
               ),
@@ -807,7 +808,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             Text(
               'Step ${_currentStep + 1} of $_totalSteps',
               style: GoogleFonts.poppins(
-                fontSize: 12,
+                fontSize: 10,
                 fontWeight: FontWeight.w400,
                 color: Colors.grey[600],
               ),
@@ -823,7 +824,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               if (widget.isReschedule)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryColor.withOpacity(0.1),
                     border: Border(
@@ -866,7 +867,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           // Progress indicator
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
@@ -893,7 +894,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
           ),
           // Navigation buttons
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
@@ -911,16 +912,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     child: OutlinedButton(
                       onPressed: _previousStep,
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                         side: BorderSide(color: AppTheme.primaryColor),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                       child: Text(
                         'Back',
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.primaryColor,
                         ),
@@ -938,9 +939,10 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                         : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       disabledBackgroundColor: Colors.grey[300],
                     ),
@@ -949,7 +951,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                           ? 'Send Request'
                           : 'Continue',
                       style: GoogleFonts.poppins(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),

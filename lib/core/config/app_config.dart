@@ -101,9 +101,19 @@ class AppConfig {
   /// for the Next.js dev server. This ensures local development works seamlessly
   /// without requiring environment variable changes.
   /// 
-  /// IMPORTANT: If running on production domains (app.prepskul.com, www.prepskul.com),
+  /// IMPORTANT: If isProduction is true, NEVER uses localhost, always uses production API.
+  /// If running on production domains (app.prepskul.com, www.prepskul.com),
   /// always uses production API regardless of isProduction flag.
   static String get effectiveApiBaseUrl {
+    // CRITICAL: If production mode is enabled, NEVER use localhost
+    if (isProd) {
+      final prodUrl = 'https://www.prepskul.com/api';
+      if (kDebugMode) {
+        print('🌐 Production mode enabled - using: $prodUrl');
+      }
+      return prodUrl;
+    }
+    
     String url = apiBaseUrl;
     
     // Check if we're running on a production domain (web platform only)
@@ -135,8 +145,8 @@ class AppConfig {
             return 'https://www.prepskul.com/api';
           }
           
-          // If on localhost, use localhost API
-          if (hostname == 'localhost' || hostname == '127.0.0.1') {
+          // If on localhost, use localhost API (only in dev mode)
+          if ((hostname == 'localhost' || hostname == '127.0.0.1') && !isProd) {
             if (kDebugMode) {
               print('🏠 Local development detected: $hostname');
               print('🏠 Using localhost API: http://localhost:3000/api');

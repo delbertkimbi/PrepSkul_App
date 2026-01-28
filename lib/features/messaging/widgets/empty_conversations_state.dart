@@ -24,17 +24,17 @@ class EmptyConversationsState extends StatelessWidget {
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 64),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             // Icon
             Icon(
               Icons.chat_bubble_outline,
-              size: 64,
+              size: 48,
               color: Colors.grey[400],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             // Heading - different for each user type
             Text(
               isTutor 
@@ -43,13 +43,13 @@ class EmptyConversationsState extends StatelessWidget {
                       ? 'No conversations'
                       : 'Start a conversation',
               style: GoogleFonts.poppins(
-                fontSize: 20,
+                fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             // Description - different for each user type
             Text(
               isTutor
@@ -58,10 +58,10 @@ class EmptyConversationsState extends StatelessWidget {
                       ? 'Conversations will appear here when users start messaging.'
                       : 'You can message tutors after booking a trial session or when a booking request is approved. Messages help you discuss lessons, ask questions, and coordinate with your tutor.',
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.normal,
                 color: AppTheme.textMedium,
-                height: 1.5,
+                height: 1.4,
               ),
               textAlign: TextAlign.center,
             ),
@@ -69,10 +69,10 @@ class EmptyConversationsState extends StatelessWidget {
             if (isStudentOrParent) ...[
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: AppTheme.primaryColor.withOpacity(0.3),
                     width: 1,
@@ -85,36 +85,36 @@ class EmptyConversationsState extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.info_outline,
-                          size: 18,
+                          size: 16,
                           color: AppTheme.primaryColor,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         Text(
                           'When can I message?',
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.textDark,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       '• After booking and paying for a trial session\n• When a booking request is approved by a tutor',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: AppTheme.textMedium,
-                        height: 1.6,
+                        height: 1.5,
                       ),
                     ),
                   ],
                 ),
               ),
             ],
-            // Button - only for students/parents
+            // Button - only for students/parents (not tutors)
             if (isStudentOrParent && onFindTutor != null) ...[
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
@@ -126,15 +126,15 @@ class EmptyConversationsState extends StatelessWidget {
                     ),
                     backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   child: Text(
                     'Find a tutor',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

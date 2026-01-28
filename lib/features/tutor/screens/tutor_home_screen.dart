@@ -12,6 +12,7 @@ import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/models/profile_completion.dart';
 import '../../../core/widgets/profile_completion_widget.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
@@ -23,6 +24,7 @@ import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
+import '../../../core/widgets/offline_indicator.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -45,10 +47,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   bool _hasSavedProgress = false; // Track if user has any saved progress
   double _activeBalance = 0.0;
   double _pendingBalance = 0.0;
+  bool _isOffline = false;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
+    _initializeConnectivity();
     _loadUserInfo();
     _checkDismissedApprovalCard();
     _checkOnboardingStatus();
@@ -66,6 +71,33 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _loadUserInfo();
       }
     });
+  }
+
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        safeSetState(() {
+          _isOffline = !isOnline;
+        });
+      }
+    });
+  }
+
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      safeSetState(() {
+        _isOffline = !isOnline;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivity.dispose();
+    super.dispose();
   }
 
   Future<void> _checkOnboardingStatus() async {
@@ -372,16 +404,48 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const OfflineIndicator(),
+                  if (_isOffline)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+                      ),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_off, color: Colors.orange[800], size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Offline mode: progress and approvals update when you are back online.',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: Colors.orange[900],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   // Onboarding Progress Tracker
                   // Show ONLY if: (skipped OR has saved progress) AND not yet submitted
                   // Hide after submission - only show Profile Completion widget then
-                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete)
+                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete && !_isOffline)
                     OnboardingProgressTracker(
                       userId: _userInfo?['userId'] as String? ?? '',
                       key: ValueKey('onboarding_tracker_${_onboardingSkipped}_${_onboardingComplete}_${_hasSavedProgress}_${DateTime.now().millisecondsSinceEpoch}'),
                     ),
 
-                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete)
+                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete && !_isOffline)
                     SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                     
                   // Review & Submit Button (only when all steps complete but not yet submitted)
@@ -548,7 +612,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       color: AppTheme.textDark,
                     ),
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                   _buildActionCard(
                     icon: Icons.inbox_outlined,
                     title: 'My Requests',
@@ -562,7 +626,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                   _buildActionCard(
                     icon: Icons.school_outlined,
                     title: 'My Sessions',
@@ -576,14 +640,19 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                   _buildActionCard(
                     icon: Icons.payment,
                     title: 'Payment History',
                     subtitle: 'View and manage your payments',
                     color: Colors.green,
                     onTap: () {
-                      Navigator.pushNamed(context, '/payment-history');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const TutorEarningsScreen(),
+                        ),
+                      );
                     },
                   ),
                 ],

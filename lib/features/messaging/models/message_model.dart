@@ -23,6 +23,11 @@ class Message {
   final String? senderName;
   final String? senderAvatarUrl;
   final bool isCurrentUser;
+  
+  // Reply functionality
+  final String? replyToMessageId;
+  final String? replyToContent;
+  final String? replyToSenderName;
 
   Message({
     required this.id,
@@ -38,6 +43,9 @@ class Message {
     this.senderName,
     this.senderAvatarUrl,
     this.isCurrentUser = false,
+    this.replyToMessageId,
+    this.replyToContent,
+    this.replyToSenderName,
   });
 
   /// Create from JSON (from Supabase)
@@ -59,6 +67,9 @@ class Message {
       senderName: json['sender_name'] as String?,
       senderAvatarUrl: json['sender_avatar_url'] as String?,
       isCurrentUser: currentUserId != null && senderId == currentUserId,
+      replyToMessageId: json['reply_to_message_id'] as String?,
+      replyToContent: json['reply_to_content'] as String?,
+      replyToSenderName: json['reply_to_sender_name'] as String?,
     );
   }
 
@@ -75,6 +86,9 @@ class Message {
       'filter_reason': filterReason,
       'moderation_status': moderationStatus,
       'created_at': createdAt.toIso8601String(),
+      'reply_to_message_id': replyToMessageId,
+      'reply_to_content': replyToContent,
+      'reply_to_sender_name': replyToSenderName,
     };
   }
 
@@ -93,6 +107,9 @@ class Message {
     String? senderName,
     String? senderAvatarUrl,
     bool? isCurrentUser,
+    String? replyToMessageId,
+    String? replyToContent,
+    String? replyToSenderName,
   }) {
     return Message(
       id: id ?? this.id,
@@ -108,6 +125,9 @@ class Message {
       senderName: senderName ?? this.senderName,
       senderAvatarUrl: senderAvatarUrl ?? this.senderAvatarUrl,
       isCurrentUser: isCurrentUser ?? this.isCurrentUser,
+      replyToMessageId: replyToMessageId ?? this.replyToMessageId,
+      replyToContent: replyToContent ?? this.replyToContent,
+      replyToSenderName: replyToSenderName ?? this.replyToSenderName,
     );
   }
 }

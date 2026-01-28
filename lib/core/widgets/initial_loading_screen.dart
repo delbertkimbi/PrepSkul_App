@@ -22,16 +22,16 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
   void initState() {
     super.initState();
 
-    // Create animation controller with 3 second duration for slow, smooth front-to-back movement
+    // Create animation controller with faster, more visible animation (1.2 seconds)
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 3000),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     );
 
-    // Front-to-back movement: translateZ animation (moves logo forward and backward)
-    _rotationAnimation = Tween<double>(
-      begin: 0.0,  // Front (translateZ = 0)
-      end: -40.0,  // Back (translateZ = -40)
+    // Pulsing/breathing effect: scale animation (more visible than translateZ)
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,   // Normal size
+      end: 1.15,    // 15% larger for visible pulse
     ).animate(
       CurvedAnimation(
         parent: _controller,
@@ -39,10 +39,10 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
       ),
     );
 
-    // Scale animation: slightly smaller when going back
-    _scaleAnimation = Tween<double>(
-      begin: 1.0,   // Normal size at front
-      end: 0.9,     // Slightly smaller at back
+    // Opacity animation for breathing effect
+    _rotationAnimation = Tween<double>(
+      begin: 1.0,   // Fully opaque
+      end: 0.85,    // Slightly transparent for breathing effect
     ).animate(
       CurvedAnimation(
         parent: _controller,
@@ -69,12 +69,8 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
-            return Transform(
-              // Front-to-back movement using translateZ
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001) // Perspective
-                ..translate(0.0, 0.0, _rotationAnimation.value), // translateZ for depth
-              alignment: Alignment.center,
+            return Opacity(
+              opacity: _rotationAnimation.value,
               child: Transform.scale(
                 scale: _scaleAnimation.value,
                 child: Hero(
