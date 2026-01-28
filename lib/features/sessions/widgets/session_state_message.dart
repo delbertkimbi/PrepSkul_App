@@ -199,5 +199,41 @@ class SessionStateMessages {
       duration: const Duration(seconds: 5),
     );
   }
+
+  static Widget tutorPoorConnection() {
+    return SessionStateMessage(
+      message: "Tutor's connection is poor - reconnecting...",
+      icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
+      color: Colors.orange,
+      duration: const Duration(seconds: 8),
+    );
+  }
+
+  static Widget learnerPoorConnection() {
+    return SessionStateMessage(
+      message: "Learner's connection is poor - reconnecting...",
+      icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
+      color: Colors.orange,
+      duration: const Duration(seconds: 8),
+    );
+  }
+
+  static Widget tutorReconnecting() {
+    return SessionStateMessage(
+      message: "Tutor is reconnecting...",
+      icon: Icons.sync,
+      color: Colors.blue,
+      duration: const Duration(seconds: 10),
+    );
+  }
+
+  static Widget learnerReconnecting() {
+    return SessionStateMessage(
+      message: "Learner is reconnecting...",
+      icon: Icons.sync,
+      color: Colors.blue,
+      duration: const Duration(seconds: 10),
+    );
+  }
 }
 

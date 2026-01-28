@@ -54,6 +54,18 @@ class AppConfig {
   static const bool enableSkulMate = false; // ← Disabled in production until RLS issues are resolved
   
   // ============================================
+  // Session Configuration
+  // ============================================
+  
+  /// Session duration in minutes
+  /// 
+  /// Default duration for all video sessions.
+  /// Change this value to adjust session length across the entire app.
+  /// 
+  /// Example: Set to 60 for 1-hour sessions, 90 for 1.5-hour sessions, etc.
+  static const int sessionDurationMinutes = 2; // ← Default: 61 minutes per session
+  
+  // ============================================
   // Environment Detection
   // ============================================
   

@@ -15,6 +15,8 @@ import 'package:prepskul/features/sessions/widgets/local_video_pip.dart';
 import 'package:prepskul/features/sessions/widgets/reactions_panel.dart';
 import 'package:prepskul/features/sessions/widgets/reaction_animation.dart';
 import 'package:prepskul/features/booking/services/session_lifecycle_service.dart';
+import 'package:prepskul/features/sessions/services/session_timer_service.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart' as agora_rtc_engine;
 import 'dart:async';
 
 /// Agora Video Session Screen
@@ -74,15 +76,26 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   StreamSubscription<int>? _userLeftSubscription;
   StreamSubscription<Map<String, dynamic>>? _remoteNetworkQualitySubscription;
   StreamSubscription<Map<String, dynamic>>? _reactionSubscription;
+  StreamSubscription<Map<String, dynamic>>? _remoteScreenOffSubscription;
   
   // Network instability tracking
   bool _remoteConnectionUnstable = false;
+  
+  // Screen-off tracking
+  bool _remoteScreenOff = false;
+  
+  // Session timer
+  final SessionTimerService _timerService = SessionTimerService();
+  Duration? _timeRemaining;
+  StreamSubscription<Duration>? _timeRemainingSubscription;
+  StreamSubscription<String>? _sessionEndedSubscription;
 
   @override
   void initState() {
     super.initState();
     _initializeSession();
     _setupListeners();
+    _setupTimer();
   }
 
   @override
@@ -104,6 +117,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     _userLeftSubscription?.cancel();
     _remoteNetworkQualitySubscription?.cancel();
     _reactionSubscription?.cancel();
+    _remoteScreenOffSubscription?.cancel();
+    _timeRemainingSubscription?.cancel();
+    _sessionEndedSubscription?.cancel();
+    
+    // Stop timer
+    _timerService.stopSession();
     // Don't dispose AgoraService here - it's a singleton
     super.dispose();
   }
@@ -249,6 +268,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       safeSetState(() {
         _sessionState = state;
       });
+      
+      // Start timer when session connects
+      if (state == AgoraSessionState.connected) {
+        _startSessionTimer();
+      }
     });
 
     _userJoinedSubscription = _agoraService.userJoinedStream.listen((uid) {
@@ -344,6 +368,87 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         _addReactionAnimation(emoji);
       }
     });
+    
+    // Remote screen-off detection
+    _remoteScreenOffSubscription = _agoraService.remoteScreenOffStream.listen((data) {
+      final uid = data['uid'] as int;
+      final screenOff = data['screenOff'] as bool? ?? false;
+      
+      if (uid == _remoteUID) {
+        safeSetState(() {
+          _remoteScreenOff = screenOff;
+        });
+        
+        if (screenOff) {
+          LogService.info('📱 Remote user screen is off: UID=$uid');
+        } else {
+          LogService.info('✅ Remote user screen is back on: UID=$uid');
+        }
+      }
+    });
+  }
+  
+  /// Setup session timer
+  void _setupTimer() {
+    // Listen to time remaining updates
+    _timeRemainingSubscription = _timerService.timeRemainingStream.listen((remaining) {
+      safeSetState(() {
+        _timeRemaining = remaining;
+      });
+    });
+    
+    // Listen to session ended events (auto-termination)
+    _sessionEndedSubscription = _timerService.sessionEndedStream.listen((sessionId) {
+      if (sessionId == widget.sessionId) {
+        LogService.info('⏱️ Session time expired - auto-terminating');
+        // Show notification
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.timer_off, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Session time has ended',
+                      style: GoogleFonts.poppins(),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        // End the call
+        _endCall();
+      }
+    });
+  }
+  
+  /// Start session timer
+  Future<void> _startSessionTimer() async {
+    try {
+      // Get session start time from database
+      final session = await _supabase
+          .from('individual_sessions')
+          .select('session_started_at')
+          .eq('id', widget.sessionId)
+          .maybeSingle();
+      
+      DateTime? startTime;
+      if (session != null && session['session_started_at'] != null) {
+        startTime = DateTime.parse(session['session_started_at'] as String);
+      }
+      
+      // Start timer
+      await _timerService.startSession(widget.sessionId, startTime: startTime);
+      LogService.info('⏱️ Session timer started');
+    } catch (e) {
+      LogService.warning('Error starting session timer: $e');
+    }
   }
 
   /// Toggle video (camera)
@@ -465,10 +570,24 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
     if (confirmed != true) return;
 
+    // Show loading indicator during cleanup
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     try {
-      // Try to leave channel - handle errors gracefully
+      // CRITICAL: Step 1 - Leave Agora channel and ensure all media tracks stop
+      bool channelLeft = false;
       try {
         await _agoraService.leaveChannel();
+        channelLeft = true;
+        LogService.info('✅ Agora channel left successfully');
       } catch (e) {
         // Handle mutex and other leave errors gracefully
         final errorStr = e.toString().toLowerCase();
@@ -476,30 +595,88 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             errorStr.contains('already') || 
             errorStr.contains('not in channel')) {
           LogService.info('Channel already left (this is okay)');
+          channelLeft = true;
         } else {
-          LogService.warning('Error leaving channel (continuing anyway): $e');
+          LogService.warning('Error leaving channel: $e');
+          // Still try to continue - may have partially left
         }
-        // Continue with cleanup even if leaveChannel fails
       }
 
-      // If tutor, end the session in lifecycle service
+      // CRITICAL: Step 2 - Verify state is disconnected before proceeding
+      // Wait a moment for state to update
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Check if we're actually disconnected
+      final currentState = _agoraService.state;
+      if (currentState != AgoraSessionState.disconnected && channelLeft) {
+        LogService.warning('State not yet disconnected, waiting...');
+        // Wait a bit more for state to update
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      // CRITICAL: Step 3 - If tutor, end the session in lifecycle service
+      // This must complete before navigation
       if (widget.userRole == 'tutor') {
         try {
-          await SessionLifecycleService.endSession(widget.sessionId);
+          await SessionLifecycleService.endSession(widget.sessionId)
+              .timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {
+                  LogService.warning('Session end timeout - continuing anyway');
+                },
+              );
+          LogService.info('✅ Session ended in lifecycle service');
         } catch (e) {
           LogService.warning('Failed to end session in lifecycle: $e');
+          // Continue anyway - user wants to leave
         }
       }
 
-      // Navigate back
+      // CRITICAL: Step 4 - Final cleanup delay to ensure all resources are released
+      // This gives time for any background cleanup to complete
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // CRITICAL: Step 5 - Verify media tracks are stopped
+      // Check that video and audio are disabled
+      if (_agoraService.isVideoEnabled() || _agoraService.isAudioEnabled()) {
+        LogService.warning('Media tracks still enabled, forcing disable...');
+        // Force disable if still enabled
+        try {
+          if (_agoraService.isVideoEnabled()) {
+            await _agoraService.toggleVideo();
+          }
+          if (_agoraService.isAudioEnabled()) {
+            await _agoraService.toggleAudio();
+          }
+          await Future.delayed(const Duration(milliseconds: 200));
+        } catch (e) {
+          LogService.warning('Error forcing media disable: $e');
+        }
+      }
+
+      // Close loading dialog
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context); // Close loading dialog
+      }
+
+      // CRITICAL: Step 6 - Stop timer before navigation
+      await _timerService.stopSession();
+      
+      // CRITICAL: Step 7 - Navigate back only after all cleanup is complete
+      if (mounted) {
+        Navigator.pop(context); // Navigate back from video session
       }
     } catch (e) {
       LogService.error('Error ending call: $e');
+      
+      // Close loading dialog if still open
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+      }
+      
       // Even if there's an error, try to navigate back
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context); // Navigate back from video session
       }
     }
   }
@@ -537,11 +714,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               // Show local profile only if: remote left OR (no remote user AND camera off)
               if (_remoteUserLeft || (_remoteUID == null && !_isVideoEnabled))
                 _buildLocalProfileCard(),
-              // Show remote profile if: remote user left (abnormal disconnect) OR (remote exists, camera off, and they haven't left)
+              // Show remote profile if: remote user left OR (remote exists, camera off, and they haven't left) OR screen is off
               if (_remoteUserLeft)
                 _buildRemoteProfileCard(), // Show remote profile when they left
               if (_remoteUID != null && !_remoteUserLeft && _remoteVideoMuted)
                 _buildRemoteProfileCard(), // Show remote profile when camera is off
+              if (_remoteUID != null && !_remoteUserLeft && _remoteScreenOff)
+                _buildRemoteProfileCard(), // Show remote profile when screen is off
             ],
 
             // State messages (non-intrusive, top-center)
@@ -696,11 +875,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     );
   }
 
-  /// Build remote profile card (when remote camera is off or user left)
+  /// Build remote profile card (when remote camera is off, screen is off, or user left)
   Widget _buildRemoteProfileCard() {
-    // Show if remote user left OR remote video is muted (camera off)
+    // Show if remote user left OR remote video is muted (camera off) OR screen is off
     // Always show when user left (abnormal disconnect)
-    if (!_remoteUserLeft && !_remoteVideoMuted) {
+    if (!_remoteUserLeft && !_remoteVideoMuted && !_remoteScreenOff) {
       return const SizedBox.shrink();
     }
 
@@ -719,6 +898,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       name: name,
       role: role,
       isLocal: false,
+      userLeft: _remoteUserLeft, // Pass whether user left
+      screenOff: _remoteScreenOff, // Pass whether screen is off
     );
   }
 
@@ -744,16 +925,17 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             widget.userRole == 'tutor'
                 ? SessionStateMessages.learnerMicMuted()
                 : SessionStateMessages.tutorMicMuted(),
-          // Remote user left
+          // Remote connection issues (show before user left confirmation)
+          // Show "reconnecting" or "poor connection" when unstable but user hasn't left yet
+          if (_remoteConnectionUnstable && _remoteUID != null && !_remoteUserLeft)
+            widget.userRole == 'tutor'
+                ? SessionStateMessages.learnerReconnecting()
+                : SessionStateMessages.tutorReconnecting(),
+          // Remote user left (only show after grace period confirms they're gone)
           if (_remoteUserLeft)
             widget.userRole == 'tutor' 
                 ? SessionStateMessages.learnerLeft()
                 : SessionStateMessages.tutorLeft(),
-          // Remote connection unstable
-          if (_remoteConnectionUnstable && _remoteUID != null && !_remoteUserLeft)
-            widget.userRole == 'tutor'
-                ? SessionStateMessages.learnerConnectionUnstable()
-                : SessionStateMessages.tutorConnectionUnstable(),
         ],
       ),
     );
@@ -780,38 +962,49 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Connection status (minimal)
-            if (_sessionState.isActive)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
+            // Left side: Connection status and timer
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Connection status (minimal)
+                if (_sessionState.isActive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.8),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Connected',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Connected',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
-            // Close button (minimal)
+                  ),
+                // Session timer
+                if (_sessionState.isActive && _timeRemaining != null) ...[
+                  const SizedBox(width: 12),
+                  _buildTimerDisplay(),
+                ],
+              ],
+            ),
+            // Right side: Close button
             IconButton(
               icon: const Icon(Icons.close, color: Colors.white, size: 24),
               onPressed: _endCall,
@@ -820,6 +1013,45 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+  
+  /// Build timer display widget
+  Widget _buildTimerDisplay() {
+    if (_timeRemaining == null) {
+      return const SizedBox.shrink();
+    }
+    
+    final remaining = _timeRemaining!;
+    final isLowTime = remaining.inMinutes < 5; // Show warning when less than 5 minutes
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isLowTime 
+            ? Colors.orange.withOpacity(0.9)
+            : Colors.blue.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.timer,
+            color: Colors.white,
+            size: 14,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            SessionTimerService.formatDuration(remaining),
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

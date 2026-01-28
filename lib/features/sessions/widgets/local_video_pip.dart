@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart' as agora_rtc_engine;
 import 'agora_video_view.dart' as agora_widget;
+import 'package:prepskul/core/services/log_service.dart';
 
 /// Draggable Picture-in-Picture local video widget
 /// Shows local video in a small draggable window
@@ -43,6 +45,35 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
       CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
     _animationController.forward();
+    
+    // CRITICAL: On web, ensure local video is set up with camera source before widget builds
+    if (kIsWeb && widget.localUid != null && widget.isVideoEnabled) {
+      _setupWebLocalVideo();
+    }
+  }
+  
+  /// Set up local video for web platform
+  /// This ensures the camera feed is properly captured and displayed in the PIP
+  Future<void> _setupWebLocalVideo() async {
+    try {
+      // Explicitly set up local video with camera source type for web
+      await widget.engine.setupLocalVideo(
+        const agora_rtc_engine.VideoCanvas(
+          uid: 0,
+          sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
+        ),
+      );
+      LogService.info('✅ Local video PIP set up for web (camera source)');
+      
+      // Small delay to allow camera to initialize
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      // Ensure video stream is unmuted
+      await widget.engine.muteLocalVideoStream(false);
+      LogService.info('✅ Local video PIP stream unmuted for web');
+    } catch (e) {
+      LogService.warning('Could not set up local video PIP for web: $e');
+    }
   }
 
   @override
@@ -128,16 +159,43 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
             child: Stack(
               children: [
                 // Video view
-                widget.localUid != null
-                    ? agora_widget.AgoraVideoViewWidget(
-                        engine: widget.engine,
-                        uid: widget.localUid,
-                        isLocal: true,
+                widget.localUid != null && widget.isVideoEnabled
+                    ? Builder(
+                        builder: (context) {
+                          // CRITICAL: On web, ensure setupLocalVideo is called with explicit source type
+                          // This is done in initState, but we also ensure it here for reliability
+                          if (kIsWeb) {
+                            // Use a post-frame callback to ensure setup happens after widget build
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              widget.engine.setupLocalVideo(
+                                const agora_rtc_engine.VideoCanvas(
+                                  uid: 0,
+                                  sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
+                                ),
+                              ).catchError((e) {
+                                LogService.warning('Post-frame local video setup failed: $e');
+                              });
+                            });
+                          }
+                          
+                          return agora_widget.AgoraVideoViewWidget(
+                            engine: widget.engine,
+                            uid: widget.localUid,
+                            isLocal: true,
+                            sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera, // Explicitly use camera source for preview
+                          );
+                        },
                       )
                     : Container(
                         color: Colors.black,
-                        child: const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
+                        child: Center(
+                          child: widget.isVideoEnabled
+                              ? const CircularProgressIndicator(color: Colors.white)
+                              : Icon(
+                                  Icons.videocam_off,
+                                  color: Colors.white.withOpacity(0.5),
+                                  size: 32,
+                                ),
                         ),
                       ),
                 // Overlay with status indicators
