@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
@@ -77,10 +81,48 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Future<void> _loadAuthMethod() async {
     final prefs = await SharedPreferences.getInstance();
-    safeSetState(() {
-      _authMethod =
-          prefs.getString('auth_method') ?? 'phone'; // Default to phone
-    });
+    final storedMethod = prefs.getString('auth_method');
+    
+    // If stored method exists, use it
+    if (storedMethod != null) {
+      safeSetState(() {
+        _authMethod = storedMethod;
+      });
+      return;
+    }
+    
+    // Otherwise, detect from Supabase user data
+    try {
+      final user = await AuthService.getCurrentUser();
+      final email = user['email'] as String?;
+      final phone = user['phone'] as String?;
+      
+      // If user has phone but no email, they signed up with phone
+      // If user has email but no phone, they signed up with email
+      // If both exist, check which one is the primary identifier
+      String detectedMethod = 'phone'; // Default
+      
+      if (phone != null && phone.isNotEmpty && (email == null || email.isEmpty)) {
+        detectedMethod = 'phone';
+      } else if (email != null && email.isNotEmpty && (phone == null || phone.isEmpty)) {
+        detectedMethod = 'email';
+      } else if (phone != null && phone.isNotEmpty) {
+        // Has both, but phone likely means phone signup
+        detectedMethod = 'phone';
+      }
+      
+      // Save for future use
+      await prefs.setString('auth_method', detectedMethod);
+      
+      safeSetState(() {
+        _authMethod = detectedMethod;
+      });
+    } catch (e) {
+      LogService.warning('Error detecting auth method: $e');
+      safeSetState(() {
+        _authMethod = 'phone'; // Default to phone
+      });
+    }
   }
 
   // Initialize and load data from database
@@ -796,11 +838,38 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _hasTraining = data['hasTraining'] ?? false;
         break;
       case 2:
-          _selectedCity = data['selectedCity'];
-          _selectedQuarter = data['selectedQuarter'];
-          _customQuarter = data['customQuarter'];
-        if (data['selectedQuarter'] == null && data['customQuarter'] != null) {
-          _isCustomQuarter = true;
+        // Location - validate city exists in AppData.cities
+        final cityValue = data['selectedCity'];
+        if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+          _selectedCity = cityValue;
+          _availableQuarters = AppData.cities[cityValue] ?? [];
+          
+          // Validate quarter exists in available quarters
+          final quarterValue = data['selectedQuarter'];
+          if (quarterValue != null && _availableQuarters.contains(quarterValue)) {
+            _selectedQuarter = quarterValue;
+            _isCustomQuarter = false;
+          } else if (quarterValue != null) {
+            // Quarter doesn't exist in list - treat as custom
+            _customQuarter = quarterValue.toString();
+            _isCustomQuarter = true;
+            _selectedQuarter = null;
+          } else {
+            _selectedQuarter = null;
+            _isCustomQuarter = data['customQuarter'] != null && data['customQuarter'].toString().isNotEmpty;
+            if (_isCustomQuarter) {
+              _customQuarter = data['customQuarter']?.toString() ?? '';
+            }
+          }
+        } else {
+          // City doesn't exist in AppData - reset location
+          _selectedCity = null;
+          _selectedQuarter = null;
+          _availableQuarters = [];
+          _isCustomQuarter = false;
+          if (cityValue != null) {
+            LogService.warning('[ONBOARDING] Invalid city value from auto-save: $cityValue. Resetting location.');
+          }
         }
         break;
       case 3:
@@ -903,9 +972,36 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       _institutionController.text = data['institution'] ?? '';
       _fieldOfStudyController.text = data['fieldOfStudy'] ?? '';
       _hasTraining = data['hasTraining'] ?? false;
-      _selectedCity = data['selectedCity'];
-      _selectedQuarter = data['selectedQuarter'];
-      _customQuarter = data['customQuarter'];
+      // Location - validate city exists in AppData.cities
+      final cityValue = data['selectedCity'];
+      if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+        _selectedCity = cityValue;
+        _availableQuarters = AppData.cities[cityValue] ?? [];
+        
+        // Validate quarter exists in available quarters
+        final quarterValue = data['selectedQuarter'];
+        if (quarterValue != null && _availableQuarters.contains(quarterValue)) {
+          _selectedQuarter = quarterValue;
+          _isCustomQuarter = false;
+        } else if (quarterValue != null) {
+          // Quarter doesn't exist in list - treat as custom
+          _customQuarter = quarterValue.toString();
+          _isCustomQuarter = true;
+          _selectedQuarter = null;
+        } else {
+          _selectedQuarter = null;
+          _isCustomQuarter = false;
+        }
+      } else {
+        // City doesn't exist in AppData - reset location
+        _selectedCity = null;
+        _selectedQuarter = null;
+        _availableQuarters = [];
+        if (cityValue != null) {
+          LogService.warning('[ONBOARDING] Invalid city value from SharedPreferences: $cityValue. Resetting location.');
+        }
+      }
+      _customQuarter = data['customQuarter'] ?? '';
       _selectedTutoringAreas = List<String>.from(data['selectedTutoringAreas'] ?? []);
       _selectedLearnerLevels = List<String>.from(data['selectedLearnerLevels'] ?? []);
       _selectedSpecializations = List<String>.from(data['selectedSpecializations'] ?? []);
@@ -921,10 +1017,6 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _agreesToPaymentPolicy = data['agreesToPaymentPolicy'] ?? false;
           _agreesToVerification = data['agreesToVerification'] ?? false;
         });
-
-        if (_selectedCity != null) {
-          _availableQuarters = AppData.cities[_selectedCity!] ?? [];
-        }
 
         if (_currentStep > 0) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -970,13 +1062,34 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         _fieldOfStudyController.text = data['field_of_study']?.toString() ?? '';
         _hasTraining = data['has_training'] ?? false;
 
-        // Location
-        _selectedCity = data['city'];
-        _selectedQuarter = data['quarter'];
-        _customQuarter = data['custom_quarter']?.toString() ?? '';
-        if (_selectedCity != null) {
-          _availableQuarters = AppData.cities[_selectedCity!] ?? [];
+        // Location - validate city exists in AppData.cities
+        final cityValue = data['city'];
+        if (cityValue != null && AppData.cities.containsKey(cityValue)) {
+          _selectedCity = cityValue;
+          _availableQuarters = AppData.cities[cityValue] ?? [];
+          
+          // Validate quarter exists in available quarters
+          final quarterValue = data['quarter'];
+          if (quarterValue != null && _availableQuarters.contains(quarterValue)) {
+            _selectedQuarter = quarterValue;
+            _isCustomQuarter = false;
+          } else if (quarterValue != null) {
+            // Quarter doesn't exist in list - treat as custom
+            _customQuarter = quarterValue.toString();
+            _isCustomQuarter = true;
+            _selectedQuarter = null;
+          } else {
+            _selectedQuarter = null;
+            _isCustomQuarter = false;
+          }
+        } else {
+          // City doesn't exist in AppData - reset location
+          _selectedCity = null;
+          _selectedQuarter = null;
+          _availableQuarters = [];
+          LogService.warning('[ONBOARDING] Invalid city value: $cityValue. Resetting location.');
         }
+        _customQuarter = data['custom_quarter']?.toString() ?? '';
 
         // Teaching Focus
         _selectedTutoringAreas = List<String>.from(
@@ -1547,7 +1660,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         title: Text(
           'Tutor Onboarding',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -1565,7 +1678,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     Text(
                       '${((_currentStep + 1) / _totalSteps * 100).round()}% Complete',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                         color: AppTheme.primaryColor,
                       ),
@@ -1657,13 +1770,13 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         ],
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
+              blurRadius: 8,
               offset: const Offset(0, -2),
             ),
           ],
@@ -1673,8 +1786,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             // Back Button - Circular
             if (_currentStep > 0)
               Container(
-                width: 50,
-                height: 50,
+                width: 48,
+                height: 48,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
@@ -1685,18 +1798,18 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                   icon: const Icon(
                     Icons.arrow_back,
                     color: AppTheme.textDark,
-                    size: 20,
+                    size: 18,
                   ),
                   padding: EdgeInsets.zero,
                 ),
               ),
 
-            if (_currentStep > 0) const SizedBox(width: 12),
+            if (_currentStep > 0) const SizedBox(width: 10),
 
             // Next Button - Beautiful rounded style like login/signup
             Expanded(
               child: SizedBox(
-                height: 56,
+                height: 54,
                 child: ElevatedButton(
                   onPressed: _currentStep == _totalSteps - 1
                       ? (_canProceedFromCurrentStep()
@@ -1712,12 +1825,10 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     foregroundColor: _canProceedFromCurrentStep()
                         ? Colors.white
                         : AppTheme.textLight,
-                    elevation: _canProceedFromCurrentStep() ? 2 : 0,
-                    shadowColor: _canProceedFromCurrentStep()
-                        ? AppTheme.primaryColor.withOpacity(0.3)
-                        : null,
+                    elevation: 0,
+                    shadowColor: null,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(26),
                     ),
                   ),
                   child: Text(
@@ -1725,7 +1836,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         ? 'Submit Application'
                         : 'Next',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1740,7 +1851,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildContactInformationStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1754,7 +1865,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 : Icons.email_outlined,
             hasRequiredFields: true,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Info box
           Container(
@@ -1788,7 +1899,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Phone or Email Input (based on auth method)
           _authMethod == 'email'
@@ -1849,7 +1960,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildAcademicBackgroundStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1859,7 +1970,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Icons.school,
             hasRequiredFields: true,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Education Level Selection Cards
           _buildSelectionCards(
@@ -1881,7 +1992,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: true,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Institution Input
           _buildInputField(
@@ -1891,7 +2002,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             icon: Icons.business,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Field of Study Input
           _buildInputField(
@@ -1901,7 +2012,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             icon: Icons.book,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Training Toggle
           _buildToggleOption(
@@ -1920,7 +2031,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildLocationStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1983,7 +2094,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildTeachingFocusStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1993,7 +2104,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Icons.category,
             hasRequiredFields: true,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Tutoring Areas Selection Cards
           _buildSelectionCards(
@@ -2011,7 +2122,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: false,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Learner Levels Selection Cards
           _buildSelectionCards(
@@ -2039,7 +2150,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
   // NEW STEP: Specializations with tabs
   Widget _buildSpecializationsStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2049,7 +2160,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Icons.school,
             hasRequiredFields: true,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Show specializations with tabs
           if (_selectedTutoringAreas.isNotEmpty &&
@@ -2059,7 +2170,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           // Show message if prerequisites not met
           if (_selectedTutoringAreas.isEmpty || _selectedLearnerLevels.isEmpty)
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: Colors.orange[50],
                 borderRadius: BorderRadius.circular(12),
@@ -2073,7 +2184,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     child: Text(
                       'Please select tutoring areas and learner levels in the previous step first.',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: Colors.orange[900],
                       ),
                     ),
@@ -2105,7 +2216,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 safeSetState(() => _selectedSpecializations = values),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Custom Specialization Input
           _buildInputField(
@@ -2145,7 +2256,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
           ),
           child: TabBar(
@@ -2324,7 +2435,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildExperienceStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2333,7 +2444,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Tell us about your teaching experience',
             Icons.work,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Experience Toggle
           _buildToggleOption(
@@ -2347,7 +2458,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           ),
 
           if (_hasExperience) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
 
             // Experience Duration Selection Cards
             _buildSelectionCards(
@@ -2364,7 +2475,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               isSingleSelection: true,
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
 
             // Previous Organization Input
             _buildInputField(
@@ -2374,7 +2485,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               icon: Icons.business_center,
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
 
             // Taught Levels Selection Cards
             _buildSelectionCards(
@@ -2394,7 +2505,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ),
           ],
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Motivation Input
           Column(
@@ -2530,7 +2641,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildTeachingStyleStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2539,7 +2650,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'How do you prefer to teach?',
             Icons.psychology,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Preferred Mode Selection Cards
           _buildSelectionCards(
@@ -2551,7 +2662,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: true,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Teaching Approaches Selection Cards
           _buildSelectionCards(
@@ -2569,7 +2680,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: false,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Session Type Selection Cards
           _buildSelectionCards(
@@ -2581,7 +2692,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: true,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Multiple Learners Toggle
           _buildToggleOption(
@@ -2592,7 +2703,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             icon: Icons.people,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Hours Per Week Selection Cards
           _buildSelectionCards(
@@ -2616,7 +2727,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildDigitalReadinessStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2625,7 +2736,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Tell us about your digital setup',
             Icons.devices,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Devices Selection Cards
           _buildSelectionCards(
@@ -2644,7 +2755,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: false,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Internet Connection Toggle
           _buildToggleOption(
@@ -2657,7 +2768,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             icon: Icons.wifi,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Teaching Tools Selection Cards
           _buildSelectionCards(
@@ -2676,7 +2787,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: false,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Materials Toggle
           _buildToggleOption(
@@ -2689,7 +2800,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             icon: Icons.folder,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Training Interest Toggle
           _buildToggleOption(
@@ -2708,7 +2819,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildAvailabilityStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2717,17 +2828,17 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Set your available times for different services',
             Icons.calendar_today,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Service Type Selection
           _buildServiceTypeSelection(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Availability Calendar
           _buildAvailabilityCalendar(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Business Model Info
           Container(
@@ -2751,7 +2862,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     Text(
                       'How it works:',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
                       ),
@@ -2782,7 +2893,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Select Service Type',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -2823,7 +2934,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         child: Text(
                           'Tutoring Sessions',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: _selectedServiceType == 'tutoring'
                                 ? Colors.white
@@ -2883,7 +2994,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       Text(
                         'Test Sessions',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: _selectedServiceType == 'test_sessions'
                               ? Colors.white
@@ -2956,7 +3067,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Set your weekly availability',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -3008,7 +3119,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         Text(
                           day.substring(0, 3),
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: isSelected
                                 ? Colors.white
@@ -3044,7 +3155,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
             return Container(
               margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -3082,7 +3193,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                         child: Text(
                           day,
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
                             color: selectedSlots.isNotEmpty
                                 ? Colors.white
@@ -3185,7 +3296,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               child: Text(
                 label,
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -3257,7 +3368,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildExpectationsStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3266,7 +3377,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Set your expected rate and pricing factors',
             Icons.trending_up,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Expected Rate Selection Cards
           _buildSelectionCards(
@@ -3283,7 +3394,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: true,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Detailed Pricing Factors
           _buildDetailedPricingFactors(),
@@ -3294,7 +3405,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildPaymentStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3303,7 +3414,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'How would you like to receive payments?',
             Icons.payment,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Payment Method Selection Cards with info icon
           Row(
@@ -3311,7 +3422,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               Text(
                 'Payment Method',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -3348,12 +3459,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             isSingleSelection: true,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Dynamic Payment Details based on method
           if (_paymentMethod != null) _buildDynamicPaymentDetails(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Payment Policy Agreement
           _buildPaymentPolicyAgreement(),
@@ -3475,7 +3586,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'What factors influence your pricing?',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -3513,7 +3624,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               Text(
                 'Additional Considerations:',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -3556,7 +3667,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 child: Text(
                   'I understand and agree to PrepSkul\'s payment process',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                     color: AppTheme.textDark,
                   ),
@@ -3596,7 +3707,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildVerificationStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3606,12 +3717,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Icons.verified_user,
             hasRequiredFields: true,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Dynamic Document Upload based on education level
           _buildDynamicDocumentUpload(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Verification Agreement Toggle
           _buildToggleOption(
@@ -3631,7 +3742,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildMediaLinksStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3640,7 +3751,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Add your social media links and video introduction',
             Icons.link,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Info box with instructions
           Container(
@@ -3665,7 +3776,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       child: Text(
                         'Instructions',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textDark,
                         ),
@@ -3686,12 +3797,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ),
           ),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Social Media Links with Icons
           _buildSocialMediaLinks(),
 
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           // Video Introduction
           _buildVideoIntroduction(),
@@ -3764,7 +3875,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Upload Required Documents',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -3870,7 +3981,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     final isUploaded = _uploadedDocuments[docType] != null;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -3912,7 +4023,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     Text(
                       doc['title']!,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textDark,
                       ),
@@ -3921,7 +4032,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     Text(
                       doc['description']!,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: AppTheme.textMedium,
                       ),
                     ),
@@ -3937,7 +4048,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Upload preview or upload button
           if (isUploaded)
@@ -3968,7 +4079,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       Text(
                         'Document uploaded successfully',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           color: Colors.green[700],
                           fontWeight: FontWeight.w600,
                         ),
@@ -4002,7 +4113,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       ? 'Upload Last Certificate'
                       : 'Upload ${doc['title']}',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -4258,7 +4369,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               child: Text(
                 'Social Media & Professional Links',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -4412,7 +4523,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         title: Text(
           'Add Social Media Link',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -4451,7 +4562,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           'Video Introduction',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -4499,7 +4610,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     child: Text(
                       'Video Instructions',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textDark,
                       ),
@@ -4548,7 +4659,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   Widget _buildPersonalStatementStep() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4557,7 +4668,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             'Review and edit your profile description',
             Icons.edit_note,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 30),
 
           Container(
             padding: const EdgeInsets.all(16),
@@ -4572,7 +4683,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 Text(
                   'Generated Profile Description',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textDark,
                   ),
@@ -4599,7 +4710,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                   'Your personal statement will be generated based on your responses...',
               hintStyle: GoogleFonts.poppins(
                 color: AppTheme.textLight,
-                fontSize: 14,
+                fontSize: 12,
               ),
               filled: true,
               fillColor: AppTheme.softCard,
@@ -4639,13 +4750,13 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             child: Text(
               'Generate Personal Statement',
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Final Affirmations
           _buildFinalAffirmations(),
@@ -4819,7 +4930,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                       child: Text(
                         title,
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: Colors.white,
                         ),
@@ -4856,7 +4967,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         Text(
           title,
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -4934,6 +5045,21 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     required Function(String?) onChanged,
     bool isRequired = false,
   }) {
+    // Validate value exists in items to prevent dropdown errors
+    // If value doesn't exist or there are duplicates, set to null
+    String? validatedValue = value;
+    if (value != null) {
+      final matchingItems = items.where((item) => item == value).toList();
+      if (matchingItems.length != 1) {
+        // Value doesn't exist or has duplicates - reset to null
+        validatedValue = null;
+        LogService.warning('[DROPDOWN] Value "$value" not found in items or has duplicates. Resetting to null.');
+      }
+    }
+    
+    // Remove duplicates from items list
+    final uniqueItems = items.toSet().toList();
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -4942,7 +5068,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
@@ -4952,7 +5078,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               Text(
                 '*',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
                 ),
@@ -4962,7 +5088,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: value,
+          value: validatedValue,
           onChanged: onChanged,
           decoration: InputDecoration(
             filled: true,
@@ -4987,7 +5113,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               vertical: 16,
             ),
           ),
-          items: items.map((item) {
+          items: uniqueItems.map((item) {
             return DropdownMenuItem<String>(value: item, child: Text(item));
           }).toList(),
         ),
@@ -5036,7 +5162,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             hintText: hint,
             hintStyle: GoogleFonts.poppins(
               color: AppTheme.textLight,
-              fontSize: 14,
+              fontSize: 12,
             ),
             filled: true,
             fillColor: AppTheme.softCard,
@@ -5076,7 +5202,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ),
           ),
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w500,
             color: AppTheme.textDark,
           ),
@@ -5106,7 +5232,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             child: Text(
               title,
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: AppTheme.textDark,
               ),
@@ -5180,7 +5306,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             child: Text(
               title,
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: isChecked ? FontWeight.w600 : FontWeight.w500,
                 color: AppTheme.textDark,
                 height: 1.5,
@@ -5415,11 +5541,54 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       final userId = user['userId'] ?? 'test-user-123'; // DEBUG MODE
 
       // Upload to Supabase Storage
-      final String uploadedUrl = await StorageService.uploadDocument(
-        userId: userId,
-        documentFile: pickedFile,
-        documentType: documentType.toLowerCase().replaceAll(' ', '_'),
-      );
+      // Profile pictures go to profile-photos bucket, other documents go to documents bucket
+      final String uploadedUrl;
+      if (documentType == 'profile_picture') {
+        // For profile pictures, we need to upload to profile-photos bucket
+        // Handle both XFile (web) and File (mobile)
+        if (pickedFile is XFile) {
+          if (kIsWeb) {
+            // Web: read as bytes and upload to profile-photos bucket
+            final bytes = await pickedFile.readAsBytes();
+            final storagePath = '$userId/profile_picture.png';
+            await SupabaseService.client.storage
+                .from('profile-photos')
+                .uploadBinary(
+                  storagePath,
+                  bytes,
+                  fileOptions: FileOptions(
+                    contentType: 'image/png',
+                    upsert: true,
+                  ),
+                );
+            uploadedUrl = SupabaseService.client.storage
+                .from('profile-photos')
+                .getPublicUrl(storagePath);
+          } else {
+            // Mobile: convert XFile to File
+            final imageFile = File(pickedFile.path);
+            uploadedUrl = await StorageService.uploadProfilePhoto(
+              userId: userId,
+              imageFile: imageFile,
+              fileName: 'profile_picture.png',
+            );
+          }
+        } else {
+          // File object (mobile only)
+          final imageFile = pickedFile as File;
+          uploadedUrl = await StorageService.uploadProfilePhoto(
+            userId: userId,
+            imageFile: imageFile,
+            fileName: 'profile_picture.png',
+          );
+        }
+      } else {
+        uploadedUrl = await StorageService.uploadDocument(
+          userId: userId,
+          documentFile: pickedFile,
+          documentType: documentType.toLowerCase().replaceAll(' ', '_'),
+        );
+      }
 
       safeSetState(() {
         _uploadedDocuments[documentType] = uploadedUrl;
@@ -6093,7 +6262,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     color: Colors.green,
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 22),
                 Text(
                   'Application Submitted! 🎉',
                   style: GoogleFonts.poppins(
@@ -6107,13 +6276,13 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                 Text(
                   'Your tutor profile has been submitted successfully!\nOur team will review it and get back to you soon.',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     color: Colors.white.withOpacity(0.95),
                     height: 1.5,
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 30),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(

@@ -114,3 +114,8 @@ After deploying, verify:
    - Verify credits are added to account
 3. **Monitor Logs**: Check for any RLS errors or payment issues
 
+
+
+
+
+

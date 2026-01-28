@@ -37,9 +37,7 @@ class GameResultsScreen extends StatefulWidget {
 class _GameResultsScreenState extends State<GameResultsScreen> {
   late ConfettiController _confettiController;
   final GameSoundService _soundService = GameSoundService();
-  GameStats? _currentStats;
-
-  @override
+  GameStats? _currentStats;  @override
   void initState() {
     super.initState();
     _confettiController = ConfettiController(duration: const Duration(seconds: 3));

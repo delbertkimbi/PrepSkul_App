@@ -1,13 +1,35 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Permissions for file access, camera, and storage -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    
+    <!-- Storage permissions for Android 12 and below only -->
+    <!-- Android 13+ will use Photo Picker automatically (no permission needed) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    
+    <!-- EXPLICITLY REMOVE: READ_MEDIA_IMAGES - Using Android Photo Picker instead (no permission needed on Android 13+) -->
+    <!-- This prevents plugins (like image_picker) from automatically adding these permissions -->
+    <uses-permission 
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove" />
+    
+    <!-- EXPLICITLY REMOVE: READ_MEDIA_VIDEO - Using Android Photo Picker instead (no permission needed on Android 13+) -->
+    <!-- This prevents plugins (like image_picker) from automatically adding these permissions -->
+    <uses-permission 
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove" />
+    
+    <!-- The image_picker package will automatically use Photo Picker on Android 13+ when these permissions are not declared -->
+    
+    <!-- Camera permission: Required for tutors to take profile photos and upload verification documents (ID cards, certificates) during onboarding -->
     <uses-permission android:name="android.permission.CAMERA"/>
+    
+    <!-- Location permissions: Required to show session locations on maps and help users navigate to onsite tutoring sessions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    
+    <!-- Camera hardware is optional - app works without camera but with limited functionality -->
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
     

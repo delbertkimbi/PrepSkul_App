@@ -45,8 +45,8 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 
 class NotificationHelperService {
-  // Get API base URL from AppConfig
-  static String get _apiBaseUrl => AppConfig.apiBaseUrl;
+  // Get API base URL from AppConfig (with localhost detection for local development)
+  static String get _apiBaseUrl => AppConfig.effectiveApiBaseUrl;
 
   /// Send notification via API (handles in-app, push, and email)
   /// 
@@ -208,12 +208,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: studentId,
       type: 'booking_approved', // Changed from 'booking_accepted' to match plan
-      title: '✅ Booking Approved!',
+      title: 'Booking Approved',
       message: message,
       priority: 'high',
       actionUrl: actionUrl,
       actionText: actionText,
-      icon: '✅',
+      icon: '',
       metadata: {
         'request_id': requestId,
         'tutor_id': tutorId,
@@ -325,12 +325,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: studentId,
       type: 'trial_accepted',
-      title: '✅ Trial Session Confirmed!',
+      title: 'Trial Session Confirmed',
       message: 'Your trial request with $tutorName has been approved. Tap to view details and pay.',
       priority: 'high',
       actionUrl: '/trials/$trialId/payment',
       actionText: 'Pay Now',
-      icon: '✅',
+      icon: '',
       metadata: {
         'trial_id': trialId,
         'tutor_id': tutorId,
@@ -436,7 +436,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'payment_received',
-      title: '💰 Payment Received',
+      title: 'Payment Received',
       message: 'Payment received from $studentName. Tap to view details.',
       priority: 'normal',
       actionUrl: '/payments/$paymentId',
@@ -492,12 +492,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: studentId,
       type: 'payment_successful',
-      title: '✅ Payment Successful',
+      title: 'Payment Successful',
       message: 'Your payment of $amount $currency was successful.${sessionType != null ? ' Your ${sessionType} session is confirmed!' : ''}',
       priority: 'normal',
       actionUrl: '/payments/$paymentId',
       actionText: 'View Receipt',
-      icon: '✅',
+      icon: '',
       metadata: {
         'payment_id': paymentId,
         'amount': amount,
@@ -731,12 +731,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'session_ready',
-      title: '✅ Session Confirmed - Payment Received',
+      title: 'Session Confirmed - Payment Received',
       message: message,
       priority: 'high',
       actionUrl: '/sessions/$sessionId',
       actionText: 'View Session',
-      icon: '✅',
+      icon: '',
       metadata: {
         'session_id': sessionId,
         'session_type': sessionType,
@@ -903,7 +903,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'earnings_added',
-      title: '💰 Earnings Added',
+      title: 'Earnings Added',
       message: '${earnings.toStringAsFixed(2)} XAF has been added to your pending balance. It will become active after payment confirmation.',
       priority: 'normal',
       actionUrl: '/earnings',
@@ -950,7 +950,7 @@ class NotificationHelperService {
         await NotificationService.createNotification(
           userId: userId,
           type: 'feedback_reminder',
-          title: '💬 Feedback Reminder',
+          title: 'Feedback Reminder',
           message: 'Please provide feedback for your completed session. It helps your tutor improve!',
           priority: 'normal',
           actionUrl: '/sessions/$sessionId/feedback',
@@ -969,7 +969,7 @@ class NotificationHelperService {
         await NotificationService.createNotification(
           userId: userId,
           type: 'feedback_reminder',
-          title: '💬 Feedback Reminder',
+          title: 'Feedback Reminder',
           message: 'Please provide feedback for your completed session. It helps your tutor improve!',
           priority: 'normal',
           actionUrl: '/sessions/$sessionId/feedback',
@@ -1000,12 +1000,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: userId,
       type: 'session_completed',
-      title: '✅ Session Completed',
+      title: 'Session Completed',
       message: 'Your $sessionType session with $otherPartyName for $subject has been completed. Please leave a review!',
       priority: 'normal',
       actionUrl: '/sessions/$sessionId/review',
       actionText: 'Leave Review',
-      icon: '✅',
+      icon: '',
       metadata: {
         'session_id': sessionId,
         'session_type': sessionType,
@@ -1075,7 +1075,7 @@ class NotificationHelperService {
     await NotificationService.createNotification(
       userId: tutorId,
       type: 'profile_approved',
-      title: '🎉 Profile Approved!',
+      title: 'Profile Approved 🎉 ',
       message: 'Congratulations! Your tutor profile has been approved and is now live. Students can now book sessions with you!',
       priority: 'high',
       actionUrl: '/tutor/profile',
@@ -1148,12 +1148,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: studentId,
       type: 'payment_request_paid',
-      title: '✅ Payment Confirmed',
+      title: 'Payment Confirmed',
       message: 'Your payment has been confirmed. Your sessions are now active! Tap to view booking.',
       priority: 'high',
       actionUrl: bookingRequestId != null ? '/bookings/$bookingRequestId' : '/payments',
       actionText: 'View Booking',
-      icon: '✅',
+      icon: '',
       metadata: {
         'payment_request_id': paymentRequestId,
         'booking_request_id': bookingRequestId,
@@ -1166,7 +1166,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'payment_received',
-      title: '💰 Payment Received',
+      title: 'Payment Received',
       message: 'A student has paid for their booking. Sessions are now active!',
       priority: 'normal',
       actionUrl: bookingRequestId != null ? '/tutor/bookings/$bookingRequestId' : '/tutor/bookings',
@@ -1215,12 +1215,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: learnerId,
       type: 'trial_payment_completed',
-      title: '✅ Trial Payment Confirmed',
+      title: 'Trial Payment Confirmed',
       message: 'Your trial session payment has been confirmed. ${meetLink != null ? "Meet link is now available." : "Your session is scheduled."}',
       priority: 'high',
       actionUrl: '/trials/$trialSessionId',
       actionText: 'View Session',
-      icon: '✅',
+      icon: '',
       metadata: {
         'trial_session_id': trialSessionId,
         'subject': subject,
@@ -1240,7 +1240,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'trial_payment_received',
-      title: '💰 Trial Payment Received',
+      title: 'Trial Payment Received',
       message: 'A student has paid for their trial session in $subject. The session is now scheduled.',
       priority: 'normal',
       actionUrl: '/tutor/trials/$trialSessionId',
@@ -1276,6 +1276,72 @@ class NotificationHelperService {
         'reason': reason,
       },
       sendEmail: true
+          );
+  }
+
+  /// Notify student/parent when sessions are created after payment
+  static Future<void> notifySessionsCreated({
+    required String studentId,
+    required String tutorId,
+    required String recurringSessionId,
+    required String tutorName,
+    required String studentName,
+    required int sessionCount,
+    required int frequency,
+    required List<String> days,
+  }) async {
+    final daysText = days.join(', ');
+    await _sendNotificationViaAPI(
+      userId: studentId,
+      type: 'sessions_created',
+      title: 'Sessions Created',
+      message: '$sessionCount session${sessionCount > 1 ? 's' : ''} have been created for your booking with $tutorName. Sessions are now visible in your Sessions tab!',
+      priority: 'high',
+      actionUrl: '/sessions',
+      actionText: 'View Sessions',
+      icon: '📅',
+      metadata: {
+        'recurring_session_id': recurringSessionId,
+        'tutor_id': tutorId,
+        'tutor_name': tutorName,
+        'session_count': sessionCount,
+        'frequency': frequency,
+        'days': days,
+      },
+      sendEmail: true
+          );
+  }
+
+  /// Notify tutor when sessions are created after payment
+  static Future<void> notifyTutorSessionsCreated({
+    required String tutorId,
+    required String studentId,
+    required String recurringSessionId,
+    required String studentName,
+    required String tutorName,
+    required int sessionCount,
+    required int frequency,
+    required List<String> days,
+  }) async {
+    final daysText = days.join(', ');
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'sessions_created',
+      title: 'Sessions Created',
+      message: '$sessionCount session${sessionCount > 1 ? 's' : ''} have been created for your booking with $studentName. Sessions are now visible in your Sessions tab!',
+      priority: 'normal',
+      actionUrl: '/tutor/sessions',
+      actionText: 'View Sessions',
+      icon: '📅',
+      metadata: {
+        'recurring_session_id': recurringSessionId,
+        'student_id': studentId,
+        'student_name': studentName,
+        'session_count': sessionCount,
+        'frequency': frequency,
+        'days': days,
+      },
+      sendEmail: false
           );
   }
 
@@ -1316,7 +1382,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: userId,
       type: 'tutor_request_matched',
-      title: '🎉 Tutor Matched!',
+      title: 'Tutor Matched',
       message: 'We found a tutor for your request: $tutorName',
       priority: 'high',
       actionUrl: '/requests/$requestId',
@@ -1624,12 +1690,12 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: tutorId,
       type: 'modification_accepted',
-      title: '✅ Modification Accepted',
+      title: 'Modification Accepted',
       message: '$studentName has accepted your modification request. The session has been updated.',
       priority: 'normal',
       actionUrl: '/trials/$trialId',
       actionText: 'View Session',
-      icon: '✅',
+      icon: '',
       metadata: {
         'trial_id': trialId,
         'student_id': studentId,
@@ -1649,7 +1715,7 @@ class NotificationHelperService {
     await _sendNotificationViaAPI(
       userId: userId,
       type: 'low_credits_balance',
-      title: '💰 Low Credits Balance',
+      title: 'Low Credits Balance',
       message: 'Your credits balance (${balance.toStringAsFixed(0)}) is below the threshold (${threshold.toStringAsFixed(0)}). Please top up to continue using services.',
       priority: 'normal',
       actionUrl: paymentRequestId != null ? '/payments/$paymentRequestId' : '/credits',
@@ -1738,7 +1804,7 @@ class NotificationHelperService {
         icon = '🎉';
         break;
       case 'closed':
-        title = '✅ Request Closed';
+        title = 'Request Closed';
         message = 'Your tutor request has been closed.${adminNotes != null ? " Note: $adminNotes" : ""}';
         priority = 'normal';
         icon = '✅';

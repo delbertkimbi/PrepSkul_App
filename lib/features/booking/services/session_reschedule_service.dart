@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
@@ -212,7 +213,7 @@ class SessionRescheduleService {
           await _sendNotificationViaAPI(
             userId: otherPartyId as String,
             type: 'session_reschedule_request',
-            title: '📅 Session Reschedule Request',
+            title: 'Session Reschedule Request',
             message: '$requesterName has requested to reschedule a session. Please review and respond.',
             priority: 'high',
             actionUrl: '/sessions/${response['id']}/reschedule',
@@ -723,10 +724,8 @@ class SessionRescheduleService {
 
     // Try to send via API for email/push notifications (optional - API might not be deployed)
     try {
-      const apiBaseUrl = String.fromEnvironment(
-        'API_BASE_URL',
-        defaultValue: 'https://app.prepskul.com/api',
-      );
+      // Use AppConfig instead of hardcoded URL - ensures correct domain
+      final apiBaseUrl = AppConfig.effectiveApiBaseUrl;
 
       final response = await http.post(
         Uri.parse('$apiBaseUrl/notifications/send'),

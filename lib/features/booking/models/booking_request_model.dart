@@ -23,6 +23,10 @@ class BookingRequest {
   final String? rejectionReason;
   final bool hasConflict;
   final String? conflictDetails;
+  
+  // Payment status (loaded upfront to avoid flickering)
+  final String? paymentStatus; // pending, paid, failed, expired, cancelled
+  final String? paymentRequestId; // ID of the payment request
 
   // Trial Session specific fields
   final bool isTrial;
@@ -62,6 +66,8 @@ class BookingRequest {
     this.rejectionReason,
     this.hasConflict = false,
     this.conflictDetails,
+    this.paymentStatus,
+    this.paymentRequestId,
     this.isTrial = false,
     this.subject,
     this.durationMinutes,
@@ -100,6 +106,8 @@ class BookingRequest {
       rejectionReason: json['rejection_reason'] as String?,
       hasConflict: json['has_conflict'] as bool? ?? false,
       conflictDetails: json['conflict_details'] as String?,
+      paymentStatus: json['payment_status'] as String?,
+      paymentRequestId: json['payment_request_id'] as String?,
       isTrial: false,
       studentName: json['student_name'] as String,
       studentAvatarUrl: json['student_avatar_url'] as String?,

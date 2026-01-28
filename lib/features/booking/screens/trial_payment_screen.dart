@@ -10,6 +10,7 @@ import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
+import 'package:confetti/confetti.dart';
 
 
 /// Trial Payment Screen
@@ -389,27 +390,20 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         }
       });
 
-      // Always show a clear success toast
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Payment successful.',
-            style: GoogleFonts.poppins(),
-          ),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 3),
-        ),
-      );
-
       // Set payment status to successful
       safeSetState(() {
         _paymentStatus = 'successful';
       });
 
+      // Show confetti celebration dialog
+      if (mounted) {
+        _showCelebrationDialog(calendarOk);
+      }
+
       // Navigate to sessions screen after successful payment
       if (mounted) {
-        // Small delay to ensure database update is complete
-        await Future.delayed(const Duration(milliseconds: 1000));
+        // Small delay to ensure database update is complete and user sees celebration
+        await Future.delayed(const Duration(milliseconds: 2000));
         
           if (mounted) {
           // Navigate directly to sessions screen with the paid session
@@ -433,6 +427,119 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       }
       return false;
     }
+  }
+
+  /// Show confetti celebration dialog after successful payment
+  void _showCelebrationDialog(bool calendarOk) {
+    final confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        // Trigger confetti animation after dialog is built
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          confettiController.play();
+        });
+        
+        return Stack(
+          children: [
+            AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              contentPadding: const EdgeInsets.all(24),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check_circle,
+                      color: Colors.green,
+                      size: 64,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Payment Successful!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    calendarOk
+                        ? 'Your trial session is booked and added to your calendar. You\'ll receive a notification when it\'s time to join!'
+                        : 'Your trial session payment is confirmed. Your lesson will appear under "My Sessions".',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: AppTheme.textMedium,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        confettiController.dispose();
+                        Navigator.pop(context); // Close dialog
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        'View My Sessions',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Confetti overlay
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConfettiWidget(
+                  confettiController: confettiController,
+                  blastDirection: 3.14 / 2, // Upward
+                  maxBlastForce: 8,
+                  minBlastForce: 3,
+                  emissionFrequency: 0.03,
+                  numberOfParticles: 80,
+                  gravity: 0.15,
+                  shouldLoop: false,
+                  colors: [
+                    Colors.green,
+                    Colors.blue,
+                    Colors.pink,
+                    Colors.orange,
+                    Colors.purple,
+                    Colors.yellow,
+                    AppTheme.primaryColor,
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// Connect Google Calendar (OAuth) and retry Meet link generation

@@ -1,0 +1,15 @@
+# Quick Test Reference
+
+## ✅ WORKING: Use absolute path
+flutter test /Users/user/Desktop/PrepSkul/prepskul_app/test/features/messaging/
+
+## ✅ WORKING: Use test runner script
+./run_tests.sh
+
+## ❌ FAILS: Relative path from inside prepskul_app
+flutter test test/features/messaging/  # This will fail with double path
+
+## ✅ WORKING: From project root
+cd /Users/user/Desktop/PrepSkul
+cd prepskul_app && flutter test test/features/messaging/
+

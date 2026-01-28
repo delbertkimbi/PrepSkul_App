@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -89,18 +90,28 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     } catch (e) {
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              errorMessage,
-              style: GoogleFonts.poppins(),
+        
+        // Check if this is an offline error - show branded offline dialog
+        if (errorMessage == 'OFFLINE_ERROR' || AuthService.isOfflineError(e)) {
+          await OfflineDialog.show(
+            context,
+            message: 'Unable to reset password. Please check your internet connection and try again.',
+          );
+        } else {
+          // Show regular error as SnackBar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                errorMessage,
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.primaryColor,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 5),
             ),
-            backgroundColor: AppTheme.primaryColor,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 5),
-          ),
-        );
+          );
+        }
       }
     } finally {
       if (mounted) {

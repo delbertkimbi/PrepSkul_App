@@ -28,9 +28,7 @@ class ChallengesScreen extends StatefulWidget {
 class _ChallengesScreenState extends State<ChallengesScreen> {
   List<Challenge> _challenges = [];
   bool _isLoading = true;
-  String _selectedTab = 'all'; // 'all', 'sent', 'received'
-
-  @override
+  String _selectedTab = 'all'; // 'all', 'sent', 'received'  @override
   void initState() {
     super.initState();
     _loadChallenges();
@@ -195,9 +193,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
         statusLabel = 'Expired';
         statusIcon = Icons.access_time;
         break;
-    }
-
-    return Card(
+    }    return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       elevation: 0,
       shape: RoundedRectangleBorder(

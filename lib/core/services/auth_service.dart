@@ -185,7 +185,7 @@ class AuthService {
       // Sign out from Supabase
       await SupabaseService.signOut();
 
-      // Clear local session
+      // Clear local session and ALL user-related cached data
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyIsLoggedIn);
       await prefs.remove(_keyUserRole);
@@ -193,9 +193,15 @@ class AuthService {
       await prefs.remove(_keyUserPhone);
       await prefs.remove(_keyUserName);
       await prefs.remove(_keySurveyCompleted);
+      
+      // Clear signup-related cached data to prevent role confusion
+      await prefs.remove('signup_user_role');
+      await prefs.remove('signup_email');
+      await prefs.remove('signup_full_name');
+      await prefs.remove('pending_deep_link');
+      
       // Keep remember_me for convenience
-
-      LogService.success('User logged out successfully');
+      LogService.success('User logged out successfully - all cached data cleared');
     } catch (e) {
       LogService.error('Error during logout: $e');
       rethrow;
@@ -205,16 +211,130 @@ class AuthService {
   /// Alias for logout (for consistency with clearSession naming)
   static Future<void> clearSession() => logout();
 
-  /// Get current user data (from local session)
+  /// Get current user data (verified against Supabase auth)
+  /// Always syncs with Supabase's actual current user to prevent account switching issues
   static Future<Map<String, dynamic>> getCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    return {
-      'userId': prefs.getString(_keyUserId),
-      'userRole': prefs.getString(_keyUserRole),
-      'phone': prefs.getString(_keyUserPhone),
-      'fullName': prefs.getString(_keyUserName),
-      'surveyCompleted': prefs.getBool(_keySurveyCompleted) ?? false,
-    };
+    try {
+      // CRITICAL: Always verify against Supabase's actual current user
+      // This prevents account switching issues when sessions change
+      final supabaseUser = SupabaseService.currentUser;
+      
+      if (supabaseUser == null) {
+        // No Supabase session - clear local data and return empty
+        LogService.warning('⚠️ No Supabase session found - clearing local session');
+        await logout();
+        return {
+          'userId': null,
+          'userRole': null,
+          'phone': null,
+          'fullName': null,
+          'surveyCompleted': false,
+        };
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final localUserId = prefs.getString(_keyUserId);
+      final supabaseUserId = supabaseUser.id;
+
+      // CRITICAL: If user IDs don't match, sync with Supabase
+      // This handles cases where the session changed (e.g., hot restart with different account)
+      if (localUserId != supabaseUserId) {
+        LogService.warning(
+          '⚠️ User ID mismatch detected! '
+          'Local: $localUserId, Supabase: $supabaseUserId. '
+          'Syncing with Supabase session...'
+        );
+
+        // Fetch user profile from database to sync
+        try {
+          final profile = await SupabaseService.client
+              .from('profiles')
+              .select('user_type, full_name, phone_number, survey_completed')
+              .eq('id', supabaseUserId)
+              .maybeSingle();
+
+          if (profile != null) {
+            // Sync local storage with actual Supabase session
+            // Ensure proper type casting for survey_completed
+            final surveyCompleted = (profile['survey_completed'] is bool) 
+                ? profile['survey_completed'] as bool 
+                : false;
+            
+            await saveSession(
+              userId: supabaseUserId,
+              userRole: profile['user_type'] as String? ?? 'student',
+              phone: profile['phone_number'] as String? ?? supabaseUser.phone ?? '',
+              fullName: profile['full_name'] as String? ?? supabaseUser.email ?? 'User',
+              surveyCompleted: surveyCompleted,
+              rememberMe: true,
+            );
+
+            LogService.success('✅ Session synced with Supabase: ${profile['full_name']}');
+            
+            return {
+              'userId': supabaseUserId,
+              'userRole': profile['user_type'] as String? ?? 'student',
+              'phone': profile['phone_number'] as String? ?? supabaseUser.phone ?? '',
+              'fullName': profile['full_name'] as String? ?? supabaseUser.email ?? 'User',
+              'surveyCompleted': surveyCompleted,
+            };
+          } else {
+            // Profile not found - use Supabase user data
+            final email = supabaseUser.email ?? '';
+            final phone = supabaseUser.phone ?? '';
+            
+            final fullName = (supabaseUser.userMetadata?['full_name'] as String?) ?? 
+                             (email.isNotEmpty ? email : 'User');
+            
+            await saveSession(
+              userId: supabaseUserId,
+              userRole: supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
+              phone: phone,
+              fullName: fullName,
+              surveyCompleted: false,
+              rememberMe: true,
+            );
+
+            return {
+              'userId': supabaseUserId,
+              'userRole': supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
+              'phone': phone,
+              'fullName': fullName,
+              'surveyCompleted': false,
+            };
+          }
+        } catch (e) {
+          LogService.error('Error syncing session: $e');
+          // Fallback to Supabase user data
+          return {
+            'userId': supabaseUserId,
+            'userRole': supabaseUser.userMetadata?['user_type'] as String? ?? 'student',
+            'phone': supabaseUser.phone ?? '',
+            'fullName': supabaseUser.email ?? 'User',
+            'surveyCompleted': false,
+          };
+        }
+      }
+
+      // User IDs match - return local data (which should be in sync)
+      return {
+        'userId': prefs.getString(_keyUserId),
+        'userRole': prefs.getString(_keyUserRole),
+        'phone': prefs.getString(_keyUserPhone),
+        'fullName': prefs.getString(_keyUserName),
+        'surveyCompleted': prefs.getBool(_keySurveyCompleted) ?? false,
+      };
+    } catch (e) {
+      LogService.error('Error getting current user: $e');
+      // Return empty on error
+      return {
+        'userId': null,
+        'userRole': null,
+        'phone': null,
+        'fullName': null,
+        'surveyCompleted': false,
+      };
+    }
   }
 
   /// Get user's full profile from database
@@ -471,14 +591,30 @@ class AuthService {
       // Handle auth errors (e.g., refresh token failures)
       LogService.error('🔐 Auth state error: $error');
       final errorStr = error.toString().toLowerCase();
-      if (errorStr.contains('refresh_token') || 
-          errorStr.contains('invalid') ||
-          errorStr.contains('expired')) {
+      
+      // Check if this is a network/offline error - don't clear session for these
+      final isNetworkError = errorStr.contains('socketexception') ||
+          errorStr.contains('failed host lookup') ||
+          errorStr.contains('network is unreachable') ||
+          errorStr.contains('no route to host') ||
+          errorStr.contains('connection refused') ||
+          errorStr.contains('clientexception') ||
+          (errorStr.contains('authretryablefetchexception') && 
+           (errorStr.contains('socketexception') || errorStr.contains('clientexception')));
+      
+      // Only clear session if it's actually invalid/expired, NOT if it's a network error
+      if (!isNetworkError && 
+          (errorStr.contains('refresh_token') || 
+           errorStr.contains('invalid') ||
+           errorStr.contains('expired'))) {
         LogService.warning('🔐 Invalid/expired session detected - clearing auth state');
         // Clear local auth state
         SharedPreferences.getInstance().then((prefs) async {
           await prefs.setBool(_keyIsLoggedIn, false);
         });
+      } else if (isNetworkError) {
+        // Network error - preserve session, user is offline
+        LogService.info('🔐 Network error detected (offline) - preserving cached session');
       }
     });
   }
@@ -666,6 +802,38 @@ class AuthService {
     }
   }
 
+  /// Check if an error indicates the user is offline
+  /// Returns true if the error suggests no internet connection
+  static bool isOfflineError(dynamic error) {
+    if (error == null) return false;
+    
+    final errorStr = error.toString().toLowerCase();
+    
+    // Check for DNS/host lookup failures (most reliable offline indicator)
+    if (errorStr.contains('failed host lookup') ||
+        errorStr.contains('nodename nor servname provided') ||
+        errorStr.contains('name or service not known') ||
+        errorStr.contains('dns') && errorStr.contains('fail')) {
+      return true;
+    }
+    
+    // Check for socket exceptions (network unavailable)
+    if (errorStr.contains('socketexception') &&
+        (errorStr.contains('network is unreachable') ||
+         errorStr.contains('no route to host') ||
+         errorStr.contains('connection refused'))) {
+      return true;
+    }
+    
+    // Check for AuthRetryableFetchException with network errors
+    if (errorStr.contains('authretryablefetchexception') &&
+        (errorStr.contains('clientexception') || errorStr.contains('socketexception'))) {
+      return true;
+    }
+    
+    return false;
+  }
+
   /// Parse and return user-friendly error message
   static String parseAuthError(dynamic error) {
     if (error == null) return 'An unexpected error occurred';
@@ -675,6 +843,12 @@ class AuthService {
     
     // Convert error to lowercase string for easier matching
     final errorStr = error.toString().toLowerCase();
+    
+    // PRIORITY: Check for offline errors first (most user-friendly)
+    if (isOfflineError(error)) {
+      LogService.warning('[ERROR] Offline error detected - user has no internet connection');
+      return 'OFFLINE_ERROR'; // Special marker for offline errors
+    }
     
     // Handle PostgrestException (database errors from Supabase)
     if (error.toString().contains('PostgrestException') || 
@@ -737,7 +911,21 @@ class AuthService {
         errorStr.contains('networkerror') ||
         errorStr.contains('network request failed')) {
       LogService.error('[ERROR] Network fetch error detected');
+      // Check if it's an offline error
+      if (errorStr.contains('failed host lookup') || 
+          errorStr.contains('nodename nor servname')) {
+        return 'OFFLINE_ERROR'; // Special marker for offline errors
+      }
       return 'Connection error. Please check your internet connection and try again.';
+    }
+    
+    // Handle SocketException with host lookup failures (offline indicator)
+    if (errorStr.contains('socketexception') &&
+        (errorStr.contains('failed host lookup') ||
+         errorStr.contains('nodename nor servname provided') ||
+         errorStr.contains('name or service not known'))) {
+      LogService.warning('[ERROR] Offline error detected via SocketException');
+      return 'OFFLINE_ERROR'; // Special marker for offline errors
     }
 
     // If error is already a friendly Exception we created, extract the message

@@ -178,14 +178,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final userId = user['userId'] as String;
 
       // Format phone number before saving to prevent duplicates
-      final formattedPhone = _formatPhoneNumber(_phoneController.text.trim());
+      final phoneText = _phoneController.text.trim();
+      final formattedPhone = phoneText.isNotEmpty ? _formatPhoneNumber(phoneText) : null;
 
       // Update profiles table
       final profileUpdates = <String, dynamic>{
-        'full_name': _nameController.text.trim(),
-        'phone_number': formattedPhone,
         'updated_at': DateTime.now().toIso8601String(),
       };
+      
+      // Ensure full_name is not null or empty
+      final nameText = _nameController.text.trim();
+      if (nameText.isNotEmpty) {
+        profileUpdates['full_name'] = nameText;
+      }
+      
+      // Only include phone_number if it's not null/empty
+      if (formattedPhone != null && formattedPhone.isNotEmpty) {
+        profileUpdates['phone_number'] = formattedPhone;
+      }
 
       // Update email if changed (only if email auth)
       if (_emailController.text.trim().isNotEmpty) {
@@ -200,10 +210,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       // Update user-specific profile data
       if (widget.userType == 'tutor') {
         final tutorUpdates = <String, dynamic>{
-          'city': _selectedCity,
-          'quarter': _selectedQuarter,
           'updated_at': DateTime.now().toIso8601String(),
         };
+        
+        // Only include city and quarter if they're not null
+        if (_selectedCity != null && _selectedCity!.isNotEmpty) {
+          tutorUpdates['city'] = _selectedCity;
+        }
+        if (_selectedQuarter != null && _selectedQuarter!.isNotEmpty) {
+          tutorUpdates['quarter'] = _selectedQuarter;
+        }
 
         if (_uploadedProfilePhotoUrl != null) {
           tutorUpdates['profile_photo_url'] = _uploadedProfilePhotoUrl;
@@ -212,6 +228,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await SupabaseService.client
             .from('tutor_profiles')
             .update(tutorUpdates)
+            .eq('user_id', userId);
+      } else if (widget.userType == 'student' || widget.userType == 'learner') {
+        // Update learner_profiles for students
+        final learnerUpdates = <String, dynamic>{
+          'updated_at': DateTime.now().toIso8601String(),
+        };
+        
+        // Only include city and quarter if they're not null
+        if (_selectedCity != null && _selectedCity!.isNotEmpty) {
+          learnerUpdates['city'] = _selectedCity;
+        }
+        if (_selectedQuarter != null && _selectedQuarter!.isNotEmpty) {
+          learnerUpdates['quarter'] = _selectedQuarter;
+        }
+
+        await SupabaseService.client
+            .from('learner_profiles')
+            .update(learnerUpdates)
+            .eq('user_id', userId);
+      } else if (widget.userType == 'parent') {
+        // Update parent_profiles for parents
+        final parentUpdates = <String, dynamic>{
+          'updated_at': DateTime.now().toIso8601String(),
+        };
+        
+        // Only include city and quarter if they're not null
+        if (_selectedCity != null && _selectedCity!.isNotEmpty) {
+          parentUpdates['city'] = _selectedCity;
+        }
+        if (_selectedQuarter != null && _selectedQuarter!.isNotEmpty) {
+          parentUpdates['quarter'] = _selectedQuarter;
+        }
+
+        await SupabaseService.client
+            .from('parent_profiles')
+            .update(parentUpdates)
             .eq('user_id', userId);
       }
 

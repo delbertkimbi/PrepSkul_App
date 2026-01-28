@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
 
@@ -481,22 +483,25 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 16),
-                                    TextButton(
-                                      onPressed: () {
-                                        Navigator.pushReplacementNamed(
-                                          context,
-                                          '/beautiful-signup',
-                                        );
-                                      },
-                                      child: Text(
-                                        'Use phone number instead',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: AppTheme.primaryColor,
+                                    // Phone signup option - only show if enabled
+                                    if (AppConfig.enablePhoneSignIn) ...[
+                                      const SizedBox(height: 16),
+                                      TextButton(
+                                        onPressed: () {
+                                          Navigator.pushReplacementNamed(
+                                            context,
+                                            '/beautiful-signup',
+                                          );
+                                        },
+                                        child: Text(
+                                          'Use phone number instead',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 14,
+                                            color: AppTheme.primaryColor,
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -654,31 +659,41 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
       LogService.error('Email signup error: $e');
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    errorMessage,
-                    style: GoogleFonts.poppins(fontSize: 14),
+        
+        // Check if this is an offline error - show branded offline dialog
+        if (errorMessage == 'OFFLINE_ERROR' || AuthService.isOfflineError(e)) {
+          await OfflineDialog.show(
+            context,
+            message: 'Unable to create account. Please check your internet connection and try again.',
+          );
+        } else {
+          // Show regular error as SnackBar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      errorMessage,
+                      style: GoogleFonts.poppins(fontSize: 14),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              backgroundColor: Colors.red[600],
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
             ),
-            backgroundColor: Colors.red[600],
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-              label: 'OK',
-              textColor: Colors.white,
-              onPressed: () {},
-            ),
-          ),
-        );
+          );
+        }
       }
     } finally {
       if (mounted) {

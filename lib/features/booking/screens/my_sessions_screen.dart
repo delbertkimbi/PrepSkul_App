@@ -12,7 +12,7 @@ import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
 import '../services/individual_session_service.dart';
 import '../services/session_feedback_service.dart';
-import 'session_feedback_screen.dart';
+import 'session_feedback_flow_screen.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/sessions/services/session_transcript_service.dart';
 // TODO: Fix import path
@@ -34,7 +34,12 @@ import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/messaging/screens/chat_screen.dart';
+import 'package:prepskul/features/messaging/models/conversation_model.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// My Sessions Screen
 ///
@@ -88,6 +93,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     _loadSessions();
     _checkCalendarConnection();
     _startCountdownTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload sessions when screen becomes visible (e.g., after payment)
+    // This ensures newly created sessions appear immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadSessions();
+      }
+    });
   }
 
   /// Initialize connectivity monitoring
@@ -161,7 +178,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   
   /// Start countdown timer to update session countdowns every minute
   void _startCountdownTimer() {
-    _countdownTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         safeSetState(() {
           // Trigger rebuild to update countdowns
@@ -502,6 +519,32 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
+  /// Fetch tutor name from profiles table
+  Future<String?> _fetchTutorName(String tutorId) async {
+    try {
+      final response = await SupabaseService.client
+          .from('profiles')
+          .select('full_name')
+          .eq('id', tutorId)
+          .maybeSingle();
+      
+      if (response != null) {
+        final name = response['full_name'] as String?;
+        // Filter out generic names
+        if (name != null && 
+            name.toLowerCase() != 'tutor' && 
+            name.toLowerCase() != 'user' && 
+            name.toLowerCase() != 'student' && 
+            name.toLowerCase() != 'parent') {
+          return name;
+        }
+      }
+    } catch (e) {
+      LogService.warning('Error fetching tutor name for $tutorId: $e');
+    }
+    return null;
+  }
+
   Map<String, dynamic>? _convertTrialToSessionMap(TrialSession trial) {
     // Convert TrialSession object to the Map format used by _buildSessionCard
     // Returns null if the trial shouldn't be shown (e.g., rejected/cancelled might be hidden if old?)
@@ -599,7 +642,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SessionFeedbackScreen(sessionId: sessionId),
+        settings: const RouteSettings(name: '/session-feedback-flow'),
+        builder: (context) => SessionFeedbackFlowScreen(sessionId: sessionId),
       ),
     );
 
@@ -630,7 +674,50 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
-  Future<void> _joinMeeting(String? meetLink) async {
+  /// Join Agora video session (independent of meetLink)
+  Future<void> _joinAgoraSession(String sessionId) async {
+    try {
+      // Get current user role
+      final userProfile = await AuthService.getUserProfile();
+      final userType = userProfile?['user_type'] as String?;
+      final userRole = (userType == 'tutor') ? 'tutor' : 'learner';
+      
+      LogService.info('🎥 Joining Agora video session: $sessionId as $userRole');
+      
+      // Navigate to Agora video session screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: userRole,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error joining Agora session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join video session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _joinMeeting(String? meetLink, {String? sessionId, String? location}) async {
+    // For online sessions, use Agora video instead of Google Meet
+    if (location == 'online' && sessionId != null) {
+      // Use Agora directly - no meetLink dependency
+      await _joinAgoraSession(sessionId);
+      return;
+    }
+
+    // Fallback to Google Meet for non-online sessions or if Agora fails
     if (meetLink == null || meetLink.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -678,7 +765,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             builder: (context) => AlertDialog(
               title: Row(
                 children: [
-                  Icon(Icons.calendar_today, color: AppTheme.primaryColor),
+                  Icon(PhosphorIcons.calendar(), color: AppTheme.primaryColor),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -751,7 +838,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               SnackBar(
                 content: Row(
                   children: [
-                    const Icon(Icons.check_circle, color: Colors.white),
+                    Icon(PhosphorIcons.checkCircle(), color: Colors.white),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -918,8 +1005,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
-  /// Build countdown text widget
-  Widget _buildCountdownText(String scheduledDate, String scheduledTime) {
+  /// Build visual countdown widget
+  Widget _buildCountdownWidget(String scheduledDate, String scheduledTime) {
     try {
       final dateParts = scheduledDate.split('T')[0].split('-');
       final timeParts = scheduledTime.split(':');
@@ -934,30 +1021,132 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       final sessionDateTime = DateTime(year, month, day, hour, minute);
       final now = DateTime.now();
       final difference = sessionDateTime.difference(now);
-      
       String countdownText;
+      String countdownSubtext = '';
       if (difference.isNegative) {
-        countdownText = 'Session starting now';
+        final elapsed = now.difference(sessionDateTime);
+        if (elapsed.inMinutes < 2) {
+          countdownText = 'Starting now';
+          countdownSubtext = 'Get ready';
+        } else if (elapsed.inHours < 1) {
+          countdownText = 'Started ${elapsed.inMinutes} min ago';
+          countdownSubtext = 'Session is live';
+        } else {
+          countdownText = 'Started ${elapsed.inHours}h ago';
+          countdownSubtext = 'Session is live';
+        }
       } else if (difference.inDays > 0) {
         countdownText = 'Starts in ${difference.inDays} day${difference.inDays > 1 ? 's' : ''}';
-      } else if (difference.inHours > 0) {
-        countdownText = 'Starts in ${difference.inHours} hour${difference.inHours > 1 ? 's' : ''}';
-      } else if (difference.inMinutes > 0) {
-        countdownText = 'Starts in ${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''}';
+        countdownSubtext = 'Upcoming session';
       } else {
-        countdownText = 'Starting soon';
+        final hours = difference.inHours;
+        final minutes = difference.inMinutes.remainder(60);
+        final seconds = difference.inSeconds.remainder(60);
+        if (hours > 0) {
+          countdownText = 'Starts today • in ${hours}h ${minutes}m';
+          countdownSubtext = 'Happening today';
+        } else if (difference.inMinutes > 0) {
+          countdownText = 'Starts in ${minutes}m ${seconds}s';
+          countdownSubtext = 'Get ready soon';
+        } else {
+          countdownText = 'Starting soon';
+          countdownSubtext = 'Get ready';
+        }
       }
+
+      final totalWindowSeconds = const Duration(hours: 24).inSeconds;
+      final remainingSeconds = difference.inSeconds.clamp(0, totalWindowSeconds);
+      final progress = 1 - (remainingSeconds / totalWindowSeconds);
       
-      return Text(
-        countdownText,
-        style: GoogleFonts.poppins(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          color: AppTheme.primaryColor,
-        ),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            countdownText,
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primaryColor,
+            ),
+          ),
+          if (countdownSubtext.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              countdownSubtext,
+              style: GoogleFonts.poppins(
+                fontSize: 10,
+                color: AppTheme.textMedium,
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.isNaN ? 0 : progress,
+              minHeight: 4,
+              backgroundColor: AppTheme.primaryColor.withOpacity(0.12),
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+            ),
+          ),
+        ],
       );
     } catch (e) {
       return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildSessionModeBadge(String location) {
+    final isOnline = location == 'online';
+    final color = isOnline ? AppTheme.primaryColor : AppTheme.accentGreen;
+    final label = isOnline ? 'ONLINE' : 'ON-SITE';
+    final icon = isOnline ? PhosphorIcons.videoCamera() : PhosphorIcons.mapPin();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: color.withOpacity(0.2), width: 1),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: color,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatStartEndTime(
+    String scheduledDate,
+    String scheduledTime,
+    int durationMinutes,
+  ) {
+    try {
+      final dateParts = scheduledDate.split('T')[0].split('-');
+      final timeParts = scheduledTime.split(':');
+      final year = int.parse(dateParts[0]);
+      final month = int.parse(dateParts[1]);
+      final day = int.parse(dateParts[2]);
+      final hour = int.tryParse(timeParts[0]) ?? 0;
+      final minute = timeParts.length > 1
+          ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0)
+          : 0;
+      final startTime = DateTime(year, month, day, hour, minute);
+      final endTime = startTime.add(Duration(minutes: durationMinutes));
+      return 'Start ${DateFormat('h:mm a').format(startTime)} • End ${DateFormat('h:mm a').format(endTime)}';
+    } catch (_) {
+      return 'Time window';
     }
   }
 
@@ -1019,6 +1208,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ),
                       ],
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$balance sessions',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1056,9 +1254,45 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     
     // Get tutor name and avatar - prioritize recurring_sessions data, fallback to session data
-    final tutorName = recurringData?['tutor_name'] as String? 
-        ?? session['tutor_name'] as String? 
-        ?? (isTrial ? 'Tutor' : 'Tutor');
+    String? tutorName = recurringData?['tutor_name'] as String? 
+        ?? session['tutor_name'] as String?;
+    
+    // Filter out generic names like "Tutor", "user", "student", "parent"
+    if (tutorName != null && 
+        (tutorName.toLowerCase() == 'tutor' || 
+         tutorName.toLowerCase() == 'user' || 
+         tutorName.toLowerCase() == 'student' || 
+         tutorName.toLowerCase() == 'parent')) {
+      tutorName = null; // Will try to fetch from profiles
+    }
+    
+    // If still null or generic, try to fetch from profiles using tutor_id
+    if (tutorName == null && !isTrial) {
+      final tutorId = recurringData?['tutor_id'] as String? 
+          ?? session['tutor_id'] as String?;
+      if (tutorId != null) {
+        // Try to fetch synchronously from cache first, then async if needed
+        // For now, we'll fetch async and update on next build
+        _fetchTutorName(tutorId).then((name) {
+          if (name != null && mounted) {
+            safeSetState(() {
+              // Update the session map with fetched name
+              if (recurringData != null) {
+                recurringData['tutor_name'] = name;
+              } else {
+                session['tutor_name'] = name;
+              }
+            });
+          }
+        });
+      }
+    }
+    
+    // Final fallback - only use generic name if it's a trial, otherwise show loading
+    if (tutorName == null) {
+      tutorName = isTrial ? 'Tutor' : 'Loading...';
+    }
+    
     final tutorAvatar = recurringData?['tutor_avatar_url'] as String? 
         ?? session['tutor_avatar_url'] as String?;
     final subject = recurringData?['subject'] as String? 
@@ -1068,21 +1302,25 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final scheduledDate = session['scheduled_date'] as String;
     final scheduledTime = session['scheduled_time'] as String;
     final location = session['location'] as String? ?? 'online';
+    final onsiteAddress = (session['onsite_address'] as String?) ?? (session['address'] as String?);
+    final durationMinutes = session['duration_minutes'] as int? ?? 60;
     final meetLink = session['meeting_link'] as String?;
     final sessionId = session['id'] as String;
     final isCompleted = status == 'completed';
     final hasFeedback = _feedbackSubmitted[sessionId] ?? false;
     final isExpired = status == 'expired';
+    final modeColor =
+        location == 'online' ? AppTheme.primaryColor : AppTheme.accentGreen;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 6),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: isExpired 
               ? Colors.red.withOpacity(0.2)
-              : Colors.grey.withOpacity(0.1),
+              : modeColor.withOpacity(0.15),
           width: 1,
         ),
       ),
@@ -1091,15 +1329,21 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           // Show session details
           _showSessionDetails(session);
         },
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: isExpired 
+            borderRadius: BorderRadius.circular(12),
+            color: isExpired
                 ? Colors.red.withOpacity(0.02)
-                : Colors.white,
+                : modeColor.withOpacity(0.03),
+            border: Border(
+              left: BorderSide(
+                color: modeColor.withOpacity(0.7),
+                width: 3,
+              ),
+            ),
           ),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1107,39 +1351,45 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Trial Badge (smaller, more subtle)
-              if (isTrial)
-                Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: Colors.orange.withOpacity(0.2),
-                          width: 1,
+                  Row(
+                    children: [
+                      // Trial Badge (smaller, more subtle)
+                      if (isTrial)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: Colors.orange.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            'TRIAL',
+                            style: GoogleFonts.poppins(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange[700],
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                         ),
+                      if (isTrial) const SizedBox(width: 6),
+                      _buildSessionModeBadge(location),
+                    ],
                   ),
-                  child: Text(
-                        'TRIAL',
-                    style: GoogleFonts.poppins(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange[700],
-                          letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
                   // Status badge (more compact)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
                       color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       _getStatusLabel(status),
                       style: GoogleFonts.poppins(
-                        fontSize: 11,
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
                       ),
@@ -1147,13 +1397,13 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               // Tutor info row
               Row(
                 children: [
-                  // Tutor avatar (slightly larger)
+                  // Tutor avatar (smaller)
                   CircleAvatar(
-                    radius: 28,
+                    radius: 22,
                     backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                     backgroundImage: tutorAvatar != null && tutorAvatar.isNotEmpty
                         ? CachedNetworkImageProvider(tutorAvatar)
@@ -1162,14 +1412,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         ? Text(
                             tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
                             style: GoogleFonts.poppins(
-                              fontSize: 20,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
                             ),
                           )
                         : null,
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 10),
                   // Tutor name and subject
                   Expanded(
                     child: Column(
@@ -1178,23 +1428,43 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         Text(
                           tutorName,
                           style: GoogleFonts.poppins(
-                            fontSize: 17,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
                             height: 1.2,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
                           subject,
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: Colors.grey[600],
                             height: 1.2,
                           ),
                         ),
                       ],
                     ),
+                  ),
+                  // Chat button - show if session is valid (scheduled, in_progress, or completed)
+                  Builder(
+                    builder: (context) {
+                      final status = session['status'] as String?;
+                      final isSessionValid = status != null && 
+                          status != 'cancelled' && 
+                          status != 'expired';
+                      
+                      if (!isSessionValid) {
+                        return const SizedBox.shrink();
+                      }
+                      
+                      return IconButton(
+                        icon: Icon(PhosphorIcons.chatCircle(), size: 22),
+                        color: AppTheme.primaryColor,
+                        tooltip: 'Message Tutor',
+                        onPressed: () => _navigateToChatFromSession(context, session),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1243,7 +1513,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           child: Row(
                             children: [
                               Icon(
-                                Icons.play_circle_filled_rounded,
+                                PhosphorIcons.playCircle(),
                                 color: AppTheme.accentGreen,
                                 size: 18,
                               ),
@@ -1266,26 +1536,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   },
                 ),
               ],
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
               // Session details (date, time, location) - more compact
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
                   children: [
               // Date and time
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
+                  Icon(PhosphorIcons.calendar(), size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                     _formatDateTime(scheduledDate, scheduledTime),
                     style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 12,
                       color: Colors.grey[700],
                               fontWeight: FontWeight.w500,
                             ),
@@ -1293,21 +1563,38 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  Icon(PhosphorIcons.clock(), size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _formatStartEndTime(scheduledDate, scheduledTime, durationMinutes),
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
               // Location
               Row(
                 children: [
                   Icon(
-                    location == 'online' ? Icons.video_call : Icons.location_on,
-                    size: 16,
+                    location == 'online' ? PhosphorIcons.videoCamera() : PhosphorIcons.mapPin(),
+                    size: 14,
                     color: Colors.grey[600],
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             location == 'online' ? 'Online Session' : 'On-site Session',
                     style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 12,
                       color: Colors.grey[700],
                               fontWeight: FontWeight.w500,
                             ),
@@ -1315,14 +1602,34 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ],
               ),
+              if (location != 'online') ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(PhosphorIcons.mapPinSimple(), size: 13, color: Colors.grey[500]),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        onsiteAddress?.trim().isNotEmpty == true
+                            ? onsiteAddress!
+                            : 'On-site address not set',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
                     // Countdown timer for upcoming sessions
                     if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                             color: AppTheme.primaryColor.withOpacity(0.2),
                             width: 1,
@@ -1331,16 +1638,34 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         child: Row(
                           children: [
                             Icon(
-                              Icons.timer_outlined,
-                              size: 18,
+                              PhosphorIcons.timer(),
+                              size: 16,
                               color: AppTheme.primaryColor,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Expanded(
-                              child: _buildCountdownText(scheduledDate, scheduledTime),
+                              child: _buildCountdownWidget(scheduledDate, scheduledTime),
                             ),
                           ],
                         ),
+                      ),
+                    ],
+                    if (location != 'online' && (status == 'scheduled' || status == 'in_progress')) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(PhosphorIcons.shieldCheck(), size: 14, color: AppTheme.primaryColor),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'On-site check-in will be required at session start.',
+                              style: GoogleFonts.poppins(
+                                fontSize: 11,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -1381,82 +1706,73 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ),
               ],
-              // Action buttons
-              if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _joinMeeting(meetLink),
-                          icon: Icon(
-                            status == 'in_progress' ? Icons.video_call : Icons.video_call,
-                            size: status == 'in_progress' ? 20 : 18,
-                          ),
-                          label: Text(
-                            status == 'in_progress' ? 'Join Session' : 'Join Meeting',
-                            style: GoogleFonts.poppins(
-                              fontSize: status == 'in_progress' ? 14 : 13,
-                              fontWeight: status == 'in_progress' ? FontWeight.w600 : FontWeight.normal,
+              // Action buttons - Show Join Session only when session is active
+              Builder(
+                builder: (context) {
+                  // Check if session is currently active (within time period)
+                  bool isSessionActive = false;
+                  try {
+                    final dateParts = scheduledDate.split('T')[0].split('-');
+                    final timeParts = scheduledTime.split(':');
+                    final year = int.parse(dateParts[0]);
+                    final month = int.parse(dateParts[1]);
+                    final day = int.parse(dateParts[2]);
+                    final hour = int.tryParse(timeParts[0]) ?? 0;
+                    final minute = timeParts.length > 1 
+                        ? (int.tryParse(timeParts[1].split(' ')[0]) ?? 0) 
+                        : 0;
+                    
+                    final sessionStartTime = DateTime(year, month, day, hour, minute);
+                    final duration = session['duration_minutes'] as int? ?? 60;
+                    final sessionEndTime = sessionStartTime.add(Duration(minutes: duration));
+                    final now = DateTime.now();
+                    
+                    // Session is active if current time is between start and end time
+                    isSessionActive = (now.isAfter(sessionStartTime) || now.isAtSameMomentAs(sessionStartTime)) &&
+                                      now.isBefore(sessionEndTime) &&
+                                      (status == 'scheduled' || status == 'in_progress');
+                  } catch (e) {
+                    // If parsing fails, don't show button
+                    isSessionActive = false;
+                  }
+                  
+                  // Only show Join Session button when session is active
+                  if (isSessionActive && location == 'online') {
+                    return Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _joinAgoraSession(sessionId),
+                            icon: Icon(
+                              PhosphorIcons.videoCamera(),
+                              size: 18,
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: status == 'in_progress' 
-                                ? AppTheme.accentGreen 
-                                : AppTheme.primaryColor,
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(
-                              vertical: status == 'in_progress' ? 14 : 10,
+                            label: Text(
+                              'Join Session',
+                              style: GoogleFonts.poppins(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            elevation: status == 'in_progress' ? 2 : 0,
-                          ),
-                        ),
-                      ),
-                    // Add to Calendar button
-                    // Show ONLY if:
-                    // 1. Session doesn't have calendar_event_id yet, AND
-                    // 2. User hasn't connected calendar (so they can connect), OR
-                    // 3. User has connected calendar (so they can add this session)
-                    if ((session['calendar_event_id'] == null || 
-                         (session['calendar_event_id'] as String? ?? '').isEmpty))
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: OutlinedButton.icon(
-                          onPressed: _isOffline
-                              ? () => OfflineDialog.show(
-                                    context,
-                                    message: 'Adding to calendar requires an internet connection. Please check your connection and try again.',
-                                  )
-                              : () => _addSessionToCalendar(session),
-                          icon: Icon(
-                            _isCalendarConnected == true 
-                                ? Icons.calendar_today 
-                                : Icons.calendar_today_outlined,
-                            size: 18,
-                          ),
-                          label: Text(
-                            _isCalendarConnected == true
-                                ? 'Add to Calendar'
-                                : 'Connect & Add',
-                            style: GoogleFonts.poppins(fontSize: 13),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.primaryColor,
-                            side: BorderSide(color: AppTheme.primaryColor),
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accentGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              elevation: 0,
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ],
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               // Feedback prompt for completed sessions
               if (isCompleted) ...[
                 const SizedBox(height: 16),
@@ -1476,7 +1792,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   child: Row(
                     children: [
                       Icon(
-                        hasFeedback ? Icons.check_circle : Icons.feedback,
+                        hasFeedback ? PhosphorIcons.checkCircle() : PhosphorIcons.chatCircle(),
                         color: hasFeedback ? Colors.green[700] : AppTheme.primaryColor,
                         size: 20,
                       ),
@@ -1580,7 +1896,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
+            Icon(PhosphorIcons.info(), color: AppTheme.primaryColor, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -1644,19 +1960,26 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if (location == 'online' && meetLink != null && meetLink.isNotEmpty)
-                ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _joinMeeting(meetLink);
-                  },
-                  icon: const Icon(Icons.video_call, size: 18),
-                  label: Text('Join Meeting', style: GoogleFonts.poppins()),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  ),
+                    // Agora Video Session button - show for ALL online sessions
+                    if (location == 'online')
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _joinAgoraSession(sessionId);
+                        },
+                        icon: Icon(PhosphorIcons.videoCamera(), size: 18),
+                        label: Text(
+                          status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+                          style: GoogleFonts.poppins(),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: status == 'in_progress' 
+                              ? AppTheme.accentGreen 
+                              : AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          elevation: 0,
+                        ),
                       ),
                     // Add to Calendar button (if no calendar event exists)
                     if (session['calendar_event_id'] == null || 
@@ -1742,6 +2065,39 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final t = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
+        leading: Builder(
+          builder: (context) {
+            // Check if we can pop - if not, navigate to dashboard instead
+            if (Navigator.of(context).canPop()) {
+              return IconButton(
+                icon: Icon(PhosphorIcons.arrowLeft()),
+                color: Colors.white,
+                onPressed: () {
+                  // Simply pop - don't trigger any auth checks
+                  Navigator.of(context).pop();
+                },
+              );
+            } else {
+              // Can't pop - navigate to appropriate dashboard
+              return IconButton(
+                icon: Icon(PhosphorIcons.arrowLeft()),
+                color: Colors.white,
+                onPressed: () async {
+                  try {
+                    final userProfile = await AuthService.getUserProfile();
+                    final userType = userProfile?['user_type'] as String?;
+                    final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
+                    Navigator.pushReplacementNamed(context, route);
+                  } catch (e) {
+                    // Fallback to parent nav
+                    Navigator.pushReplacementNamed(context, '/parent-nav');
+                  }
+                },
+              );
+            }
+          },
+        ),
+        automaticallyImplyLeading: false,
         title: Text(
           t.mySessionsTitle,
           style: GoogleFonts.poppins(
@@ -1773,9 +2129,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-          tabs: const [
-            Tab(text: 'Upcoming'),
-            Tab(text: 'Completed'),
+          tabs: [
+            Tab(text: 'Upcoming (${_upcomingSessions.length})'),
+            Tab(text: 'Completed (${_pastSessions.length})'),
           ],
         ),
       ),
@@ -1791,7 +2147,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
-                              Icons.calendar_today_outlined,
+                              PhosphorIcons.calendar(),
                               size: 64,
                               color: Colors.grey[400],
                             ),
@@ -1819,7 +2175,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onRefresh: _loadSessions,
                         child: ListView.builder(
                           controller: _upcomingScrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           itemCount: _upcomingSessions.length + 1, // +1 for credits widget
                           itemBuilder: (context, index) {
                             if (index == 0) {
@@ -1868,7 +2224,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         onRefresh: _loadSessions,
                         child: ListView.builder(
                           controller: _pastScrollController,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           itemCount: _pastSessions.length,
                           itemBuilder: (context, index) {
                             return _buildSessionCard(
@@ -1881,5 +2237,217 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               ],
             ),
     );
+  }
+
+  /// Get conversation ID for a session
+  Future<String?> _getConversationIdForSession(Map<String, dynamic> session) async {
+    try {
+      // Check if session is paid/approved (only show chat for valid sessions)
+      final status = session['status'] as String?;
+      if (status == null || status == 'cancelled' || status == 'expired') {
+        return null;
+      }
+
+      // Try individual session ID first
+      final individualSessionId = session['id'] as String?;
+      if (individualSessionId != null) {
+        final conversationId = await ConversationLifecycleService.getConversationIdForIndividual(individualSessionId);
+        if (conversationId != null) {
+          return conversationId;
+        }
+      }
+
+      // Try recurring session ID
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      if (recurringData != null) {
+        final recurringSessionId = recurringData['id'] as String?;
+        if (recurringSessionId != null) {
+          final conversationId = await ConversationLifecycleService.getConversationIdForRecurring(recurringSessionId);
+          if (conversationId != null) {
+            return conversationId;
+          }
+        }
+      }
+
+      // Try trial session ID (if this is a trial)
+      final trialData = session['trial_sessions'] as Map<String, dynamic>?;
+      if (trialData != null) {
+        final trialSessionId = trialData['id'] as String?;
+        if (trialSessionId != null) {
+          final conversationId = await ConversationLifecycleService.getConversationIdForTrial(trialSessionId);
+          if (conversationId != null) {
+            return conversationId;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      LogService.error('Error getting conversation ID for session: $e');
+      return null;
+    }
+  }
+
+  /// Navigate to chat from session card
+  Future<void> _navigateToChatFromSession(BuildContext context, Map<String, dynamic> session) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Get or create conversation
+      final supabase = SupabaseService.client;
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (currentUserId == null) {
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'You must be logged in to message.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get tutor ID from session
+      String? tutorId;
+      String? studentId = currentUserId;
+      
+      final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+      if (recurringData != null) {
+        tutorId = recurringData['tutor_id'] as String?;
+        studentId = recurringData['learner_id'] as String? ?? currentUserId;
+      }
+
+      if (tutorId == null) {
+        if (mounted) {
+          Navigator.pop(context); // Dismiss loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to find tutor information.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get or create conversation
+      final conversationData = await ConversationLifecycleService.getOrCreateConversation(
+        recurringSessionId: recurringData?['id'] as String?,
+        individualSessionId: session['id'] as String?,
+        tutorId: tutorId,
+        studentId: studentId,
+      );
+
+      // Dismiss loading
+      if (mounted) Navigator.pop(context);
+
+      if (conversationData == null || conversationData['id'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Unable to start conversation. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get full conversation data
+      final conversationResponse = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationData['id'] as String)
+          .maybeSingle();
+
+      if (conversationResponse == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Conversation not found. Please try again.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get other user's profile info
+      final otherUserId = conversationResponse['student_id'] == currentUserId
+          ? conversationResponse['tutor_id']
+          : conversationResponse['student_id'];
+
+      final otherUserProfile = await supabase
+          .from('profiles')
+          .select('full_name, avatar_url')
+          .eq('id', otherUserId)
+          .maybeSingle();
+
+      // Create Conversation object
+      final conversation = Conversation(
+        id: conversationResponse['id'] as String,
+        studentId: conversationResponse['student_id'] as String,
+        tutorId: conversationResponse['tutor_id'] as String,
+        bookingRequestId: conversationResponse['booking_request_id'] as String?,
+        recurringSessionId: conversationResponse['recurring_session_id'] as String?,
+        individualSessionId: conversationResponse['individual_session_id'] as String?,
+        trialSessionId: conversationResponse['trial_session_id'] as String?,
+        status: conversationResponse['status'] as String? ?? 'active',
+        expiresAt: conversationResponse['expires_at'] != null
+            ? DateTime.parse(conversationResponse['expires_at'] as String)
+            : null,
+        lastMessageAt: conversationResponse['last_message_at'] != null
+            ? DateTime.parse(conversationResponse['last_message_at'] as String)
+            : null,
+        createdAt: DateTime.parse(conversationResponse['created_at'] as String),
+        otherUserName: otherUserProfile?['full_name'] as String?,
+        otherUserAvatarUrl: otherUserProfile?['avatar_url'] as String?,
+      );
+
+      // Navigate to chat screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(conversation: conversation),
+          ),
+        );
+      }
+    } catch (e) {
+      LogService.error('Error navigating to chat from session: $e');
+      if (mounted) {
+        // Dismiss loading if still showing
+        Navigator.of(context, rootNavigator: true).popUntil((route) => !route.navigator!.canPop() || route.settings.name != null);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to start conversation. Please try again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

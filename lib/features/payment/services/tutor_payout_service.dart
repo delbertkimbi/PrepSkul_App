@@ -241,9 +241,9 @@ class TutorPayoutService {
         'user_id': tutorId,
         'type': 'payout_status',
         'notification_type': 'payout_status',
-        'title': status == 'processing' ? '💰 Payout Processing' : 
-                 status == 'completed' ? '✅ Payout Completed' : 
-                 '❌ Payout Failed',
+        'title': status == 'processing' ? 'Payout Processing' : 
+                 status == 'completed' ? 'Payout Completed' : 
+                 'Payout Failed',
         'message': '${statusMessages[status] ?? 'Payout status updated'}: ${amount.toStringAsFixed(0)} XAF',
         'priority': status == 'failed' ? 'high' : 'normal',
         'is_read': false,

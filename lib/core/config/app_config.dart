@@ -1,5 +1,8 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+// Conditional import for web-only WindowEnvHelper
+import 'package:prepskul/core/config/window_env_stub.dart'
+    if (dart.library.html) 'package:prepskul/core/config/window_env_web.dart';
 
 /// Centralized App Configuration
 /// 
@@ -27,6 +30,28 @@ class AppConfig {
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
   static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
+  
+  // ============================================
+  // 🔐 Authentication Feature Flags
+  // ============================================
+  
+  /// Enable/disable Google Sign-In for user authentication
+  /// 
+  /// Set to `false` until Google Cloud Console verification is complete.
+  /// This only affects user authentication, not Google Calendar OAuth.
+  static const bool enableGoogleSignIn = false; // ← Disabled until Google verification complete
+  
+  /// Enable/disable Phone Sign-In for user authentication
+  /// 
+  /// Set to `false` until phone verification is fully tested and ready.
+  /// Phone login requires additional backend setup for SMS verification.
+  static const bool enablePhoneSignIn = true; // ← Enabled for phone OTP authentication
+  
+  /// Enable/disable SkulMate feature
+  /// 
+  /// Set to `true` to enable SkulMate (game generation and library).
+  /// Set to `false` to disable SkulMate in production.
+  static const bool enableSkulMate = false; // ← Disabled in production until RLS issues are resolved
   
   // ============================================
   // Environment Detection
@@ -64,10 +89,96 @@ class AppConfig {
   static String get apiBaseUrl {
     if (isProd) {
       // Production now uses the custom domain prepskul.com
-      return _safeEnv('API_BASE_URL_PROD', 'https://prepskul.com/api');
+      return _safeEnv('API_BASE_URL_PROD', 'https://www.prepskul.com/api');
     } else {
-      return _safeEnv('API_BASE_URL_DEV', 'https://app.prepskul.com/api');
+      return _safeEnv('API_BASE_URL_DEV', 'https://www.prepskul.com/api');
     }
+  }
+  
+  /// Get effective API base URL (with localhost detection for local development)
+  /// 
+  /// Automatically detects when running locally on web and uses localhost:3000
+  /// for the Next.js dev server. This ensures local development works seamlessly
+  /// without requiring environment variable changes.
+  /// 
+  /// IMPORTANT: If isProduction is true, NEVER uses localhost, always uses production API.
+  /// If running on production domains (app.prepskul.com, www.prepskul.com),
+  /// always uses production API regardless of isProduction flag.
+  static String get effectiveApiBaseUrl {
+    // CRITICAL: If production mode is enabled, NEVER use localhost
+    if (isProd) {
+      final prodUrl = 'https://www.prepskul.com/api';
+      if (kDebugMode) {
+        print('🌐 Production mode enabled - using: $prodUrl');
+      }
+      return prodUrl;
+    }
+    
+    String url = apiBaseUrl;
+    
+    // Check if we're running on a production domain (web platform only)
+    if (kIsWeb) {
+      try {
+        // Use conditional import for web platform
+        // ignore: avoid_dynamic_calls
+        final hostname = (() {
+          try {
+            // Dynamic import for dart:html (only available on web)
+            // ignore: avoid_dynamic_calls
+            return (Uri.base.host);
+          } catch (_) {
+            return '';
+          }
+        })();
+        
+        if (hostname.isNotEmpty) {
+          final isProductionDomain = hostname.contains('prepskul.com') || 
+                                     hostname.contains('app.prepskul.com') ||
+                                     hostname.contains('www.prepskul.com');
+          
+          // If on production domain, always use production API
+          if (isProductionDomain) {
+            if (kDebugMode) {
+              print('🌐 Production domain detected: $hostname');
+              print('🌐 Using production API: https://www.prepskul.com/api');
+            }
+            return 'https://www.prepskul.com/api';
+          }
+          
+          // If on localhost, use localhost API (only in dev mode)
+          if ((hostname == 'localhost' || hostname == '127.0.0.1') && !isProd) {
+            if (kDebugMode) {
+              print('🏠 Local development detected: $hostname');
+              print('🏠 Using localhost API: http://localhost:3000/api');
+            }
+            return 'http://localhost:3000/api';
+          }
+        }
+      } catch (e) {
+        // If hostname detection fails, fall through to normal logic
+        if (kDebugMode) {
+          print('⚠️ Could not detect hostname: $e');
+        }
+      }
+    }
+    
+    // Fallback: If running locally on web in non-production mode, use localhost
+    if (kIsWeb && !isProd) {
+      // Check if API_BASE_URL_DEV is explicitly set to localhost in .env
+      final envApiUrl = _safeEnv('API_BASE_URL_DEV', '');
+      
+      // If not explicitly set to localhost, automatically use localhost for local Next.js dev server
+      if (!url.contains('localhost') && !url.contains('127.0.0.1') && 
+          !envApiUrl.contains('localhost') && !envApiUrl.contains('127.0.0.1')) {
+        if (kDebugMode) {
+          print('🎯 Local development detected. Using localhost:3000 for Next.js API.');
+          print('🎯 To override, set API_BASE_URL_DEV=http://localhost:3000/api in .env');
+        }
+        return 'http://localhost:3000/api';
+      }
+    }
+    
+    return url;
   }
   
   /// App Base URL

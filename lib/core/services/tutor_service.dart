@@ -27,7 +27,7 @@ class TutorService {
   // ⚠️ TOGGLE THIS TO SWITCH BETWEEN DEMO AND REAL DATA
   static const bool USE_DEMO_DATA = false; // Using real tutors from Supabase
 
-  /// Fetch all tutors
+  /// Fetch tutors with pagination support
   /// Returns list of tutor profiles with all details
   /// Automatically uses cache when offline
   static Future<List<Map<String, dynamic>>> fetchTutors({
@@ -36,6 +36,8 @@ class TutorService {
     int? maxRate,
     double? minRating,
     bool? isVerified,
+    int limit = 50, // Default page size
+    int offset = 0, // Pagination offset
   }) async {
     // Check connectivity first
     final connectivity = ConnectivityService();
@@ -80,6 +82,8 @@ class TutorService {
         maxRate: maxRate,
         minRating: minRating,
         isVerified: isVerified,
+        limit: limit,
+        offset: offset,
       );
     }
     
@@ -279,6 +283,8 @@ class TutorService {
     int? maxRate,
     double? minRating,
     bool? isVerified,
+    int limit = 50,
+    int offset = 0,
   }) async {
     try {
       // Check network connectivity first
@@ -332,10 +338,12 @@ class TutorService {
         query = query.eq('is_verified', isVerified);
       }
 
-      LogService.database('Executing query...');
+      LogService.database('Executing query with pagination (limit: $limit, offset: $offset)...');
       List rawTutors;
       try {
-      final response = await query.order('rating', ascending: false);
+      final response = await query
+          .order('rating', ascending: false)
+          .range(offset, offset + limit - 1);
         rawTutors = response as List;
         LogService.success('Query successful: Raw query returned ${rawTutors.length} approved tutors from Supabase');
       } catch (queryError) {
@@ -365,7 +373,9 @@ class TutorService {
               .eq('status', 'approved')
               .neq('is_hidden', true);
           
-          final fallbackResponse = await fallbackQuery.order('rating', ascending: false);
+          final fallbackResponse = await fallbackQuery
+              .order('rating', ascending: false)
+              .range(offset, offset + limit - 1);
           final fallbackTutors = fallbackResponse as List;
           LogService.success('Fallback query returned ${fallbackTutors.length} tutors');
           
@@ -641,13 +651,8 @@ class TutorService {
         final adminApprovedRating = _safeCast<double>(tutor['admin_approved_rating']);
         final calculatedRating = _safeCast<double>(tutor['rating']) ?? 0.0;
 
-        // DEBUG: Print rating values
-        final tutorName = profile?['full_name'] ?? 'Unknown';
-        LogService.debug('📊 [TUTOR_SERVICE] Rating details for $tutorName', {
-          'total_reviews': totalReviews,
-          'admin_approved_rating': adminApprovedRating,
-          'calculated_rating': calculatedRating,
-        });
+        // DEBUG: Print rating values (only in debug mode, reduce logging overhead)
+        // Removed excessive per-tutor logging to improve performance
 
         // Use admin rating until we have at least 3 real reviews
         // If admin_approved_rating is null but tutor is approved, use calculated rating or default 3.5
@@ -674,10 +679,7 @@ class TutorService {
             ? 10 // Temporary count until real reviews come in
             : totalReviews;
 
-        LogService.debug('📊 [TUTOR_SERVICE] Final rating values', {
-          'effectiveRating': effectiveRating,
-          'effectiveTotalReviews': effectiveTotalReviews,
-        });
+        // Removed excessive per-tutor logging to improve performance
 
         // Get pricing: Prioritize base_session_price > admin_price_override > hourly_rate
         final baseSessionPrice = _safeCast<num>(tutor['base_session_price']);
@@ -685,13 +687,7 @@ class TutorService {
         final hourlyRateRaw = tutor['hourly_rate'];
         final perSessionRate = _safeCast<num>(tutor['per_session_rate']);
 
-        // DEBUG: Print pricing values
-        LogService.debug('💰 [TUTOR_SERVICE] Pricing details for $tutorName', {
-          'base_session_price': baseSessionPrice,
-          'admin_price_override': adminPriceOverride,
-          'hourly_rate_raw': hourlyRateRaw,
-          'per_session_rate': perSessionRate,
-        });
+        // Removed excessive per-tutor logging to improve performance
 
         // Validate and sanitize hourly_rate (prevent very large numbers)
         double hourlyRate = 3000.0; // Default fallback
@@ -711,16 +707,12 @@ class TutorService {
         double effectiveRate;
         if (baseSessionPrice != null && baseSessionPrice > 0 && baseSessionPrice <= 50000) {
           effectiveRate = baseSessionPrice.toDouble();
-          LogService.debug('💰 [TUTOR_SERVICE] Using base_session_price: $effectiveRate');
         } else if (adminPriceOverride != null && adminPriceOverride > 0 && adminPriceOverride <= 50000) {
           effectiveRate = adminPriceOverride.toDouble();
-          LogService.debug('💰 [TUTOR_SERVICE] Using admin_price_override: $effectiveRate');
         } else if (perSessionRate != null && perSessionRate > 0 && perSessionRate <= 50000) {
           effectiveRate = perSessionRate.toDouble();
-          LogService.debug('💰 [TUTOR_SERVICE] Using per_session_rate: $effectiveRate');
         } else {
           effectiveRate = hourlyRate;
-          LogService.debug('💰 [TUTOR_SERVICE] Using hourly_rate (fallback): $effectiveRate');
         }
 
         // Bio mapping:
@@ -954,17 +946,40 @@ class TutorService {
         };
       }).whereType<Map<String, dynamic>>().toList(); // Filter out nulls
 
-      // Now fetch real completed sessions count for each tutor
-      for (var tutorData in tutors) {
-        try {
+      // Batch fetch completed sessions count for all tutors (fixes N+1 query problem)
+      try {
+        final tutorIds = tutors.map((t) => t['id']?.toString()).whereType<String>().toList();
+        if (tutorIds.isNotEmpty) {
           final sessionsResponse = await SupabaseService.client
               .from('individual_sessions')
-              .select('id')
-              .eq('tutor_id', tutorData['id'])
+              .select('tutor_id')
+              .inFilter('tutor_id', tutorIds)
               .eq('status', 'completed');
-          tutorData['completed_sessions'] = (sessionsResponse as List).length;
-        } catch (e) {
-          // Table might not exist yet - silently fallback to 0
+          
+          // Count sessions per tutor
+          final sessionCounts = <String, int>{};
+          for (var session in sessionsResponse as List) {
+            final tutorId = session['tutor_id']?.toString();
+            if (tutorId != null) {
+              sessionCounts[tutorId] = (sessionCounts[tutorId] ?? 0) + 1;
+            }
+          }
+          
+          // Assign counts to tutors
+          for (var tutorData in tutors) {
+            final tutorId = tutorData['id']?.toString();
+            tutorData['completed_sessions'] = tutorId != null ? (sessionCounts[tutorId] ?? 0) : 0;
+          }
+        } else {
+          // No tutor IDs, set all to 0
+          for (var tutorData in tutors) {
+            tutorData['completed_sessions'] = 0;
+          }
+        }
+      } catch (e) {
+        // Table might not exist yet - silently fallback to 0 for all
+        LogService.warning('Could not fetch completed sessions counts: $e');
+        for (var tutorData in tutors) {
           tutorData['completed_sessions'] = 0;
         }
       }

@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'forgot_password_email_screen.dart';
 
 class EmailLoginScreen extends StatefulWidget {
@@ -329,6 +330,8 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                         ),
                                       ],
                                     ),
+                                    // Phone login option - only show if enabled
+                                    if (AppConfig.enablePhoneSignIn) ...[
                                     const SizedBox(height: 16),
                                     TextButton(
                                       onPressed: () {
@@ -345,6 +348,7 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
                                         ),
                                       ),
                                     ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -514,15 +518,25 @@ class _EmailLoginScreenState extends State<EmailLoginScreen> {
       
       if (mounted) {
         final errorMessage = AuthService.parseAuthError(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage, style: GoogleFonts.poppins()),
-            backgroundColor: AppTheme.primaryColor,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        
+        // Check if this is an offline error - show branded offline dialog
+        if (errorMessage == 'OFFLINE_ERROR' || AuthService.isOfflineError(e)) {
+          await OfflineDialog.show(
+            context,
+            message: 'Unable to sign in. Please check your internet connection and try again.',
+          );
+        } else {
+          // Show regular error as SnackBar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMessage, style: GoogleFonts.poppins()),
+              backgroundColor: AppTheme.primaryColor,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) {

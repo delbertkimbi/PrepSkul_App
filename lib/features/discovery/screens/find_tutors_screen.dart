@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/responsive_helper.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/core/widgets/app_logo_header.dart';
@@ -22,6 +26,7 @@ import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/debouncer.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -33,15 +38,21 @@ class FindTutorsScreen extends StatefulWidget {
 class _FindTutorsScreenState extends State<FindTutorsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final Debouncer _searchDebouncer = Debouncer(milliseconds: 500);
+  final ScrollController _scrollController = ScrollController();
   List<Map<String, dynamic>> _tutors = [];
   List<Map<String, dynamic>> _filteredTutors = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false; // For pagination
+  bool _hasMoreTutors = true; // Track if more tutors available
+  int _currentOffset = 0; // Current pagination offset
+  static const int _tutorsPerPage = 50; // Tutors per page
   List<MatchedTutor> _matchedTutors = []; // Store matched tutors with scores
   Map<String, MatchScore> _matchScores = {}; // Cache match scores by tutor ID
   String _sortBy = 'match'; // 'match', 'rating', 'price'
   String? _selectedSubject;
   String? _selectedPriceRange;
   double _minRating = 0.0;
+  String? _userIdForSort;
   bool _isOffline = false;
   DateTime? _cacheTimestamp;
   final ConnectivityService _connectivity = ConnectivityService();
@@ -103,6 +114,32 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
       });
     });
+    
+    // Listen to scroll for lazy loading
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _searchController.removeListener(_filterTutors);
+    _searchController.dispose();
+    _searchDebouncer.dispose();
+    super.dispose();
+  }
+
+  /// Handle scroll events for lazy loading
+  void _onScroll() {
+    // Load more tutors when user scrolls near the bottom
+    if (_scrollController.position.pixels > 
+        _scrollController.position.maxScrollExtent - 200 && 
+        !_isLoadingMore && 
+        _hasMoreTutors &&
+        !_isLoading &&
+        !_isOffline) {
+      _loadMoreTutors();
+    }
   }
 
   /// Initialize connectivity monitoring
@@ -285,7 +322,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Future<void> _loadTutors() async {
-    safeSetState(() => _isLoading = true);
+    safeSetState(() {
+      _isLoading = true;
+      _currentOffset = 0;
+      _hasMoreTutors = true;
+    });
 
     try {
       // Check connectivity first - always get fresh status
@@ -301,14 +342,22 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         LogService.info('FindTutorsScreen: Offline - loading from cache...');
         final cachedTutors = await OfflineCacheService.getCachedTutors();
         if (cachedTutors != null && cachedTutors.isNotEmpty) {
+          final currentUserData = await AuthService.getCurrentUser();
+          final cachedUserId = currentUserData?['id']?.toString();
+          final orderedCachedTutors = _applyUserSpecificOrder(
+            cachedTutors,
+            cachedUserId,
+          );
           final timestamp = await SharedPreferences.getInstance().then(
             (prefs) => prefs.getInt('cached_tutors_timestamp') ?? 0,
           );
           if (mounted) {
             safeSetState(() {
-              _tutors = cachedTutors;
-              _filteredTutors = cachedTutors;
+              _userIdForSort = cachedUserId;
+              _tutors = orderedCachedTutors;
+              _filteredTutors = orderedCachedTutors;
               _isLoading = false;
+              _hasMoreTutors = false; // No more when using cache
               _cacheTimestamp = timestamp > 0 
                   ? DateTime.fromMillisecondsSinceEpoch(timestamp)
                   : null;
@@ -331,14 +380,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final currentUserData = await AuthService.getCurrentUser();
       if (currentUserData == null) {
         // Fallback to regular tutor loading if no user
-        final tutors = await TutorService.fetchTutors();
+        final tutors = await TutorService.fetchTutors(
+          limit: _tutorsPerPage,
+          offset: _currentOffset,
+        );
+        final orderedTutors = _applyUserSpecificOrder(tutors, null);
         // Cache the tutors
         await OfflineCacheService.cacheTutors(tutors);
         if (mounted) {
           safeSetState(() {
-            _tutors = tutors;
-            _filteredTutors = tutors;
+            _userIdForSort = null;
+            _tutors = orderedTutors;
+            _filteredTutors = orderedTutors;
             _isLoading = false;
+            _currentOffset = orderedTutors.length;
+            _hasMoreTutors = orderedTutors.length >= _tutorsPerPage;
             _cacheTimestamp = DateTime.now();
           });
         }
@@ -350,6 +406,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       final userType = userId != null && userId.isNotEmpty 
           ? await _getUserType(userId)
           : 'student'; // Default to student if no valid ID
+      _userIdForSort = userId;
       
       // Use matching algorithm if user has preferences
       try {
@@ -364,7 +421,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         );
 
         if (matchedTutors.isNotEmpty) {
-          // Use matched tutors
+          // Use matched tutors (matching service handles pagination internally)
           final tutorList = matchedTutors.map((mt) => mt.tutor).toList();
           // Cache the tutors
           await OfflineCacheService.cacheTutors(tutorList);
@@ -377,19 +434,27 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
             };
             _filteredTutors = _tutors;
             _isLoading = false;
+            _currentOffset = tutorList.length;
+            _hasMoreTutors = false; // Matching service returns all matches
             _cacheTimestamp = DateTime.now();
           });
           LogService.success('FindTutorsScreen: Loaded ${matchedTutors.length} matched tutors');
         } else {
           // Fallback to regular loading if no matches
-          final tutors = await TutorService.fetchTutors();
+          final tutors = await TutorService.fetchTutors(
+            limit: _tutorsPerPage,
+            offset: _currentOffset,
+          );
+          final orderedTutors = _applyUserSpecificOrder(tutors, userId);
           // Cache the tutors
           await OfflineCacheService.cacheTutors(tutors);
           if (mounted) {
             safeSetState(() {
-              _tutors = tutors;
-              _filteredTutors = tutors;
+              _tutors = orderedTutors;
+              _filteredTutors = orderedTutors;
               _isLoading = false;
+              _currentOffset = orderedTutors.length;
+              _hasMoreTutors = orderedTutors.length >= _tutorsPerPage;
               _cacheTimestamp = DateTime.now();
             });
           }
@@ -398,14 +463,20 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       } catch (e) {
         // Fallback to regular loading on error
         LogService.warning('FindTutorsScreen: Matching error, using regular loading: $e');
-        final tutors = await TutorService.fetchTutors();
+        final tutors = await TutorService.fetchTutors(
+          limit: _tutorsPerPage,
+          offset: _currentOffset,
+        );
+        final orderedTutors = _applyUserSpecificOrder(tutors, userId);
         // Cache the tutors
         await OfflineCacheService.cacheTutors(tutors);
         if (mounted) {
           safeSetState(() {
-            _tutors = tutors;
-            _filteredTutors = tutors;
+            _tutors = orderedTutors;
+            _filteredTutors = orderedTutors;
             _isLoading = false;
+            _currentOffset = orderedTutors.length;
+            _hasMoreTutors = orderedTutors.length >= _tutorsPerPage;
             _cacheTimestamp = DateTime.now();
           });
         }
@@ -428,6 +499,48 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           e,
           'Failed to load tutors. Please try again.',
         );
+      }
+    }
+  }
+
+  /// Load more tutors when scrolling down (lazy loading)
+  Future<void> _loadMoreTutors() async {
+    if (_isLoadingMore || !_hasMoreTutors || _isOffline) return;
+
+    try {
+      safeSetState(() {
+        _isLoadingMore = true;
+      });
+
+      final newTutors = await TutorService.fetchTutors(
+        limit: _tutorsPerPage,
+        offset: _currentOffset,
+      );
+
+      if (mounted && newTutors.isNotEmpty) {
+        safeSetState(() {
+          // Append and reorder to keep a stable, user-specific ordering
+          _tutors = _applyUserSpecificOrder(
+            [..._tutors, ...newTutors],
+            _userIdForSort,
+          );
+          _filteredTutors = _tutors; // Re-apply filters if needed
+          _currentOffset = _tutors.length;
+          _hasMoreTutors = newTutors.length >= _tutorsPerPage;
+          _isLoadingMore = false;
+        });
+      } else {
+        safeSetState(() {
+          _hasMoreTutors = false;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading more tutors: $e');
+      if (mounted) {
+        safeSetState(() {
+          _isLoadingMore = false;
+        });
       }
     }
   }
@@ -566,17 +679,22 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       ),
       body: Column(
         children: [
-          // Search Section
+          // Search Section - Responsive
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            padding: EdgeInsets.fromLTRB(
+              ResponsiveHelper.responsiveHorizontalPadding(context),
+              ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12),
+              ResponsiveHelper.responsiveHorizontalPadding(context),
+              ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+            ),
             child: Column(
               children: [
-                // Search Bar
+                // Search Bar - Responsive
                 Container(
-                  height: 52,
+                  height: ResponsiveHelper.responsiveSpacing(context, mobile: 46, tablet: 50, desktop: 54),
                   decoration: BoxDecoration(
                     color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(26),
+                    borderRadius: BorderRadius.circular(24),
                   ),
                   child: TextField(
                     controller: _searchController,
@@ -595,25 +713,25 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                     },
                     style: GoogleFonts.poppins(
                       color: Colors.black,
-                      fontSize: 15,
+                      fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
                     ),
                     decoration: InputDecoration(
                       hintText: 'Search by name or subject',
                       hintStyle: GoogleFonts.poppins(
                         color: Colors.grey[500],
-                        fontSize: 15,
+                        fontSize: ResponsiveHelper.responsiveBodySize(context) + 1,
                       ),
                       prefixIcon: Icon(
                         Icons.search,
                         color: Colors.grey[600],
-                        size: 22,
+                        size: ResponsiveHelper.responsiveIconSize(context, mobile: 20, tablet: 22, desktop: 24),
                       ),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
                               icon: Icon(
                                 Icons.close,
                                 color: Colors.grey[600],
-                                size: 20,
+                                size: ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22),
                               ),
                               onPressed: () {
                                 _searchController.clear();
@@ -623,20 +741,20 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             )
                           : null,
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                        vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16),
                       ),
                     ),
                   ),
                 ),
 
-                // Active Filters
+                // Active Filters - Responsive
                 if (_selectedSubject != null ||
                     _selectedPriceRange != null ||
                     _minRating > 0)
                   Padding(
-                    padding: const EdgeInsets.only(top: 12),
+                    padding: EdgeInsets.only(top: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                     child: Row(
                       children: [
                         Expanded(
@@ -650,14 +768,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                     _filterTutors();
                                   }),
                                 if (_selectedPriceRange != null) ...[
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                                   _buildFilterChip(_selectedPriceRange!, () {
                                     safeSetState(() => _selectedPriceRange = null);
                                     _filterTutors();
                                   }),
                                 ],
                                 if (_minRating > 0) ...[
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                                   _buildFilterChip(
                                     '${_minRating.toInt()}+ ⭐',
                                     () {
@@ -677,7 +795,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             style: GoogleFonts.poppins(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                              fontSize: ResponsiveHelper.responsiveBodySize(context),
                             ),
                           ),
                         ),
@@ -691,9 +809,12 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
           ),
 
-          // Results Count and Cache Info
+          // Results Count and Cache Info - Responsive
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10),
+              ),
               child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -701,7 +822,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                   Text(
                     'Found ${_filteredTutors.length} tutor${_filteredTutors.length != 1 ? 's' : ''}',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: ResponsiveHelper.responsiveBodySize(context),
                       fontWeight: FontWeight.w600,
                       color: Colors.grey[700],
                     ),
@@ -727,13 +848,64 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           message: 'Refresh requires an internet connection. Please check your connection and try again.',
                         )
                     : _loadTutors,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      itemCount: _filteredTutors.length,
+                    child: ResponsiveHelper.isMobile(context)
+                        ? ListView.builder(
+                      controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              0,
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              ResponsiveHelper.responsiveVerticalPadding(context),
+                            ),
+                      itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        // Show loading indicator at bottom when loading more
+                        if (_isLoadingMore && index == _filteredTutors.length) {
+                                return Padding(
+                                  padding: EdgeInsets.symmetric(vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                                  child: const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
+                        
+                        if (index >= _filteredTutors.length) {
+                          return const SizedBox.shrink();
+                        }
+                        
                         return _buildTutorCard(_filteredTutors[index]);
                       },
-                    ),
+                          )
+                        : GridView.builder(
+                            controller: _scrollController,
+                            padding: EdgeInsets.fromLTRB(
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              0,
+                              ResponsiveHelper.responsiveHorizontalPadding(context),
+                              ResponsiveHelper.responsiveVerticalPadding(context),
+                            ),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: ResponsiveHelper.responsiveGridColumns(context),
+                              crossAxisSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+                              mainAxisSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
+                              childAspectRatio: ResponsiveHelper.isTablet(context) ? 0.75 : 0.7,
+                            ),
+                            itemCount: _filteredTutors.length + (_isLoadingMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              // Show loading indicator at bottom when loading more
+                              if (_isLoadingMore && index == _filteredTutors.length) {
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+                              
+                              if (index >= _filteredTutors.length) {
+                                return const SizedBox.shrink();
+                              }
+                              
+                              return _buildTutorCard(_filteredTutors[index]);
+                            },
+                          ),
                   ),
           ),
         ],
@@ -763,21 +935,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         _filterTutors(); // Apply filter when rating indicator is tapped
       },
       child: Container(
-        width: 40,
-        height: 40,
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.primaryColor : Colors.grey[200],
           shape: BoxShape.circle,
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
-            width: isSelected ? 2.5 : 2,
+            width: isSelected ? 2 : 1.5,
           ),
         ),
         child: Center(
           child: Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 10,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
               color: isSelected ? Colors.white : Colors.grey[600],
             ),
@@ -789,10 +961,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
   Widget _buildFilterChip(String label, VoidCallback onDelete) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: AppTheme.primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
       ),
       child: Row(
@@ -801,15 +973,15 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: FontWeight.w500,
               color: AppTheme.primaryColor,
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 4),
           GestureDetector(
             onTap: onDelete,
-            child: Icon(Icons.close, size: 16, color: AppTheme.primaryColor),
+            child: Icon(Icons.close, size: 14, color: AppTheme.primaryColor),
           ),
         ],
       ),
@@ -817,18 +989,25 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   Widget _buildTutorCard(Map<String, dynamic> tutor) {
-    final name = tutor['full_name'] ?? 'Unknown';
+    final fullName = tutor['full_name'] ?? 'Unknown';
+    // Show only first 2 names in outer card
+    final nameParts = fullName.trim().split(' ');
+    final displayName = nameParts.length > 2 
+        ? '${nameParts[0]} ${nameParts[1]}'
+        : fullName;
+    
     // Use pre-calculated values from tutor_service (no duplicate calculation)
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
     final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     
     // DEBUG: Log values being used (debug mode only)
-    LogService.debug('Find Tutors - Tutor: $name', {
+    LogService.debug('Find Tutors - Tutor: $fullName', {
       'rating': rating,
       'total_reviews': totalReviews,
     });
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
+    final isVerified = tutor['is_verified'] == true;
     
     // Remove "Hello!" from bio if it starts with it (for cards)
     String displayBio = bio;
@@ -840,221 +1019,242 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       }
     }
 
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final avatarSize = ResponsiveHelper.responsiveSpacing(context, mobile: 58, tablet: 68, desktop: 78);
+    final cardMargin = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: EdgeInsets.only(bottom: cardMargin),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: Colors.grey[200]!,
-          width: 1,
+          color: Colors.grey[300]!,
+          width: 1.2,
         ),
         // Very soft shadow just to lift from background
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
-            blurRadius: 6,
+            blurRadius: 4,
             offset: const Offset(0, 2),
             spreadRadius: 0,
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _isOffline
-              ? () => OfflineDialog.show(
-                    context,
-                    message: 'Viewing tutor details requires an internet connection. Please check your connection and try again.',
-                  )
-              : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => TutorDetailScreen(tutor: tutor),
-                    ),
-                  );
-                },
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+      child: Stack(
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _isOffline
+                  ? () => OfflineDialog.show(
+                        context,
+                        message: 'Viewing tutor details requires an internet connection. Please check your connection and try again.',
+                      )
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => TutorDetailScreen(tutor: tutor),
+                        ),
+                      );
+                    },
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: EdgeInsets.all(cardPadding),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Avatar (Larger & clickable)
-                    GestureDetector(
-                      onTap: () => _showProfileImage(context, tutor),
-                      child: Container(
-                        width: 70,
-                        height: 70,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.primaryColor.withOpacity(0.1), // Background for fallback
-                          border: Border.all(
-                            color: AppTheme.primaryColor.withOpacity(0.3),
-                            width: 2.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Avatar (Larger & clickable) - Responsive
+                        GestureDetector(
+                          onTap: () => _showProfileImage(context, tutor),
+                          child: Container(
+                            width: avatarSize,
+                            height: avatarSize,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppTheme.primaryColor.withOpacity(0.1), // Background for fallback
+                              border: Border.all(
+                                color: AppTheme.primaryColor.withOpacity(0.3),
+                                width: 2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: ClipOval(
-                          child: _buildAvatarImage(
-                            tutor['avatar_url'] ?? tutor['profile_photo_url'],
-                            name,
+                            child: ClipOval(
+                              child: _buildAvatarImage(
+                                tutor['avatar_url'] ?? tutor['profile_photo_url'],
+                                displayName,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                        SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+                        // Info - Responsive
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  name,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ),
-                              if (tutor['is_verified'] == true)
-                                Icon(
-                                  Icons.verified,
-                                  size: 18,
-                                  color: AppTheme.primaryColor,
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.star,
-                                size: 16,
-                                color: Colors.amber[700],
-                              ),
-                              const SizedBox(width: 4),
                               Text(
-                                rating > 0 ? rating.toStringAsFixed(1) : 'N/A',
+                                displayName,
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 2,
+                                  fontWeight: FontWeight.w700,
                                   color: Colors.black,
                                 ),
                               ),
-                              if (rating > 0 && totalReviews > 0)
-                              Text(
-                                ' ($totalReviews)',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
-                                ),
+                              SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.star,
+                                    size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
+                                    color: Colors.amber[700],
+                                  ),
+                                  SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 5, desktop: 6)),
+                                  Text(
+                                    rating > 0 ? rating.toStringAsFixed(1) : 'N/A',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: ResponsiveHelper.responsiveBodySize(context),
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                  if (rating > 0 && totalReviews > 0)
+                                  Text(
+                                    ' ($totalReviews)',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // Subjects
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children:
-                      (tutor['subjects'] as List?)
-                          ?.take(3)
-                          .map(
-                            (subject) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                subject.toString(),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                            ),
-                          )
-                          .toList() ??
-                      [],
-                ),
-                const SizedBox(height: 12),
-                // Bio (personal statement, with "Hello!" removed for cards)
-                if (displayBio.isNotEmpty)
-                Text(
-                    displayBio,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    color: Colors.grey[600],
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Bottom Info Row - Focus on value, not pricing
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Sessions completed (bold as requested)
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.school_outlined,
-                          size: 16,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$completedSessions',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.grey[700],
-                            fontWeight: FontWeight.w700, // Bold as requested
-                          ),
-                        ),
-                        Text(
-                          ' lessons',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
                     ),
-                    // Subtle monthly estimate (not emphasized)
-                    _buildSubtleMonthlyEstimate(tutor),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                    // Subjects - Responsive
+                    Wrap(
+                      spacing: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8),
+                      runSpacing: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8),
+                      children:
+                          (tutor['subjects'] as List?)
+                              ?.take(3)
+                              .map(
+                                (subject) => Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                    vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 3, tablet: 4, desktop: 5),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[100],
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    subject.toString(),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList() ??
+                          [],
+                    ),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                    // Bio (personal statement, with "Hello!" removed for cards) - Responsive
+                    if (displayBio.isNotEmpty)
+                    Text(
+                        displayBio,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: ResponsiveHelper.responsiveBodySize(context) - 3,
+                        color: Colors.grey[600],
+                        height: 1.5,
+                      ),
+                    ),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                    // Bottom Info Row - Focus on value, not pricing - Responsive
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Sessions completed (bold as requested) - Responsive
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.school_outlined,
+                              size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
+                              color: Colors.grey[600],
+                            ),
+                            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 5, desktop: 6)),
+                            Text(
+                              '$completedSessions',
+                              style: GoogleFonts.poppins(
+                                fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w700, // Bold as requested
+                              ),
+                            ),
+                            Text(
+                              ' lessons',
+                              style: GoogleFonts.poppins(
+                                fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Subtle monthly estimate (not emphasized)
+                        _buildSubtleMonthlyEstimate(tutor),
+                      ],
+                    ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+          if (isVerified)
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  PhosphorIcons.check(PhosphorIconsStyle.fill),
+                  size: ResponsiveHelper.responsiveIconSize(context, mobile: 12, tablet: 14, desktop: 16),
+                  color: Colors.white,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1076,10 +1276,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected ? AppTheme.primaryColor : Colors.grey[200],
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
@@ -1090,14 +1290,14 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
           children: [
             Icon(
               icon,
-              size: 16,
+              size: 14,
               color: isSelected ? Colors.white : Colors.grey[700],
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Text(
               label,
               style: GoogleFonts.poppins(
-                fontSize: 13,
+                fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 color: isSelected ? Colors.white : Colors.grey[700],
               ),
@@ -1131,6 +1331,32 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         }
       });
     });
+  }
+
+  int _stableHash(String input) {
+    return input.codeUnits.fold(0, (hash, code) => (hash * 31 + code) & 0x7fffffff);
+  }
+
+  List<Map<String, dynamic>> _applyUserSpecificOrder(
+    List<Map<String, dynamic>> tutors,
+    String? userId,
+  ) {
+    if (tutors.isEmpty) return tutors;
+    final ordered = List<Map<String, dynamic>>.from(tutors);
+    if (userId == null || userId.trim().isEmpty) {
+      ordered.shuffle(Random(DateTime.now().millisecondsSinceEpoch));
+      return ordered;
+    }
+
+    ordered.sort((a, b) {
+      final idA = (a['id'] ?? a['user_id'] ?? a['full_name'] ?? '').toString();
+      final idB = (b['id'] ?? b['user_id'] ?? b['full_name'] ?? '').toString();
+      final keyA = _stableHash('$userId-$idA');
+      final keyB = _stableHash('$userId-$idB');
+      return keyA.compareTo(keyB);
+    });
+
+    return ordered;
   }
 
 
@@ -1302,6 +1528,21 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
   }
 
   void _showFilterBottomSheet() {
+    // #region agent log
+    try {
+      final logData = {
+        'sessionId': 'debug-session',
+        'runId': 'run1',
+        'hypothesisId': 'C',
+        'location': 'find_tutors_screen.dart:1304',
+        'message': 'Filter bottom sheet opening',
+        'data': {'isOffline': _isOffline},
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+      File('/Users/user/Desktop/PrepSkul/.cursor/debug.log').writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
+    } catch (_) {}
+    // #endregion
+    
     if (_isOffline) {
       OfflineDialog.show(
         context,
@@ -1410,7 +1651,11 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                             safeSetState(() {
                               _selectedSubject = isSelected ? null : subject;
                             });
-                                  _filterTutors(); // Apply filter when subject changes
+                            // Update modal state to reflect the change
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              setModalState(() {});
+                            });
+                            _filterTutors(); // Apply filter when subject changes
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -1490,6 +1735,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                           onTap: () {
                             safeSetState(() {
                               _selectedPriceRange = isSelected ? null : label;
+                            });
+                            // Update modal state to reflect the change
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              setModalState(() {});
                             });
                             _filterTutors(); // Apply filter when price range changes
                           },
@@ -1787,16 +2036,4 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     );
   }
 
-  @override
-  @override
-  void dispose() {
-    _searchController.removeListener(_filterTutors);
-    _searchController.dispose();
-    _searchDebouncer.dispose();
-    super.dispose();
-  
-
-
-  
-}
 }

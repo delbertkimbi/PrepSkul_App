@@ -4,18 +4,21 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
 import 'package:prepskul/features/booking/screens/trial_payment_screen.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
+import 'package:prepskul/features/tutor/screens/tutor_earnings_screen.dart';
 import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Payment History Screen
 ///
@@ -42,6 +45,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
   late TabController _tabController;
   bool _isLoading = true;
   String _selectedFilter = 'all'; // all, pending, paid, failed
+  bool _isTutor = false;
 
   // Payment data
   List<Map<String, dynamic>> _paymentRequests = [];
@@ -52,6 +56,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadUserRole();
     _loadPayments();
   }
 
@@ -59,6 +64,20 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserRole() async {
+    try {
+      final profile = await AuthService.getUserProfile();
+      final userType = profile?['user_type'] as String?;
+      if (mounted) {
+        safeSetState(() {
+          _isTutor = userType == 'tutor';
+        });
+      }
+    } catch (e) {
+      LogService.warning('Error loading user role: $e');
+    }
   }
 
   Future<void> _loadPayments() async {
@@ -422,7 +441,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(PhosphorIcons.arrowLeft(), color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -448,6 +467,46 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
       ),
       body: Column(
         children: [
+          if (_isTutor)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: Colors.orange[50],
+              child: Row(
+                children: [
+                  Icon(PhosphorIcons.info(), color: Colors.orange[800], size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Tutors don’t receive trial payments. Use Earnings & Payouts to track your wallet.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.orange[900],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const TutorEarningsScreen(),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      'Open',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // Filter chips
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -680,7 +739,7 @@ class _PaymentHistoryScreenState extends State<PaymentHistoryScreen>
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[600]),
+                  Icon(PhosphorIcons.calendar(), size: 16, color: Colors.grey[600]),
                   const SizedBox(width: 8),
                   Text(
                     'Due: ${_formatDate(dueDate)}',
@@ -1011,24 +1070,24 @@ Widget _buildStatusBadge(BuildContext context, String status) {
       case 'pending':
         color = Colors.orange;
         label = t.paymentHistoryStatusPending;
-        icon = Icons.pending;
+        icon = PhosphorIcons.clock();
         break;
       case 'failed':
         color = Colors.red;
         label = t.paymentHistoryStatusFailed;
-        icon = Icons.error;
+        icon = PhosphorIcons.warning();
         break;
       case 'unpaid':
       case 'expired':
         color = Colors.red;
         label = 'Expired';
-        icon = Icons.cancel;
+        icon = PhosphorIcons.xCircle();
         break;
 
       default:
         color = Colors.grey;
         label = status.toUpperCase();
-        icon = Icons.info;
+        icon = PhosphorIcons.info();
     }
 
     return Container(
@@ -1061,7 +1120,7 @@ Widget _buildStatusBadge(BuildContext context, String status) {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.payment_outlined, size: 64, color: Colors.grey[400]),
+          Icon(PhosphorIcons.creditCard(), size: 64, color: Colors.grey[400]),
           const SizedBox(height: 16),
           Text(
             message,

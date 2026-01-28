@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -38,17 +39,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              AuthService.parseAuthError(e),
-              style: GoogleFonts.poppins(),
+        final errorMessage = AuthService.parseAuthError(e);
+        
+        // Check if this is an offline error - show branded offline dialog
+        if (errorMessage == 'OFFLINE_ERROR' || AuthService.isOfflineError(e)) {
+          await OfflineDialog.show(
+            context,
+            message: 'Unable to reset password. Please check your internet connection and try again.',
+          );
+        } else {
+          // Show regular error as SnackBar
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                errorMessage,
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.primaryColor,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
             ),
-            backgroundColor: AppTheme.primaryColor,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-          ),
-        );
+          );
+        }
       }
     } finally {
       if (mounted) {

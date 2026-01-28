@@ -55,13 +55,15 @@
   <link rel="icon" type="image/jpeg" sizes="16x16" href="logo.jpg"/>
   <link rel="shortcut icon" type="image/jpeg" href="logo.jpg"/>
   <link rel="apple-touch-icon" sizes="180x180" href="logo.jpg"/>
+  
+  <!-- Preload splash screen logo for instant display -->
+  <link rel="preload" as="image" href="app_logo(blue).png" />
 
   <title>PrepSkul: Find Trusted Home and Online Tutors in Cameroon</title>
   <link rel="manifest" href="manifest.json">
   
   <style>
-    /* Immediate Loading Screen - Shows before Flutter loads */
-    /* This prevents white screen flash and shows animated logo immediately */
+    /* Simple Loading Screen */
     #flutter-loading {
       position: fixed;
       top: 0;
@@ -73,9 +75,7 @@
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      transition: opacity 0.4s ease-out;
-      /* Ensure it's visible immediately - no delay */
-      opacity: 1;
+      transition: opacity 0.3s ease-out;
     }
     
     #flutter-loading.hidden {
@@ -108,9 +108,6 @@
       width: 100%;
       height: 100%;
       object-fit: contain;
-      /* Prevent image loading delay */
-      image-rendering: -webkit-optimize-contrast;
-      image-rendering: crisp-edges;
     }
     
     /* Rounded corners for images in the page */
@@ -143,7 +140,7 @@
             ctx.clearRect(0, 0, size, size);
             
             // Create rounded rectangle path
-            const radius = Math.min(size * 0.15, 12); // 15% of size or 12px max
+            const radius = Math.min(size * 0.15, 12);
             ctx.beginPath();
             ctx.moveTo(radius, 0);
             ctx.lineTo(size - radius, 0);
@@ -180,15 +177,11 @@
           console.warn('Could not load favicon for rounding');
         };
         
-        // Try to load the favicon - use absolute path if relative fails
         const faviconSrc = favicon.href;
-        // Remove query params for initial load
         const baseSrc = faviconSrc.split('?')[0];
-        // Try relative path first, then absolute if that fails
         img.src = baseSrc + '?v=2&t=' + Date.now();
       }
       
-      // Run immediately and also on DOMContentLoaded
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', roundFavicon);
       } else {
@@ -198,33 +191,13 @@
   </script>
   
   <script>
-    // ============================================
-    // Environment Variables (Production)
-    // ============================================
-    // For production builds, inject environment variables here
-    // These are set at build time by your CI/CD or hosting platform
-    // Example for Vercel: Use environment variables and inject via build script
-    // window.env = window.env || {};
+    // Environment Variables
     window.env = {
-    NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
-  };
-    // Supabase Configuration
-    // These will be injected at build time or set via hosting platform
-    // For local development, these can be set manually or loaded from a config file
-    // For production (Vercel), set these in Vercel Dashboard → Environment Variables
-    // and inject them here via a build script or server-side rendering
+      NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
+    };
     
-    // Example injection (replace with actual values or build-time injection):
-    // window.env.SUPABASE_URL_PROD = 'your-supabase-url';
-    // window.env.SUPABASE_ANON_KEY_PROD = 'your-supabase-anon-key';
-    // window.env.SUPABASE_URL_DEV = 'your-dev-supabase-url';
-    // window.env.SUPABASE_ANON_KEY_DEV = 'your-dev-supabase-anon-key';
-    
-    // ============================================
-    // Splash Screen Management
-    // ============================================
-    // Expose function to remove splash screen from Flutter
+    // Simple splash screen removal - Flutter calls this when ready
     window.removeSplash = function() {
       const loader = document.getElementById('flutter-loading');
       if (loader) {
@@ -233,92 +206,38 @@
           if (loader && loader.parentNode) {
             loader.remove();
           }
-        }, 400);
+        }, 300);
       }
     };
-
-    // Note: We do NOT hide on 'flutter-first-frame' anymore.
-    // Flutter will call window.removeSplash() when it is fully ready.
     
-    // CRITICAL: Fallback - hide after 5 seconds if Flutter doesn't load/call removeSplash
-    // Reduced from 10s to 5s for faster removal on refresh
-    // This prevents the logo from staying stuck on screen after refresh
+    // Fallback: Remove splash after 5 seconds max (prevents stuck logo)
+    // Increased timeout to give Flutter more time to initialize and show content
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        console.warn('Flutter did not call removeSplash within 5s, forcing removal');
+        console.warn('Flutter did not call removeSplash within 5000ms, forcing removal');
         loader.classList.add('hidden');
         setTimeout(function() {
           if (loader && loader.parentNode) {
             loader.remove();
           }
-        }, 400);
+        }, 300);
       }
     }, 5000);
-    
-    // Additional aggressive removal: Check every 500ms after 2 seconds
-    // This ensures the splash is removed quickly on refresh
-    let checkCount = 0;
-    const maxChecks = 20; // 20 * 500ms = 10 seconds max
-    const checkInterval = setInterval(function() {
-      checkCount++;
-      const loader = document.getElementById('flutter-loading');
-      if (loader && !loader.classList.contains('hidden')) {
-        // After 2 seconds (4 checks), start checking if Flutter is loaded
-        if (checkCount >= 4) {
-          // Check if Flutter has loaded by looking for Flutter app container
-          const flutterApp = document.querySelector('flt-glass-pane, flt-scene-host, [data-flt-app]');
-          if (flutterApp) {
-            console.log('Flutter app detected, removing splash');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400);
-            clearInterval(checkInterval);
-          }
-        }
-      } else {
-        // Splash already hidden, stop checking
-        clearInterval(checkInterval);
-      }
-      
-      // Stop checking after max attempts
-      if (checkCount >= maxChecks) {
-        clearInterval(checkInterval);
-      }
-    }, 500);
-    
-    // Additional safety: Remove on page visibility change (user switches tabs/refreshes)
-    document.addEventListener('visibilitychange', function() {
-      if (!document.hidden) {
-        // Page became visible - ensure splash is removed if it's been more than 2 seconds
-        setTimeout(function() {
-          const loader = document.getElementById('flutter-loading');
-          if (loader && !loader.classList.contains('hidden')) {
-            console.warn('Splash still visible after visibility change, removing');
-            loader.classList.add('hidden');
-            setTimeout(function() {
-              if (loader && loader.parentNode) {
-                loader.remove();
-              }
-            }, 400);
-          }
-        }, 2000);
-      }
-    });
   </script>
 </head>
 <body>
-  <!-- Immediate Loading Screen -->
+  <!-- Simple Loading Screen -->
   <div id="flutter-loading">
     <div class="loader-container">
       <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" style="width: 120px; height: 120px; object-fit: contain;" onerror="this.src='app_logo(blue).png'" />
+        <img src="app_logo(blue).png" alt="PrepSkul Logo" />
       </div>
     </div>
   </div>
+  
+  <!-- Agora Web SDK for video sessions -->
+  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
   
   <script src="flutter_bootstrap.js" async></script>
 </body>

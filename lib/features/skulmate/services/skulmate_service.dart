@@ -15,17 +15,10 @@ import 'http_client_stub.dart' if (dart.library.html) 'http_client_web.dart';
 /// Service for interacting with skulMate API and database
 class SkulMateService {
   /// Get API base URL with smart fallback
-  /// In debug mode: tries localhost:3000 first, then falls back to production
-  /// In production: always uses production URL from AppConfig (https://prepskul.com/api)
+  /// Get API base URL (with localhost detection for local development)
+  /// Uses AppConfig.effectiveApiBaseUrl which automatically detects local development
   static String get _apiBaseUrl {
-    if (kDebugMode) {
-      // In debug mode, prefer localhost if available
-      // Will fall back to production if localhost fails
-      return 'http://localhost:3000/api';
-    } else {
-      // Production: use AppConfig which respects environment variables
-      return AppConfig.apiBaseUrl;
-    }
+    return AppConfig.effectiveApiBaseUrl;
   }
 
   /// Production API base URL (fallback)
@@ -119,175 +112,26 @@ class SkulMateService {
       final session = SupabaseService.client.auth.currentSession;
       final token = session?.accessToken;
 
-      // Try localhost first in debug mode, then fall back to production
-      String url = '$_apiBaseUrl$_generateEndpoint';
-      String? fallbackUrl;
+      // Use production API URL directly (no localhost fallback in production)
+      final url = '$_apiBaseUrl$_generateEndpoint';
       
-      // In debug mode, set fallback to production; in production, no fallback
-      if (kDebugMode) {
-        fallbackUrl = '$_productionApiBaseUrl$_generateEndpoint';
-        LogService.info('🎮 [skulMate] Debug mode: Trying localhost first: $url');
-        LogService.info('🎮 [skulMate] Fallback to production if localhost fails: $fallbackUrl');
-      } else {
-        LogService.info('🎮 [skulMate] Production mode: Calling API: $url');
-      }
+      LogService.info('🎮 [skulMate] Calling API: $url');
+      LogService.debug('🎮 [skulMate] Request body: ${jsonEncode(requestBody)}');
       
-      try {
-        http.Response httpResponse;
-        
-        try {
-          // Try primary URL (localhost in debug, production otherwise)
-          // Use web-aware HTTP request that handles CORS properly
-          httpResponse = await _makePostRequest(
-            url,
-            {
-              'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
-            jsonEncode(requestBody),
-          ).timeout(
-            const Duration(seconds: 10), // Faster failover
-            onTimeout: () {
-              throw Exception('Connection timeout - localhost not responding');
-            },
-          );
-
-          // If localhost returns 200, use it
-          if (httpResponse.statusCode == 200) {
-            LogService.success('🎮 [skulMate] Successfully connected to localhost');
-          } else if (httpResponse.statusCode >= 400 && fallbackUrl != null) {
-            // If localhost returns error, try production
-            LogService.warning('🎮 [skulMate] Localhost returned ${httpResponse.statusCode}, trying production...');
-            throw Exception('Localhost error ${httpResponse.statusCode}, trying production');
-          } else if (httpResponse.statusCode != 200) {
-            // Any other non-200 status, try production if available
-            if (fallbackUrl != null) {
-              LogService.warning('🎮 [skulMate] Localhost returned ${httpResponse.statusCode}, trying production...');
-              throw Exception('Localhost error ${httpResponse.statusCode}, trying production');
-            }
-          }
-        } catch (e) {
-          // Log the actual error for debugging with better error classification
-          final errorStr = e.toString().toLowerCase();
-          
-          // Classify error type
-          final isCorsError = errorStr.contains('[cors]') || 
-                             errorStr.contains('cors blocked') ||
-                             errorStr.contains('cors error');
-          final isNetworkError = errorStr.contains('[network]') ||
-                                errorStr.contains('failed to fetch') ||
-                                errorStr.contains('network error') ||
-                                errorStr.contains('connection refused') ||
-                                errorStr.contains('network is unreachable');
-          final isServerError = errorStr.contains('[server]') ||
-                               errorStr.contains('http 5') ||
-                               errorStr.contains('internal server error');
-          final isClientError = errorStr.contains('[client]') ||
-                               errorStr.contains('http 4') ||
-                               errorStr.contains('bad request');
-          final isTimeoutError = errorStr.contains('timeout') ||
-                                errorStr.contains('timed out');
-          
-          // Log with appropriate level and details
-          if (isCorsError) {
-            LogService.warning('🎮 [skulMate] CORS error detected: ${e.toString()}');
-            LogService.debug('🎮 [skulMate] This is likely a browser CORS restriction. Checking server CORS headers...');
-          } else if (isNetworkError) {
-            LogService.warning('🎮 [skulMate] Network error: ${e.toString()}');
-            LogService.debug('🎮 [skulMate] This could be a connection issue or server not reachable');
-          } else if (isServerError) {
-            LogService.error('🎮 [skulMate] Server error: ${e.toString()}');
-            LogService.debug('🎮 [skulMate] The API server returned an error');
-          } else if (isClientError) {
-            LogService.warning('🎮 [skulMate] Client error: ${e.toString()}');
-            LogService.debug('🎮 [skulMate] The request was invalid or unauthorized');
-          } else if (isTimeoutError) {
-            LogService.warning('🎮 [skulMate] Timeout error: ${e.toString()}');
-            LogService.debug('🎮 [skulMate] The request took too long to complete');
-          } else {
-            LogService.debug('🎮 [skulMate] Request failed: ${e.toString()}');
-          }
-          
-          // If we're in debug mode and have a fallback URL, ALWAYS try production if localhost fails
-          // This handles CORS, connection errors, timeouts, etc.
-          if (fallbackUrl != null && kDebugMode) {
-            // Be very permissive - if localhost fails for ANY reason in debug mode, try production
-            final shouldFallback = true; // Always fallback in debug mode if localhost fails
-            
-            if (shouldFallback) {
-              final errorPreview = e.toString().length > 100 
-                  ? e.toString().substring(0, 100) + '...'
-                  : e.toString();
-              
-              // Determine error type for logging
-              String errorTypeLabel = 'network';
-              if (isCorsError) errorTypeLabel = 'CORS';
-              else if (isServerError) errorTypeLabel = 'server';
-              else if (isClientError) errorTypeLabel = 'client';
-              else if (isTimeoutError) errorTypeLabel = 'timeout';
-              
-              LogService.info('🎮 [skulMate] Localhost failed ($errorTypeLabel error: $errorPreview), falling back to production: $fallbackUrl');
-              url = fallbackUrl;
-              
-              try {
-                // Use web-aware HTTP request that handles CORS properly
-                httpResponse = await _makePostRequest(
-                  url,
-                  {
-                    'Content-Type': 'application/json',
-                    if (token != null) 'Authorization': 'Bearer $token',
-                  },
-                  jsonEncode(requestBody),
-                ).timeout(
-                  const Duration(seconds: 120), // 2 minutes for production (image processing can be slow)
-                  onTimeout: () {
-                    throw Exception('Request timeout - The request took too long to complete.\n\nPlease check your internet connection and try again. If this continues, contact support.');
-                  },
-                );
-                LogService.success('🎮 [skulMate] Successfully connected to production API');
-              } catch (fallbackError) {
-                final fallbackErrorStr = fallbackError.toString().toLowerCase();
-                final isFallbackCorsError = fallbackErrorStr.contains('[cors]') || 
-                                          fallbackErrorStr.contains('cors blocked') ||
-                                          fallbackErrorStr.contains('cors error');
-                final isFallbackNetworkError = fallbackErrorStr.contains('[network]') ||
-                                             fallbackErrorStr.contains('failed to fetch') ||
-                                             fallbackErrorStr.contains('network error');
-                final isFallbackServerError = fallbackErrorStr.contains('[server]') ||
-                                            fallbackErrorStr.contains('http 5');
-                final isFallbackTimeout = fallbackErrorStr.contains('timeout') ||
-                                        fallbackErrorStr.contains('timed out') ||
-                                        fallbackErrorStr.contains('took too long');
-                
-                if (isFallbackCorsError) {
-                  LogService.error('🎮 [skulMate] Production API CORS error: ${fallbackError.toString()}');
-                  LogService.error('🎮 [skulMate] This indicates a server-side CORS configuration issue');
-                  LogService.error('🎮 [skulMate] Check that the Next.js API is deployed and CORS headers are correct');
-                  throw Exception('CORS error: The API server is not allowing requests from this origin. Please contact support.');
-                } else if (isFallbackNetworkError) {
-                  LogService.error('🎮 [skulMate] Production API network error: ${fallbackError.toString()}');
-                  LogService.error('🎮 [skulMate] Check internet connection and API server availability');
-                  throw Exception('Network error: Unable to connect to the API server. Please check your internet connection and try again.');
-                } else if (isFallbackServerError) {
-                  LogService.error('🎮 [skulMate] Production API server error: ${fallbackError.toString()}');
-                  LogService.error('🎮 [skulMate] The API server returned an error - check server logs');
-                  throw Exception('Server error: The API server encountered an error. Please try again later or contact support.');
-                } else if (isFallbackTimeout) {
-                  LogService.error('🎮 [skulMate] Production API timeout: ${fallbackError.toString()}');
-                  LogService.error('🎮 [skulMate] The request took too long - API may be slow or overloaded');
-                  throw Exception('The request took too long to complete.\n\nPlease check your internet connection and try again. If this continues, contact support.');
-                } else {
-                  LogService.error('🎮 [skulMate] Production API also failed: ${fallbackError.toString()}');
-                  throw Exception('Failed to generate game: ${fallbackError.toString()}');
-                }
-              }
-            } else {
-              rethrow;
-            }
-          } else {
-            rethrow;
-          }
-        }
+      // Make the API request
+      final httpResponse = await _makePostRequest(
+        url,
+        {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        jsonEncode(requestBody),
+      ).timeout(
+        const Duration(seconds: 120), // 2 minutes for production (image processing can be slow)
+        onTimeout: () {
+          throw Exception('Request timeout - The request took too long to complete.\n\nPlease check your internet connection and try again. If this continues, contact support.');
+        },
+      );
 
         if (httpResponse.statusCode != 200) {
           String errorMessage = 'Unknown error';
@@ -299,10 +143,11 @@ class SkulMateService {
                                  responseBody.startsWith('<html') ||
                                  responseBody.startsWith('<!');
           
+          LogService.error('🎮 [skulMate] API returned error status: ${httpResponse.statusCode}');
+          LogService.error('🎮 [skulMate] Response body: ${responseBody.length > 500 ? responseBody.substring(0, 500) + '...' : responseBody}');
+          
           if (isHtmlResponse) {
             LogService.error('🎮 [skulMate] API returned HTML instead of JSON (likely 404 or error page)');
-            LogService.error('🎮 [skulMate] Status code: ${httpResponse.statusCode}');
-            LogService.error('🎮 [skulMate] Response preview: ${responseBody.length > 500 ? responseBody.substring(0, 500) : responseBody}');
             
             if (httpResponse.statusCode == 404) {
               errorMessage = 'API endpoint not found';
@@ -321,15 +166,31 @@ class SkulMateService {
               errorMessage = jsonBody?['error'] as String? ?? 
                 jsonBody?['message'] as String? ??
                 'Unknown error';
-              errorDetails = jsonBody?['details'] as String? ?? '';
+              errorDetails = jsonBody?['details'] as String? ?? jsonBody?['message'] as String? ?? '';
+              
+              // Log the actual API error for debugging
+              LogService.error('🎮 [skulMate] API error message: $errorMessage');
+              if (errorDetails.isNotEmpty) {
+                LogService.error('🎮 [skulMate] API error details: $errorDetails');
+              }
             } catch (e) {
+              LogService.error('🎮 [skulMate] Failed to parse error response: $e');
               errorMessage = 'Invalid response from server';
-              errorDetails = 'The server returned an unexpected response. Please try again.';
+              errorDetails = 'The server returned an unexpected response. Status: ${httpResponse.statusCode}';
             }
           }
           
-          LogService.error('🎮 [skulMate] API error (${httpResponse.statusCode}): $errorMessage');
-          throw Exception('$errorMessage${errorDetails.isNotEmpty ? '\n\n$errorDetails' : ''}');
+          // Provide user-friendly error message
+          if (httpResponse.statusCode == 400) {
+            // Bad request - likely missing or invalid parameters
+            throw Exception('Invalid request: $errorMessage${errorDetails.isNotEmpty ? '\n\n$errorDetails' : '\n\nPlease check that you have selected a file or entered text.'}');
+          } else if (httpResponse.statusCode == 401 || httpResponse.statusCode == 403) {
+            throw Exception('Authentication error: Please log in and try again.');
+          } else if (httpResponse.statusCode >= 500) {
+            throw Exception('Server error: Our servers are experiencing issues. Please try again in a few moments.');
+          } else {
+            throw Exception('$errorMessage${errorDetails.isNotEmpty ? '\n\n$errorDetails' : ''}');
+          }
         }
 
         // Check if response is HTML before parsing as JSON
@@ -482,10 +343,6 @@ class SkulMateService {
         }
         throw Exception(errorMessage);
       }
-    } catch (e) {
-      LogService.error('🎮 [skulMate] Error generating game: $e');
-      rethrow;
-    }
   }
 
   /// Fetch games for current user with pagination

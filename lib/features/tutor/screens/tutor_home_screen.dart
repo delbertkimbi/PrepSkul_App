@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
+import '../../../core/utils/responsive_helper.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/widgets/app_logo_header.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
@@ -11,6 +12,7 @@ import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/models/profile_completion.dart';
 import '../../../core/widgets/profile_completion_widget.dart';
 import '../../../features/notifications/widgets/notification_bell.dart';
@@ -20,6 +22,9 @@ import 'tutor_admin_feedback_screen.dart';
 import 'tutor_onboarding_screen.dart';
 import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
+import '../../../features/messaging/screens/conversations_list_screen.dart';
+import '../../../features/messaging/widgets/message_icon_badge.dart';
+import '../../../core/widgets/offline_indicator.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -42,10 +47,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   bool _hasSavedProgress = false; // Track if user has any saved progress
   double _activeBalance = 0.0;
   double _pendingBalance = 0.0;
+  bool _isOffline = false;
+  final ConnectivityService _connectivity = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
+    _initializeConnectivity();
     _loadUserInfo();
     _checkDismissedApprovalCard();
     _checkOnboardingStatus();
@@ -63,6 +71,33 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _loadUserInfo();
       }
     });
+  }
+
+  Future<void> _initializeConnectivity() async {
+    await _connectivity.initialize();
+    _checkConnectivity();
+    _connectivity.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        safeSetState(() {
+          _isOffline = !isOnline;
+        });
+      }
+    });
+  }
+
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivity.checkConnectivity();
+    if (mounted) {
+      safeSetState(() {
+        _isOffline = !isOnline;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectivity.dispose();
+    super.dispose();
   }
 
   Future<void> _checkOnboardingStatus() async {
@@ -340,87 +375,85 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         automaticallyImplyLeading: false, // No back button in bottom nav
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const AppLogoHeader(),
-        actions: const [
+        centerTitle: false,
+        title: Text(
+          'PrepSkul',
+          style: GoogleFonts.poppins(
+            fontSize: ResponsiveHelper.responsiveHeadingSize(context),
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+        actions: [
+          const MessageIconBadge(),
           Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: NotificationBell(),
+            padding: EdgeInsets.only(right: ResponsiveHelper.responsiveHorizontalPadding(context)),
+            child: const NotificationBell(),
           ),
         ],
       ),
       body: _isLoading
           ? const TutorHomeSkeleton()
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.fromLTRB(
+                ResponsiveHelper.responsiveHorizontalPadding(context),
+                ResponsiveHelper.responsiveVerticalPadding(context),
+                ResponsiveHelper.responsiveHorizontalPadding(context),
+                ResponsiveHelper.responsiveVerticalPadding(context),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Welcome Header with Approved Badge
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Welcome back, ${_getFirstName(_userInfo?['fullName']?.toString() ?? 'Tutor')}!',
-                          style: GoogleFonts.poppins(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
+                  const OfflineIndicator(),
+                  if (_isOffline)
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
                       ),
-                      if (_approvalStatus == 'approved')
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentGreen.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppTheme.accentGreen.withOpacity(0.3),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.verified,
-                                size: 14,
-                                color: AppTheme.accentGreen,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Approved',
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange[200]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_off, color: Colors.orange[800], size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Offline mode: progress and approvals update when you are back online.',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 11,
+                                  fontSize: 12,
+                                  color: Colors.orange[900],
                                   fontWeight: FontWeight.w500,
-                                  color: AppTheme.accentGreen,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
+                      ),
+                    ),
                   // Onboarding Progress Tracker
                   // Show ONLY if: (skipped OR has saved progress) AND not yet submitted
                   // Hide after submission - only show Profile Completion widget then
-                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete)
+                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete && !_isOffline)
                     OnboardingProgressTracker(
                       userId: _userInfo?['userId'] as String? ?? '',
                       key: ValueKey('onboarding_tracker_${_onboardingSkipped}_${_onboardingComplete}_${_hasSavedProgress}_${DateTime.now().millisecondsSinceEpoch}'),
                     ),
 
-                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete)
-                    const SizedBox(height: 16),
+                  if ((_onboardingSkipped || _hasSavedProgress) && !_onboardingComplete && !_isOffline)
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                     
                   // Review & Submit Button (only when all steps complete but not yet submitted)
                   // Hide this button after submission - user should see Profile Completion widget instead
                   // If _approvalStatus is not null, it means profile has been submitted (pending/approved/rejected/etc)
                   if (_onboardingComplete && !_onboardingSkipped && _approvalStatus == null)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: EdgeInsets.symmetric(horizontal: ResponsiveHelper.responsiveHorizontalPadding(context)),
                       child: SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -437,18 +470,18 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                               _checkOnboardingStatus();
                             });
                           },
-                          icon: const Icon(Icons.arrow_forward, size: 20),
+                          icon: Icon(Icons.arrow_forward, size: ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22)),
                           label: Text(
                             'Review & Submit Application',
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
+                              fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: EdgeInsets.symmetric(vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18)),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -459,7 +492,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                     ),
 
                   if (_onboardingComplete && !_onboardingSkipped)
-                    const SizedBox(height: 16),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
 
                   // Profile Completion Banner (if not complete)
                   // Hide when: 100% complete AND approved
@@ -495,7 +528,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                                   ); // Reload after returning
                             },
                           ),
-                          const SizedBox(height: 16),
+                          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                           // Profile Completion Details
                           ProfileCompletionWidget(
                             status: _completionStatus!,
@@ -513,7 +546,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                                   .then((_) => _loadUserInfo());
                             },
                           ),
-                          const SizedBox(height: 24),
+                          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
                         ],
                       );
                     },
@@ -542,44 +575,44 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                           _approvalStatus == 'rejected' ||
                           _approvalStatus == 'blocked' ||
                           _approvalStatus == 'suspended'))
-                    const SizedBox(height: 16),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
 
                   // PrepSkul Wallet Section
                   // Show wallet for approved tutors (even with pending update)
                   if (_approvalStatus == 'approved' && _hasDismissedApprovalCard) ...[
                     _buildWalletSection(),
-                    const SizedBox(height: 24),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
                   ],
 
                   // Quick Stats
                   Text(
                     'Quick Stats',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   Row(
                     children: [
                       _buildStatCard('Students', '0', Icons.people),
-                      const SizedBox(width: 16),
+                      SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                       _buildStatCard('Sessions', '0', Icons.event),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
 
                   // Quick Actions
                   Text(
                     'Quick Actions',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                   _buildActionCard(
                     icon: Icons.inbox_outlined,
                     title: 'My Requests',
@@ -593,7 +626,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                   _buildActionCard(
                     icon: Icons.school_outlined,
                     title: 'My Sessions',
@@ -607,14 +640,19 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
                   _buildActionCard(
                     icon: Icons.payment,
                     title: 'Payment History',
                     subtitle: 'View and manage your payments',
                     color: Colors.green,
                     onTap: () {
-                      Navigator.pushNamed(context, '/payment-history');
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const TutorEarningsScreen(),
+                        ),
+                      );
                     },
                   ),
                 ],
@@ -625,11 +663,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
 
   Widget _buildApprovalStatusCard() {
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32);
+    
     // Handle blocked/suspended status
     if (_approvalStatus == 'blocked' || _approvalStatus == 'suspended') {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           color: Colors.red.withOpacity(0.1),
           borderRadius: BorderRadius.circular(16),
@@ -640,15 +681,15 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.block, size: 32, color: Colors.red[700]),
-                const SizedBox(width: 12),
+                Icon(Icons.block, size: iconSize, color: Colors.red[700]),
+                SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
                 Expanded(
                   child: Text(
                     _approvalStatus == 'blocked'
                         ? 'Account Blocked'
                         : 'Account Suspended',
                     style: GoogleFonts.poppins(
-                      fontSize: 18,
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context) + 2,
                       fontWeight: FontWeight.w600,
                       color: Colors.red[900],
                     ),
@@ -656,31 +697,34 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
             Text(
               'Your account has been ${_approvalStatus == 'blocked' ? 'blocked' : 'suspended'}. View details for more information and to request a review.',
               style: GoogleFonts.poppins(
-                fontSize: 13,
+                fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                 color: AppTheme.textDark,
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _viewAdminFeedback(),
-                icon: const Icon(Icons.visibility),
+                icon: Icon(Icons.visibility, size: ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22)),
                 label: Text(
                   'View Details',
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  style: GoogleFonts.poppins(
+                    fontSize: ResponsiveHelper.responsiveBodySize(context),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red[700],
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                    vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14),
                   ),
                 ),
               ),
@@ -695,7 +739,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Approved - show compact success card with dismiss button
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
@@ -707,8 +751,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.check_circle, size: 32, color: Colors.white),
-            const SizedBox(width: 12),
+            Icon(Icons.check_circle, size: iconSize, color: Colors.white),
+            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -716,16 +760,16 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   Text(
                     'Approved!',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
                   Text(
                     'Your profile is live and students can now book sessions with you.',
                     style: GoogleFonts.poppins(
-                      fontSize: 12,
+                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
                       color: Colors.white.withOpacity(0.9),
                     ),
                   ),
@@ -733,7 +777,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.close, size: 18, color: Colors.white),
+              icon: Icon(Icons.close, size: ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22), color: Colors.white),
               onPressed: _dismissApprovalCard,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -746,7 +790,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Needs Improvement - show compact warning card with "View Details" button
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           color: Colors.orange.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
@@ -757,13 +801,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.info_outline, size: 24, color: Colors.orange[700]),
-                const SizedBox(width: 10),
+                Icon(Icons.info_outline, size: ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 26, desktop: 28), color: Colors.orange[700]),
+                SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                 Expanded(
                   child: Text(
                     'Profile Needs Improvement',
                     style: GoogleFonts.poppins(
-                      fontSize: 15,
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 1,
                       fontWeight: FontWeight.w600,
                       color: Colors.orange[900],
                     ),
@@ -771,34 +815,34 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10)),
             Text(
               'Admin has requested changes to your profile. View details to see what needs to be updated.',
               style: GoogleFonts.poppins(
-                fontSize: 12,
+                fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
                 color: AppTheme.textDark,
                 height: 1.4,
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _viewAdminFeedback(),
-                icon: const Icon(Icons.visibility, size: 16),
+                icon: Icon(Icons.visibility, size: ResponsiveHelper.responsiveIconSize(context, mobile: 16, tablet: 18, desktop: 20)),
                 label: Text(
                   'View Details',
                   style: GoogleFonts.poppins(
-                    fontSize: 13,
+                    fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange[700],
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: ResponsiveHelper.responsiveHorizontalPadding(context),
+                    vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14),
                   ),
                 ),
               ),
@@ -810,7 +854,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
       // Rejected - show compact error card with "View Details" button
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           color: AppTheme.primaryColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(12),
@@ -824,8 +868,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.cancel, size: 24, color: AppTheme.primaryColor),
-                const SizedBox(width: 10),
+                Icon(Icons.cancel, size: ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 26, desktop: 28), color: AppTheme.primaryColor),
+                SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                 Expanded(
                   child: Text(
                     'Application Rejected',
@@ -940,9 +984,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     // Use actual wallet balances
     final activeBalanceStr = _activeBalance.toStringAsFixed(0);
     final pendingBalanceStr = _pendingBalance.toStringAsFixed(0);
+    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32);
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -967,18 +1013,18 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: EdgeInsets.all(ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.account_balance_wallet,
                   color: Colors.white,
-                  size: 24,
+                  size: iconSize,
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -986,7 +1032,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                     Text(
                       'PrepSkul Wallet',
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: ResponsiveHelper.responsiveSubheadingSize(context) + 2,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
@@ -994,7 +1040,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                     Text(
                       'Your earnings and balance',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: ResponsiveHelper.responsiveBodySize(context) - 2,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
@@ -1003,7 +1049,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 16, tablet: 20, desktop: 24)),
           Row(
             children: [
               Expanded(
@@ -1014,7 +1060,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   color: Colors.green.shade300,
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
               Expanded(
                 child: _buildWalletBalanceCard(
                   label: 'Pending Balance',
@@ -1025,7 +1071,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
             SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
@@ -1036,18 +1082,18 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   ),
                 );
               },
-              icon: const Icon(Icons.arrow_forward, size: 18),
+              icon: Icon(Icons.arrow_forward, size: ResponsiveHelper.responsiveIconSize(context, mobile: 16, tablet: 18, desktop: 20)),
               label: Text(
                 'View Earnings',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: ResponsiveHelper.responsiveBodySize(context),
                   fontWeight: FontWeight.w600,
                 ),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
                 side: const BorderSide(color: Colors.white, width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: EdgeInsets.symmetric(vertical: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -1065,8 +1111,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     required IconData icon,
     required Color color,
   }) {
+    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 18, tablet: 20, desktop: 22);
+    
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
@@ -1081,13 +1130,13 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(width: 6),
+              Icon(icon, color: color, size: iconSize),
+              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10)),
               Flexible(
                 child: Text(
                   label,
                   style: GoogleFonts.poppins(
-                    fontSize: 11,
+                    fontSize: ResponsiveHelper.responsiveBodySize(context) - 3,
                     color: Colors.white.withOpacity(0.9),
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -1095,11 +1144,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 6, tablet: 8, desktop: 10)),
           Text(
             '${amount.toString()} XAF',
             style: GoogleFonts.poppins(
-              fontSize: 18,
+              fontSize: ResponsiveHelper.responsiveSubheadingSize(context) + 2,
               fontWeight: FontWeight.w700,
               color: Colors.white,
             ),
@@ -1116,11 +1165,15 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 21, tablet: 24, desktop: 26);
+    final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
+    
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(14), // Increased from 12 (adds 2px to height)
+        padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -1136,14 +1189,14 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: EdgeInsets.all(iconPadding),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 21), // Increased from 20
+              child: Icon(icon, color: color, size: iconSize),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1151,23 +1204,29 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 15, // Increased from 14
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 1,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
                   Text(
                     subtitle,
                     style: GoogleFonts.poppins(
-                      fontSize: 13, // Increased from 12
+                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                       color: AppTheme.textMedium,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
+            Icon(
+              Icons.arrow_forward_ios, 
+              size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18), 
+              color: Colors.grey[400]
+            ),
           ],
         ),
       ),
@@ -1175,9 +1234,15 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   }
 
   Widget _buildStatCard(String title, String value, IconData icon) {
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32);
+    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final valueSize = ResponsiveHelper.isSmallHeight(context) 
+        ? ResponsiveHelper.responsiveSubheadingSize(context) + 2
+        : ResponsiveHelper.responsiveSubheadingSize(context) + 4;
+    
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(12), // Keep same
+        padding: EdgeInsets.all(padding),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10),
@@ -1192,23 +1257,26 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: AppTheme.primaryColor, size: 24), // Match student home
-            const SizedBox(height: 6),
+            Icon(icon, color: AppTheme.primaryColor, size: iconSize),
+            SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 4 : 6),
             Text(
               value,
               style: GoogleFonts.poppins(
-                fontSize: 20, // Keep same
+                fontSize: valueSize,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textDark,
               ),
             ),
-            const SizedBox(height: 2),
+            SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
             Text(
               title,
               style: GoogleFonts.poppins(
-                fontSize: 11, // Reduced from 12 to match student home
+                fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                 color: AppTheme.textMedium,
               ),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

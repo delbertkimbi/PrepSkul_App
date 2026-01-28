@@ -1,9 +1,12 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
 import '../../features/dashboard/screens/student_home_screen.dart' show StudentHomeScreen;
 import '../../features/tutor/screens/tutor_requests_screen.dart';
@@ -33,7 +36,49 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    // Initialize with widget parameter first (available in initState)
+    // Route arguments will be read in didChangeDependencies
     _selectedIndex = widget.initialTab ?? 0;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Now we can safely access inherited widgets like ModalRoute
+    // Try to get initialTab from route arguments first, then fall back to widget parameter
+    final routeArgs = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final tabFromArgs = routeArgs?['initialTab'] as int?;
+    
+    // Use route arguments if available, otherwise use widget parameter
+    final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
+    
+    // #region agent log
+    try {
+      final logData = {
+        'sessionId': 'debug-session',
+        'runId': 'run1',
+        'hypothesisId': 'C',
+        'location': 'main_navigation.dart:42',
+        'message': 'didChangeDependencies called',
+        'data': {'currentIndex': _selectedIndex, 'targetTab': targetTab, 'tabFromArgs': tabFromArgs, 'widgetInitialTab': widget.initialTab, 'willChange': targetTab != _selectedIndex},
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+      File('/Users/user/Desktop/PrepSkul/.cursor/debug.log').writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
+    } catch (_) {}
+    // #endregion
+    
+    // Only update tab if we have an explicit target from route args or widget parameter
+    // Don't update if both are null (which happens when modals open/close)
+    final hasExplicitTarget = tabFromArgs != null || widget.initialTab != null;
+    
+    // Only update tab if we have a valid target tab AND it's different from current
+    // AND we have an explicit target (not just defaulting to 0)
+    if (targetTab != _selectedIndex && targetTab >= 0 && hasExplicitTarget) {
+      LogService.info('🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})');
+      safeSetState(() {
+        _selectedIndex = targetTab;
+      });
+    }
   }
 
   // Tutor screens (4 items)
@@ -46,10 +91,14 @@ class _MainNavigationState extends State<MainNavigation> {
 
   // Student screens (4 items)
   List<Widget> _getStudentScreens(String userType) {
+    // Get highlightRequestId from route arguments if available
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final highlightRequestId = args?['highlightRequestId'] as String?;
+    
     return [
     const StudentHomeScreen(), // Home Dashboard
     const FindTutorsScreen(), // Find Tutors
-    const MyRequestsScreen(), // My Booking Requests
+    MyRequestsScreen(highlightRequestId: highlightRequestId), // My Booking Requests
       ProfileScreen(userType: userType), // Profile & Settings (student or parent)
   ];
   }
@@ -59,23 +108,23 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     return [
       BottomNavigationBarItem(
-        icon: const Icon(Icons.home_outlined),
-        activeIcon: const Icon(Icons.home),
+        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.mail_outline), // inbox icon for requests
-        activeIcon: const Icon(Icons.mail),
+        icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.fill)),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.school_outlined), // sessions icon
-        activeIcon: const Icon(Icons.school),
+        icon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.fill)),
         label: t.navSessions,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.person_outline),
-        activeIcon: const Icon(Icons.person),
+        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
         label: t.navProfile,
       ),
     ];
@@ -86,23 +135,23 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     return [
       BottomNavigationBarItem(
-        icon: const Icon(Icons.home_outlined),
-        activeIcon: const Icon(Icons.home),
+        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.search),
-        activeIcon: const Icon(Icons.search),
+        icon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill)),
         label: t.navFindTutors,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.receipt_long_outlined), // requests icon
-        activeIcon: const Icon(Icons.receipt_long),
+        icon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.fill)),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.person_outline),
-        activeIcon: const Icon(Icons.person),
+        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
         label: t.navProfile,
       ),
     ];
@@ -151,7 +200,7 @@ class _MainNavigationState extends State<MainNavigation> {
               ),
               title: Row(
                 children: [
-                  Icon(Icons.exit_to_app, color: AppTheme.primaryColor, size: 24),
+                  PhosphorIcon(PhosphorIcons.signOut(), color: AppTheme.primaryColor, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -222,13 +271,14 @@ class _MainNavigationState extends State<MainNavigation> {
         selectedItemColor: AppTheme.primaryColor,
         unselectedItemColor: AppTheme.textMedium,
         selectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w400,
         ),
+        iconSize: 22,
         items: items,
         ),
       ),

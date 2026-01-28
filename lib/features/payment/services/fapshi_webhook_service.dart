@@ -6,6 +6,8 @@ import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/booking/models/booking_request_model.dart';
+import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 
 
 
@@ -160,6 +162,27 @@ class FapshiWebhookService {
           // Don't fail the webhook if Meet link generation fails
         }
 
+        // Create conversation for paid trial session
+        try {
+          final trial = await _supabase
+              .from('trial_sessions')
+              .select('learner_id, tutor_id')
+              .eq('id', trialSessionId)
+              .maybeSingle();
+          
+          if (trial != null) {
+            await ConversationLifecycleService.createConversationForTrial(
+              trialSessionId: trialSessionId,
+              studentId: trial['learner_id'] as String,
+              tutorId: trial['tutor_id'] as String,
+            );
+            LogService.success('Conversation created for paid trial: $trialSessionId');
+          }
+        } catch (e) {
+          LogService.warning('Failed to create conversation for trial: $e');
+          // Don't fail the webhook if conversation creation fails
+        }
+
         // Send notifications
         await _sendTrialPaymentSuccessNotifications(trialSessionId);
 
@@ -203,20 +226,52 @@ class FapshiWebhookService {
       }
 
       final currentStatus = paymentRequest['status'] as String?;
+      final recurringSessionId = paymentRequest['recurring_session_id'] as String?;
+      final bookingRequestId = paymentRequest['booking_request_id'] as String?;
       
-      // Idempotency: If already paid, skip processing (webhook may be called multiple times)
+      // Idempotency: If already paid, check if we still need to create recurring session or generate sessions
       if (currentStatus == 'paid' && status == 'SUCCESS') {
-        LogService.info('Payment request already processed as paid: $paymentRequestId. Skipping duplicate webhook.');
-        return;
+        LogService.info('Payment request already processed as paid: $paymentRequestId.');
+        
+        // Even if already paid, check if recurring session exists and sessions are generated
+        if (recurringSessionId == null && bookingRequestId != null) {
+          LogService.warning('⚠️ Payment is paid but recurring_session_id is missing. Creating recurring session...');
+          // Continue to process recurring session creation below
+        } else if (recurringSessionId != null) {
+          // Check if individual sessions exist
+          try {
+            final existingSessions = await SupabaseService.client
+                .from('individual_sessions')
+                .select('id')
+                .eq('recurring_session_id', recurringSessionId)
+                .limit(1);
+            
+            if (existingSessions.isEmpty) {
+              LogService.warning('⚠️ Payment is paid but individual sessions are missing. Generating sessions...');
+              // Continue to process session generation below
+            } else {
+              LogService.info('Payment already processed and sessions exist. Skipping duplicate webhook.');
+              return;
+            }
+          } catch (e) {
+            LogService.warning('⚠️ Error checking for existing sessions: $e');
+            // Continue to process
+          }
+        } else {
+          LogService.info('Payment already processed. Skipping duplicate webhook.');
+          return;
+        }
       }
 
       if (status == 'SUCCESS') {
-        // Payment successful - update status first
-        await PaymentRequestService.updatePaymentRequestStatus(
-          paymentRequestId,
-          'paid',
-          fapshiTransId: transactionId,
-        );
+        // Payment successful - update status first (only if not already paid)
+        if (currentStatus != 'paid') {
+          await PaymentRequestService.updatePaymentRequestStatus(
+            paymentRequestId,
+            'paid',
+            fapshiTransId: transactionId,
+          );
+        }
 
         // Reload payment request to get latest data
         final updatedPaymentRequest = await PaymentRequestService.getPaymentRequest(paymentRequestId);
@@ -224,31 +279,215 @@ class FapshiWebhookService {
           final bookingRequestId = updatedPaymentRequest['booking_request_id'] as String?;
           final studentId = updatedPaymentRequest['student_id'] as String;
           final tutorId = updatedPaymentRequest['tutor_id'] as String;
-          final recurringSessionId = updatedPaymentRequest['recurring_session_id'] as String?;
+          var recurringSessionId = updatedPaymentRequest['recurring_session_id'] as String?;
           final paymentPlan = updatedPaymentRequest['payment_plan'] as String?;
           final monthlyTotal = updatedPaymentRequest['original_amount'] as num?;
 
-          // Ensure recurring session is active (in case it was paused)
-          if (recurringSessionId != null) {
+          // If recurring_session_id is null, try to find it from booking_request_id
+          // Note: request_id may be NULL due to FK constraint, so we primarily rely on payment_request link
+          if (recurringSessionId == null && bookingRequestId != null) {
+            LogService.warning('⚠️ recurring_session_id is null in payment request. Looking up from booking_request_id: $bookingRequestId');
             try {
-              // Check if this is the first payment for this recurring session
-              // If so, ensure the session is active
-              await RecurringSessionService.updateSessionStatus(
-                recurringSessionId,
-                'active',
-              );
-              LogService.success('Recurring session status verified: $recurringSessionId');
+              // Try to find by request_id first (may be NULL due to FK constraint to session_requests)
+              var recurringSession = await SupabaseService.client
+                  .from('recurring_sessions')
+                  .select('id')
+                  .eq('request_id', bookingRequestId)
+                  .limit(1)
+                  .maybeSingle();
+              
+              // If not found, the recurring session may not exist yet or request_id is NULL
+              // We'll create it below if needed
+              if (recurringSession != null) {
+                recurringSessionId = recurringSession['id'] as String?;
+                LogService.info('✅ Found recurring_session_id from request_id: $recurringSessionId');
+                
+                // Update payment request with the found recurring_session_id
+                try {
+                  await SupabaseService.client
+                      .from('payment_requests')
+                      .update({
+                        'recurring_session_id': recurringSessionId,
+                        'updated_at': DateTime.now().toIso8601String(),
+                      })
+                      .eq('id', paymentRequestId);
+                  LogService.success('✅ Updated payment request with recurring_session_id');
+                } catch (e) {
+                  LogService.warning('⚠️ Failed to update payment request with recurring_session_id: $e');
+                }
+              } else {
+                // Recurring session doesn't exist - create it now since payment is being made
+                LogService.warning('⚠️ Recurring session not found for booking_request_id: $bookingRequestId');
+                LogService.info('🔧 Creating missing recurring session from booking request...');
+                try {
+                  // Get booking request
+                  final bookingRequestData = await SupabaseService.client
+                      .from('booking_requests')
+                      .select()
+                      .eq('id', bookingRequestId)
+                      .maybeSingle();
+                  
+                  if (bookingRequestData != null) {
+                    // Import BookingRequest model
+                    final bookingRequest = BookingRequest.fromJson(bookingRequestData);
+                    
+                    // Create recurring session
+                    final recurringSessionData = await RecurringSessionService.createRecurringSessionFromBooking(
+                      bookingRequest,
+                      paymentRequestId: paymentRequestId,
+                    );
+                    
+                    recurringSessionId = recurringSessionData['id'] as String;
+                    LogService.success('✅ Created recurring session: $recurringSessionId');
+                    
+                    // Link payment request to recurring session
+                    try {
+                      await SupabaseService.client
+                          .from('payment_requests')
+                          .update({
+                            'recurring_session_id': recurringSessionId,
+                            'updated_at': DateTime.now().toIso8601String(),
+                          })
+                          .eq('id', paymentRequestId);
+                      LogService.success('✅ Linked payment request to recurring session');
+                    } catch (e) {
+                      LogService.warning('⚠️ Failed to link payment request: $e');
+                    }
+                    
+                    // Immediately generate individual sessions since payment is being made
+                    LogService.info('💰 Payment successful - generating individual sessions immediately...');
+                    try {
+                      final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
+                        recurringSessionId: recurringSessionId,
+                        weeksAhead: 8,
+                      );
+                      LogService.success('✅ Generated $sessionsGenerated individual sessions immediately after payment');
+                    } catch (e, stackTrace) {
+                      LogService.error('❌ Failed to generate individual sessions immediately: $e');
+                      LogService.error('📚 Stack trace: $stackTrace');
+                      // Continue - sessions will be generated in the flow below
+                    }
+                  } else {
+                    LogService.error('❌ Booking request not found: $bookingRequestId');
+                  }
+                } catch (e, stackTrace) {
+                  LogService.error('❌ Failed to create recurring session: $e');
+                  LogService.error('📚 Stack trace: $stackTrace');
+                  // Continue - payment will still be processed
+                }
+              }
             } catch (e) {
-              LogService.warning('Failed to update recurring session status: $e');
-              // Don't fail the payment confirmation if status update fails
+              LogService.error('❌ Error looking up recurring_session_id: $e');
             }
           }
 
-          // Note: Recurring payment requests are created upfront when booking is approved
-          // For bi-weekly/weekly plans, all payment requests are created in advance
-          // No need to schedule next payment dynamically - they already exist
+          // CRITICAL: Ensure recurring session is active and generate/activate sessions after payment
           if (recurringSessionId != null) {
-            LogService.debug('Recurring session payment confirmed: $recurringSessionId. Next payment requests already exist.');
+            try {
+              LogService.info('🔄 Processing recurring session after payment: $recurringSessionId');
+              
+              // Get recurring session to verify it exists
+              final recurringSession = await SupabaseService.client
+                  .from('recurring_sessions')
+                  .select('id, status, start_date')
+                  .eq('id', recurringSessionId)
+                  .maybeSingle();
+              
+              if (recurringSession != null) {
+                // Ensure the session is active
+                await RecurringSessionService.updateSessionStatus(
+                  recurringSessionId,
+                  'active',
+                );
+                LogService.success('✅ Recurring session activated: $recurringSessionId');
+                
+                // ALWAYS generate sessions after payment (generateIndividualSessions handles duplicates)
+                LogService.info('📅 Generating individual sessions after payment (will skip duplicates)');
+                LogService.info('📅 Recurring session ID: $recurringSessionId');
+                try {
+                  LogService.info('🚀 Calling generateIndividualSessions...');
+                  final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
+                    recurringSessionId: recurringSessionId,
+                    weeksAhead: 8,
+                  );
+                  LogService.success('✅ Individual sessions generated after payment: $recurringSessionId, count: $sessionsGenerated');
+                  
+                  // Verify sessions were actually created
+                  final verifySessions = await SupabaseService.client
+                      .from('individual_sessions')
+                      .select('id, scheduled_date, status')
+                      .eq('recurring_session_id', recurringSessionId)
+                      .limit(10);
+                  
+                  LogService.info('✅ Verification: Found ${verifySessions.length} total sessions for recurring_session_id: $recurringSessionId');
+                  if (verifySessions.isNotEmpty) {
+                    LogService.info('✅ Sample session dates: ${verifySessions.take(5).map((s) => '${s['scheduled_date']} (${s['status']})').join(', ')}');
+                  } else {
+                    LogService.error('❌ CRITICAL: No sessions found after generation! This indicates a problem.');
+                  }
+                  
+                  // Send notification to both tutor and student/parent that sessions are created
+                  try {
+                    // Get recurring session details for notification
+                    final recurringSessionDetails = await SupabaseService.client
+                        .from('recurring_sessions')
+                        .select('tutor_id, student_id, learner_id, tutor_name, student_name, learner_name, frequency, days')
+                        .eq('id', recurringSessionId)
+                        .maybeSingle();
+                    
+                    if (recurringSessionDetails != null) {
+                      final tutorId = recurringSessionDetails['tutor_id'] as String;
+                      // Handle both student_id and learner_id (schema migration)
+                      final studentId = recurringSessionDetails['student_id'] as String? ?? recurringSessionDetails['learner_id'] as String;
+                      final tutorName = recurringSessionDetails['tutor_name'] as String? ?? 'Tutor';
+                      final studentName = recurringSessionDetails['student_name'] as String? ?? recurringSessionDetails['learner_name'] as String? ?? 'Student';
+                      final frequency = recurringSessionDetails['frequency'] as int? ?? 0;
+                      final days = (recurringSessionDetails['days'] as List?)?.cast<String>() ?? [];
+                      
+                      // Notify student/parent
+                      await NotificationHelperService.notifySessionsCreated(
+                        studentId: studentId,
+                        tutorId: tutorId,
+                        recurringSessionId: recurringSessionId,
+                        tutorName: tutorName,
+                        studentName: studentName,
+                        sessionCount: sessionsGenerated,
+                        frequency: frequency,
+                        days: days,
+                      );
+                      
+                      // Notify tutor
+                      await NotificationHelperService.notifyTutorSessionsCreated(
+                        tutorId: tutorId,
+                        studentId: studentId,
+                        recurringSessionId: recurringSessionId,
+                        studentName: studentName,
+                        tutorName: tutorName,
+                        sessionCount: sessionsGenerated,
+                        frequency: frequency,
+                        days: days,
+                      );
+                      
+                      LogService.success('✅ Notifications sent for created sessions');
+                    }
+                  } catch (e) {
+                    LogService.error('❌ Failed to send session creation notifications: $e');
+                    // Don't fail payment if notification fails
+                  }
+                } catch (e, stackTrace) {
+                  LogService.error('❌ Failed to generate individual sessions after payment: $e');
+                  LogService.error('📚 Stack trace: $stackTrace');
+                  // Don't fail payment if session generation fails - can be retried
+                }
+              } else {
+                LogService.warning('⚠️ Recurring session not found: $recurringSessionId');
+              }
+            } catch (e) {
+              LogService.error('❌ Error processing recurring session after payment: $e');
+              // Don't fail the payment confirmation if session processing fails
+            }
+          } else {
+            LogService.warning('⚠️ No recurring_session_id found in payment request: $paymentRequestId');
           }
 
           // Convert payment to credits (with idempotency check inside)

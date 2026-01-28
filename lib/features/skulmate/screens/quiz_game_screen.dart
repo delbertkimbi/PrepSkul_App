@@ -142,9 +142,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
     if (isPerfectScore) {
       _confettiController.play();
       _soundService.playComplete();
-    }
-
-    final stats = await GameStatsService.addGameResult(
+    }    final stats = await GameStatsService.addGameResult(
       correctAnswers: _score,
       totalQuestions: totalQuestions,
       timeTakenSeconds: timeTaken,

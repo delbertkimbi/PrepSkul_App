@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
+import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/utils/status_bar_utils.dart';
 import 'edit_profile_screen.dart';
@@ -17,6 +18,7 @@ import '../../../core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -167,14 +169,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
           user['phone']?.toString() ??
           'Not set';
 
-      // Get email with priority: Auth email > profiles.email > stored signup email > 'Not set'
+      // Get email with priority: Auth email > profiles.email > stored signup email > onboarding progress > 'Not set'
       final prefs = await SharedPreferences.getInstance();
       final storedEmail = prefs.getString('signup_email');
-      final email =
-          authEmail ??
+      
+      // Check if email exists in auth but not in profiles - sync it if needed
+      String? email = authEmail ??
           profileResponse?['email']?.toString() ??
-          storedEmail ??
-          'Not set';
+          storedEmail;
+      
+      // Also check auth user metadata for email (some signup flows store it there)
+      final metadataEmail = authUser?.userMetadata?['email']?.toString();
+      if (email == null && metadataEmail != null && metadataEmail.isNotEmpty) {
+        email = metadataEmail;
+      }
+      
+      // For tutors, also check onboarding progress for email (in case it was collected but not synced)
+      if (widget.userType == 'tutor' && (email == null || email.isEmpty || email == 'Not set')) {
+        try {
+          final onboardingProgress = await TutorOnboardingProgressService.loadProgress(userId);
+          if (onboardingProgress != null) {
+            final step0Data = onboardingProgress['step_0'] as Map<String, dynamic>?;
+            final onboardingEmail = step0Data?['email']?.toString();
+            if (onboardingEmail != null && onboardingEmail.isNotEmpty && onboardingEmail.contains('@')) {
+              email = onboardingEmail;
+              LogService.debug('Found email in onboarding progress: $email');
+            }
+          }
+        } catch (e) {
+          LogService.debug('Error checking onboarding progress for email: $e');
+        }
+      }
+      
+      // If we have email from any source but profiles table doesn't have it, update profiles
+      final currentProfileEmail = profileResponse?['email']?.toString();
+      final needsEmailSync = email != null && 
+          email.isNotEmpty && 
+          email != 'Not set' && 
+          email.contains('@') &&
+          (currentProfileEmail == null || 
+           currentProfileEmail.isEmpty ||
+           currentProfileEmail == 'Not set');
+      
+      if (needsEmailSync) {
+        try {
+          await SupabaseService.client
+              .from('profiles')
+              .update({'email': email})
+              .eq('id', userId);
+          LogService.success('Synced email to profiles table: $email');
+          // Reload profile response to get updated email
+          profileResponse = await SupabaseService.client
+              .from('profiles')
+              .select('avatar_url, full_name, email, phone_number')
+              .eq('id', userId)
+              .maybeSingle();
+          // Use the synced email
+          email = profileResponse?['email']?.toString() ?? email;
+        } catch (e) {
+          LogService.warning('Error syncing email to profiles: $e');
+        }
+      }
+      
+      // Final fallback
+      email = email ?? 'Not set';
 
       // Get full name from database (most up-to-date)
       // Priority: profile > stored signup data > session > auth metadata > email extraction > empty
@@ -376,7 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          vertical: 20,
+                          vertical: 16,
                           horizontal: 20,
                         ),
                         child: Column(
@@ -413,7 +471,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ],
                                     ),
                                     child: CircleAvatar(
-                                      radius: 50,
+                                      radius: 42,
                                       backgroundColor: Colors.white.withOpacity(
                                         0.2,
                                       ),
@@ -426,8 +484,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           _profilePhotoUrl == null ||
                                               _profilePhotoUrl!.isEmpty
                                           ? Icon(
-                                              Icons.person,
-                                              size: 47,
+                                              PhosphorIcons.user(),
+                                              size: 40,
                                               color: Colors.white.withOpacity(
                                                 0.9,
                                               ),
@@ -439,7 +497,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     bottom: 0,
                                     right: 0,
                                     child: Container(
-                                      padding: const EdgeInsets.all(6),
+                                      padding: const EdgeInsets.all(5),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
                                         shape: BoxShape.circle,
@@ -458,37 +516,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         ],
                                       ),
                                       child: Icon(
-                                        Icons.camera_alt,
+                                        PhosphorIcons.camera(),
                                         color: AppTheme.primaryColor,
-                                        size: 16,
+                                        size: 14,
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 10),
                             // Name (Full name) - Less bold
                             Text(
                               _userInfo?['fullName']?.toString() ?? 'User',
                               style: GoogleFonts.poppins(
-                                fontSize: 20,
-                                fontWeight:
-                                    FontWeight.w600, // Reduced from w700
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
                                 color: Colors.white,
                                 letterSpacing: -0.3,
                               ),
                             ),
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 6),
                             // Role Badge
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 6,
+                                horizontal: 14,
+                                vertical: 5,
                               ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
+                                borderRadius: BorderRadius.circular(18),
                                 border: Border.all(
                                   color: Colors.white.withOpacity(0.3),
                                   width: 1.5,
@@ -497,7 +554,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Text(
                                 widget.userType.toUpperCase(),
                                 style: GoogleFonts.poppins(
-                                  fontSize: 11,
+                                  fontSize: 10,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
                                   letterSpacing: 1.2,
@@ -517,7 +574,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       children: [
                         Expanded(
                           child: _buildNeumorphicInfoCard(
-                            icon: Icons.email_outlined,
+                            icon: PhosphorIcons.envelope(),
                             label: 'Email',
                             value: _userInfo?['email']?.toString() ?? 'Not set',
                           ),
@@ -525,7 +582,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: _buildNeumorphicInfoCard(
-                            icon: Icons.phone_outlined,
+                            icon: PhosphorIcons.phone(),
                             label: 'Phone',
                             value: _formatPhoneNumber(
                               _userInfo?['phone']?.toString() ?? 'Not set',
@@ -552,31 +609,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 16),
                   ],
                   // Personal Information Section (from survey)
-                  if (_surveyData != null &&
-                      (widget.userType == 'student' ||
-                          widget.userType == 'learner' ||
-                          widget.userType == 'parent')) ...[
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: _buildNeumorphicSection(
-                        title: t.profileLearningInformation,
-                        icon: Icons.school_outlined,
-                        child: _buildLearningInfoSection(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  // Learning information card removed temporarily
 
                   // Settings Section (Neumorphic style)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: _buildNeumorphicSection(
                       title: t.profileSettings,
-                      icon: Icons.settings_outlined,
+                      icon: PhosphorIcons.gear(),
                       child: Column(
                         children: [
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.edit_outlined,
+                            icon: PhosphorIcons.pencil(),
                             title: t.profileEditProfile,
                             subtitle: t.profileEditProfileSubtitle,
                             onTap: () async {
@@ -596,7 +640,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           
                           if (widget.userType == 'tutor') ...[
                             _buildNeumorphicSettingsItem(
-                              icon: Icons.school_outlined,
+                              icon: PhosphorIcons.graduationCap(),
                               title: t.profileEditTutorInfo,
                               subtitle: t.profileEditTutorInfoSubtitle,
                               onTap: () async {
@@ -632,7 +676,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(height: 12),
                             _buildNeumorphicSettingsItem(
-                              icon: Icons.visibility_outlined,
+                              icon: PhosphorIcons.eye(),
                               title: t.profilePreviewProfile,
                               subtitle: t.profilePreviewProfileSubtitle,
                               onTap: () {
@@ -664,7 +708,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 12),
                           ],
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.notifications_outlined,
+                            icon: PhosphorIcons.bell(),
                             title: t.profileNotifications,
                             subtitle: t.profileNotificationsSubtitle,
                             onTap: () {
@@ -678,7 +722,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.language_outlined,
+                            icon: PhosphorIcons.translate(),
                             title: t.profileLanguage,
                             subtitle: t.profileLanguageSubtitle,
                             onTap: () {
@@ -691,7 +735,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(height: 12),
                           _buildNeumorphicSettingsItem(
-                            icon: Icons.help_outline,
+                            icon: PhosphorIcons.question(),
                             title: t.profileHelpSupport,
                             subtitle: t.profileHelpSupportSubtitle,
                             onTap: () {
@@ -740,7 +784,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.logout, color: Colors.red, size: 20),
+                            Icon(PhosphorIcons.signOut(), color: Colors.red, size: 20),
                             const SizedBox(width: 8),
                             Text(
                               t.profileLogout,
@@ -770,10 +814,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String value,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: Colors.white.withOpacity(0.6),
@@ -793,26 +837,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 18),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 11,
               color: AppTheme.textMedium,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             value.length > 15 ? '${value.substring(0, 15)}...' : value,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
@@ -942,7 +986,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: AppTheme.textLight, size: 20),
+              Icon(PhosphorIcons.caretRight(), color: AppTheme.textLight, size: 20),
             ],
           ),
         ),
@@ -1073,7 +1117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
-                    Icons.track_changes_rounded,
+                    PhosphorIcons.trendUp(),
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),
@@ -1116,7 +1160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
-                      Icons.menu_book_rounded,
+                      PhosphorIcons.bookOpen(),
                       size: 14,
                       color: AppTheme.primaryColor,
                     ),
@@ -1173,7 +1217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Icon(
-                      Icons.stars_rounded,
+                      PhosphorIcons.star(),
                       size: 14,
                       color: AppTheme.primaryColor,
                     ),
@@ -1231,7 +1275,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
-                    Icons.flag_rounded,
+                    PhosphorIcons.flag(),
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),
@@ -1322,7 +1366,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
-                    Icons.psychology_rounded,
+                    PhosphorIcons.brain(),
                     size: 14,
                     color: AppTheme.primaryColor,
                   ),
