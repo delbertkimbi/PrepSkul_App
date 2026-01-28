@@ -323,7 +323,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 child: Text(
                   'Loading review...',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 12,
                     color: Colors.grey[600],
                   ),
                 ),
@@ -357,7 +357,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -459,7 +459,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               child: Text(
                 'Existing Booking',
                 style: GoogleFonts.poppins(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -470,7 +470,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         content: Text(
           message,
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 12,
             height: 1.5,
             color: Colors.grey.shade700,
           ),
@@ -531,7 +531,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(0.1),
                 shape: BoxShape.circle,
@@ -546,7 +546,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
             Text(
               'Request Sent!',
               style: GoogleFonts.poppins(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.w700,
                 color: Colors.black,
               ),
@@ -556,7 +556,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
               'Your booking request has been sent to ${widget.tutor['full_name']}!',
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 12,
                 color: Colors.grey[700],
                 height: 1.5,
               ),
@@ -579,7 +579,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -587,7 +587,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                 child: Text(
                   'View My Requests',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
@@ -620,7 +620,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         title: Text(
           'Book Regular Sessions',
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
             color: Colors.black,
           ),
@@ -640,7 +640,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         children: _buildPageViewChildren(),
       ),
       bottomNavigationBar: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
           boxShadow: [
@@ -660,7 +660,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                     onPressed: _previousStep,
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -668,7 +668,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                     child: Text(
                       'Back',
                       style: GoogleFonts.poppins(
-                        fontSize: 16,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
                       ),
@@ -697,7 +697,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                         ? 'Send Request'
                         : 'Continue',
                     style: GoogleFonts.poppins(
-                      fontSize: 16,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),

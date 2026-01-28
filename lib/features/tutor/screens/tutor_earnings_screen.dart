@@ -9,6 +9,7 @@ import '../../../core/widgets/branded_snackbar.dart';
 import '../../../features/booking/services/session_payment_service.dart';
 import '../../../features/payment/services/tutor_payout_service.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class TutorEarningsScreen extends StatefulWidget {
   const TutorEarningsScreen({Key? key}) : super(key: key);
@@ -25,12 +26,38 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
   double _pendingBalance = 0.0;
   List<Map<String, dynamic>> _earningsHistory = [];
   List<Map<String, dynamic>> _payoutHistory = [];
+  bool _dismissedMinPayoutWarning = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _loadDismissedWarning();
     _loadData();
+  }
+
+  Future<void> _loadDismissedWarning() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String;
+      final dismissed = prefs.getBool('dismissed_min_payout_warning_$userId') ?? false;
+      safeSetState(() => _dismissedMinPayoutWarning = dismissed);
+    } catch (e) {
+      LogService.warning('Error loading payout warning state: $e');
+    }
+  }
+
+  Future<void> _dismissMinPayoutWarning() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String;
+      await prefs.setBool('dismissed_min_payout_warning_$userId', true);
+    } catch (e) {
+      LogService.warning('Error saving payout warning state: $e');
+    }
+    safeSetState(() => _dismissedMinPayoutWarning = true);
   }
 
   @override
@@ -170,7 +197,8 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
           indicatorColor: AppTheme.primaryColor,
           tabs: const [
             Tab(text: 'Overview'),
-            Tab(text: 'History'),
+            Tab(text: 'Earnings'),
+            Tab(text: 'Payouts'),
           ],
         ),
       ),
@@ -180,7 +208,8 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
               controller: _tabController,
               children: [
                 _buildOverviewTab(),
-                _buildHistoryTab(),
+                _buildEarningsHistory(),
+                _buildPayoutHistory(),
               ],
             ),
     );
@@ -223,25 +252,48 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                   ),
                 ),
               )
-            else
+            else if (!_dismissedMinPayoutWarning)
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.orange[50],
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.orange[200]!),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.info_outline, color: Colors.orange[700], size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Minimum payout amount is 5,000 XAF. You currently have ${_activeBalance.toStringAsFixed(0)} XAF available.',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: Colors.orange[900],
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange[700], size: 18),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Minimum payout amount is 5,000 XAF.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange[900],
+                            ),
+                          ),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          color: Colors.orange[800],
+                          onPressed: _dismissMinPayoutWarning,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Dismiss',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'You currently have ${_activeBalance.toStringAsFixed(0)} XAF available.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.orange[900],
                       ),
                     ),
                   ],
@@ -260,22 +312,23 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
 
   Widget _buildWalletBalanceSection() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.8),
+            AppTheme.primaryColor.withOpacity(0.85),
           ],
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.15),
-            blurRadius: 8,
+            color: AppTheme.primaryColor.withOpacity(0.2),
+            blurRadius: 12,
             offset: const Offset(0, 4),
+            spreadRadius: 0,
           ),
         ],
       ),
@@ -285,18 +338,18 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
-                  Icons.account_balance_wallet,
+                  Icons.account_balance_wallet_rounded,
                   color: Colors.white,
-                  size: 24,
+                  size: 20,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -304,7 +357,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                     Text(
                       'PrepSkul Wallet',
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
@@ -312,7 +365,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
                     Text(
                       'Your earnings and balance',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: Colors.white.withOpacity(0.9),
                       ),
                     ),
@@ -321,23 +374,23 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
                 child: _buildBalanceCard(
                   label: 'Active Balance',
                   amount: _activeBalance,
-                  icon: Icons.check_circle,
+                  icon: Icons.check_circle_rounded,
                   color: Colors.green[300]!,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: _buildBalanceCard(
                   label: 'Pending Balance',
                   amount: _pendingBalance,
-                  icon: Icons.pending,
+                  icon: Icons.pending_rounded,
                   color: Colors.orange[300]!,
                 ),
               ),
@@ -355,23 +408,23 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
     required Color color,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: color),
-              const SizedBox(width: 8),
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   label,
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 11,
                     color: Colors.white.withOpacity(0.9),
                     fontWeight: FontWeight.w500,
                   ),
@@ -379,11 +432,11 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             '${amount.toStringAsFixed(0)} XAF',
             style: GoogleFonts.poppins(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
               color: Colors.white,
             ),
@@ -484,43 +537,6 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
     );
   }
 
-  Widget _buildHistoryTab() {
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      color: AppTheme.primaryColor,
-      child: DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            Container(
-              color: Colors.white,
-              child: TabBar(
-                labelColor: AppTheme.primaryColor,
-                unselectedLabelColor: Colors.grey[600],
-                labelStyle: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-                indicatorColor: AppTheme.primaryColor,
-                tabs: const [
-                  Tab(text: 'Earnings'),
-                  Tab(text: 'Payouts'),
-                ],
-              ),
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  _buildEarningsHistory(),
-                  _buildPayoutHistory(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildEarningsHistory() {
     if (_earningsHistory.isEmpty) {

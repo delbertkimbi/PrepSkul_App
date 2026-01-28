@@ -979,7 +979,7 @@ class SessionLifecycleService {
       await NotificationService.createNotification(
         userId: studentId,
         type: 'session_completed',
-        title: '✅ Session Completed',
+        title: 'Session Completed',
         message: message,
         priority: paymentId != null && paymentStatus == 'unpaid' ? 'high' : 'normal',
         actionUrl: actionUrl,

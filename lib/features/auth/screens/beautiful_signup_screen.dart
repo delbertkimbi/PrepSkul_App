@@ -173,7 +173,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
 
                               // Phone Number Field
                               Text(
-                                'Phone Number (WhatsApp Number)',
+                                'Phone Number',
                                 style: GoogleFonts.poppins(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
@@ -612,16 +612,23 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
     }
 
     // Format phone number (ensure it starts with +237 for Cameroon)
-    String phoneNumber = _phoneController.text.trim();
-    if (!phoneNumber.startsWith('+')) {
-      if (phoneNumber.startsWith('237')) {
-        phoneNumber = '+$phoneNumber';
-      } else if (phoneNumber.startsWith('0')) {
-        phoneNumber = '+237${phoneNumber.substring(1)}';
-      } else {
-        phoneNumber = '+237$phoneNumber';
-      }
+    // Remove all non-numeric characters first (except leading +)
+    String rawPhone = _phoneController.text.trim();
+    // Remove spaces, dashes, parentheses, and other formatting characters
+    String cleanedPhone = rawPhone.replaceAll(RegExp(r'[^\d+]'), '');
+    
+    String phoneNumber;
+    if (cleanedPhone.startsWith('+')) {
+      phoneNumber = cleanedPhone;
+    } else if (cleanedPhone.startsWith('237')) {
+      phoneNumber = '+$cleanedPhone';
+    } else if (cleanedPhone.startsWith('0')) {
+      phoneNumber = '+237${cleanedPhone.substring(1)}';
+    } else {
+      phoneNumber = '+237$cleanedPhone';
     }
+    
+    LogService.debug('📱 Formatted phone number: $phoneNumber');
 
     safeSetState(() => _isLoading = true);
 

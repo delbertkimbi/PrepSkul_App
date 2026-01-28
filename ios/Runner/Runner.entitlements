@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Associated Domains for Universal Links (Deep Linking from email notifications) -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.prepskul.com</string>
+		<string>applinks:prepskul.com</string>
+	</array>
+	<!-- Push Notifications -->
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>
+

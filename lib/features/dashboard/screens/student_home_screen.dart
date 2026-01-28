@@ -3,8 +3,10 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/utils/status_bar_utils.dart';
+import '../../../core/utils/responsive_helper.dart';
 import '../../../core/widgets/skeletons/student_home_skeleton.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
@@ -316,13 +318,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             fontSize: 14,
           ),
         ),
-        icon: const Icon(Icons.auto_awesome, color: Colors.white),
+        icon: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Colors.white),
       ) : null,
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hero Header with gradient
+            // Hero Header with gradient - Responsive
             Container(
               width: double.infinity,
               decoration: BoxDecoration(
@@ -335,7 +337,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ],
                 ),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
+              padding: EdgeInsets.fromLTRB(
+                ResponsiveHelper.responsiveHorizontalPadding(context),
+                MediaQuery.of(context).padding.top + ResponsiveHelper.responsiveVerticalPadding(context),
+                ResponsiveHelper.responsiveHorizontalPadding(context),
+                ResponsiveHelper.responsiveVerticalPadding(context) + 8,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -349,35 +356,37 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                             Text(
                               '$greeting $greetingEmoji',
                               style: GoogleFonts.poppins(
-                                fontSize: 16,
+                                fontSize: ResponsiveHelper.responsiveBodySize(context),
                                 color: Colors.white.withOpacity(0.9),
                                 fontWeight: FontWeight.w400,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
                             Text(
                               _userName,
                               style: GoogleFonts.poppins(
-                                fontSize: 28,
+                                fontSize: ResponsiveHelper.responsiveHeadingSize(context) + 6,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
                       const MessageIconBadge(iconColor: Colors.white),
-                      const SizedBox(width: 8),
+                      SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 12, desktop: 16)),
                       const NotificationBell(iconColor: Colors.white),
                     ],
                   ),
-                  // Removed learning path badge - this info is for platform matching, not display
                 ],
               ),
             ),
 
+            // Responsive content padding
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: ResponsiveHelper.responsivePadding(context),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -395,23 +404,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       },
                     ),
 
-                  // Quick Stats
+                  // Quick Stats - Responsive
                   _buildSectionTitle(AppLocalizations.of(context)!.yourProgress),
-                  const SizedBox(height: 12),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   Row(
                     children: [
                       Expanded(
                         child: _buildStatCard(
-                          icon: Icons.school_outlined,
+                          icon: PhosphorIcons.graduationCap(),
                           label: AppLocalizations.of(context)!.activeTutors,
                           value: '0',
                           color: AppTheme.primaryColor,
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                       Expanded(
                         child: _buildStatCard(
-                          icon: Icons.calendar_today_outlined,
+                          icon: PhosphorIcons.calendar(),
                           label: AppLocalizations.of(context)!.sessions,
                           value: '0',
                           color: Colors.orange,
@@ -419,13 +428,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
 
-                  // Quick Actions
+                  // Quick Actions - Responsive
                   _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
-                  const SizedBox(height: 12),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   _buildActionCard(
-                    icon: Icons.calendar_today,
+                    icon: PhosphorIcons.calendarCheck(),
                     title: AppLocalizations.of(context)!.mySessions,
                     subtitle: 'View upcoming and completed sessions',
                     color: Colors.purple,
@@ -433,9 +442,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       Navigator.pushNamed(context, '/my-sessions');
                     },
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                   _buildActionCard(
-                    icon: Icons.payment,
+                    icon: PhosphorIcons.creditCard(),
                     title: AppLocalizations.of(context)!.paymentHistory,
                     subtitle: 'View and manage your payments',
                     color: Colors.green,
@@ -445,9 +454,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   ),
                   // Learning Progress (for parents)
                   if (_userType == 'parent') ...[
-                    const SizedBox(height: 8),
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
                     _buildActionCard(
-                      icon: Icons.trending_up,
+                      icon: PhosphorIcons.trendUp(),
                       title: 'Learning Progress',
                       subtitle: 'Track your child\'s learning journey and improvement',
                       color: AppTheme.accentGreen,
@@ -464,20 +473,20 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
                                     color: AppTheme.accentGreen.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
-                                    Icons.trending_up,
+                                    PhosphorIcons.trendUp(),
                                     color: AppTheme.accentGreen,
-                                    size: 24,
+                                    size: 22,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     'Learning Progress',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 18,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.w600,
                                       color: AppTheme.textDark,
                                     ),
@@ -492,12 +501,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 Text(
                                   'Coming Soon!',
                                   style: GoogleFonts.poppins(
-                                    fontSize: 16,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: AppTheme.textDark,
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: 10),
                                 Text(
                                   'We\'re building an amazing feature that will help you track your child\'s learning journey, view their progress across subjects, see improvement trends, and celebrate their achievements.',
                                   style: GoogleFonts.poppins(
@@ -520,7 +529,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                   child: Row(
                                     children: [
                                       Icon(
-                                        Icons.info_outline,
+                                        PhosphorIcons.info(),
                                         color: AppTheme.accentGreen,
                                         size: 20,
                                       ),
@@ -567,7 +576,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
 
                   // Removed "Your Goals" section - personal info belongs in profile
                   // This data is used behind the scenes for tutor matching, not for display
-                  const SizedBox(height: 32),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 24, tablet: 32, desktop: 40)),
                 ],
               ),
             ),
@@ -582,7 +591,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     return Text(
       title,
       style: GoogleFonts.poppins(
-        fontSize: 18,
+        fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
         fontWeight: FontWeight.w700,
         color: AppTheme.textDark,
       ),
@@ -595,32 +604,41 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required String value,
     required Color color,
   }) {
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 22, tablet: 26, desktop: 30);
+    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
+    final valueSize = ResponsiveHelper.isSmallHeight(context) 
+        ? ResponsiveHelper.responsiveSubheadingSize(context)
+        : ResponsiveHelper.responsiveSubheadingSize(context) + 2;
+    
     return Container(
-      padding: const EdgeInsets.all(12), // Reduced from 16
+      padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Column(
         children: [
-          Icon(icon, color: color, size: 24), // Reduced from 32
-          const SizedBox(height: 6), // Reduced from 8
+          Icon(icon, color: color, size: iconSize),
+          SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 4 : 6),
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 20, // Reduced from 24
+              fontSize: valueSize,
               fontWeight: FontWeight.w700,
               color: color,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 11, // Reduced from 12
+              fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
               color: AppTheme.textMedium,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -634,19 +652,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 19, tablet: 22, desktop: 24);
+    final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12);
+    
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.all(14), // Increased from 12 (adds 2px to height)
+        padding: EdgeInsets.all(cardPadding),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey[200]!),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
@@ -654,14 +676,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: EdgeInsets.all(iconPadding),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(icon, color: color, size: 21), // Increased from 20
+              child: Icon(icon, color: color, size: iconSize),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -669,23 +691,29 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 15, // Increased from 14
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 1,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
                   Text(
                     subtitle,
                     style: GoogleFonts.poppins(
-                      fontSize: 13, // Increased from 12
+                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
                       color: AppTheme.textMedium,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey[400]),
+            Icon(
+              PhosphorIcons.caretRight(), 
+              size: ResponsiveHelper.responsiveIconSize(context, mobile: 12, tablet: 14, desktop: 16), 
+              color: Colors.grey[400]
+            ),
           ],
         ),
       ),

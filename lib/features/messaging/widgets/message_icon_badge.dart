@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/features/messaging/screens/conversations_list_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Message Icon Badge Widget
 /// 
@@ -194,8 +195,8 @@ class _MessageIconBadgeState extends State<MessageIconBadge> with WidgetsBinding
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              Icons.chat,
+            child: PhosphorIcon(
+              PhosphorIcons.chatCircleDots(), // Facebook-style chat icon with dots
               color: widget.iconColor ?? AppTheme.textDark,
               size: 24,
             ),

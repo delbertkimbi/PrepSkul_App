@@ -57,7 +57,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   bool _isScreenSharing = false;
   bool _remoteIsScreenSharing = false;
   bool _remoteUserLeft = false;
-  int _videoRebuildKey = 0; // Force rebuild when screen sharing changes
   
   // Profile data
   Map<String, dynamic>? _localProfile;
@@ -319,19 +318,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       if (uid == _remoteUID) {
         safeSetState(() {
           _remoteIsScreenSharing = sharing;
-          // Force complete rebuild by changing key - ensures video view switches source type
-          _videoRebuildKey++;
         });
-        LogService.info('📺 Remote screen sharing ${sharing ? "started" : "stopped"} for UID=$uid');
-        LogService.info('🔄 Forcing video view rebuild (key: $_videoRebuildKey) to switch to ${sharing ? "screen" : "camera"} source');
       } else if (uid == _agoraService.currentUID) {
         safeSetState(() {
           _isScreenSharing = sharing;
-          // Force complete rebuild by changing key
-          _videoRebuildKey++;
         });
-        LogService.info('📺 Local screen sharing ${sharing ? "started" : "stopped"}');
-        LogService.info('🔄 Forcing video view rebuild (key: $_videoRebuildKey)');
       }
     });
 
@@ -720,9 +711,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             // 3. Remote user camera is off AND no remote video is available (show remote profile)
             // DO NOT show local profile during active call with remote user
             if (_sessionState == AgoraSessionState.connected) ...[
-              // Show local profile when waiting for remote user (no remote user yet)
-              // Show regardless of camera state - user is waiting
-              if (!_remoteUserLeft && _remoteUID == null)
+              // Show local profile only if: remote left OR (no remote user AND camera off)
+              if (_remoteUserLeft || (_remoteUID == null && !_isVideoEnabled))
                 _buildLocalProfileCard(),
               // Show remote profile if: remote user left OR (remote exists, camera off, and they haven't left) OR screen is off
               if (_remoteUserLeft)
@@ -786,13 +776,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       final sharingUid = _remoteIsScreenSharing ? _remoteUID : _agoraService.currentUID;
       if (sharingUid != null && !(_remoteIsScreenSharing && _remoteUserLeft)) {
         return SizedBox.expand(
-          key: ValueKey('screen_share_$_videoRebuildKey'), // Force rebuild when key changes
           child: agora_widget.AgoraVideoViewWidget(
             engine: engine,
             uid: sharingUid,
             isLocal: sharingUid == _agoraService.currentUID,
             connection: _agoraService.currentConnection,
-            sourceType: agora_rtc_engine.VideoSourceType.videoSourceScreen, // CRITICAL: Use screen source, not camera
           ),
         );
       } else if (_remoteUID != null && !_remoteUserLeft) {
@@ -800,13 +788,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         LogService.warning('⚠️ Screen sharing UID is null, falling back to camera view');
         final connection = _agoraService.currentConnection;
         return SizedBox.expand(
-          key: ValueKey('remote_camera_fallback_$_videoRebuildKey'),
+          key: ValueKey('remote_camera_fallback_$_remoteUID'),
           child: agora_widget.AgoraVideoViewWidget(
             engine: engine,
             uid: _remoteUID,
             isLocal: false,
             connection: connection,
-            sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera, // Fallback to camera
           ),
         );
       }
@@ -816,13 +803,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     if (_remoteUID != null && !_remoteUserLeft) {
       final connection = _agoraService.currentConnection;
       return SizedBox.expand(
-        key: ValueKey('remote_camera_$_videoRebuildKey'), // Force rebuild when key changes
         child: agora_widget.AgoraVideoViewWidget(
           engine: engine,
           uid: _remoteUID,
           isLocal: false,
           connection: connection,
-          sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera, // Explicitly use camera source
         ),
       );
     }
@@ -930,18 +915,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       right: 0,
       child: Column(
         children: [
-          // Waiting for remote user to join
-          if (_remoteUID == null && !_remoteUserLeft)
-            widget.userRole == 'tutor'
-                ? SessionStateMessages.waitingForLearner()
-                : SessionStateMessages.waitingForTutor(),
           // Remote video muted
-          if (_remoteVideoMuted && _remoteUID != null && !_remoteUserLeft)
+          if (_remoteVideoMuted && _remoteUID != null)
             widget.userRole == 'tutor'
                 ? SessionStateMessages.learnerCameraOff()
                 : SessionStateMessages.tutorCameraOff(),
           // Remote audio muted
-          if (_remoteAudioMuted && _remoteUID != null && !_remoteUserLeft)
+          if (_remoteAudioMuted && _remoteUID != null)
             widget.userRole == 'tutor'
                 ? SessionStateMessages.learnerMicMuted()
                 : SessionStateMessages.tutorMicMuted(),

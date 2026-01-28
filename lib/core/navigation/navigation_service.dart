@@ -8,6 +8,8 @@ import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
+import 'package:prepskul/core/services/connectivity_service.dart';
+import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/navigation/route_guards.dart';
 import 'package:prepskul/core/navigation/navigation_state.dart';
 import 'package:prepskul/core/navigation/navigation_analytics.dart';
@@ -58,13 +60,54 @@ class NavigationService {
       // If user exists but session is null/invalid, user is not actually authenticated
       if (user != null && session != null) {
         LogService.success('[NAV_SERVICE] User authenticated via Supabase with valid session');
+        
+        // Check connectivity - if offline, use cached profile data
+        final connectivity = ConnectivityService();
+        await connectivity.initialize();
+        final isOnline = await connectivity.checkConnectivity();
+        
+        Map<String, dynamic>? profile;
+        
+        if (!isOnline) {
+          LogService.info('[NAV_SERVICE] Offline - checking cached profile');
+          // Try to get cached profile
+          final cachedProfile = await OfflineCacheService.getCachedUserProfile(user.id);
+          if (cachedProfile != null) {
+            profile = cachedProfile;
+            LogService.success('[NAV_SERVICE] Using cached profile data (offline mode)');
+          }
+        }
+        
+        // If online or no cached profile, fetch from Supabase
+        if (profile == null) {
+          try {
+            // Verify session is still valid by making a simple query
+            profile = await SupabaseService.client
+                .from('profiles')
+                .select('user_type, survey_completed, full_name, phone_number')
+                .eq('id', user.id)
+                .maybeSingle();
+            
+            // Cache profile for offline use
+            if (profile != null && isOnline) {
+              await OfflineCacheService.cacheUserProfile(user.id, profile);
+            }
+          } catch (e) {
+            // If offline and query fails, try cached profile as fallback
+            if (!isOnline) {
+              final cachedProfile = await OfflineCacheService.getCachedUserProfile(user.id);
+              if (cachedProfile != null) {
+                profile = cachedProfile;
+                LogService.info('[NAV_SERVICE] Using cached profile after query failure (offline)');
+              }
+            }
+            if (profile == null) {
+              throw e; // Re-throw if we can't get profile from cache either
+            }
+          }
+        }
+        
         try {
-          // Verify session is still valid by making a simple query
-          final profile = await SupabaseService.client
-              .from('profiles')
-              .select('user_type, survey_completed, full_name, phone_number')
-              .eq('id', user.id)
-              .maybeSingle();
 
           if (profile == null) {
             LogService.debug(
@@ -140,6 +183,29 @@ class NavigationService {
                 arguments: {'userRole': userRole},
               );
             } else {
+              // Check for pending tutor deep link
+              final pendingTutorId = await getAndClearPendingTutorLink();
+              if (pendingTutorId != null) {
+                // Navigate to tutor profile if user is student/parent
+                // Navigate to dashboard if user is tutor (can't book themselves)
+                if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
+                  LogService.debug('[NAV_SERVICE] Navigating to pending tutor profile: $pendingTutorId');
+                  return NavigationResult(
+                    '/tutor/$pendingTutorId',
+                    arguments: {'tutorId': pendingTutorId},
+                  );
+                } else {
+                  // Tutor viewing another tutor - go to dashboard
+                  LogService.debug('[NAV_SERVICE] User is tutor, navigating to dashboard instead of tutor profile');
+                  final result = _getDashboardRoute(userRole);
+                  _analytics.trackRouteDetermined(
+                    result.route,
+                    metadata: {'user_role': userRole, 'source': 'supabase', 'pending_tutor_skipped': true},
+                  );
+                  return result;
+                }
+              }
+              
               final result = _getDashboardRoute(userRole);
               _analytics.trackRouteDetermined(
                 result.route,
@@ -187,6 +253,19 @@ class NavigationService {
       // PRIORITY 2: Check local storage (Only if Supabase session check failed or returned no user)
       final prefs = await SharedPreferences.getInstance();
       final hasCompletedOnboarding = prefs.getBool('onboarding_completed') ?? false;
+      
+      // If offline but local session exists, keep users on dashboards
+      final connectivity = ConnectivityService();
+      await connectivity.initialize();
+      final isOnline = await connectivity.checkConnectivity();
+      if (!isOnline) {
+        final isLoggedIn = await AuthService.isLoggedIn();
+        final userRole = await AuthService.getUserRole();
+        if (isLoggedIn && userRole != null && userRole.isNotEmpty) {
+          LogService.info('[NAV_SERVICE] Offline with cached session - routing to dashboard');
+          return _getDashboardRoute(userRole);
+        }
+      }
       
       // If we reach here, it means user is NOT authenticated via Supabase (or we couldn't verify)
       // So now we check onboarding status
@@ -298,7 +377,25 @@ class NavigationService {
           );
         }
       } else if (isLoggedIn && hasCompletedSurvey && userRole != null) {
-        result = _getDashboardRoute(userRole);
+        // Check for pending tutor deep link
+        final pendingTutorId = await getAndClearPendingTutorLink();
+        if (pendingTutorId != null) {
+          // Navigate to tutor profile if user is student/parent
+          // Navigate to dashboard if user is tutor (can't book themselves)
+          if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
+            LogService.debug('[NAV_SERVICE] Navigating to pending tutor profile: $pendingTutorId');
+            result = NavigationResult(
+              '/tutor/$pendingTutorId',
+              arguments: {'tutorId': pendingTutorId},
+            );
+          } else {
+            // Tutor viewing another tutor - go to dashboard
+            LogService.debug('[NAV_SERVICE] User is tutor, navigating to dashboard instead of tutor profile');
+            result = _getDashboardRoute(userRole);
+          }
+        } else {
+          result = _getDashboardRoute(userRole);
+        }
       } else {
         result = NavigationResult('/auth-method-selection');
       }
@@ -453,6 +550,45 @@ class NavigationService {
       },
     );
     LogService.debug('📥 [NAV_SERVICE] Deep link queued: ${uri.path}');
+  }
+
+  /// Store pending tutor deep link for navigation after authentication
+  /// This allows unauthenticated users to sign up and then navigate to the tutor profile
+  static Future<void> storePendingTutorLink(String tutorId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pending_tutor_deep_link', tutorId);
+      LogService.debug('📥 [NAV_SERVICE] Pending tutor link stored: $tutorId');
+    } catch (e) {
+      LogService.error('Error storing pending tutor link: $e');
+    }
+  }
+
+  /// Get and clear pending tutor deep link
+  static Future<String?> getAndClearPendingTutorLink() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final tutorId = prefs.getString('pending_tutor_deep_link');
+      if (tutorId != null) {
+        await prefs.remove('pending_tutor_deep_link');
+        LogService.debug('📤 [NAV_SERVICE] Pending tutor link retrieved and cleared: $tutorId');
+      }
+      return tutorId;
+    } catch (e) {
+      LogService.error('Error getting pending tutor link: $e');
+      return null;
+    }
+  }
+
+  /// Check if there's a pending tutor link
+  static Future<bool> hasPendingTutorLink() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.containsKey('pending_tutor_deep_link');
+    } catch (e) {
+      LogService.error('Error checking pending tutor link: $e');
+      return false;
+    }
   }
 
   /// Process all pending deep links

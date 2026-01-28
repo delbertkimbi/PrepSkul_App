@@ -492,7 +492,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authLoginSubtitle => 'To continue to your account!';
 
   @override
-  String get authPhoneNumber => 'Phone Number (WhatsApp Number)';
+  String get authPhoneNumber => 'Phone Number';
 
   @override
   String get authPhoneHint => '6 53 30 19 97';

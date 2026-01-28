@@ -6,6 +6,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
 import '../../features/dashboard/screens/student_home_screen.dart' show StudentHomeScreen;
 import '../../features/tutor/screens/tutor_requests_screen.dart';
@@ -107,23 +108,23 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     return [
       BottomNavigationBarItem(
-        icon: const Icon(Icons.home_outlined),
-        activeIcon: const Icon(Icons.home),
+        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.mail_outline), // inbox icon for requests
-        activeIcon: const Icon(Icons.mail),
+        icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.fill)),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.school_outlined), // sessions icon
-        activeIcon: const Icon(Icons.school),
+        icon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.fill)),
         label: t.navSessions,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.person_outline),
-        activeIcon: const Icon(Icons.person),
+        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
         label: t.navProfile,
       ),
     ];
@@ -134,23 +135,23 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     return [
       BottomNavigationBarItem(
-        icon: const Icon(Icons.home_outlined),
-        activeIcon: const Icon(Icons.home),
+        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.search),
-        activeIcon: const Icon(Icons.search),
+        icon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill)),
         label: t.navFindTutors,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.receipt_long_outlined), // requests icon
-        activeIcon: const Icon(Icons.receipt_long),
+        icon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.fill)),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: const Icon(Icons.person_outline),
-        activeIcon: const Icon(Icons.person),
+        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)), // Thicker for unselected
+        activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
         label: t.navProfile,
       ),
     ];
@@ -199,7 +200,7 @@ class _MainNavigationState extends State<MainNavigation> {
               ),
               title: Row(
                 children: [
-                  Icon(Icons.exit_to_app, color: AppTheme.primaryColor, size: 24),
+                  PhosphorIcon(PhosphorIcons.signOut(), color: AppTheme.primaryColor, size: 24),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -270,13 +271,14 @@ class _MainNavigationState extends State<MainNavigation> {
         selectedItemColor: AppTheme.primaryColor,
         unselectedItemColor: AppTheme.textMedium,
         selectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
         unselectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w400,
         ),
+        iconSize: 22,
         items: items,
         ),
       ),

@@ -17,6 +17,7 @@ class SessionFeedbackService {
   /// Submit student feedback for a session
   ///
   /// Collects rating, review, and recommendations from student
+  /// Also handles tutor feedback with tutor-specific fields
   static Future<void> submitStudentFeedback({
     required String sessionId,
     required int rating, // 1-5
@@ -27,6 +28,12 @@ class SessionFeedbackService {
     bool? learningObjectivesMet,
     int? studentProgressRating, // 1-5
     bool? wouldContinueLessons,
+    // Tutor-specific fields
+    String? whatWasTaught, // For tutors: what was covered
+    String? learnerProgress, // For tutors: learner progress notes
+    String? homeworkAssigned, // For tutors: homework given
+    String? nextFocusAreas, // For tutors: next session focus
+    int? studentEngagement, // For tutors: 1-5 engagement rating
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -40,6 +47,7 @@ class SessionFeedbackService {
           .select('''
             learner_id, 
             parent_id, 
+            tutor_id,
             status, 
             recurring_session_id,
             location
@@ -51,11 +59,12 @@ class SessionFeedbackService {
         throw Exception('Session not found: $sessionId');
       }
 
-      // Authorization check - must be the student or parent
+      // Authorization check - must be the student, parent, or tutor
       final isStudent = session['learner_id'] == userId;
       final isParent = session['parent_id'] == userId;
+      final isTutor = session['tutor_id'] == userId;
 
-      if (!isStudent && !isParent) {
+      if (!isStudent && !isParent && !isTutor) {
         throw Exception('Unauthorized: Not a participant in this session');
       }
 
@@ -67,31 +76,66 @@ class SessionFeedbackService {
       // Check if feedback already exists
       final existingFeedback = await _supabase
           .from('session_feedback')
-          .select('id, student_feedback_submitted_at')
+          .select('id, student_feedback_submitted_at, tutor_feedback_submitted_at')
           .eq('session_id', sessionId)
           .maybeSingle();
 
       final now = DateTime.now();
       final feedbackData = <String, dynamic>{
-        'student_rating': rating,
-        'student_feedback_submitted_at': now.toIso8601String(),
         'updated_at': now.toIso8601String(),
       };
 
-      if (review != null && review.isNotEmpty) {
-        feedbackData['student_review'] = review;
+      // Store feedback based on user role
+      if (isTutor) {
+        // Tutor feedback
+        feedbackData['tutor_feedback_submitted_at'] = now.toIso8601String();
+        // What was taught (from whatWasTaught or review)
+        if (whatWasTaught != null && whatWasTaught.isNotEmpty) {
+          feedbackData['tutor_notes'] = whatWasTaught;
+        } else if (review != null && review.isNotEmpty) {
+          feedbackData['tutor_notes'] = review;
+        }
+        // Learner progress (from learnerProgress or whatWentWell)
+        if (learnerProgress != null && learnerProgress.isNotEmpty) {
+          feedbackData['tutor_progress_notes'] = learnerProgress;
+        } else if (whatWentWell != null && whatWentWell.isNotEmpty) {
+          feedbackData['tutor_progress_notes'] = whatWentWell;
+        }
+        // Homework assigned
+        if (homeworkAssigned != null && homeworkAssigned.isNotEmpty) {
+          feedbackData['tutor_homework_assigned'] = homeworkAssigned;
+        }
+        // Next focus areas
+        if (nextFocusAreas != null && nextFocusAreas.isNotEmpty) {
+          feedbackData['tutor_next_focus_areas'] = nextFocusAreas;
+        }
+        // Student engagement rating
+        if (studentEngagement != null) {
+          feedbackData['tutor_student_engagement'] = studentEngagement;
+        }
+      } else {
+        // Student/Parent feedback
+        feedbackData['student_rating'] = rating;
+        feedbackData['student_feedback_submitted_at'] = now.toIso8601String();
       }
 
-      if (whatWentWell != null && whatWentWell.isNotEmpty) {
-        feedbackData['student_what_went_well'] = whatWentWell;
-      }
+      // Only add student-specific fields if not a tutor
+      if (!isTutor) {
+        if (review != null && review.isNotEmpty) {
+          feedbackData['student_review'] = review;
+        }
 
-      if (whatCouldImprove != null && whatCouldImprove.isNotEmpty) {
-        feedbackData['student_what_could_improve'] = whatCouldImprove;
-      }
+        if (whatWentWell != null && whatWentWell.isNotEmpty) {
+          feedbackData['student_what_went_well'] = whatWentWell;
+        }
 
-      if (wouldRecommend != null) {
-        feedbackData['student_would_recommend'] = wouldRecommend;
+        if (whatCouldImprove != null && whatCouldImprove.isNotEmpty) {
+          feedbackData['student_what_could_improve'] = whatCouldImprove;
+        }
+
+        if (wouldRecommend != null) {
+          feedbackData['student_would_recommend'] = wouldRecommend;
+        }
       }
 
       if (session['recurring_session_id'] != null) {
@@ -169,12 +213,42 @@ class SessionFeedbackService {
         }
       }
 
-      // Process feedback to update tutor rating
-      await processFeedback(sessionId);
-
-      LogService.success('Student feedback submitted for session: $sessionId');
+      // Process feedback to update tutor rating (only for student/parent feedback)
+      if (!isTutor) {
+        await processFeedback(sessionId);
+        LogService.success('Student feedback submitted for session: $sessionId');
+      } else {
+        // Notify student/parent when tutor gives feedback
+        final learnerId = session['learner_id'] as String?;
+        final parentId = session['parent_id'] as String?;
+        if (learnerId != null) {
+          await NotificationService.createNotification(
+            userId: learnerId,
+            type: 'tutor_feedback',
+            title: 'Tutor Feedback Received',
+            message: 'Your tutor has provided feedback on your session.',
+            priority: 'normal',
+            actionUrl: '/sessions/$sessionId',
+            actionText: 'View Feedback',
+            metadata: {'session_id': sessionId},
+          );
+        }
+        if (parentId != null && parentId != learnerId) {
+          await NotificationService.createNotification(
+            userId: parentId,
+            type: 'tutor_feedback',
+            title: 'Tutor Feedback Received',
+            message: 'Your tutor has provided feedback on your child\'s session.',
+            priority: 'normal',
+            actionUrl: '/sessions/$sessionId',
+            actionText: 'View Feedback',
+            metadata: {'session_id': sessionId},
+          );
+        }
+        LogService.success('Tutor feedback submitted for session: $sessionId');
+      }
     } catch (e) {
-      LogService.error('Error submitting student feedback: $e');
+      LogService.error('Error submitting feedback: $e');
       rethrow;
     }
   }
@@ -502,7 +576,7 @@ class SessionFeedbackService {
 
       final session = await _supabase
           .from('individual_sessions')
-          .select('learner_id, parent_id, status, session_ended_at')
+          .select('learner_id, parent_id, tutor_id, status, session_ended_at')
           .eq('id', sessionId)
           .maybeSingle();
 
@@ -510,10 +584,11 @@ class SessionFeedbackService {
         throw Exception('Session not found: $sessionId');
       }
 
-      // Must be student or parent
+      // Must be student, parent, or tutor
       final isStudent = session['learner_id'] == userId;
       final isParent = session['parent_id'] == userId;
-      if (!isStudent && !isParent) {
+      final isTutor = session['tutor_id'] == userId;
+      if (!isStudent && !isParent && !isTutor) {
         return false;
       }
 
@@ -522,19 +597,7 @@ class SessionFeedbackService {
         return false;
       }
 
-      // Check if session ended at least 24 hours ago (required for feedback)
-      if (session['session_ended_at'] != null) {
-        final endedAt = DateTime.parse(session['session_ended_at'] as String);
-        final now = DateTime.now();
-        if (now.difference(endedAt).inHours < 24) {
-          return false; // Must wait 24 hours after session end
-        }
-      } else {
-        // If session_ended_at is null, check if it's been 24h since status changed to completed
-        // This is a fallback for sessions that might not have session_ended_at set
-        return false; // Cannot submit without session end time
-      }
-
+      // Feedback available immediately after session ends (no delay)
       return true;
     } catch (e) {
       LogService.error('Error checking if can submit feedback: $e');
@@ -543,12 +606,12 @@ class SessionFeedbackService {
   }
 
   /// Get time remaining until feedback can be submitted
-  /// Returns null if feedback can be submitted now, or Duration until it can be submitted
+  /// Returns null if feedback can be submitted now (no delay)
   static Future<Duration?> getTimeUntilFeedbackAvailable(String sessionId) async {
     try {
       final session = await _supabase
           .from('individual_sessions')
-          .select('session_ended_at, status')
+          .select('status')
           .eq('id', sessionId)
           .maybeSingle();
 
@@ -556,20 +619,8 @@ class SessionFeedbackService {
         return null; // Session not completed
       }
 
-      if (session['session_ended_at'] == null) {
-        return null; // Cannot determine without end time
-      }
-
-      final endedAt = DateTime.parse(session['session_ended_at'] as String);
-      final now = DateTime.now();
-      final timeSinceEnd = now.difference(endedAt);
-      final requiredWait = const Duration(hours: 24);
-
-      if (timeSinceEnd >= requiredWait) {
-        return null; // Can submit now
-      }
-
-      return requiredWait - timeSinceEnd; // Time remaining
+      // Feedback available immediately - no wait time
+      return null;
     } catch (e) {
       LogService.error('Error getting time until feedback available: $e');
       return null;

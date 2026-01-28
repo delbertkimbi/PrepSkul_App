@@ -1,6 +1,8 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
-import 'package:prepskul/core/config/window_env_web.dart' if (dart.library.io) 'package:prepskul/core/config/window_env_stub.dart';
+// Conditional import for web-only WindowEnvHelper
+import 'package:prepskul/core/config/window_env_stub.dart'
+    if (dart.library.html) 'package:prepskul/core/config/window_env_web.dart';
 
 /// Centralized App Configuration
 /// 
@@ -18,21 +20,7 @@ class AppConfig {
   // ============================================
   /// Set to `true` for production, `false` for sandbox/development
   /// 
-  /// ⚠️⚠️⚠️ PAYMENT MODE WARNING ⚠️⚠️⚠️
-  /// 
-  /// CURRENT MODE: SANDBOX (TEST MODE) - NO REAL MONEY WILL BE CHARGED
-  /// 
-  /// When `isProduction = false`:
-  /// - ✅ All payments are SIMULATED in sandbox mode
-  /// - ✅ No real money will be charged
-  /// - ✅ Safe for testing and development
-  /// - ✅ Uses sandbox.fapshi.com (test environment)
-  /// 
-  /// When `isProduction = true`:
-  /// - ⚠️ REAL payments will be processed
-  /// - ⚠️ REAL money will be charged
-  /// - ⚠️ Uses live.fapshi.com (production environment)
-  /// 
+  /// IMPORTANT: For production deployment, set this to `true`
   /// This controls:
   /// - Fapshi API endpoints (live vs sandbox)
   /// - API credentials (production vs development)
@@ -41,7 +29,7 @@ class AppConfig {
   /// ⚠️ Always verify environment variables are set correctly:
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
-  static const bool isProduction = true; // ← SANDBOX MODE (TEST MODE - NO REAL PAYMENTS)
+  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // 🔐 Authentication Feature Flags
@@ -52,6 +40,12 @@ class AppConfig {
   /// Set to `false` until Google Cloud Console verification is complete.
   /// This only affects user authentication, not Google Calendar OAuth.
   static const bool enableGoogleSignIn = false; // ← Disabled until Google verification complete
+  
+  /// Enable/disable Phone Sign-In for user authentication
+  /// 
+  /// Set to `false` until phone verification is fully tested and ready.
+  /// Phone login requires additional backend setup for SMS verification.
+  static const bool enablePhoneSignIn = true; // ← Enabled for phone OTP authentication
   
   /// Enable/disable SkulMate feature
   /// 
@@ -119,9 +113,19 @@ class AppConfig {
   /// for the Next.js dev server. This ensures local development works seamlessly
   /// without requiring environment variable changes.
   /// 
-  /// IMPORTANT: If running on production domains (app.prepskul.com, www.prepskul.com),
+  /// IMPORTANT: If isProduction is true, NEVER uses localhost, always uses production API.
+  /// If running on production domains (app.prepskul.com, www.prepskul.com),
   /// always uses production API regardless of isProduction flag.
   static String get effectiveApiBaseUrl {
+    // CRITICAL: If production mode is enabled, NEVER use localhost
+    if (isProd) {
+      final prodUrl = 'https://www.prepskul.com/api';
+      if (kDebugMode) {
+        print('🌐 Production mode enabled - using: $prodUrl');
+      }
+      return prodUrl;
+    }
+    
     String url = apiBaseUrl;
     
     // Check if we're running on a production domain (web platform only)
@@ -153,8 +157,8 @@ class AppConfig {
             return 'https://www.prepskul.com/api';
           }
           
-          // If on localhost, use localhost API
-          if (hostname == 'localhost' || hostname == '127.0.0.1') {
+          // If on localhost, use localhost API (only in dev mode)
+          if ((hostname == 'localhost' || hostname == '127.0.0.1') && !isProd) {
             if (kDebugMode) {
               print('🏠 Local development detected: $hostname');
               print('🏠 Using localhost API: http://localhost:3000/api');
@@ -430,31 +434,15 @@ class AppConfig {
   // ============================================
   
   /// Safely read environment variable with fallback
-  /// On web, also checks window.env (injected at build time)
   static String _safeEnv(String key, String fallback) {
-    // First try dotenv (for local development)
     try {
-      final dotenvValue = dotenv.env[key];
-      if (dotenvValue != null && dotenvValue.isNotEmpty) {
-        return dotenvValue;
-      }
+      final value = dotenv.env[key];
+      if (value == null || value.isEmpty) return fallback;
+      return value;
     } catch (_) {
-      // dotenv not initialized - continue to window.env check
+      // dotenv not initialized
+      return fallback;
     }
-    
-    // On web, also check window.env (injected at build time)
-    if (kIsWeb) {
-      try {
-        final windowValue = WindowEnvHelper.getEnv(key);
-        if (windowValue != null && windowValue.isNotEmpty && windowValue != 'null') {
-          return windowValue;
-        }
-      } catch (_) {
-        // window.env not available - fall through to fallback
-      }
-    }
-    
-    return fallback;
   }
   
   /// Safely read boolean environment variable
@@ -478,13 +466,7 @@ class AppConfig {
       print('═══════════════════════════════════════');
       print('📱 PrepSkul App Configuration');
       print('═══════════════════════════════════════');
-      if (isProd) {
-        print('Environment: 🔴 PRODUCTION (REAL PAYMENTS)');
-        print('⚠️⚠️⚠️ WARNING: REAL MONEY WILL BE CHARGED ⚠️⚠️⚠️');
-      } else {
-        print('Environment: 🟢 SANDBOX (TEST MODE)');
-        print('✅ Payments are SIMULATED - No real money will be charged');
-      }
+      print('Environment: ${isProd ? "🔴 PRODUCTION" : "🟢 SANDBOX"}');
       print('API Base URL: $apiBaseUrl');
       print('Fapshi Environment: $fapshiEnvironment');
       print('Fapshi Base URL: $fapshiBaseUrl');

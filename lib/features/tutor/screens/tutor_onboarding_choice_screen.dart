@@ -145,49 +145,49 @@ class _TutorOnboardingChoiceScreenState
       backgroundColor: AppTheme.backgroundColor,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 40),
+              const SizedBox(height: 24),
               // PrepSkul Logo
               Image.asset(
                 'assets/images/app_logo(blue).png',
-                width: 120,
-                height: 120,
+                width: 90,
+                height: 90,
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   // Fallback if image fails to load
                   return const Icon(
                   Icons.school,
-                  size: 60,
+                  size: 45,
                     color: AppTheme.primaryColor,
                   );
                 },
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
               // Title
               Text(
                 'Welcome to PrepSkul!',
                 style: GoogleFonts.poppins(
-                  fontSize: 28,
+                  fontSize: 22,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textDark,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               // Subtitle
               Text(
                 'Tell us more about yourself so we can match you with the right students and get you approved on the platform.',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
+                  fontSize: 14,
                   color: AppTheme.textMedium,
-                  height: 1.5,
+                  height: 1.4,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 28),
               // Proceed Button
               SizedBox(
                 width: double.infinity,
@@ -252,13 +252,13 @@ class _TutorOnboardingChoiceScreenState
               const SizedBox(height: 32),
               // Info Box
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: Colors.grey[300]!,
-                    width: 1.5,
+                    width: 1,
                   ),
                 ),
                 child: Column(
@@ -269,26 +269,26 @@ class _TutorOnboardingChoiceScreenState
                         Icon(
                           Icons.info_outline,
                           color: Colors.grey[700],
-                          size: 24,
+                          size: 18,
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Text(
                           'Important Note',
                           style: GoogleFonts.poppins(
-                            fontSize: 16,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: AppTheme.textDark,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
                       'If you skip onboarding:\n\n• Your profile will not be visible to students\n• You will need to complete onboarding to access all features\n• You can complete it anytime from your profile',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: AppTheme.textMedium,
-                        height: 1.5,
+                        height: 1.4,
                       ),
                     ),
                   ],

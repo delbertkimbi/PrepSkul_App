@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Prepskul</string>
+	<string>PrepSkul</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>prepskul</string>
+	<string>PrepSkul</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -74,20 +74,16 @@
 	<string>PrepSkul needs your location to show session locations on maps and help you navigate to onsite sessions.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>PrepSkul needs your location to show session locations on maps and help you navigate to onsite sessions.</string>
-</dict>
-</plist>
-
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>PrepSkul needs your location to show session locations on maps and help you navigate to onsite sessions.</string>
-</dict>
-</plist>
-
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>PrepSkul needs your location to show session locations on maps and help you navigate to onsite sessions.</string>
-</dict>
-</plist>
-
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>PrepSkul needs your location to show session locations on maps and help you navigate to onsite sessions.</string>
+	<!-- Microphone Permission for Video Calls -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PrepSkul needs access to your microphone for video tutoring sessions.</string>
+	<!-- Background Modes for Push Notifications and Video Calls -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+		<string>audio</string>
+		<string>voip</string>
+	</array>
 </dict>
 </plist>

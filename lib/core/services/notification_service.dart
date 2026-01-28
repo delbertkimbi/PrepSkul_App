@@ -61,8 +61,72 @@ class NotificationService {
     }
   }
 
+  /// Calculate smart priority score for a notification
+  /// Higher score = higher priority
+  static double _calculatePriorityScore(Map<String, dynamic> notification) {
+    double score = 0.0;
+    
+    // Base priority from database
+    final priority = notification['priority'] as String? ?? 'normal';
+    switch (priority) {
+      case 'urgent':
+        score += 100;
+        break;
+      case 'high':
+        score += 50;
+        break;
+      case 'normal':
+        score += 25;
+        break;
+      case 'low':
+        score += 10;
+        break;
+    }
+    
+    // Type-based priority
+    final type = notification['type'] as String? ?? 'general';
+    if (type.contains('payment') || type.contains('payout')) {
+      score += 40; // Payments are high priority
+    } else if (type.contains('session_starting') || type.contains('session_reminder')) {
+      score += 35; // Session reminders are time-sensitive
+    } else if (type.contains('booking_request')) {
+      score += 30; // Booking requests need quick response
+    } else if (type.contains('message') || type.contains('chat')) {
+      score += 20; // Messages are moderately important
+    } else if (type.contains('profile_approved')) {
+      score += 25; // Profile approval is important
+    }
+    
+    // Time sensitivity
+    final createdAt = DateTime.parse(notification['created_at'] as String);
+    final now = DateTime.now();
+    final ageInHours = now.difference(createdAt).inHours;
+    
+    if (ageInHours < 1) {
+      score += 20; // Very recent = higher priority
+    } else if (ageInHours < 6) {
+      score += 10; // Recent = moderate boost
+    } else if (ageInHours > 48) {
+      score -= 10; // Old = lower priority
+    }
+    
+    // Unread boost
+    if (notification['is_read'] == false) {
+      score += 15; // Unread notifications are more important
+    }
+    
+    // Action URL boost (actionable notifications are more important)
+    if (notification['action_url'] != null && 
+        (notification['action_url'] as String).isNotEmpty) {
+      score += 10;
+    }
+    
+    return score;
+  }
+
   /// Get all notifications for current user
   /// Filters out tutor-specific notifications for non-tutor users
+  /// Sorts by smart priority score
   static Future<List<Map<String, dynamic>>> getUserNotifications({
     bool? unreadOnly,
   }) async {
@@ -86,6 +150,16 @@ class NotificationService {
 
       final response = await query.order('created_at', ascending: false);
       var notifications = (response as List).cast<Map<String, dynamic>>();
+
+      // Check if user is admin
+      final profile = await _supabase
+          .from('profiles')
+          .select('is_admin, user_type')
+          .eq('id', userId)
+          .maybeSingle();
+      final isAdmin = profile?['is_admin'] as bool? ?? false;
+      final userType = profile?['user_type'] as String?;
+      final isAdminUser = isAdmin || userType == 'admin';
 
       // Filter out tutor-specific notifications for non-tutor users
       if (userRole != 'tutor') {
@@ -124,7 +198,75 @@ class NotificationService {
         }).toList();
       }
 
-      return notifications;
+      // Filter out admin-specific notifications for non-admin users
+      if (!isAdminUser) {
+        final adminSpecificTypes = [
+          'user_signup',
+          'tutor_request',
+          'tutor_request_matched',
+          'tutor_request_updated',
+          'tutor_request_deleted',
+          'tutor_request_status_changed',
+        ];
+        
+        notifications = notifications.where((notification) {
+          final type = notification['type'] as String?;
+          final title = (notification['title'] as String? ?? '').toLowerCase();
+          final message = (notification['message'] as String? ?? '').toLowerCase();
+          final actionUrl = (notification['action_url'] as String? ?? '').toLowerCase();
+          
+          // Filter out admin-specific notification types
+          if (type != null && adminSpecificTypes.contains(type)) {
+            return false;
+          }
+          
+          // Filter out notifications with admin-specific keywords
+          final adminKeywords = [
+            'new user signup',
+            'tutor request',
+            'has submitted a new tutor request',
+            'has completed their survey',
+          ];
+          
+          final hasAdminKeyword = adminKeywords.any((keyword) => 
+            title.contains(keyword) || message.contains(keyword)
+          );
+          
+          // Filter out notifications with admin action URLs
+          final hasAdminActionUrl = actionUrl.contains('/admin/');
+          
+          return !hasAdminKeyword && !hasAdminActionUrl;
+        }).toList();
+      }
+
+      // Calculate priority scores and sort by them (highest first)
+      final notificationsWithScores = notifications.map((notification) {
+        final score = _calculatePriorityScore(notification);
+        return {
+          ...notification,
+          '_priority_score': score,
+        };
+      }).toList();
+      
+      // Sort by priority score (descending), then by created_at (descending)
+      notificationsWithScores.sort((a, b) {
+        final scoreA = a['_priority_score'] as double;
+        final scoreB = b['_priority_score'] as double;
+        if (scoreA != scoreB) {
+          return scoreB.compareTo(scoreA); // Higher score first
+        }
+        // If scores are equal, sort by time (newest first)
+        final timeA = DateTime.parse(a['created_at'] as String);
+        final timeB = DateTime.parse(b['created_at'] as String);
+        return timeB.compareTo(timeA);
+      });
+      
+      // Remove the temporary score field before returning
+      return notificationsWithScores.map((notification) {
+        final Map<String, dynamic> cleaned = Map.from(notification);
+        cleaned.remove('_priority_score');
+        return cleaned;
+      }).toList();
     } catch (e) {
       LogService.error('Error fetching notifications: $e');
       throw Exception('Failed to fetch notifications: $e');
@@ -151,6 +293,16 @@ class NotificationService {
 
       // Get user role to filter tutor-specific notifications
       final userRole = await AuthService.getUserRole();
+
+      // Check if user is admin
+      final profile = await _supabase
+          .from('profiles')
+          .select('is_admin, user_type')
+          .eq('id', userId)
+          .maybeSingle();
+      final isAdmin = profile?['is_admin'] as bool? ?? false;
+      final userType = profile?['user_type'] as String?;
+      final isAdminUser = isAdmin || userType == 'admin';
 
       var query = _supabase
           .from('notifications')
@@ -202,11 +354,81 @@ class NotificationService {
         }).toList();
       }
 
+      // Filter out admin-specific notifications for non-admin users
+      if (!isAdminUser) {
+        final adminSpecificTypes = [
+          'user_signup',
+          'tutor_request',
+          'tutor_request_matched',
+          'tutor_request_updated',
+          'tutor_request_deleted',
+          'tutor_request_status_changed',
+        ];
+        
+        notifications = notifications.where((notification) {
+          final type = notification['type'] as String?;
+          final title = (notification['title'] as String? ?? '').toLowerCase();
+          final message = (notification['message'] as String? ?? '').toLowerCase();
+          final actionUrl = (notification['action_url'] as String? ?? '').toLowerCase();
+          
+          // Filter out admin-specific notification types
+          if (type != null && adminSpecificTypes.contains(type)) {
+            return false;
+          }
+          
+          // Filter out notifications with admin-specific keywords
+          final adminKeywords = [
+            'new user signup',
+            'tutor request',
+            'has submitted a new tutor request',
+            'has completed their survey',
+          ];
+          
+          final hasAdminKeyword = adminKeywords.any((keyword) => 
+            title.contains(keyword) || message.contains(keyword)
+          );
+          
+          // Filter out notifications with admin action URLs
+          final hasAdminActionUrl = actionUrl.contains('/admin/');
+          
+          return !hasAdminKeyword && !hasAdminActionUrl;
+        }).toList();
+      }
+
+      // Calculate priority scores and sort by them (highest first)
+      final notificationsWithScores = notifications.map((notification) {
+        final score = _calculatePriorityScore(notification);
+        return {
+          ...notification,
+          '_priority_score': score,
+        };
+      }).toList();
+      
+      // Sort by priority score (descending), then by created_at (descending)
+      notificationsWithScores.sort((a, b) {
+        final scoreA = a['_priority_score'] as double;
+        final scoreB = b['_priority_score'] as double;
+        if (scoreA != scoreB) {
+          return scoreB.compareTo(scoreA); // Higher score first
+        }
+        // If scores are equal, sort by time (newest first)
+        final timeA = DateTime.parse(a['created_at'] as String);
+        final timeB = DateTime.parse(b['created_at'] as String);
+        return timeB.compareTo(timeA);
+      });
+      
+      // Remove the temporary score field before returning
+      final sortedNotifications = notificationsWithScores.map((notification) {
+        final Map<String, dynamic> cleaned = Map.from(notification);
+        cleaned.remove('_priority_score');
+        return cleaned;
+      }).toList();
+
       // Check if there are more notifications
-      final hasMore = notifications.length == limit;
+      final hasMore = sortedNotifications.length == limit;
 
       return {
-        'notifications': notifications,
+        'notifications': sortedNotifications,
         'hasMore': hasMore,
       };
     } catch (e) {

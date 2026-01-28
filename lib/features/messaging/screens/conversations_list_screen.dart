@@ -5,6 +5,8 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -69,11 +71,11 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
       LogService.error('Error loading conversations: $e');
       if (mounted) {
         safeSetState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load conversations. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to load conversations. Please try again.',
+          () => _loadConversations(refresh: true),
         );
       }
     }
@@ -89,7 +91,34 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
   }
 
   List<Conversation> get _filteredConversations {
-    return _conversations;
+    // Deduplicate conversations - show only the most recent conversation per user
+    final Map<String, Conversation> uniqueConversations = {};
+    
+    for (final conversation in _conversations) {
+      // Use other user ID as key for deduplication
+      final otherUserId = conversation.studentId == (SupabaseService.currentUser?.id ?? '')
+          ? conversation.tutorId
+          : conversation.studentId;
+      
+      // If we haven't seen this user yet, or this conversation is more recent, use it
+      if (!uniqueConversations.containsKey(otherUserId) ||
+          (conversation.lastMessageAt != null &&
+           uniqueConversations[otherUserId]!.lastMessageAt != null &&
+           conversation.lastMessageAt!.isAfter(uniqueConversations[otherUserId]!.lastMessageAt!))) {
+        uniqueConversations[otherUserId] = conversation;
+      }
+    }
+    
+    // Return sorted by last message time (most recent first)
+    final deduplicated = uniqueConversations.values.toList();
+    deduplicated.sort((a, b) {
+      if (a.lastMessageAt == null && b.lastMessageAt == null) return 0;
+      if (a.lastMessageAt == null) return 1;
+      if (b.lastMessageAt == null) return -1;
+      return b.lastMessageAt!.compareTo(a.lastMessageAt!);
+    });
+    
+    return deduplicated;
   }
   
   Future<void> _handleArchiveAction(Conversation conversation) async {
@@ -98,37 +127,24 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
         // Unarchive
         await ChatService.unarchiveConversation(conversation.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Conversation unarchived'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2),
-            ),
-          );
+          ErrorHandlerService.showSuccess(context, 'Conversation unarchived');
           await _loadConversations(refresh: true);
         }
       } else {
         // Archive
         await ChatService.archiveConversation(conversation.id);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Conversation archived'),
-              backgroundColor: Colors.blue,
-              duration: Duration(seconds: 2),
-            ),
-          );
+          ErrorHandlerService.showSuccess(context, 'Conversation archived');
           await _loadConversations(refresh: true);
         }
       }
     } catch (e) {
       LogService.error('Error archiving/unarchiving conversation: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to ${_selectedTab == 'archived' ? 'unarchive' : 'archive'} conversation'),
-            backgroundColor: Colors.red,
-          ),
+        ErrorHandlerService.showErrorSnackbar(
+          context,
+          e,
+          'Failed to ${_selectedTab == 'archived' ? 'unarchive' : 'archive'} conversation',
         );
       }
     }
@@ -240,20 +256,20 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
     if (_selectedTab == 'archived') {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.archive_outlined,
-                size: 64,
+                size: 48,
                 color: Colors.grey[400],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(
                 'No archived conversations',
                 style: GoogleFonts.poppins(
-                  fontSize: 18,
+                  fontSize: 14,
                   fontWeight: FontWeight.w500,
                   color: AppTheme.textDark,
                 ),
@@ -300,10 +316,10 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
 
   Widget _buildConversationCard(Conversation conversation) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 4),
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: Colors.grey.withOpacity(0.1),
           width: 1,
@@ -318,17 +334,16 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
             ),
           );
         },
-        onLongPress: () => _handleArchiveAction(conversation),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
               // Avatar with unread badge
               Stack(
                 children: [
                   CircleAvatar(
-                    radius: 28,
+                    radius: 22,
                     backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                     backgroundImage: conversation.otherUserAvatarUrl != null &&
                             conversation.otherUserAvatarUrl!.isNotEmpty &&
@@ -345,7 +360,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                                 ? conversation.otherUserName![0].toUpperCase()
                                 : 'U',
                             style: GoogleFonts.poppins(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.primaryColor,
                             ),
@@ -357,21 +372,21 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                       right: 0,
                       top: 0,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(color: Colors.white, width: 1.5),
                         ),
                         constraints: const BoxConstraints(
-                          minWidth: 20,
-                          minHeight: 20,
+                          minWidth: 18,
+                          minHeight: 18,
                         ),
                         child: Center(
                           child: Text(
                             conversation.unreadCount > 99 ? '99+' : '${conversation.unreadCount}',
                             style: GoogleFonts.poppins(
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -381,7 +396,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                     ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               // Conversation info
               Expanded(
                 child: Column(
@@ -393,7 +408,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                           child: Text(
                             conversation.otherUserName ?? 'Unknown User',
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: AppTheme.textDark,
                             ),
@@ -405,17 +420,17 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                           Text(
                             _formatLastMessageTime(conversation.lastMessageTime),
                             style: GoogleFonts.poppins(
-                              fontSize: 12,
+                              fontSize: 11,
                               color: Colors.grey[600],
                             ),
                           ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       conversation.lastMessagePreview ?? 'No messages yet',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         color: conversation.unreadCount > 0
                             ? AppTheme.textDark
                             : Colors.grey[600],
@@ -429,21 +444,41 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              // Archive/Unarchive button
-              IconButton(
+              const SizedBox(width: 6),
+              // 3-dot menu for options
+              PopupMenuButton<String>(
                 icon: Icon(
-                  _selectedTab == 'archived' ? Icons.unarchive : Icons.archive_outlined,
+                  Icons.more_vert,
                   color: Colors.grey[600],
-                  size: 20,
+                  size: 18,
                 ),
-                onPressed: () => _handleArchiveAction(conversation),
-                tooltip: _selectedTab == 'archived' ? 'Unarchive' : 'Archive',
-              ),
-              Icon(
-                Icons.chevron_right,
-                color: Colors.grey[400],
-                size: 20,
+                onSelected: (value) {
+                  if (value == 'archive') {
+                    _handleArchiveAction(conversation);
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'archive',
+                    child: Row(
+                      children: [
+                        Icon(
+                          _selectedTab == 'archived' ? Icons.unarchive : Icons.archive_outlined,
+                          size: 18,
+                          color: AppTheme.textDark,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _selectedTab == 'archived' ? 'Unarchive' : 'Archive',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

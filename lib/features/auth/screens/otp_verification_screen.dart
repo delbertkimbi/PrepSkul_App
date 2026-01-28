@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -10,6 +11,9 @@ import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -42,6 +46,14 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   void initState() {
     super.initState();
     _startCountdown();
+    // Add focus listeners to update UI when focus changes
+    for (var focusNode in _focusNodes) {
+      focusNode.addListener(() {
+        if (mounted) {
+          safeSetState(() {});
+        }
+      });
+    }
   }
 
   @override
@@ -160,6 +172,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         // For existing users, ensure onboarding_completed is set to true
         // (they've already seen onboarding if they're logging in)
         final prefs = await SharedPreferences.getInstance();
+        // Save auth method as 'phone' for phone login/signup
+        await prefs.setString('auth_method', 'phone');
         if (!isNewUser) {
           await prefs.setBool('onboarding_completed', true);
           LogService.success('Existing user login - set onboarding_completed to true');
@@ -175,6 +189,37 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         // Navigate based on user status
         if (mounted) {
           // For tutors: Check tutor-specific onboarding status
+          // Check for pending tutor deep link before normal navigation
+          final pendingTutorId = await NavigationService.getAndClearPendingTutorLink();
+          if (pendingTutorId != null) {
+            // Navigate to tutor profile if user is student/parent
+            // Navigate to dashboard if user is tutor (can't book themselves)
+            if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
+              LogService.debug('🔗 [OTP] Navigating to pending tutor profile: $pendingTutorId');
+              try {
+                final tutor = await TutorService.fetchTutorById(pendingTutorId);
+                if (tutor != null) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TutorDetailScreen(tutor: tutor),
+                    ),
+                  );
+                  return;
+                } else {
+                  LogService.warning('🔗 [OTP] Pending tutor not found: $pendingTutorId');
+                  // Fall through to normal navigation
+                }
+              } catch (e) {
+                LogService.error('🔗 [OTP] Error loading pending tutor: $e');
+                // Fall through to normal navigation
+              }
+            } else if (userRole == 'tutor') {
+              LogService.debug('🔗 [OTP] User is tutor, navigating to dashboard instead of tutor profile');
+              // Fall through to normal tutor navigation
+            }
+          }
+          
           if (userRole == 'tutor') {
             final userId = response.user!.id;
             try {
@@ -466,16 +511,15 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                 color: AppTheme.textMedium,
                               ),
                             ),
-                            TextButton(
-                              onPressed: (_isResending || !_canResend)
-                                  ? null
-                                  : _resendOTP,
+                            GestureDetector(
+                              onTap: (_isResending || !_canResend) ? null : _resendOTP,
                               child: _isResending
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
+                                        color: AppTheme.primaryColor,
                                       ),
                                     )
                                   : Text(
@@ -488,6 +532,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
                                         color: _canResend
                                             ? AppTheme.primaryColor
                                             : AppTheme.textLight,
+                                        decoration: _canResend ? TextDecoration.underline : null,
+                                        decorationColor: AppTheme.primaryColor,
                                       ),
                                     ),
                             ),
@@ -520,6 +566,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   Widget _buildOTPField(int index) {
+    final isFocused = _focusNodes[index].hasFocus;
+    final hasValue = _otpControllers[index].text.isNotEmpty;
+    
     return Container(
       width: 45,
       height: 55,
@@ -527,12 +576,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _otpControllers[index].text.isEmpty
-              ? AppTheme.softBorder
-              : AppTheme.primaryColor,
+          color: hasValue || isFocused
+              ? AppTheme.primaryColor
+              : AppTheme.softBorder,
           width: 2,
         ),
+        boxShadow: (hasValue || isFocused)
+            ? [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
+      clipBehavior: Clip.antiAlias, // Ensure rounded corners are properly clipped
       child: Center(
         child: TextFormField(
           controller: _otpControllers[index],
@@ -554,6 +613,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             errorBorder: InputBorder.none,
             focusedErrorBorder: InputBorder.none,
             contentPadding: EdgeInsets.zero,
+            isDense: true, // Reduce padding to prevent overflow
           ),
           onChanged: (value) {
             if (value.length == 1 && index < 5) {
@@ -561,12 +621,43 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             } else if (value.isEmpty && index > 0) {
               _focusNodes[index - 1].requestFocus();
             }
-            safeSetState(() {}); // Update border color
+            safeSetState(() {
+              // Update border color by rebuilding
+            });
 
             // Auto-verify when all digits entered
             if (index == 5 && value.isNotEmpty) {
               _verifyOTP();
             }
+          },
+          onTap: () {
+            // Handle paste - check clipboard for 6-digit code
+            Clipboard.getData(Clipboard.kTextPlain).then((clipboardData) {
+              if (clipboardData?.text != null) {
+                final pastedText = clipboardData!.text!;
+                // Extract all digits from pasted text
+                final digits = pastedText.replaceAll(RegExp(r'[^\d]'), '');
+                if (digits.length >= 6) {
+                  // Fill all 6 fields with the first 6 digits
+                  for (int i = 0; i < 6 && i < digits.length; i++) {
+                    _otpControllers[i].text = digits[i];
+                  }
+                  // Focus on last field
+                  _focusNodes[5].requestFocus();
+                  // Auto-verify
+                  _verifyOTP();
+                } else if (digits.isNotEmpty) {
+                  // Fill available digits
+                  for (int i = 0; i < digits.length && i < 6; i++) {
+                    _otpControllers[i].text = digits[i];
+                  }
+                  // Focus on next empty field
+                  final nextIndex = digits.length < 6 ? digits.length : 5;
+                  _focusNodes[nextIndex].requestFocus();
+                }
+                safeSetState(() {});
+              }
+            });
           },
         ),
       ),

@@ -2,9 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/notification_navigation_service.dart';
+import 'package:prepskul/core/services/notification_analytics_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 
 /// Notification Item Widget
 /// 
@@ -81,28 +84,28 @@ class _NotificationItemState extends State<NotificationItem> {
       case 'booking_request':
       case 'booking_accepted':
       case 'booking_rejected':
-        return Icons.book_online;
+        return PhosphorIcons.bookOpen();
       case 'trial_request':
       case 'trial_accepted':
       case 'trial_rejected':
-        return Icons.school;
+        return PhosphorIcons.graduationCap();
       case 'payment_received':
       case 'payment_successful':
       case 'payment_failed':
-        return Icons.payment;
+        return PhosphorIcons.creditCard();
       case 'session_completed':
       case 'session_reminder':
       case 'session_starting_soon':
-        return Icons.access_time;
+        return PhosphorIcons.clock();
       case 'profile_approved':
-        return Icons.check_circle;
+        return PhosphorIcons.checkCircle();
       case 'profile_rejected':
       case 'profile_improvement':
-        return Icons.edit_note;
+        return PhosphorIcons.pencil();
       case 'review_received':
-        return Icons.star;
+        return PhosphorIcons.star();
       default:
-        return Icons.notifications;
+        return PhosphorIcons.bell();
     }
   }
 
@@ -120,7 +123,44 @@ class _NotificationItemState extends State<NotificationItem> {
         return AppTheme.primaryColor;
     }
   }
-
+  
+  /// Get border color based on priority
+  Color _getPriorityBorderColor(String? priority, bool isRead) {
+    if (isRead) {
+      return AppTheme.softBorder;
+    }
+    switch (priority) {
+      case 'urgent':
+        return Colors.red.withOpacity(0.4);
+      case 'high':
+        return Colors.orange.withOpacity(0.3);
+      case 'normal':
+        return AppTheme.primaryColor.withOpacity(0.2);
+      case 'low':
+        return AppTheme.softBorder;
+      default:
+        return AppTheme.softBorder;
+    }
+  }
+  
+  /// Get border width based on priority
+  double _getPriorityBorderWidth(String? priority, bool isRead) {
+    if (isRead) {
+      return 0.5;
+    }
+    switch (priority) {
+      case 'urgent':
+        return 2.0;
+      case 'high':
+        return 1.5;
+      case 'normal':
+        return 1.0;
+      case 'low':
+        return 0.5;
+      default:
+        return 0.5;
+    }
+  }
 
   /// Build user avatar with first letter or profile picture
   Widget _buildUserAvatar(
@@ -152,14 +192,14 @@ class _NotificationItemState extends State<NotificationItem> {
     // If we have sender info, show avatar (even without profile pic)
     if (displayName != null || senderAvatarUrl != null || senderInitials != null) {
       return Container(
-        width: 48,
-        height: 48,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: AppTheme.primaryColor, // Deep blue background
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(18),
           child: senderAvatarUrl != null && senderAvatarUrl.isNotEmpty
               ? CachedNetworkImage(
                   imageUrl: senderAvatarUrl,
@@ -170,8 +210,8 @@ class _NotificationItemState extends State<NotificationItem> {
                       child: Text(
                         displayInitials ?? '?',
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                           color: Colors.white,
                         ),
                       ),
@@ -183,8 +223,8 @@ class _NotificationItemState extends State<NotificationItem> {
                       child: Text(
                         displayInitials ?? '?',
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                           color: Colors.white,
                         ),
                       ),
@@ -197,8 +237,8 @@ class _NotificationItemState extends State<NotificationItem> {
                     child: Text(
                       displayInitials ?? '?',
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                         color: Colors.white,
                       ),
                     ),
@@ -208,19 +248,19 @@ class _NotificationItemState extends State<NotificationItem> {
       );
     }
     
-    // No sender info - show Material icon with colored background
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: _getPriorityColor(priority).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(24),
-      ),
+    // No sender info - show Material icon with brand color background
+      return Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(18),
+        ),
       child: Center(
         child: Icon(
           _getIconData(widget.notification['type'] as String?),
-          size: 24,
-          color: _getPriorityColor(priority),
+          size: 18,
+          color: AppTheme.primaryColor,
         ),
       ),
     );
@@ -284,20 +324,36 @@ class _NotificationItemState extends State<NotificationItem> {
     return message;
   }
 
+  /// Remove emojis from notification title
+  String _stripEmojis(String text) {
+    // Remove common emoji patterns
+    return text
+        .replaceAll(RegExp(r'[\u{1F300}-\u{1F9FF}]', unicode: true), '') // Emoticons
+        .replaceAll(RegExp(r'[\u{2600}-\u{26FF}]', unicode: true), '') // Misc symbols
+        .replaceAll(RegExp(r'[\u{2700}-\u{27BF}]', unicode: true), '') // Dingbats
+        .replaceAll(RegExp(r'[\u{1F600}-\u{1F64F}]', unicode: true), '') // Emoticons
+        .replaceAll(RegExp(r'[\u{1F680}-\u{1F6FF}]', unicode: true), '') // Transport
+        .trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRead = widget.notification['is_read'] == true;
-    final title = widget.notification['title'] as String? ?? 'Notification';
+    final rawTitle = widget.notification['title'] as String? ?? 'Notification';
+    final title = _stripEmojis(rawTitle); // Remove emojis from title
     final message = widget.notification['message'] as String? ?? '';
     final createdAt = DateTime.parse(widget.notification['created_at'] as String);
     final timeAgo = _getTimeAgo(createdAt);
     final priority = widget.notification['priority'] as String? ?? 'normal';
     final actionText = widget.notification['action_text'] as String?;
+    final actionUrl = widget.notification['action_url'] as String?;
 
-    // Extract metadata for avatar
+    // Extract metadata for avatar and image preview
     final metadata = widget.notification['metadata'] as Map<String, dynamic>?;
     final senderAvatarUrl = metadata?['sender_avatar_url'] as String?;
     final senderInitials = metadata?['sender_initials'] as String?;
+    final imageUrl = widget.notification['image_url'] as String? ?? 
+                     metadata?['image_url'] as String?;
 
     return Dismissible(
       key: Key(widget.notification['id'] as String),
@@ -309,8 +365,8 @@ class _NotificationItemState extends State<NotificationItem> {
           color: Colors.red,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(
-          Icons.delete,
+        child: Icon(
+          PhosphorIcons.trash(),
           color: Colors.white,
         ),
       ),
@@ -318,125 +374,172 @@ class _NotificationItemState extends State<NotificationItem> {
         await NotificationService.deleteNotification(widget.notification['id'] as String);
         widget.onDelete?.call();
       },
-      child: GestureDetector(
+      child: InkWell(
         onTap: () {
+          final notificationId = widget.notification['id'] as String;
+          final notificationType = widget.notification['type'] as String? ?? 'general';
+          
+          // Track analytics
+          NotificationAnalyticsService.trackNotificationOpened(
+            notificationId: notificationId,
+            notificationType: notificationType,
+          );
+          
           if (!isRead) {
-            NotificationService.markAsRead(widget.notification['id'] as String);
+            NotificationService.markAsRead(notificationId);
           }
+          
+          // Navigate to action URL if it exists
+          if (actionUrl != null && actionUrl.isNotEmpty) {
+            NotificationNavigationService.navigateToAction(
+              context: context,
+              actionUrl: actionUrl,
+              notificationType: notificationType,
+              metadata: metadata,
+            );
+          }
+          
           widget.onTap?.call();
         },
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isRead ? AppTheme.softBorder : _getPriorityColor(priority).withOpacity(0.12),
-              width: isRead ? 0.5 : 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 6,
-                offset: const Offset(0, 1),
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                // Subtle deep blue tint for unread, white for read
+                color: isRead ? Colors.white : AppTheme.primaryColor.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isRead 
+                      ? Colors.grey[200]! 
+                      : AppTheme.primaryColor.withOpacity(0.15),
+                  width: isRead ? 0.5 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isRead ? 0.01 : 0.02),
+                    blurRadius: isRead ? 1 : 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // User Avatar (always show if sender info available, otherwise show icon)
-              _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
-              const SizedBox(width: 14),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // User Avatar (always show if sender info available, otherwise show icon)
+                _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
+                const SizedBox(width: 10),
 
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            style: GoogleFonts.poppins(
-                              fontSize: 15,
-                              fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
-                              color: AppTheme.textDark,
-                              letterSpacing: -0.2,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (!isRead)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(left: 8),
-                            decoration: const BoxDecoration(
-                              color: AppTheme.primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _getEnhancedMessage(message, metadata),
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w400,
-                        color: AppTheme.textMedium,
-                        height: 1.4,
-                      ),
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Text(
-                          timeAgo,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                            color: AppTheme.textLight,
-                          ),
-                        ),
-                        if (actionText != null) ...[
-                          const SizedBox(width: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: AppTheme.primaryColor.withOpacity(0.15),
-                                width: 1,
-                              ),
-                            ),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
                             child: Text(
-                              actionText,
+                              title,
                               style: GoogleFonts.poppins(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 14, // Increased from 12 (added 2)
+                                fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
+                                color: AppTheme.textDark,
+                                letterSpacing: -0.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (!isRead)
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(left: 8),
+                              decoration: BoxDecoration(
                                 color: AppTheme.primaryColor,
-                                letterSpacing: 0.2,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _getEnhancedMessage(message, metadata),
+                        style: GoogleFonts.poppins(
+                          fontSize: 12, // Increased from 10 (added 2)
+                          fontWeight: FontWeight.w400,
+                          color: AppTheme.textMedium,
+                          height: 1.4,
+                          letterSpacing: -0.1,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      // Image preview (if available)
+                      if (imageUrl != null && imageUrl.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            width: double.infinity,
+                            height: 150,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              height: 150,
+                              color: AppTheme.softBackground,
+                              child: const Center(
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              height: 150,
+                              color: AppTheme.softBackground,
+                              child: Icon(
+                                PhosphorIcons.imageSquare(),
+                                color: AppTheme.textLight,
                               ),
                             ),
                           ),
-                        ],
+                        ),
                       ],
+                      const SizedBox(height: 6),
+                      Text(
+                        timeAgo,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11, // Increased from 9 (added 2)
+                          fontWeight: FontWeight.w400,
+                          color: AppTheme.textLight,
+                          letterSpacing: -0.1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ),
+            // Subtle left border indicator for unread (deep blue)
+            if (!isRead)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 3,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      bottomLeft: Radius.circular(12),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

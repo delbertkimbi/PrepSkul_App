@@ -32,7 +32,7 @@ class BookingService {
       // Get user profile for denormalized data
       final userProfile = await SupabaseService.client
           .from('profiles')
-          .select('full_name, user_type, avatar_url')
+          .select('full_name, user_type, avatar_url, email, phone_number')
           .eq('id', userId)
           .maybeSingle();
       
@@ -40,14 +40,34 @@ class BookingService {
         throw Exception('User profile not found: $userId');
       }
 
+      // SECURITY CHECK: Verify profile completeness before booking
+      final fullName = userProfile['full_name'] as String?;
+      final email = userProfile['email'] as String?;
+      if (fullName == null || fullName.trim().isEmpty) {
+        throw Exception('Please complete your profile (name is required) before booking a tutor.');
+      }
+      if (email == null || email.trim().isEmpty) {
+        throw Exception('Please complete your profile (email is required) before booking a tutor.');
+      }
+
       // Get tutor profile for denormalized data
       final tutorProfile = await SupabaseService.client
           .from('tutor_profiles')
-          .select('user_id, admin_approved_rating, base_session_price, profile_photo_url')
+          .select('user_id, admin_approved_rating, base_session_price, profile_photo_url, status')
           .eq('user_id', tutorId)
           .maybeSingle();
 
-      final tutorUserId = tutorProfile?['user_id'] as String? ?? tutorId;
+      // SECURITY CHECK: Verify tutor is approved and available
+      if (tutorProfile == null) {
+        throw Exception('Tutor profile not found. This tutor may no longer be available.');
+      }
+      
+      final tutorStatus = tutorProfile['status'] as String?;
+      if (tutorStatus != 'approved') {
+        throw Exception('This tutor is not currently available for booking. Status: ${tutorStatus ?? "unknown"}');
+      }
+
+      final tutorUserId = tutorProfile['user_id'] as String? ?? tutorId;
 
       final tutorProfileData = await SupabaseService.client
           .from('profiles')
@@ -90,6 +110,21 @@ class BookingService {
       }
 
       LogService.debug('Booking request', 'user_type: "$rawUserType" → student_type: "$studentType"');
+
+      // SECURITY CHECK: Rate limiting - prevent spam bookings
+      // Check for recent booking requests (within last 5 minutes)
+      final fiveMinutesAgo = DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String();
+      final recentRequestsQuery = SupabaseService.client
+          .from('booking_requests')
+          .select('id, created_at')
+          .eq('student_id', userId)
+          .gte('created_at', fiveMinutesAgo)
+          .order('created_at', ascending: false);
+      
+      final recentRequests = await recentRequestsQuery;
+      if (recentRequests.length >= 5) {
+        throw Exception('Too many booking requests. Please wait a few minutes before creating another request.');
+      }
 
       // Check for duplicate approved bookings (tutor accepted twice)
       final approvedBookingsQuery = SupabaseService.client
