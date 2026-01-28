@@ -10,6 +10,7 @@ class ProfileCardOverlay extends StatelessWidget {
   final String role; // 'tutor' or 'learner'
   final bool isLocal; // true for local user, false for remote
   final bool userLeft; // true if user left the call (for remote users)
+  final bool screenOff; // true if user's screen is off (for remote users)
 
   const ProfileCardOverlay({
     Key? key,
@@ -18,6 +19,7 @@ class ProfileCardOverlay extends StatelessWidget {
     required this.role,
     this.isLocal = false,
     this.userLeft = false,
+    this.screenOff = false,
   }) : super(key: key);
 
   /// Get initials from name
@@ -144,20 +146,19 @@ class ProfileCardOverlay extends StatelessWidget {
                 ),
               ),
               if (!isLocal && !userLeft) ...[
-                // Only show "Camera is off" message when camera is off but user hasn't left
-                // "Left the call" message is shown at the top via SessionStateMessages
+                // Show appropriate message based on state
                 const SizedBox(height: 16),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.videocam_off,
-                      color: Colors.orange.withOpacity(0.8),
+                      screenOff ? Icons.phone_android : Icons.videocam_off,
+                      color: screenOff ? Colors.blue.withOpacity(0.8) : Colors.orange.withOpacity(0.8),
                       size: 16,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Camera is off',
+                      screenOff ? 'Screen is off' : 'Camera is off',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Colors.white70,

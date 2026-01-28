@@ -79,11 +79,27 @@ class AgoraService {
   final _userLeftController = StreamController<int>.broadcast(); // uid of user who left
   final _remoteNetworkQualityController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, quality: QualityType, isUnstable: bool}
   final _reactionController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, emoji: String}
+  final _remoteScreenOffController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, screenOff: bool}
   
   // Remote network quality tracking
   final Map<int, QualityType> _remoteNetworkQualities = {}; // remoteUid -> quality
   final Map<int, DateTime> _remoteNetworkQualityTimestamps = {}; // remoteUid -> last update time
   final Map<int, int> _remotePoorQualityCount = {}; // remoteUid -> consecutive poor quality counts
+  
+  // Connection state tracking for accurate user left detection
+  final Map<int, DateTime> _userOfflineTimestamps = {}; // remoteUid -> when they went offline
+  final Map<int, Timer?> _userLeftGracePeriodTimers = {}; // remoteUid -> grace period timer
+  final Map<int, bool> _userConfirmedLeft = {}; // remoteUid -> confirmed left (not just poor connection)
+  final Map<int, int> _userOfflineCount = {}; // remoteUid -> consecutive offline events
+  static const _userLeftGracePeriod = Duration(seconds: 15); // Wait 15 seconds before confirming user left
+  static const _maxOfflineEvents = 3; // Number of offline events before confirming left
+  
+  // Screen-off detection state
+  final Map<int, DateTime> _remoteVideoStoppedTimestamps = {}; // remoteUid -> when video stopped
+  final Map<int, Timer?> _screenOffDetectionTimers = {}; // remoteUid -> screen-off detection timer
+  final Map<int, bool> _remoteScreenOff = {}; // remoteUid -> screen is off
+  final Map<int, bool> _remoteAudioActive = {}; // remoteUid -> audio is still active (helps detect screen-off)
+  static const _screenOffDetectionDelay = Duration(seconds: 5); // Wait 5 seconds before detecting screen-off
 
   // Quality tier configurations
   static const _quality1080p = VideoEncoderConfiguration(
@@ -138,6 +154,7 @@ class AgoraService {
   Stream<int> get userLeftStream => _userLeftController.stream;
   Stream<Map<String, dynamic>> get remoteNetworkQualityStream => _remoteNetworkQualityController.stream;
   Stream<Map<String, dynamic>> get reactionStream => _reactionController.stream;
+  Stream<Map<String, dynamic>> get remoteScreenOffStream => _remoteScreenOffController.stream;
   
   AgoraSessionState get state => _state;
   bool get isInitialized => _isInitialized;
@@ -509,6 +526,24 @@ class AgoraService {
       _remoteNetworkQualities.clear();
       _remoteNetworkQualityTimestamps.clear();
       _remotePoorQualityCount.clear();
+      
+      // Clean up connection state tracking
+      for (var timer in _userLeftGracePeriodTimers.values) {
+        timer?.cancel();
+      }
+      _userLeftGracePeriodTimers.clear();
+      _userOfflineTimestamps.clear();
+      _userOfflineCount.clear();
+      _userConfirmedLeft.clear();
+      
+      // Clean up screen-off detection
+      for (var timer in _screenOffDetectionTimers.values) {
+        timer?.cancel();
+      }
+      _screenOffDetectionTimers.clear();
+      _remoteVideoStoppedTimestamps.clear();
+      _remoteScreenOff.clear();
+      _remoteAudioActive.clear();
       
       // CRITICAL: IMMEDIATELY update state flags BEFORE any async operations
       // This ensures UI and other parts of the app know tracks are off right away
@@ -1438,6 +1473,10 @@ class AgoraService {
             _currentConnection = connection;
             LogService.info('✅ Connection stored from onUserJoined event');
           }
+          
+          // CRITICAL: Reset offline tracking when user rejoins
+          _resetUserOfflineTracking(remoteUid);
+          
           _userJoinedController.add(remoteUid);
         },
         onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
@@ -1445,25 +1484,66 @@ class AgoraService {
           
           // Handle different offline reasons
           String reasonText = 'Unknown';
+          bool isDefinitiveLeave = false;
           switch (reason) {
             case UserOfflineReasonType.userOfflineQuit:
               reasonText = 'User left normally';
+              isDefinitiveLeave = true; // User explicitly quit - no grace period needed
               break;
             case UserOfflineReasonType.userOfflineDropped:
               reasonText = 'User connection dropped (network issue)';
+              isDefinitiveLeave = false; // Could be temporary - use grace period
               break;
             case UserOfflineReasonType.userOfflineBecomeAudience:
               reasonText = 'User became audience';
+              isDefinitiveLeave = true;
               break;
             default:
               reasonText = 'User went offline';
+              isDefinitiveLeave = false; // Unknown reason - use grace period
           }
           
-          LogService.info('📤 Remote user left: UID=$remoteUid ($reasonText)');
+          LogService.info('📤 Remote user offline: UID=$remoteUid ($reasonText, definitive: $isDefinitiveLeave)');
+          
+          // Track offline timestamp
+          _userOfflineTimestamps[remoteUid] = DateTime.now();
+          _userOfflineCount[remoteUid] = (_userOfflineCount[remoteUid] ?? 0) + 1;
+          
+          // Cancel any existing grace period timer for this user
+          _userLeftGracePeriodTimers[remoteUid]?.cancel();
+          
+          // If user explicitly quit, confirm immediately
+          if (isDefinitiveLeave) {
+            _confirmUserLeft(remoteUid);
+          } else {
+            // For network drops, use grace period to distinguish from temporary connectivity issues
+            // Start grace period timer
+            _userLeftGracePeriodTimers[remoteUid] = Timer(_userLeftGracePeriod, () {
+              // After grace period, check if user has come back
+              final offlineTime = _userOfflineTimestamps[remoteUid];
+              if (offlineTime != null) {
+                final timeSinceOffline = DateTime.now().difference(offlineTime);
+                // If still offline after grace period and multiple offline events, confirm left
+                if (timeSinceOffline >= _userLeftGracePeriod && 
+                    (_userOfflineCount[remoteUid] ?? 0) >= _maxOfflineEvents) {
+                  _confirmUserLeft(remoteUid);
+                } else {
+                  // User might be reconnecting - don't confirm left yet
+                  LogService.info('⏳ User $remoteUid still offline but may be reconnecting...');
+                }
+              }
+            });
+            
+            // Emit connection unstable event instead of user left
+            _remoteNetworkQualityController.add({
+              'uid': remoteUid,
+              'quality': QualityType.qualityDown,
+              'isUnstable': true,
+              'message': 'Connection dropped - reconnecting...',
+            });
+          }
           
           _userOfflineController.add(remoteUid);
-          // Emit user left event - this will trigger UI to show profile card
-          _userLeftController.add(remoteUid);
         },
         // Detect when remote video is first decoded (user might already be in channel)
         // This is CRITICAL for detecting users who joined before you
@@ -1477,6 +1557,10 @@ class AgoraService {
             _currentConnection = connection;
             LogService.info('✅ Connection stored from onFirstRemoteVideoDecoded event');
           }
+          
+          // CRITICAL: Reset offline tracking when video is decoded (user is active)
+          _resetUserOfflineTracking(remoteUid);
+          
           // If we haven't detected this user yet, add them
           _userJoinedController.add(remoteUid);
         },
@@ -1504,6 +1588,9 @@ class AgoraService {
             _videoRecoveryAttempts.remove(remoteUid);
             _lastRecoveryAttempt.remove(remoteUid);
             
+            // Reset screen-off detection when video becomes active
+            _resetScreenOffDetection(remoteUid);
+            
             _userJoinedController.add(remoteUid);
             // Emit video unmuted event
             _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
@@ -1514,12 +1601,28 @@ class AgoraService {
               LogService.warning('💡 Ask the remote user to enable their camera');
               // Emit video muted event
               _remoteVideoMutedController.add({'uid': remoteUid, 'muted': true});
+              // Reset screen-off detection (camera is intentionally off)
+              _resetScreenOffDetection(remoteUid);
             } else {
-              // Video stopped for non-mute reason - attempt recovery
-              LogService.warning('⚠️ Remote video stopped unexpectedly (reason: $reason) - attempting recovery');
-              _attemptVideoRecovery(remoteUid, connection);
+              // Video stopped for non-mute reason - could be screen-off or network issue
+              LogService.warning('⚠️ Remote video stopped unexpectedly (reason: $reason)');
+              
+              // Track when video stopped
+              _remoteVideoStoppedTimestamps[remoteUid] = DateTime.now();
+              
+              // Check if audio is still active - if yes, likely screen-off
+              final audioActive = _remoteAudioActive[remoteUid] ?? false;
+              if (audioActive) {
+                // Audio is active but video stopped - likely screen-off
+                LogService.info('📱 Remote video stopped but audio active - possible screen-off detected');
+                _startScreenOffDetection(remoteUid);
+              } else {
+                // Both video and audio stopped - likely network issue or user left
+                LogService.warning('⚠️ Remote video stopped unexpectedly (reason: $reason) - attempting recovery');
+                _attemptVideoRecovery(remoteUid, connection);
+              }
             }
-            // Still add user to stream so UI can render (will show black screen)
+            // Still add user to stream so UI can render (will show black screen or profile)
             _userJoinedController.add(remoteUid);
           }
         },
@@ -1530,15 +1633,30 @@ class AgoraService {
               state == RemoteAudioState.remoteAudioStateDecoding) {
             // Audio is active - user is in channel and mic is ON
             LogService.info('Remote audio is active for UID=$remoteUid');
+            _remoteAudioActive[remoteUid] = true;
             _userJoinedController.add(remoteUid);
             // Emit audio unmuted event
             _remoteAudioMutedController.add({'uid': remoteUid, 'muted': false});
+            
+            // If video is stopped but audio is active, check for screen-off
+            if (_remoteVideoStoppedTimestamps.containsKey(remoteUid)) {
+              final videoStoppedTime = _remoteVideoStoppedTimestamps[remoteUid]!;
+              final timeSinceVideoStopped = DateTime.now().difference(videoStoppedTime);
+              if (timeSinceVideoStopped < _screenOffDetectionDelay) {
+                // Video just stopped but audio is active - likely screen-off
+                LogService.info('📱 Audio active but video stopped - possible screen-off for UID=$remoteUid');
+                _startScreenOffDetection(remoteUid);
+              }
+            }
           } else if (state == RemoteAudioState.remoteAudioStateStopped) {
+            _remoteAudioActive[remoteUid] = false;
             if (reason == RemoteAudioStateReason.remoteAudioReasonRemoteMuted) {
               LogService.info('Remote user mic is muted for UID=$remoteUid');
               // Emit audio muted event
               _remoteAudioMutedController.add({'uid': remoteUid, 'muted': true});
             }
+            // Reset screen-off detection if audio also stopped
+            _resetScreenOffDetection(remoteUid);
           }
         },
         // Track local video publishing state (important for debugging)
@@ -1792,6 +1910,81 @@ class AgoraService {
         },
       ),
     );
+  }
+
+  /// Confirm that a user has actually left (not just poor connection)
+  void _confirmUserLeft(int remoteUid) {
+    if (_userConfirmedLeft[remoteUid] == true) {
+      return; // Already confirmed
+    }
+    
+    _userConfirmedLeft[remoteUid] = true;
+    LogService.info('✅ Confirmed user $remoteUid has left the session');
+    
+    // Cancel grace period timer
+    _userLeftGracePeriodTimers[remoteUid]?.cancel();
+    _userLeftGracePeriodTimers.remove(remoteUid);
+    
+    // Emit user left event - this will trigger UI to show "user left" message
+    _userLeftController.add(remoteUid);
+  }
+  
+  /// Reset offline tracking when user rejoins or becomes active
+  void _resetUserOfflineTracking(int remoteUid) {
+    // Cancel grace period timer if user rejoins
+    _userLeftGracePeriodTimers[remoteUid]?.cancel();
+    _userLeftGracePeriodTimers.remove(remoteUid);
+    
+    // Reset offline tracking
+    _userOfflineTimestamps.remove(remoteUid);
+    _userOfflineCount.remove(remoteUid);
+    _userConfirmedLeft[remoteUid] = false;
+    
+    // Emit connection stable event
+    _remoteNetworkQualityController.add({
+      'uid': remoteUid,
+      'quality': _remoteNetworkQualities[remoteUid] ?? QualityType.qualityGood,
+      'isUnstable': false,
+      'message': 'Connection restored',
+    });
+    
+    LogService.info('✅ Reset offline tracking for user $remoteUid - user is active');
+  }
+  
+  /// Start screen-off detection timer
+  void _startScreenOffDetection(int remoteUid) {
+    // Cancel existing timer
+    _screenOffDetectionTimers[remoteUid]?.cancel();
+    
+    // Start new timer
+    _screenOffDetectionTimers[remoteUid] = Timer(_screenOffDetectionDelay, () {
+      // Check if video is still stopped and audio is still active
+      final videoStoppedTime = _remoteVideoStoppedTimestamps[remoteUid];
+      final audioActive = _remoteAudioActive[remoteUid] ?? false;
+      
+      if (videoStoppedTime != null && audioActive) {
+        final timeSinceVideoStopped = DateTime.now().difference(videoStoppedTime);
+        if (timeSinceVideoStopped >= _screenOffDetectionDelay) {
+          // Video stopped for delay period but audio is active - likely screen-off
+          _remoteScreenOff[remoteUid] = true;
+          _remoteScreenOffController.add({'uid': remoteUid, 'screenOff': true});
+          LogService.info('📱 Confirmed screen-off for user $remoteUid');
+        }
+      }
+    });
+  }
+  
+  /// Reset screen-off detection
+  void _resetScreenOffDetection(int remoteUid) {
+    _screenOffDetectionTimers[remoteUid]?.cancel();
+    _screenOffDetectionTimers.remove(remoteUid);
+    _remoteVideoStoppedTimestamps.remove(remoteUid);
+    
+    if (_remoteScreenOff[remoteUid] == true) {
+      _remoteScreenOff[remoteUid] = false;
+      _remoteScreenOffController.add({'uid': remoteUid, 'screenOff': false});
+      LogService.info('✅ Screen back on for user $remoteUid');
+    }
   }
 
   /// Update state and notify listeners
