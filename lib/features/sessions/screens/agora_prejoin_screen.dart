@@ -189,7 +189,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
-      backgroundColor: Colors.grey[900],
+      backgroundColor: AppTheme.softBackground,
       body: Stack(
         children: [
           SafeArea(
@@ -565,6 +565,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
             padding: const EdgeInsets.symmetric(vertical: 16),
+            elevation: 2,
+            shadowColor: AppTheme.primaryColor.withOpacity(0.3),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -689,14 +691,29 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: isActive ? Colors.white.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+            color: isActive 
+                ? AppTheme.primaryColor.withOpacity(0.2) 
+                : Colors.white.withOpacity(0.1),
             shape: BoxShape.circle,
-            border: !isActive ? Border.all(color: Colors.red, width: 2) : null,
+            border: !isActive 
+                ? Border.all(color: AppTheme.accentOrange, width: 2) 
+                : null,
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           child: IconButton(
             icon: Icon(
               icon,
-              color: !isActive ? Colors.red : Colors.white,
+              color: !isActive 
+                  ? AppTheme.accentOrange 
+                  : AppTheme.primaryColor,
               size: 24,
             ),
             onPressed: onTap,

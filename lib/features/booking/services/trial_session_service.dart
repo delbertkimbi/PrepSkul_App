@@ -12,6 +12,7 @@ import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:math';
 
 /// TrialSessionService
 ///
@@ -39,6 +40,9 @@ class TrialSessionService {
     double? overrideTrialFee, // Optional: Use this fee instead of fetching from DB (for discounts)
     String? rescheduleSessionId, // Optional: ID of the session being rescheduled
     String? learnerId, // Optional: For parents, specify which learner (child) to book for
+    String? learnerLabel, // Optional: Display name for learner (e.g. child name when parent books for a child)
+    List<String>? learnerLabels, // Optional: Array of learner names for multi-learner trials
+    String? bookingGroupId, // Optional: When set, this trial is part of a multi-learner same-tutor group
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -278,6 +282,9 @@ class TrialSessionService {
         'payment_status': 'unpaid',
         'converted_to_recurring': false,
         'created_at': DateTime.now().toIso8601String(),
+        if (learnerLabel != null) 'learner_label': learnerLabel,
+        if (learnerLabels != null && learnerLabels.isNotEmpty) 'learner_labels': learnerLabels,
+        if (bookingGroupId != null) 'booking_group_id': bookingGroupId,
       };
 
       // Insert into database
@@ -401,6 +408,143 @@ class TrialSessionService {
     }
   }
 
+  /// Generate a v4-style UUID for booking_group_id.
+  static String _generateUuidV4() {
+    final rnd = Random.secure();
+    String hex(int digits) =>
+        List.generate(digits, (_) => rnd.nextInt(16).toRadixString(16)).join();
+    return '${hex(8)}-${hex(4)}-4${hex(3)}-${_hexVariant(rnd)}${hex(3)}-${hex(12)}';
+  }
+
+  static String _hexVariant(Random rnd) {
+    final n = rnd.nextInt(4) + 8; // 8, 9, a, b
+    return n.toRadixString(16);
+  }
+
+  /// Create multiple trial session requests for the same tutor/date/time (multi-learner group).
+  /// [learners] list of maps with at least 'name' (e.g. from parent_learners). Each gets one trial row with learner_label.
+  static Future<List<TrialSession>> createTrialRequestGroup({
+    required String tutorId,
+    required List<Map<String, dynamic>> learners,
+    required String subject,
+    required DateTime scheduledDate,
+    required String scheduledTime,
+    required int durationMinutes,
+    required String location,
+    String? address,
+    String? locationDescription,
+    String? trialGoal,
+    String? learnerChallenges,
+    double? overrideTrialFee,
+  }) async {
+    if (learners.isEmpty) throw Exception('At least one learner is required for group booking');
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+
+      final locationLower = location.trim().toLowerCase();
+      final normalizedLocation = (locationLower.isEmpty || locationLower == 'online')
+          ? 'online'
+          : (locationLower == 'onsite' || locationLower == 'on-site')
+              ? 'onsite'
+              : 'online';
+      final isOnline = normalizedLocation == 'online';
+
+      // IMPORTANT: All trials in a group use the same base trial_fee (standardized by duration).
+      // Trial sessions have fixed pricing regardless of which learners are involved.
+      // Multi-learner discounts are calculated at payment time based on accepted count, not stored per trial.
+      final trialFee = overrideTrialFee ?? await PricingService.getTrialSessionPrice(durationMinutes);
+      String validTutorId = tutorId;
+      if (!_isValidUUID(tutorId)) {
+        LogService.warning('DEMO MODE: Using user ID as tutor ID for testing');
+        validTutorId = userId;
+      }
+
+      final bookingGroupId = _generateUuidV4();
+
+      final rows = <Map<String, dynamic>>[];
+      for (final learner in learners) {
+        final name = learner['name']?.toString() ?? 'Learner';
+        rows.add({
+          'tutor_id': validTutorId,
+          'learner_id': userId,
+          'parent_id': userId,
+          'requester_id': userId,
+          'learner_label': name,
+          'booking_group_id': bookingGroupId,
+          'subject': subject,
+          'scheduled_date': scheduledDate.toIso8601String().split('T')[0],
+          'scheduled_time': scheduledTime,
+          'duration_minutes': durationMinutes,
+          'location': normalizedLocation,
+          'onsite_address': isOnline ? null : address,
+          'location_description': isOnline ? null : locationDescription,
+          'trial_goal': trialGoal,
+          'learner_challenges': learnerChallenges,
+          'status': 'pending',
+          'trial_fee': trialFee, // Same base price for all trials (discounts applied at payment time)
+          'payment_status': 'unpaid',
+          'converted_to_recurring': false,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      }
+
+      final responseList = await _supabase.from('trial_sessions').insert(rows).select();
+      if (responseList == null || (responseList as List).isEmpty) {
+        throw Exception('Failed to create trial sessions - no response from database');
+      }
+      final sessions = (responseList as List).map((json) => TrialSession.fromJson(json)).toList();
+
+      final studentProfile = await _supabase.from('profiles').select('full_name, avatar_url').eq('id', userId).limit(1).maybeSingle();
+      final studentName = studentProfile?['full_name'] as String? ?? 'Parent';
+      final studentAvatarUrl = studentProfile?['avatar_url'] as String?;
+
+      await NotificationHelperService.notifyTrialRequestCreated(
+        tutorId: validTutorId,
+        studentId: userId,
+        trialId: sessions.first.id,
+        studentName: studentName,
+        subject: subject,
+        scheduledDate: scheduledDate,
+        scheduledTime: scheduledTime,
+        senderAvatarUrl: studentAvatarUrl,
+        isGroupRequest: learners.length > 1,
+        learnerCount: learners.length,
+      );
+
+      for (final trialSession in sessions) {
+        try {
+          String tutorName = 'Tutor';
+          try {
+            final tutorProfile = await _supabase.from('profiles').select('full_name').eq('id', validTutorId).limit(1).maybeSingle();
+            tutorName = tutorProfile?['full_name'] as String? ?? 'Tutor';
+          } catch (_) {}
+          final timeParts = scheduledTime.split(':');
+          final hour = int.tryParse(timeParts[0]) ?? 0;
+          final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 0 : 0;
+          final sessionStart = DateTime(scheduledDate.year, scheduledDate.month, scheduledDate.day, hour, minute);
+          await NotificationHelperService.scheduleSessionReminders(
+            tutorId: validTutorId,
+            studentId: userId,
+            sessionId: trialSession.id,
+            sessionType: 'trial',
+            tutorName: tutorName,
+            studentName: studentName,
+            sessionStart: sessionStart,
+            subject: subject,
+          );
+        } catch (e) {
+        LogService.warning('Failed to schedule reminders for trial ${trialSession.id}: $e');
+        }
+      }
+
+      return sessions;
+    } catch (e) {
+      LogService.error('Trial group booking error: $e');
+      throw Exception('Failed to create trial request group: $e');
+    }
+  }
+
   /// Helper to validate UUID format
   static bool _isValidUUID(String value) {
     final uuidRegex = RegExp(
@@ -471,6 +615,21 @@ class TrialSessionService {
     } catch (e) {
       throw Exception('Failed to fetch tutor trial sessions: $e');
     }
+  }
+
+  /// Get tutor trial sessions grouped by booking_group_id.
+  /// Returns Map: { null: [single trials], 'uuid': [group trials], ... }
+  /// For display: show one card per group (or single trial if no group).
+  static Future<Map<String?, List<TrialSession>>> getTutorTrialSessionsGrouped({
+    String? status,
+  }) async {
+    final all = await getTutorTrialSessions(status: status);
+    final grouped = <String?, List<TrialSession>>{};
+    for (final trial in all) {
+      final groupId = trial.bookingGroupId;
+      grouped.putIfAbsent(groupId, () => []).add(trial);
+    }
+    return grouped;
   }
 
   /// Approve a trial session (tutor)
@@ -1400,6 +1559,14 @@ class TrialSessionService {
 
   /// Initiate payment for trial session
   ///
+  /// Payable amount for a trial: always the single trial fee.
+  /// IMPORTANT: Trial sessions have fixed pricing - ONE trial session, ONE price, regardless of how many learners are involved.
+  /// Parent selects learners for informational purposes only - price doesn't change.
+  static Future<double> getPayableAmountForTrial(TrialSession trial) async {
+    // Always return the single trial fee - no group logic needed
+    return trial.trialFee;
+  }
+
   /// Starts payment process and updates trial session with transaction ID
   ///
   /// Parameters:
@@ -1430,24 +1597,68 @@ class TrialSessionService {
         throw Exception('Payment already completed');
       }
 
+      final amount = (await getPayableAmountForTrial(trial)).round();
+      final externalId = trial.bookingGroupId != null && trial.bookingGroupId!.isNotEmpty
+          ? 'trial_group_${trial.bookingGroupId}'
+          : 'trial_$sessionId';
+
       // Initiate payment
       final paymentResponse = await FapshiService.initiateDirectPayment(
-        amount: trial.trialFee.round(),
+        amount: amount,
         phone: phoneNumber,
-        externalId: 'trial_$sessionId',
+        externalId: externalId,
         userId: trial.learnerId,
         message: 'Trial session fee - ${trial.subject}',
       );
 
-      // Update trial session with transaction ID
-      await _supabase
-          .from('trial_sessions')
-          .update({
-            'fapshi_trans_id': paymentResponse.transId,
-            'payment_initiated_at': DateTime.now().toIso8601String(),
-            'payment_status': 'pending',
-          })
-          .eq('id', sessionId);
+      // Update trial session(s) with transaction ID (for group, update all in group)
+      // If constraint fails, fall back to 'unpaid' (compatible with original constraint)
+      final updatePayload = {
+        'fapshi_trans_id': paymentResponse.transId,
+        'payment_initiated_at': DateTime.now().toIso8601String(),
+        'payment_status': 'pending',
+      };
+      try {
+        if (trial.bookingGroupId != null && trial.bookingGroupId!.isNotEmpty) {
+          await _supabase
+              .from('trial_sessions')
+              .update(updatePayload)
+              .eq('booking_group_id', trial.bookingGroupId!)
+              .inFilter('status', ['approved', 'scheduled']);
+        } else {
+          await _supabase
+              .from('trial_sessions')
+              .update(updatePayload)
+              .eq('id', sessionId);
+        }
+      } catch (e) {
+        // Check if it's a constraint violation for payment_status
+        // This happens when migration 043 hasn't been applied to the database
+        final errorStr = e.toString();
+        final isConstraintError = errorStr.contains('trial_sessions_payment_status_check') || 
+                                  errorStr.contains('23514') ||
+                                  errorStr.contains('violates check constraint') ||
+                                  (errorStr.contains('payment_status') && errorStr.contains('check'));
+        
+        if (isConstraintError) {
+          // Migration 043 hasn't been applied - don't update payment_status
+          LogService.warning('⚠️ Database constraint error: Migration 043 may not be applied. Keeping payment_status as "unpaid".');
+          try {
+            final fallbackPayload = {
+              'fapshi_trans_id': paymentResponse.transId,
+              'payment_initiated_at': DateTime.now().toIso8601String(),
+            };
+            await _supabase.from('trial_sessions').update(fallbackPayload).eq('id', sessionId);
+          } catch (fallbackError) {
+            // If even the fallback fails, log and rethrow
+            LogService.error('Error updating trial session (fallback): $fallbackError');
+            rethrow;
+          }
+        } else {
+          // Re-throw if it's a different error
+          rethrow;
+        }
+      }
 
       return paymentResponse.transId;
     } catch (e) {
@@ -2016,6 +2227,127 @@ class TrialSessionService {
       LogService.error('Error auto-marking expired sessions: $e');
       rethrow;
     }
+  }
+
+  /// Start a trial session as tutor (from session detail or list).
+  /// Updates trial_sessions to in_progress, ensures Meet link for online, creates/updates individual_sessions.
+  static Future<void> startTrialSessionAsTutor(String trialSessionId, {bool isOnline = true}) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final now = DateTime.now().toIso8601String();
+
+    final trial = await _supabase
+        .from('trial_sessions')
+        .select('''
+          tutor_id,
+          learner_id,
+          parent_id,
+          status,
+          location,
+          meet_link,
+          scheduled_date,
+          scheduled_time,
+          duration_minutes,
+          subject
+        ''')
+        .eq('id', trialSessionId)
+        .maybeSingle();
+
+    if (trial == null) {
+      throw Exception('Trial session not found: $trialSessionId');
+    }
+
+    if (trial['tutor_id'] != userId) {
+      throw Exception('Unauthorized: Only the tutor can start the session');
+    }
+
+    if (trial['status'] != 'approved' && trial['status'] != 'scheduled') {
+      throw Exception('Trial session cannot be started. Current status: ${trial['status']}');
+    }
+
+    final sessionLocation = trial['location'] as String;
+    final isSessionOnline = sessionLocation == 'online' || (sessionLocation == 'hybrid' && isOnline);
+    String? meetLink = trial['meet_link'] as String?;
+
+    await _supabase
+        .from('trial_sessions')
+        .update({
+          'tutor_joined_at': now,
+          'status': 'in_progress',
+          'updated_at': now,
+        })
+        .eq('id', trialSessionId);
+
+    if (isSessionOnline && (meetLink == null || meetLink.isEmpty)) {
+      try {
+        final scheduledDate = DateTime.parse(trial['scheduled_date'] as String);
+        final scheduledTime = trial['scheduled_time'] as String;
+        final durationMinutes = trial['duration_minutes'] as int;
+        meetLink = await MeetService.generateTrialMeetLink(
+          trialSessionId: trialSessionId,
+          tutorId: trial['tutor_id'] as String,
+          studentId: trial['learner_id'] as String,
+          scheduledDate: scheduledDate,
+          scheduledTime: scheduledTime,
+          durationMinutes: durationMinutes,
+        );
+        if (meetLink != null && meetLink.isNotEmpty) {
+          await _supabase
+              .from('trial_sessions')
+              .update({'meet_link': meetLink})
+              .eq('id', trialSessionId);
+          LogService.success('Meet link generated for trial session: $trialSessionId');
+        }
+      } catch (e) {
+        LogService.warning('Could not generate Meet link: $e');
+      }
+    }
+
+    try {
+      final existingIndividual = await _supabase
+          .from('individual_sessions')
+          .select('id')
+          .eq('id', trialSessionId)
+          .maybeSingle();
+
+      if (existingIndividual == null) {
+        await _supabase.from('individual_sessions').insert({
+          'id': trialSessionId,
+          'recurring_session_id': null,
+          'tutor_id': trial['tutor_id'],
+          'learner_id': trial['learner_id'],
+          'parent_id': trial['parent_id'],
+          'status': 'in_progress',
+          'scheduled_date': trial['scheduled_date'],
+          'scheduled_time': trial['scheduled_time'],
+          'subject': trial['subject'],
+          'duration_minutes': trial['duration_minutes'],
+          'location': trial['location'],
+          'meeting_link': meetLink,
+          'address': null,
+          'location_description': null,
+          'tutor_joined_at': now,
+          'session_started_at': now,
+        });
+      } else {
+        await _supabase
+            .from('individual_sessions')
+            .update({
+              'status': 'in_progress',
+              'tutor_joined_at': now,
+              'session_started_at': now,
+              'meeting_link': meetLink,
+            })
+            .eq('id', trialSessionId);
+      }
+    } catch (e) {
+      LogService.warning('Could not create/update individual_sessions record: $e');
+    }
+
+    LogService.success('Trial session started: $trialSessionId');
   }
 
   /// Get day name from date

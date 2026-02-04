@@ -170,26 +170,26 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         title: Text(
           'Messages',
           style: GoogleFonts.poppins(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
         ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50),
+          preferredSize: const Size.fromHeight(44),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
                 _buildTab('All', 'all'),
-                const SizedBox(width: 24),
+                const SizedBox(width: 20),
                 _buildTab('Archived', 'archived'),
               ],
             ),
@@ -198,7 +198,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
       ),
       body: _isLoading
           ? ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               itemCount: 5,
               itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
             )
@@ -208,7 +208,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                   onRefresh: () => _loadConversations(refresh: true),
                   color: AppTheme.primaryColor,
                   child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     itemCount: _filteredConversations.length,
                     itemBuilder: (context, index) {
                       return _buildConversationCard(_filteredConversations[index]);
@@ -343,7 +343,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
               Stack(
                 children: [
                   CircleAvatar(
-                    radius: 22,
+                    radius: 24,
                     backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                     backgroundImage: conversation.otherUserAvatarUrl != null &&
                             conversation.otherUserAvatarUrl!.isNotEmpty &&
@@ -371,22 +371,22 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                     Positioned(
                       right: 0,
                       top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
+                        child: Container(
+                        padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
                           color: AppTheme.primaryColor,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
+                          border: Border.all(color: Colors.white, width: 2),
                         ),
                         constraints: const BoxConstraints(
-                          minWidth: 18,
-                          minHeight: 18,
+                          minWidth: 20,
+                          minHeight: 20,
                         ),
                         child: Center(
                           child: Text(
                             conversation.unreadCount > 99 ? '99+' : '${conversation.unreadCount}',
                             style: GoogleFonts.poppins(
-                              fontSize: 9,
+                              fontSize: 10,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -449,8 +449,8 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
               PopupMenuButton<String>(
                 icon: Icon(
                   Icons.more_vert,
-                  color: Colors.grey[600],
-                  size: 18,
+                  color: AppTheme.textLight,
+                  size: 20,
                 ),
                 onSelected: (value) {
                   if (value == 'archive') {

@@ -84,20 +84,58 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
     if (confirm == true) {
       safeSetState(() => _isCanceling = true);
-      // TODO: Call API to cancel
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-      Navigator.pop(context); // Go back to list
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Request canceled successfully',
-            style: GoogleFonts.poppins(),
+      try {
+        // Check which type of request this is
+        if (widget.trialSession != null) {
+          // Cancel trial session
+          await TrialSessionService.deleteTrialSession(
+            sessionId: widget.trialSession!.id,
+          );
+        } else if (widget.tutorRequest != null) {
+          // Cancel tutor request (recurring booking)
+          await TutorRequestService.deleteRequest(widget.tutorRequest!.id);
+        } else if (widget.request != null) {
+          // Check if it's a booking_request or trial
+          final requestId = widget.request!['id'] as String?;
+          final isTrial = widget.request!['is_trial'] == true || widget.request!['_sessionType'] == 'trial';
+          
+          if (isTrial && requestId != null) {
+            await TrialSessionService.deleteTrialSession(sessionId: requestId);
+          } else if (requestId != null) {
+            // For booking_requests, check if there's a cancel method
+            // For now, mark as cancelled in DB
+            await SupabaseService.client
+                .from('booking_requests')
+                .update({'status': 'cancelled'})
+                .eq('id', requestId);
+          }
+        }
+        
+        if (!mounted) return;
+        Navigator.pop(context); // Go back to list
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Request canceled successfully',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.green,
           ),
-          backgroundColor: Colors.green,
-        ),
-      );
+        );
+      } catch (e) {
+        LogService.error('Error canceling request: $e');
+        if (!mounted) return;
+        safeSetState(() => _isCanceling = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to cancel: ${e.toString().replaceFirst('Exception: ', '')}',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -404,36 +442,36 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           style: GoogleFonts.poppins(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppTheme.textDark,
           ),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Status Banner
             _buildTrialStatusBanner(session, statusColor),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             
             // Session Details Card
             _buildTrialSessionDetailsCard(session),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             
             // Schedule Card
             _buildTrialScheduleCard(session),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             
             // Payment Card
             _buildTrialPaymentCard(session),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
             
             // Trial Goals Card (if available)
             if (session.trialGoal != null || session.learnerChallenges != null)
               _buildTrialGoalsCard(session),
             if (session.trialGoal != null || session.learnerChallenges != null)
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
             
             // Action buttons at bottom
               _buildTrialActions(context, session),
@@ -466,7 +504,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             : statusColor;
     
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: displayColor.withOpacity(isPending ? 0.15 : 0.1),
         borderRadius: BorderRadius.circular(12),
@@ -480,9 +518,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           Icon(
             _getStatusIcon(session.status), 
             color: displayColor, 
-            size: isPending ? 32 : 28,
+            size: isPending ? 28 : 24,
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -490,17 +528,17 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 Text(
                   displayStatus,
                   style: GoogleFonts.poppins(
-                    fontSize: isPending ? 18 : 16,
-                    fontWeight: FontWeight.w800,
+                    fontSize: isPending ? 16 : 14,
+                    fontWeight: FontWeight.w700,
                     color: displayColor,
                     letterSpacing: isPending ? 0.5 : 0,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   statusMessage,
                   style: GoogleFonts.poppins(
-                    fontSize: isPending ? 14 : 13,
+                    fontSize: isPending ? 13 : 12,
                     fontWeight: isPending ? FontWeight.w600 : FontWeight.normal,
                     color: displayColor,
                   ),
@@ -537,11 +575,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Row(
           children: [
             CircleAvatar(
-              radius: 30,
+              radius: 24,
               backgroundImage: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
                   ? NetworkImage(tutorAvatarUrl)
                   : null,
@@ -549,13 +587,13 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   ? Text(
                       tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
                       style: GoogleFonts.poppins(
-                        fontSize: 20,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
                       ),
                     )
                   : null,
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -565,27 +603,27 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                       Text(
                         tutorName,
                         style: GoogleFonts.poppins(
-                          fontSize: 18,
+                          fontSize: 15,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textDark,
                         ),
                       ),
                       if (tutorIsVerified) ...[
-                        const SizedBox(width: 8),
-                        Icon(Icons.verified, color: AppTheme.primaryColor, size: 18),
+                        const SizedBox(width: 6),
+                        Icon(Icons.verified, color: AppTheme.primaryColor, size: 16),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   if (tutorRating > 0)
                     Row(
                       children: [
-                        Icon(Icons.star, color: Colors.amber, size: 16),
+                        Icon(Icons.star, color: Colors.amber, size: 14),
                         const SizedBox(width: 4),
                         Text(
                           tutorRating.toStringAsFixed(1),
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 13,
                             color: AppTheme.textMedium,
                           ),
                         ),
@@ -605,7 +643,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -637,7 +675,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -702,7 +740,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -728,7 +766,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1621,7 +1659,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           children: [
             // Status Card
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: statusColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(12),
@@ -1670,7 +1708,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
@@ -1684,7 +1722,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                   final tutor = snapshot.data;
                   if (tutor == null) {
                     return Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
@@ -1710,7 +1748,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _buildSectionTitle('Subjects & Level'),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -1734,7 +1772,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _buildSectionTitle('Teaching Preferences'),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -1761,7 +1799,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _buildSectionTitle('Budget'),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
@@ -1799,7 +1837,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _buildSectionTitle('Schedule'),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -1819,7 +1857,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             _buildSectionTitle('Location'),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
@@ -1885,7 +1923,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               _buildSectionTitle('Additional Notes'),
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
@@ -1908,7 +1946,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
               _buildSectionTitle('Admin Notes'),
               const SizedBox(height: 12),
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: Colors.blue[50],
                   borderRadius: BorderRadius.circular(12),

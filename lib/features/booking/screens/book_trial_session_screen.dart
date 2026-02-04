@@ -4,10 +4,12 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/auth_service.dart' hide LogService;
+import 'package:prepskul/core/services/parent_learners_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
+import 'package:prepskul/features/booking/services/abandoned_booking_service.dart';
 import 'package:prepskul/features/booking/services/availability_service.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -41,9 +43,14 @@ class BookTrialSessionScreen extends StatefulWidget {
 class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
-  final int _totalSteps = 3;
+  bool _isParent = false;
+  List<Map<String, dynamic>> _parentLearners = [];
+  final Set<String> _selectedLearnerIds = {};
+  bool _bookForMeOnly = true; // "Just me" when parent
 
-  // Step 1: Subject & Duration
+  int get _totalSteps => _isParent ? 4 : 3;
+
+  // Step 1 (or 0 when parent): Who is this for? — then Subject & Duration
   String? _selectedSubject;
   int _selectedDuration = 60; // Default: 60 minutes
 
@@ -96,10 +103,34 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
     if (widget.isReschedule && widget.rescheduleSessionId != null) {
       _loadOriginalSessionData();
     } else {
-    _prefillFromSurvey();
+      _prefillFromSurvey();
     }
+    _loadParentContext();
     _loadTrialPricing();
     _loadTutorSchedule();
+  }
+
+  /// Load user type and parent learners for "Who is this for?" step
+  Future<void> _loadParentContext() async {
+    try {
+      final profile = await AuthService.getUserProfile();
+      final userType = profile?['user_type'] as String?;
+      final isParent = userType == 'parent';
+      if (!isParent || !mounted) return;
+      final user = await AuthService.getCurrentUser();
+      final parentId = user['userId'] as String?;
+      if (parentId == null) return;
+      final list = await ParentLearnersService.getLearners(parentId);
+      if (mounted) {
+        safeSetState(() {
+          _isParent = true;
+          _parentLearners = list;
+          if (list.isEmpty) _bookForMeOnly = true;
+        });
+      }
+    } catch (e) {
+      LogService.warning('Could not load parent context: $e');
+    }
   }
   
   /// Load original session data when rescheduling
@@ -301,9 +332,56 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   }
 
 
+  Future<void> _trackReviewScreenReached() async {
+    try {
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String?;
+      if (userId == null) return;
+
+      final tutorUserId = widget.tutor['user_id'] as String?;
+      final tutorId = widget.tutor['id'] as String?;
+      final finalTutorId = tutorUserId ?? tutorId;
+      if (finalTutorId == null) return;
+
+      // Prepare booking data for tracking
+      final bookingData = {
+        'tutor_id': finalTutorId,
+        'tutor_name': widget.tutor['full_name'] ?? widget.tutor['name'] ?? 'Tutor',
+        'tutor_avatar_url': widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'],
+        'subject': _selectedSubject,
+        'scheduled_date': _selectedDate.toIso8601String(),
+        'scheduled_time': _selectedTime,
+        'duration_minutes': _selectedDuration,
+        'location': _selectedLocation,
+        'address': _onsiteAddress,
+        'location_description': _locationDescription,
+        'trial_fee': _trialFee,
+        'is_reschedule': widget.isReschedule,
+        if (widget.rescheduleSessionId != null) 'reschedule_session_id': widget.rescheduleSessionId,
+      };
+
+      await AbandonedBookingService.trackReviewScreenReached(
+        userId: userId,
+        tutorId: finalTutorId,
+        bookingType: 'trial',
+        bookingData: bookingData,
+      );
+    } catch (e) {
+      // Silently fail - tracking shouldn't break the UI
+      LogService.warning('Error tracking review screen: $e');
+    }
+  }
+
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
-      safeSetState(() => _currentStep++);
+      final nextStep = _currentStep + 1;
+      safeSetState(() => _currentStep = nextStep);
+      
+      // Track when user reaches review screen (last step)
+      if (nextStep == _totalSteps - 1) {
+        _trackReviewScreenReached();
+      }
+      
       _pageController.animateToPage(
         _currentStep,
         duration: const Duration(milliseconds: 300),
@@ -325,11 +403,16 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
 
   bool _canProceed() {
     switch (_currentStep) {
-      case 0: // Subject & Duration
+      case 0:
+        if (_isParent) return _bookForMeOnly || _selectedLearnerIds.isNotEmpty;
         return _selectedSubject != null;
-      case 1: // Date & Time
+      case 1:
+        if (_isParent) return _selectedSubject != null;
         return _selectedTime != null;
-      case 2: // Goals
+      case 2:
+        if (_isParent) return _selectedTime != null;
+        return _goalController.text.trim().isNotEmpty;
+      case 3:
         return _goalController.text.trim().isNotEmpty;
       default:
         return false;
@@ -451,6 +534,21 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       LogService.info('📋 [BOOK_TRIAL] Subject: $_selectedSubject');
       LogService.info('📋 [BOOK_TRIAL] Date: $_selectedDate');
       LogService.info('📋 [BOOK_TRIAL] Time: $_selectedTime');
+
+      // IMPORTANT: Always create ONE trial session regardless of how many children are selected.
+      // Price stays the same - trial sessions have fixed pricing.
+      // If multiple children selected, store their names in learnerLabels array.
+      List<String>? learnerNames;
+      String? singleLearnerName;
+      
+      if (_isParent && !_bookForMeOnly && _selectedLearnerIds.isNotEmpty) {
+        final selectedLearners = _parentLearners.where((l) => _selectedLearnerIds.contains(l['id']?.toString())).toList();
+        if (selectedLearners.length > 1) {
+          learnerNames = selectedLearners.map((l) => l['name']?.toString() ?? 'Learner').toList();
+        } else if (selectedLearners.length == 1) {
+          singleLearnerName = selectedLearners.first['name']?.toString();
+        }
+      }
       
       await TrialSessionService.createTrialRequest(
         tutorId: finalTutorId,
@@ -462,12 +560,27 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
         address: _onsiteAddress,
         locationDescription: _locationDescription,
         trialGoal: trialGoal,
-        learnerChallenges: _challengesController.text.trim().isNotEmpty
-            ? _challengesController.text.trim()
-            : null,
-        overrideTrialFee: _trialFee, // Use the current fee (may include discount if applied)
-        rescheduleSessionId: widget.rescheduleSessionId, // Pass reschedule session ID
+        learnerChallenges: _challengesController.text.trim().isNotEmpty ? _challengesController.text.trim() : null,
+        overrideTrialFee: _trialFee, // Same price regardless of number of learners
+        rescheduleSessionId: widget.rescheduleSessionId,
+        learnerLabel: singleLearnerName, // Single learner name (if one selected)
+        learnerLabels: learnerNames, // Multiple learner names (if 2+ selected)
       );
+
+      // Mark abandoned booking as completed
+      try {
+        final user = await AuthService.getCurrentUser();
+        final userId = user['userId'] as String?;
+        if (userId != null && finalTutorId != null) {
+          await AbandonedBookingService.markAsCompleted(
+            userId: userId,
+            tutorId: finalTutorId,
+            bookingType: 'trial',
+          );
+        }
+      } catch (e) {
+        // Silently fail - marking as completed is not critical
+      }
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -885,11 +998,18 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
             child: PageView(
               controller: _pageController,
               physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _buildSubjectAndDuration(),
-                _buildDateAndTime(),
-                _buildGoalsAndReview(),
-              ],
+              children: _isParent
+                  ? [
+                      _buildWhoIsThisFor(),
+                      _buildSubjectAndDuration(),
+                      _buildDateAndTime(),
+                      _buildGoalsAndReview(),
+                    ]
+                  : [
+                      _buildSubjectAndDuration(),
+                      _buildDateAndTime(),
+                      _buildGoalsAndReview(),
+                    ],
             ),
           ),
           // Navigation buttons
@@ -977,6 +1097,159 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
               shouldLoop: false,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // STEP 0 (parent only): Who is this for?
+  Widget _buildWhoIsThisFor() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildTutorCard(),
+          const SizedBox(height: 24),
+          Text(
+            'Who is this for?',
+            style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.black),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Select who will take the trial. You can add children in Profile → My children.',
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: () => safeSetState(() {
+              _bookForMeOnly = true;
+              _selectedLearnerIds.clear();
+            }),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: _bookForMeOnly ? AppTheme.primaryColor : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _bookForMeOnly ? AppTheme.primaryColor : Colors.grey[300]!,
+                  width: _bookForMeOnly ? 2 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _bookForMeOnly ? Colors.white : Colors.grey[300],
+                      border: Border.all(color: _bookForMeOnly ? Colors.white : Colors.grey[400]!, width: 2),
+                    ),
+                    child: _bookForMeOnly ? Icon(Icons.check, size: 14, color: AppTheme.primaryColor) : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Just me',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: _bookForMeOnly ? Colors.white : Colors.black,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_parentLearners.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Or select one or more children',
+              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+            ),
+            const SizedBox(height: 8),
+            ..._parentLearners.map((learner) {
+              final id = learner['id']?.toString() ?? '';
+              final name = learner['name']?.toString() ?? 'Child';
+              final level = [
+                learner['education_level']?.toString(),
+                learner['class_level']?.toString(),
+              ].where((e) => e != null && e.toString().isNotEmpty).join(' · ');
+              final selected = _selectedLearnerIds.contains(id);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  onTap: () => safeSetState(() {
+                    _bookForMeOnly = false;
+                    if (selected) {
+                      _selectedLearnerIds.remove(id);
+                    } else {
+                      _selectedLearnerIds.add(id);
+                    }
+                  }),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: selected ? AppTheme.primaryColor.withOpacity(0.15) : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: selected ? AppTheme.primaryColor : Colors.grey[300]!,
+                        width: selected ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(5),
+                            color: selected ? AppTheme.primaryColor : Colors.grey[300],
+                            border: Border.all(
+                              color: selected ? AppTheme.primaryColor : Colors.grey[400]!,
+                              width: 2,
+                            ),
+                          ),
+                          child: selected ? Icon(Icons.check, size: 14, color: Colors.white) : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.black,
+                                ),
+                              ),
+                              if (level.isNotEmpty)
+                                Text(
+                                  level,
+                                  style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[600]),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+          if (_parentLearners.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Add children in Profile → My children to book for them.',
+                style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[600]),
+              ),
+            ),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../core/theme/app_theme.dart';
 
 /// Profile card overlay displayed when camera is off
 /// Shows user's profile picture, name, and role in a professional card design
@@ -36,11 +37,11 @@ class ProfileCardOverlay extends StatelessWidget {
   Color _getRoleColor() {
     switch (role.toLowerCase()) {
       case 'tutor':
-        return Colors.blue;
+        return AppTheme.accentBlue;
       case 'learner':
-        return Colors.green;
+        return AppTheme.accentGreen;
       default:
-        return Colors.grey;
+        return AppTheme.textMedium;
     }
   }
 
@@ -52,8 +53,8 @@ class ProfileCardOverlay extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.black.withOpacity(0.8),
-            Colors.black.withOpacity(0.9),
+            AppTheme.primaryDark.withOpacity(0.9),
+            AppTheme.primaryDark.withOpacity(0.95),
           ],
         ),
       ),
@@ -131,7 +132,7 @@ class ProfileCardOverlay extends StatelessWidget {
                   color: _getRoleColor().withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: _getRoleColor().withOpacity(0.5),
+                    color: AppTheme.primaryColor.withOpacity(0.3),
                     width: 1,
                   ),
                 ),

@@ -31,9 +31,7 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
       _selectedCharacter = character;
       _selectedAgeGroup = character.ageGroup;
     });
-  }
-
-  Future<void> _selectCharacter(SkulMateCharacter character) async {
+  }  Future<void> _selectCharacter(SkulMateCharacter character) async {
     safeSetState(() => _selectedCharacter = character);
     await CharacterSelectionService.selectCharacter(character);
     

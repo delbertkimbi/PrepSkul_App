@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/features/booking/services/abandoned_booking_service.dart';
 
 /// Step 5: Booking Review
 ///
@@ -25,6 +27,8 @@ class BookingReview extends StatefulWidget {
   final Map<String, Map<String, String?>>? locationDetails; // For flexible bookings
   final String? initialPaymentPlan;
   final Function(String paymentPlan) onPaymentPlanSelected;
+  final double? estimatedTransportationCost; // Estimated transportation cost per session
+  final int? learnerCount; // Number of learners selected (for adapting pricing display)
 
   const BookingReview({
     Key? key,
@@ -39,6 +43,8 @@ class BookingReview extends StatefulWidget {
     this.locationDetails,
     this.initialPaymentPlan,
     required this.onPaymentPlanSelected,
+    this.estimatedTransportationCost,
+    this.learnerCount,
   }) : super(key: key);
 
   @override
@@ -47,17 +53,96 @@ class BookingReview extends StatefulWidget {
 
 class _BookingReviewState extends State<BookingReview> {
   String? _selectedPaymentPlan;
+  DateTime? _reviewScreenShownAt; // Track when review screen was shown for timing check
 
   @override
   void initState() {
     super.initState();
     _selectedPaymentPlan =
         widget.initialPaymentPlan; // Don't default to monthly
+    _reviewScreenShownAt = DateTime.now(); // Record when screen was shown
+    // Track that user reached review screen (for abandoned booking reminders)
+    _trackReviewScreenReached();
+  }
+
+  Future<void> _trackReviewScreenReached() async {
+    try {
+      final user = await AuthService.getCurrentUser();
+      final userId = user['userId'] as String?;
+      if (userId == null) return;
+
+      final tutorId = widget.tutor['user_id'] as String?;
+      if (tutorId == null) return;
+
+      // Calculate monthly total
+      final pricing = PricingService.calculateFromTutorData(widget.tutor);
+      final perSession = pricing['perSession'] as double;
+      final sessionsPerMonth = widget.frequency * 4; // 4 weeks
+      final monthlySessionTotal = perSession * sessionsPerMonth;
+      final transportationCostPerSession = widget.estimatedTransportationCost ?? 0.0;
+      final isOnsite = widget.location == 'onsite' || widget.location == 'hybrid';
+      final monthlyTransportationTotal = isOnsite && transportationCostPerSession > 0
+          ? transportationCostPerSession * sessionsPerMonth
+          : 0.0;
+      final monthlyTotal = monthlySessionTotal + monthlyTransportationTotal;
+
+      // Prepare booking data for tracking
+      final bookingData = {
+        'tutor_id': tutorId,
+        'tutor_name': widget.tutor['full_name'] ?? widget.tutor['name'] ?? 'Tutor',
+        'tutor_avatar_url': widget.tutor['avatar_url'] ?? widget.tutor['profile_photo_url'],
+        'subject': widget.tutor['subjects'] != null 
+            ? (widget.tutor['subjects'] as List).isNotEmpty 
+                ? (widget.tutor['subjects'] as List)[0].toString()
+                : null
+            : null,
+        'frequency': widget.frequency,
+        'days': widget.selectedDays,
+        'times': widget.selectedTimes,
+        'location': widget.location,
+        'address': widget.address,
+        'monthly_total': monthlyTotal,
+        'per_session': perSession,
+        'transportation_cost': widget.estimatedTransportationCost,
+      };
+
+      await AbandonedBookingService.trackReviewScreenReached(
+        userId: userId,
+        tutorId: tutorId,
+        bookingType: 'normal',
+        bookingData: bookingData,
+      );
+    } catch (e) {
+      // Silently fail - tracking shouldn't break the UI
+    }
   }
 
   void _selectPaymentPlan(String plan) {
     setState(() => _selectedPaymentPlan = plan);
     widget.onPaymentPlanSelected(plan);
+  }
+
+  /// When learnerCount > 1, returns (baseTotal, discountedTotal) for payment screen display.
+  Future<({double baseTotal, double discountedTotal})?> _getMultiLearnerTotals() async {
+    final count = widget.learnerCount ?? 1;
+    if (count <= 1) return null;
+    final pricing = PricingService.calculateFromTutorData(widget.tutor);
+    final perSession = pricing['perSession'] as double;
+    final sessionsPerMonth = widget.frequency * 4;
+    final baseSessionMonthly = perSession * sessionsPerMonth;
+    final isOnsite = widget.location == 'onsite' || widget.location == 'hybrid';
+    final transportationCostPerSession = widget.estimatedTransportationCost ?? 0.0;
+    final monthlyTransportationTotal = isOnsite && transportationCostPerSession > 0
+        ? transportationCostPerSession * sessionsPerMonth
+        : 0.0;
+    final discountedSessionMonthly = await PricingService.calculateMultiLearnerMonthlyTotal(
+      baseMonthlyTotal: baseSessionMonthly,
+      learnerCount: count,
+    );
+    return (
+      baseTotal: baseSessionMonthly + monthlyTransportationTotal,
+      discountedTotal: discountedSessionMonthly + monthlyTransportationTotal,
+    );
   }
 
   @override
@@ -66,7 +151,18 @@ class _BookingReviewState extends State<BookingReview> {
     final pricing = PricingService.calculateFromTutorData(widget.tutor);
     final perSession = pricing['perSession'] as double;
     final sessionsPerMonth = widget.frequency * 4; // 4 weeks
-    final monthlyTotal = perSession * sessionsPerMonth;
+    final monthlySessionTotal = perSession * sessionsPerMonth;
+    
+    // Calculate transportation cost (only for onsite sessions)
+    final isOnsite = widget.location == 'onsite' || widget.location == 'hybrid';
+    final transportationCostPerSession = widget.estimatedTransportationCost ?? 0.0;
+    final monthlyTransportationTotal = isOnsite && transportationCostPerSession > 0
+        ? transportationCostPerSession * sessionsPerMonth
+        : 0.0;
+    
+    // Total monthly cost (session + transportation) - single learner or fallback
+    final monthlyTotal = monthlySessionTotal + monthlyTransportationTotal;
+    final useMultiLearnerDiscount = widget.learnerCount != null && widget.learnerCount! > 1;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -255,96 +351,240 @@ class _BookingReviewState extends State<BookingReview> {
           ),
           const SizedBox(height: 24),
 
-          // Pricing Breakdown
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppTheme.primaryColor.withOpacity(0.05),
-                  AppTheme.primaryColor.withOpacity(0.02),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          // Pricing Breakdown (and Payment Plan when multi-learner: use FutureBuilder for discounted totals)
+          useMultiLearnerDiscount
+              ? FutureBuilder<({double baseTotal, double discountedTotal})?>(
+                  future: _getMultiLearnerTotals(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    final totals = snapshot.data;
+                    final displayTotal = totals?.discountedTotal ?? monthlyTotal;
+                    final baseTotalForStrike = totals?.baseTotal;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.primaryColor.withOpacity(0.05),
+                                AppTheme.primaryColor.withOpacity(0.02),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.payments,
+                                    size: 24,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Pricing Breakdown',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              _buildPricingRow(
+                                'Per Session',
+                                PricingService.formatPrice(perSession),
+                                isSubtotal: true,
+                              ),
+                              if (isOnsite && transportationCostPerSession > 0) ...[
+                                const SizedBox(height: 12),
+                                _buildPricingRow(
+                                  'Transportation (per session)',
+                                  PricingService.formatPrice(transportationCostPerSession),
+                                  isSubtotal: true,
+                                  subtitle: 'Round trip compensation',
+                                ),
+                              ],
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Divider(color: Colors.grey[300], thickness: 1),
+                              ),
+                              if (baseTotalForStrike != null) ...[
+                                _buildPricingRow(
+                                  'Before discount',
+                                  PricingService.formatPrice(baseTotalForStrike),
+                                  isSubtotal: false,
+                                  strikethrough: true,
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                              _buildPricingRow(
+                                'Monthly Total',
+                                PricingService.formatPrice(displayTotal),
+                                isTotal: true,
+                                subtitle: isOnsite && transportationCostPerSession > 0
+                                    ? 'Session fee + Transportation (${widget.learnerCount} learners)'
+                                    : 'Multi-learner discount applied',
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Text(
+                          'Payment Plan',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildPaymentPlanOption(
+                          plan: 'monthly',
+                          title: 'Pay Monthly',
+                          subtitle: 'Full month upfront',
+                          amount: displayTotal,
+                          discount: null,
+                          badge: 'Most Popular',
+                        ),
+                        const SizedBox(height: 12),
+                        _buildPaymentPlanOption(
+                          plan: 'biweekly',
+                          title: 'Pay Bi-Weekly',
+                          subtitle: '2 weeks at a time',
+                          amount: displayTotal / 2,
+                          discount: null,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildPaymentPlanOption(
+                          plan: 'weekly',
+                          title: 'Pay Weekly',
+                          subtitle: '1 week at a time',
+                          amount: displayTotal / 4,
+                          discount: null,
+                        ),
+                      ],
+                    );
+                  },
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.payments,
-                      size: 24,
-                      color: AppTheme.primaryColor,
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primaryColor.withOpacity(0.05),
+                            AppTheme.primaryColor.withOpacity(0.02),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.payments,
+                                size: 24,
+                                color: AppTheme.primaryColor,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Pricing Breakdown',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          _buildPricingRow(
+                            'Per Session',
+                            PricingService.formatPrice(perSession),
+                            isSubtotal: true,
+                          ),
+                          if (isOnsite && transportationCostPerSession > 0) ...[
+                            const SizedBox(height: 12),
+                            _buildPricingRow(
+                              'Transportation (per session)',
+                              PricingService.formatPrice(transportationCostPerSession),
+                              isSubtotal: true,
+                              subtitle: 'Round trip compensation',
+                            ),
+                          ],
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Divider(color: Colors.grey[300], thickness: 1),
+                          ),
+                          _buildPricingRow(
+                            'Monthly Total',
+                            PricingService.formatPrice(monthlyTotal),
+                            isTotal: true,
+                            subtitle: isOnsite && transportationCostPerSession > 0
+                                ? 'Session fee + Transportation'
+                                : null,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(height: 24),
                     Text(
-                      'Pricing Breakdown',
+                      'Payment Plan',
                       style: GoogleFonts.poppins(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: Colors.black,
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    _buildPaymentPlanOption(
+                      plan: 'monthly',
+                      title: 'Pay Monthly',
+                      subtitle: 'Full month upfront',
+                      amount: monthlyTotal,
+                      discount: null,
+                      badge: 'Most Popular',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildPaymentPlanOption(
+                      plan: 'biweekly',
+                      title: 'Pay Bi-Weekly',
+                      subtitle: '2 weeks at a time',
+                      amount: monthlyTotal / 2,
+                      discount: null,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildPaymentPlanOption(
+                      plan: 'weekly',
+                      title: 'Pay Weekly',
+                      subtitle: '1 week at a time',
+                      amount: monthlyTotal / 4,
+                      discount: null,
+                    ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                _buildPricingRow(
-                  'Per Session',
-                  PricingService.formatPrice(perSession),
-                  isSubtotal: true,
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Divider(color: Colors.grey[300], thickness: 1),
-                ),
-                _buildPricingRow(
-                  'Monthly Total',
-                  PricingService.formatPrice(monthlyTotal),
-                  isTotal: true,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Payment Plan Selection
-          Text(
-            'Payment Plan',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildPaymentPlanOption(
-            plan: 'monthly',
-            title: 'Pay Monthly',
-            subtitle: 'Full month upfront',
-            amount: monthlyTotal,
-            discount: null,
-            badge: 'Most Popular',
-          ),
-          const SizedBox(height: 12),
-          _buildPaymentPlanOption(
-            plan: 'biweekly',
-            title: 'Pay Bi-Weekly',
-            subtitle: '2 weeks at a time',
-            amount: monthlyTotal / 2,
-            discount: null,
-          ),
-          const SizedBox(height: 12),
-          _buildPaymentPlanOption(
-            plan: 'weekly',
-            title: 'Pay Weekly',
-            subtitle: '1 week at a time',
-            amount: monthlyTotal / 4,
-            discount: null,
-          ),
           const SizedBox(height: 24),
 
           // Info box
@@ -570,25 +810,52 @@ class _BookingReviewState extends State<BookingReview> {
     String value, {
     bool isSubtotal = false,
     bool isTotal = false,
+    String? subtitle,
+    bool strikethrough = false,
   }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontSize: isTotal ? 16 : 14,
-            fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
-            color: isTotal ? Colors.black : Colors.grey[700],
-          ),
-        ),
-        Text(
-          value,
-          style: GoogleFonts.poppins(
-            fontSize: isTotal ? 20 : 14,
-            fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
-            color: isTotal ? AppTheme.primaryColor : Colors.grey[700],
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.poppins(
+                      fontSize: isTotal ? 16 : 14,
+                      fontWeight: isTotal ? FontWeight.w700 : FontWeight.w500,
+                      color: isTotal ? Colors.black : Colors.grey[700],
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: isTotal ? 20 : 14,
+                fontWeight: isTotal ? FontWeight.w800 : FontWeight.w600,
+                color: isTotal ? AppTheme.primaryColor : Colors.grey[700],
+                decoration: strikethrough ? TextDecoration.lineThrough : null,
+                decorationColor: Colors.grey[600],
+              ),
+            ),
+          ],
         ),
       ],
     );

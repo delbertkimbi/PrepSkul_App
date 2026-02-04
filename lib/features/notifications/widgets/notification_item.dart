@@ -199,7 +199,7 @@ class _NotificationItemState extends State<NotificationItem> {
           color: AppTheme.primaryColor, // Deep blue background
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           child: senderAvatarUrl != null && senderAvatarUrl.isNotEmpty
               ? CachedNetworkImage(
                   imageUrl: senderAvatarUrl,
@@ -210,7 +210,7 @@ class _NotificationItemState extends State<NotificationItem> {
                       child: Text(
                         displayInitials ?? '?',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: Colors.white,
                         ),
@@ -223,7 +223,7 @@ class _NotificationItemState extends State<NotificationItem> {
                       child: Text(
                         displayInitials ?? '?',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: Colors.white,
                         ),
@@ -424,13 +424,13 @@ class _NotificationItemState extends State<NotificationItem> {
                 ],
               ),
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // User Avatar (always show if sender info available, otherwise show icon)
                 _buildUserAvatar(metadata, senderAvatarUrl, senderInitials, priority),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
 
                 // Content
                 Expanded(
@@ -443,7 +443,7 @@ class _NotificationItemState extends State<NotificationItem> {
                             child: Text(
                               title,
                               style: GoogleFonts.poppins(
-                                fontSize: 14, // Increased from 12 (added 2)
+                                fontSize: 13,
                                 fontWeight: isRead ? FontWeight.w500 : FontWeight.w600,
                                 color: AppTheme.textDark,
                                 letterSpacing: -0.1,
@@ -454,9 +454,9 @@ class _NotificationItemState extends State<NotificationItem> {
                           ),
                           if (!isRead)
                             Container(
-                              width: 6,
-                              height: 6,
-                              margin: const EdgeInsets.only(left: 8),
+                              width: 5,
+                              height: 5,
+                              margin: const EdgeInsets.only(left: 6),
                               decoration: BoxDecoration(
                                 color: AppTheme.primaryColor,
                                 shape: BoxShape.circle,
@@ -464,28 +464,28 @@ class _NotificationItemState extends State<NotificationItem> {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         _getEnhancedMessage(message, metadata),
                         style: GoogleFonts.poppins(
-                          fontSize: 12, // Increased from 10 (added 2)
+                          fontSize: 11,
                           fontWeight: FontWeight.w400,
                           color: AppTheme.textMedium,
-                          height: 1.4,
+                          height: 1.3,
                           letterSpacing: -0.1,
                         ),
-                        maxLines: 3,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                       // Image preview (if available)
                       if (imageUrl != null && imageUrl.isNotEmpty) ...[
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
                           child: CachedNetworkImage(
                             imageUrl: imageUrl,
                             width: double.infinity,
-                            height: 150,
+                            height: 120,
                             fit: BoxFit.cover,
                             placeholder: (context, url) => Container(
                               height: 150,
@@ -505,11 +505,11 @@ class _NotificationItemState extends State<NotificationItem> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
                         timeAgo,
                         style: GoogleFonts.poppins(
-                          fontSize: 11, // Increased from 9 (added 2)
+                          fontSize: 10,
                           fontWeight: FontWeight.w400,
                           color: AppTheme.textLight,
                           letterSpacing: -0.1,

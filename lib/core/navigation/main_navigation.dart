@@ -166,11 +166,10 @@ class _MainNavigationState extends State<MainNavigation> {
     final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
     final items = isTutor ? _getTutorItems(context) : _getStudentItems(context);
 
-    // Wrap with PopScope to handle back navigation properly
-    // Allow back navigation if there are screens to pop, prevent only at root
-    final canPopFromStack = Navigator.of(context).canPop();
+    // Never allow popping MainNavigation so we never reveal auth below (fix: back at root -> sign-in).
+    // When a detail screen is on top, the system pops that route; this PopScope only applies when MainNavigation is the top route.
     return PopScope(
-      canPop: canPopFromStack, // Allow pop if there are screens in stack
+      canPop: false,
       onPopInvoked: (didPop) async {
         // If pop was already handled (there was a screen to pop), we're done
         if (didPop) return;

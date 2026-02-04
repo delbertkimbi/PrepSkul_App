@@ -493,6 +493,33 @@ class TutorOnboardingProgressService {
     }
   }
 
+  /// Returns the next missing onboarding stage for reminder messaging.
+  /// Steps: 11 = verification/ID, 12 = video, 13 = statement.
+  /// Returns null if onboarding is complete or no clear stage.
+  static Future<String?> getNextMissingStage(String userId) async {
+    try {
+      final progress = await loadProgress(userId);
+      if (progress == null) {
+        return null;
+      }
+      final completedSteps = progress['completed_steps'] as List<dynamic>? ?? [];
+      final completed = completedSteps.map((e) => e as int).toSet();
+      if (!completed.contains(11)) {
+        return 'missing_id';
+      }
+      if (!completed.contains(12)) {
+        return 'missing_video';
+      }
+      if (!completed.contains(13)) {
+        return 'missing_statement';
+      }
+      return null;
+    } catch (e) {
+      LogService.error('Error getting next missing stage: $e');
+      return null;
+    }
+  }
+
   /// Get current step number
   static Future<int> getCurrentStep(String userId) async {
     try {

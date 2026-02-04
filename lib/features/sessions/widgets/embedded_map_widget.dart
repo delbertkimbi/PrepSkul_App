@@ -15,8 +15,8 @@ import 'package:latlong2/latlong.dart';
 /// Embedded Map Widget
 ///
 /// Shows an embedded map view with the session location marked.
-/// On web: Uses iframe (Leaflet or Google Maps) to keep users in-app
-/// On mobile: Uses GoogleMap widget (once API key configured)
+/// On web: Uses iframe (Leaflet) to keep users in-app
+/// On mobile: Uses flutter_map (Leaflet for Flutter) - open-source, no API key needed
 /// Falls back to a placeholder if maps are not configured or unavailable.
 class EmbeddedMapWidget extends StatefulWidget {
   final String address;
@@ -219,118 +219,73 @@ class _EmbeddedMapWidgetState extends State<EmbeddedMapWidget> {
       }
     }
     
-    // Mobile: Show placeholder until Google Maps API key configured
-    // TODO: Once Google Maps API key is configured, replace with GoogleMap widget
-    return Container(
-      height: widget.height,
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue[200]!),
-      ),
-      child: Stack(
-        children: [
-          // Placeholder background
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.blue[100]!,
-                  Colors.blue[50]!,
-                ],
-              ),
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.map,
-                    size: 48,
-                    color: Colors.blue[400],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Map Preview',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.blue[800],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${_latitude!.toStringAsFixed(6)}, ${_longitude!.toStringAsFixed(6)}',
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: Colors.blue[700],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Info badge
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.blue[700],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'Tap to open in Maps',
-                style: GoogleFonts.poppins(
-                  fontSize: 10,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    // TODO: Replace above with actual GoogleMap widget once API key is configured:
-    /*
+    // Mobile: Use flutter_map (Leaflet for Flutter) - open-source, no API key needed
     return Container(
       height: widget.height,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[300]!),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: LatLng(_latitude!, _longitude!),
-            zoom: 15.0,
+        child: FlutterMap(
+          options: MapOptions(
+            initialCenter: LatLng(_latitude!, _longitude!),
+            initialZoom: 15.0,
+            minZoom: 5.0,
+            maxZoom: 18.0,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+            ),
           ),
-          markers: widget.showMarker
-              ? {
+          children: [
+            // OpenStreetMap tile layer
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.prepskul.app',
+              maxZoom: 19,
+              tileProvider: NetworkTileProvider(),
+            ),
+            // Marker layer
+            if (widget.showMarker)
+              MarkerLayer(
+                markers: [
                   Marker(
-                    markerId: MarkerId('session_location'),
-                    position: LatLng(_latitude!, _longitude!),
-                    infoWindow: InfoWindow(
-                      title: 'Session Location',
-                      snippet: widget.address,
+                    point: LatLng(_latitude!, _longitude!),
+                    width: 40,
+                    height: 40,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.location_on,
+                        color: Colors.white,
+                        size: 24,
+                      ),
                     ),
                   ),
-                }
-              : {},
-          mapType: MapType.normal,
-          zoomControlsEnabled: true,
-          myLocationButtonEnabled: false,
-          compassEnabled: true,
+                ],
+              ),
+          ],
         ),
       ),
     );
-    */
   }
 }

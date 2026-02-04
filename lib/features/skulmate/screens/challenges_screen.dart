@@ -32,9 +32,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
   void initState() {
     super.initState();
     _loadChallenges();
-  }
-
-  Future<void> _loadChallenges() async {
+  }  Future<void> _loadChallenges() async {
     safeSetState(() => _isLoading = true);
     try {
       final challenges = await SocialService.getChallenges();
@@ -129,9 +127,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
         backgroundColor: AppTheme.primaryColor,
       ),
     );
-  }
-
-  Widget _buildTabButton(String tab, String label) {
+  }  Widget _buildTabButton(String tab, String label) {
     final isSelected = _selectedTab == tab;
     return InkWell(
       onTap: () => safeSetState(() => _selectedTab = tab),

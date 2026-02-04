@@ -366,8 +366,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           final sessionId = session['id'] as String;
           final sessionType = session['type'] as String? ?? 'individual';
           
-          // Check feedback status
-          if (sessionType == 'individual') {
+          // Check feedback status (individual and trial; trial id = individual_sessions.id when created from trial)
+          if (sessionType == 'individual' || sessionType == 'trial') {
             final canSubmit = await SessionFeedbackService.canSubmitFeedback(
               sessionId,
             );

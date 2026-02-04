@@ -297,9 +297,7 @@ void main() {
           'tutor_id': 'tutor-123',
           'status': 'active',
           'created_at': '2024-01-01T12:00:00Z',
-        };
-
-        final conversation = Conversation.fromJson(json);
+        };        final conversation = Conversation.fromJson(json);
         expect(conversation.id, 'conv-123');
         expect(conversation.studentId, 'student-123');
         expect(conversation.tutorId, 'tutor-123');
@@ -338,9 +336,7 @@ void main() {
       test('should handle invalid conversation access', () async {
         // Test authorization
         expect(ChatService.getMessages, isA<Function>());
-      });
-
-      test('should handle blocked message gracefully', () async {
+      });      test('should handle blocked message gracefully', () async {
         // Test blocked message handling
         expect(ChatService.previewMessage, isA<Function>());
       });
@@ -373,9 +369,7 @@ void main() {
         expect(conversation.studentId, 'student-123');
         expect(conversation.tutorId, 'tutor-123');
         expect(conversation.status, 'active');
-      });
-
-      test('should create valid Message from JSON', () {
+      });      test('should create valid Message from JSON', () {
         final json = {
           'id': 'msg-123',
           'conversation_id': 'conv-123',

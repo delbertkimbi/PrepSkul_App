@@ -146,6 +146,32 @@ class NotificationHelperService {
     }
   }
 
+  /// Send tutor onboarding reminder (in-app + email + push via API).
+  /// Use when tutor skips onboarding or when tutor home detects incomplete onboarding.
+  /// [metadata] may include onboarding_skipped, onboarding_complete, and reminder_stage
+  /// (e.g. missing_video, missing_id, missing_docs) for stage-specific email/push content.
+  static Future<void> sendOnboardingReminder({
+    required String userId,
+    required String title,
+    required String message,
+    String? actionUrl,
+    Map<String, dynamic>? metadata,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'onboarding_reminder',
+      title: title,
+      message: message,
+      priority: 'high',
+      actionUrl: actionUrl ?? '/tutor-onboarding',
+      actionText: 'Complete Profile',
+      icon: '🎓',
+      metadata: metadata,
+      sendEmail: true,
+      sendPush: true,
+    );
+  }
+
   // ============================================
   // BOOKING REQUEST NOTIFICATIONS
   // ============================================
@@ -261,6 +287,112 @@ class NotificationHelperService {
           );
   }
 
+  /// Notify parent/student about multi-learner booking acceptance (partial or full)
+  /// 
+  /// When tutor accepts some learners in a multi-learner booking:
+  /// - Lists accepted learners
+  /// - Mentions declined learners if any
+  /// - Provides payment link if payment request created
+  static Future<void> notifyMultiLearnerBookingAccepted({
+    required String studentId,
+    required String tutorId,
+    required String requestId,
+    required String tutorName,
+    required List<String> acceptedLearners,
+    List<String>? declinedLearners,
+    String? paymentRequestId,
+    String? senderAvatarUrl,
+  }) async {
+    final actionUrl = paymentRequestId != null
+        ? '/payments/$paymentRequestId'
+        : '/bookings/$requestId';
+    
+    final actionText = paymentRequestId != null
+        ? 'Pay Now'
+        : 'View Booking';
+
+    // Build message based on acceptance status
+    String message;
+    if (declinedLearners != null && declinedLearners.isNotEmpty) {
+      // Partial acceptance
+      final acceptedList = acceptedLearners.join(', ');
+      final declinedList = declinedLearners.join(', ');
+      message = '$tutorName has accepted your booking for: $acceptedList. '
+          'The following learners were declined: $declinedList. '
+          '${paymentRequestId != null ? 'Please proceed to payment for accepted learners.' : 'Your sessions are now confirmed for accepted learners!'}';
+    } else {
+      // Full acceptance
+      final acceptedList = acceptedLearners.join(', ');
+      message = '$tutorName has accepted your booking request for: $acceptedList. '
+          '${paymentRequestId != null ? 'Please proceed to payment.' : 'Your sessions are now confirmed!'}';
+    }
+
+    await _sendNotificationViaAPI(
+      userId: studentId,
+      type: 'booking_approved',
+      title: 'Booking Approved',
+      message: message,
+      priority: 'high',
+      actionUrl: actionUrl,
+      actionText: actionText,
+      icon: '✅',
+      metadata: {
+        'request_id': requestId,
+        'tutor_id': tutorId,
+        'tutor_name': tutorName,
+        'accepted_learners': acceptedLearners,
+        if (declinedLearners != null && declinedLearners.isNotEmpty) 'declined_learners': declinedLearners,
+        if (paymentRequestId != null) 'payment_request_id': paymentRequestId,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
+        'is_multi_learner': true,
+      },
+      sendEmail: true,
+    );
+  }
+
+  /// Notify parent/student about multi-learner booking rejection
+  /// 
+  /// When tutor declines all learners in a multi-learner booking:
+  /// - Lists declined learners
+  /// - Includes rejection reason if provided
+  static Future<void> notifyMultiLearnerBookingRejected({
+    required String studentId,
+    required String tutorId,
+    required String requestId,
+    required String tutorName,
+    required List<String> declinedLearners,
+    String? reason,
+    String? senderAvatarUrl,
+  }) async {
+    final declinedList = declinedLearners.join(', ');
+    final message = reason != null
+        ? '$tutorName has declined your booking request for: $declinedList. Reason: $reason'
+        : '$tutorName has declined your booking request for: $declinedList.';
+
+    await _sendNotificationViaAPI(
+      userId: studentId,
+      type: 'booking_rejected',
+      title: '⚠️ Booking Declined',
+      message: message,
+      priority: 'normal',
+      actionUrl: '/bookings/requests',
+      actionText: 'Find Another Tutor',
+      icon: '⚠️',
+      metadata: {
+        'request_id': requestId,
+        'tutor_id': tutorId,
+        'tutor_name': tutorName,
+        'declined_learners': declinedLearners,
+        'rejection_reason': reason,
+        if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
+        'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
+        'is_multi_learner': true,
+      },
+      sendEmail: true,
+    );
+  }
+
   // ============================================
   // TRIAL SESSION NOTIFICATIONS
   // ============================================
@@ -277,14 +409,20 @@ class NotificationHelperService {
     String? senderAvatarUrl,
     bool isReschedule = false,
     String? originalSessionId,
+    bool isGroupRequest = false,
+    int? learnerCount,
   }) async {
     final title = isReschedule 
         ? '🔄 Reschedule Request for Missed Trial Session'
-        : '🎯 New Trial Session Request';
+        : isGroupRequest && (learnerCount ?? 0) > 1
+            ? '🎯 New Trial Request (${learnerCount ?? 0} learners)'
+            : '🎯 New Trial Session Request';
     
     final message = isReschedule
         ? '$studentName wants to reschedule a missed trial session for $subject. They are requesting a new time: ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime. Please review and approve or suggest an alternative time.'
-        : '$studentName wants to book a trial session for $subject on ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime.';
+        : isGroupRequest && (learnerCount ?? 0) > 1
+            ? '$studentName wants to book a trial session for $learnerCount learners for $subject on ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime. This is ONE trial session (same price). Review and accept or decline.'
+            : '$studentName wants to book a trial session for $subject on ${scheduledDate.toLocal().toString().split(' ')[0]} at $scheduledTime.';
     
     await _sendNotificationViaAPI(
       userId: tutorId,
@@ -306,6 +444,8 @@ class NotificationHelperService {
         'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
         if (isReschedule) 'is_reschedule': true,
         if (originalSessionId != null) 'original_session_id': originalSessionId,
+        if (isGroupRequest) 'is_group_request': true,
+        if (learnerCount != null) 'learner_count': learnerCount,
       },
       sendEmail: true
           );
@@ -1833,6 +1973,49 @@ class NotificationHelperService {
       },
       sendEmail: true,
       sendPush: newStatus == 'matched' || newStatus == 'in_progress',
+    );
+  }
+
+  // ============================================
+  // ABANDONED BOOKING REMINDER NOTIFICATIONS
+  // ============================================
+
+  /// Notify user to complete their abandoned booking
+  /// Called when user reached review screen but didn't complete booking
+  static Future<void> notifyAbandonedBookingReminder({
+    required String userId,
+    required String tutorId,
+    required String tutorName,
+    required String bookingType, // 'trial' or 'normal'
+    required String tutorProfileDeepLink, // Format: /tutor/{tutorId}
+    String? subject,
+  }) async {
+    final title = bookingType == 'trial'
+        ? '⏰ Complete Your Trial Booking'
+        : '⏰ Complete Your Booking Request';
+    
+    final message = bookingType == 'trial'
+        ? 'You started booking a trial session with $tutorName${subject != null ? " for $subject" : ""}. Complete your booking to secure your spot!'
+        : 'You started booking sessions with $tutorName${subject != null ? " for $subject" : ""}. Complete your booking request to get started!';
+
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'abandoned_booking_reminder',
+      title: title,
+      message: message,
+      priority: 'normal',
+      actionUrl: tutorProfileDeepLink, // Deep link to tutor profile
+      actionText: 'View Tutor Profile',
+      icon: '⏰',
+      metadata: {
+        'tutor_id': tutorId,
+        'tutor_name': tutorName,
+        'booking_type': bookingType,
+        'tutor_profile_deep_link': tutorProfileDeepLink,
+        if (subject != null) 'subject': subject,
+      },
+      sendEmail: true,
+      sendPush: true,
     );
   }
 }

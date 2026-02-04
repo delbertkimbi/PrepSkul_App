@@ -24,6 +24,8 @@ import 'package:prepskul/features/admin/screens/admin_dashboard_screen.dart';
 import 'package:prepskul/features/admin/screens/admin_tutor_detail_screen.dart';
 import 'package:prepskul/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:prepskul/features/admin/screens/admin_tutor_request_detail_screen.dart';
+import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -165,7 +167,7 @@ class NotificationNavigationService {
       await navService.navigateToRoute(
         route,
         arguments: {'initialTab': tab},
-        replace: false,
+        replace: true,
       );
     }
   }
@@ -201,7 +203,7 @@ class NotificationNavigationService {
         await navService.navigateToRoute(
           '/tutor-nav',
           arguments: {'initialTab': 1, 'trialId': trialId},
-          replace: false,
+          replace: true,
         );
       } else {
         // For students/parents, navigate to request detail screen (student view)
@@ -221,7 +223,7 @@ class NotificationNavigationService {
       await navService.navigateToRoute(
         route,
         arguments: {'initialTab': tab, 'trialId': trialId},
-        replace: false,
+        replace: true,
       );
     }
   }
@@ -287,7 +289,7 @@ class NotificationNavigationService {
     await navService.navigateToRoute(
       route,
       arguments: {'initialTab': 3}, // Profile tab
-      replace: false,
+      replace: true,
     );
   }
 
@@ -299,31 +301,68 @@ class NotificationNavigationService {
     final navService = NavigationService();
     
     if (pathSegments.length < 2) {
-      // Navigate to tutor home
+      // Navigate to tutor home (replace so back at root never reveals auth)
       if (userType == 'tutor') {
-        await navService.navigateToRoute('/tutor-nav', replace: false);
+        await navService.navigateToRoute('/tutor-nav', replace: true);
       }
       return;
     }
 
     final section = pathSegments[1];
 
+    // Handle tutor profile deep link: /tutor/{tutorId}
+    // This is for viewing a tutor's profile (e.g., from abandoned booking reminder)
+    if (section != 'requests' && section != 'bookings' && section != 'sessions' && section != 'profile' && section != 'dashboard' && section != 'onboarding') {
+      // Likely a tutor ID - navigate to tutor detail screen
+      final tutorId = section;
+      final context = navService.context;
+      
+      try {
+        // Fetch tutor data
+        final tutor = await TutorService.fetchTutorById(tutorId);
+        
+        if (context == null) {
+          LogService.warning('[NOTIF_NAV] No context for tutor profile navigation, queuing link');
+          navService.queueDeepLink(Uri(path: '/tutor/$tutorId'));
+          return;
+        }
+
+        if (tutor != null) {
+          // Navigate to tutor detail screen
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TutorDetailScreen(tutor: tutor),
+            ),
+          );
+        } else {
+          LogService.warning('[NOTIF_NAV] Tutor not found: $tutorId');
+          // Fallback: navigate to find tutors
+          await navService.navigateToRoute('/find-tutors', replace: false);
+        }
+      } catch (e) {
+        LogService.error('[NOTIF_NAV] Error navigating to tutor profile: $e');
+        // Fallback: navigate to find tutors
+        await navService.navigateToRoute('/find-tutors', replace: false);
+      }
+      return;
+    }
+
     if (section == 'requests' || section == 'bookings') {
-      // Navigate to requests tab
+      // Navigate to requests tab (replace so back at root never reveals auth)
       if (userType == 'tutor') {
         await navService.navigateToRoute(
           '/tutor-nav',
           arguments: {'initialTab': 1}, // Requests tab
-          replace: false,
+          replace: true,
         );
       }
     } else if (section == 'sessions') {
-      // Navigate to sessions tab
+      // Navigate to sessions tab (replace so back at root never reveals auth)
       if (userType == 'tutor') {
         await navService.navigateToRoute(
           '/tutor-nav',
           arguments: {'initialTab': 2}, // Sessions tab
-          replace: false,
+          replace: true,
         );
       }
     } else if (section == 'bookings' && pathSegments.length >= 3) {
@@ -353,7 +392,7 @@ class NotificationNavigationService {
         await navService.navigateToRoute(
           '/tutor-nav',
           arguments: {'initialTab': 1, 'bookingId': bookingId},
-          replace: false,
+          replace: true,
         );
       }
     }
@@ -370,7 +409,7 @@ class NotificationNavigationService {
       // Navigate to student home
       final role = userType == 'parent' ? 'parent' : 'student';
       final route = role == 'parent' ? '/parent-nav' : '/student-nav';
-      await navService.navigateToRoute(route, replace: false);
+      await navService.navigateToRoute(route, replace: true);
       return;
     }
 
@@ -427,7 +466,7 @@ class NotificationNavigationService {
         await navService.navigateToRoute(
           route,
           arguments: {'initialTab': 2}, // Sessions tab
-          replace: false,
+          replace: true,
         );
       }
     } else {
@@ -439,7 +478,7 @@ class NotificationNavigationService {
       await navService.navigateToRoute(
         route,
         arguments: {'initialTab': 2}, // Sessions tab
-        replace: false,
+        replace: true,
       );
     }
   }
@@ -460,7 +499,7 @@ class NotificationNavigationService {
       await navService.navigateToRoute(
         route,
         arguments: {'initialTab': 2}, // Requests tab
-        replace: false,
+        replace: true,
       );
       return;
     }
@@ -512,7 +551,7 @@ class NotificationNavigationService {
           await navService.navigateToRoute(
             route,
             arguments: {'initialTab': tab},
-            replace: false,
+            replace: true,
           );
         } else {
           // Navigate to requests/bookings tab for other booking notifications
@@ -524,7 +563,7 @@ class NotificationNavigationService {
           await navService.navigateToRoute(
             route,
             arguments: {'initialTab': tab},
-            replace: false,
+            replace: true,
           );
         }
         break;
@@ -766,7 +805,7 @@ class NotificationNavigationService {
         await navService.navigateToRoute(
           route,
           arguments: {'initialTab': 2}, // Sessions tab
-          replace: false,
+          replace: true,
         );
       }
     }

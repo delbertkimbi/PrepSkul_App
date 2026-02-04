@@ -104,8 +104,22 @@ class SessionRescheduleService {
       }
 
       // Check if session can be rescheduled
-      if (session['status'] != 'scheduled') {
-        throw Exception('Only scheduled sessions can be rescheduled');
+      // Allow rescheduling for:
+      // - Scheduled sessions (upcoming)
+      // - Completed/missed/no_show paid sessions (for making up missed sessions)
+      final sessionStatus = session['status'] as String? ?? '';
+      final isPaid = session['payment_status'] == 'paid' || 
+                     session['payment_status'] == 'completed' ||
+                     (sessionType == 'recurring' && session['recurring_session_id'] != null); // Recurring sessions are paid
+      
+      final canReschedule = sessionStatus == 'scheduled' || 
+                           (isPaid && (sessionStatus == 'completed' || 
+                                       sessionStatus == 'no_show_tutor' || 
+                                       sessionStatus == 'no_show_learner' ||
+                                       sessionStatus == 'missed'));
+      
+      if (!canReschedule) {
+        throw Exception('This session cannot be rescheduled. Only scheduled sessions or missed/completed paid sessions can be rescheduled.');
       }
 
       // Check if there's already a pending reschedule request

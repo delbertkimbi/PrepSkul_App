@@ -304,6 +304,116 @@ class PricingService {
     return durationMinutes == 30 ? 2000 : 3500;
   }
 
+  /// Get multi-learner discount rules from database (platform-level, admin-configurable).
+  /// Returns list of { learner_ordinal: 2|3|..., discount_percent: number } ordered by learner_ordinal.
+  static Future<List<Map<String, dynamic>>> getMultiLearnerDiscountRules() async {
+    try {
+      final response = await _supabase
+          .from('multi_learner_discount_rules')
+          .select('learner_ordinal, discount_percent')
+          .eq('is_active', true)
+          .order('learner_ordinal', ascending: true);
+      final list = response as List;
+      return list
+          .map((row) => {
+                'learner_ordinal': row['learner_ordinal'] as int,
+                'discount_percent': (row['discount_percent'] as num).toDouble(),
+              })
+          .toList();
+    } catch (e) {
+      LogService.warning('Could not fetch multi_learner_discount_rules: $e');
+      return [
+        {'learner_ordinal': 2, 'discount_percent': 15.0},
+        {'learner_ordinal': 3, 'discount_percent': 20.0},
+      ];
+    }
+  }
+
+  /// Get discount percent for a learner ordinal (1st = full price, 2nd = rules[2], 3rd+ = highest rule <= ordinal).
+  static double _discountPercentForOrdinal(int learnerOrdinal, List<Map<String, dynamic>> rules) {
+    if (learnerOrdinal <= 1) return 0;
+    if (rules.isEmpty) return 0;
+    double percent = 0;
+    for (final r in rules) {
+      final ord = r['learner_ordinal'] as int;
+      if (ord <= learnerOrdinal) percent = r['discount_percent'] as double;
+    }
+    return percent;
+  }
+
+  /// Calculate monthly total for multi-learner recurring bookings with discounts.
+  /// 
+  /// IMPORTANT: Multi-learner discounts apply ONLY to recurring/normal tutor bookings, NOT trials.
+  /// Discounts are applied by learner ordinal:
+  /// - 1st learner: full price (baseMonthlyTotal)
+  /// - 2nd learner: discount from rules (e.g., 15% off)
+  /// - 3rd+ learners: discount from rules (e.g., 20% off)
+  /// 
+  /// Returns the total monthly amount after applying discounts.
+  static Future<double> calculateMultiLearnerMonthlyTotal({
+    required double baseMonthlyTotal,
+    required int learnerCount,
+  }) async {
+    if (learnerCount <= 1) {
+      return baseMonthlyTotal; // No discount for single learner
+    }
+    
+    final rules = await getMultiLearnerDiscountRules();
+    double total = 0.0;
+    
+    for (int i = 1; i <= learnerCount; i++) {
+      final discountPercent = _discountPercentForOrdinal(i, rules);
+      final learnerMonthlyTotal = baseMonthlyTotal * (1 - discountPercent / 100);
+      // Round to nearest 100 XAF for cleaner pricing
+      final rounded = (learnerMonthlyTotal / 100).round() * 100.0;
+      total += rounded;
+    }
+    
+    return total;
+  }
+
+  /// Total trial fee for N accepted learners (same tutor, same duration) with multi-learner discount.
+  /// 
+  /// IMPORTANT: Trial sessions have standardized pricing regardless of which learners are involved.
+  /// All trials use the same base price (from trial_session_pricing table by duration).
+  /// Discounts are calculated at payment time based on accepted count and ordinal position:
+  /// - 1st learner: full price
+  /// - 2nd learner: discount from rules (e.g., 15% off)
+  /// - 3rd+ learners: discount from rules (e.g., 20% off)
+  /// 
+  /// Used at payment time: charge only for accepted sessions with discount applied by ordinal.
+  static Future<Map<String, dynamic>> getTrialTotalForAcceptedLearners({
+    required int acceptedCount,
+    required int durationMinutes,
+  }) async {
+    if (acceptedCount <= 0) {
+      return {'totalXaf': 0.0, 'breakdown': <Map<String, dynamic>>[], 'basePricePerTrial': 0.0};
+    }
+    final details = await getTrialSessionPricingWithDetails();
+    final data = details[durationMinutes];
+    final basePrice = (data != null ? (data['basePrice'] as double) : (durationMinutes == 30 ? 2000.0 : 3500.0));
+    final rules = await getMultiLearnerDiscountRules();
+    final breakdown = <Map<String, dynamic>>[];
+    double total = 0;
+    for (int i = 1; i <= acceptedCount; i++) {
+      final discountPercent = _discountPercentForOrdinal(i, rules);
+      final price = basePrice * (1 - discountPercent / 100);
+      final rounded = (price / 100).round() * 100.0;
+      total += rounded;
+      breakdown.add({
+        'learner_ordinal': i,
+        'discount_percent': discountPercent,
+        'price_xaf': rounded,
+      });
+    }
+    return {
+      'totalXaf': total,
+      'breakdown': breakdown,
+      'basePricePerTrial': basePrice,
+      'acceptedCount': acceptedCount,
+    };
+  }
+
   /// Calculate pricing for tutor from JSON data (for demo mode)
   static Map<String, dynamic> calculateFromTutorData(
     Map<String, dynamic> tutorData, {

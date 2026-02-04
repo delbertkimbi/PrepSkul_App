@@ -287,6 +287,12 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
         final isLargeScreen = constraints.maxWidth > 600;
         final maxWidth = isLargeScreen ? 400.0 : double.infinity;
         
+        // Structured shape configuration for consistent positioning
+        final shapeConfig = _DecorativeShapeConfig(
+          containerWidth: isLargeScreen ? 350.0 : constraints.maxWidth,
+          containerHeight: containerHeight,
+        );
+        
         return SizedBox(
           height: containerHeight,
           width: maxWidth,
@@ -297,81 +303,81 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Background decorative blob 1
+                  // Background decorative blob 1 - Top Left (Structured)
                   Positioned(
-                    top: 20,
-                    left: 20,
+                    top: shapeConfig.blob1Top,
+                    left: shapeConfig.blob1Left,
                     child: TweenAnimationBuilder(
-              duration: const Duration(milliseconds: 1500),
-              tween: Tween<double>(begin: 0.0, end: 1.0),
-              builder: (context, double value, child) {
-                return Transform.scale(
-                  scale: 0.8 + (value * 0.2),
-                  child: Opacity(
-                    opacity: value * 0.3,
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            slide.color.withOpacity(0.3),
-                            slide.color.withOpacity(0.1),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(80),
-                          topRight: Radius.circular(40),
-                          bottomLeft: Radius.circular(40),
-                          bottomRight: Radius.circular(80),
-                        ),
-                      ),
+                      duration: const Duration(milliseconds: 1500),
+                      tween: Tween<double>(begin: 0.0, end: 1.0),
+                      builder: (context, double value, child) {
+                        return Transform.scale(
+                          scale: 0.8 + (value * 0.2),
+                          child: Opacity(
+                            opacity: value * 0.3,
+                            child: Container(
+                              width: shapeConfig.blob1Size,
+                              height: shapeConfig.blob1Size,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    slide.color.withOpacity(0.3),
+                                    slide.color.withOpacity(0.1),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: Radius.circular(80),
+                                  topRight: Radius.circular(40),
+                                  bottomLeft: Radius.circular(40),
+                                  bottomRight: Radius.circular(80),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                );
-              },
-            ),
-          ),
 
-                  // Background decorative blob 2
+                  // Background decorative blob 2 - Bottom Right (Structured)
                   Positioned(
-                    bottom: 30,
-                    right: 30,
+                    bottom: shapeConfig.blob2Bottom,
+                    right: shapeConfig.blob2Right,
                     child: TweenAnimationBuilder(
-              duration: const Duration(milliseconds: 1800),
-              tween: Tween<double>(begin: 0.0, end: 1.0),
-              builder: (context, double value, child) {
-                return Transform.scale(
-                  scale: 0.8 + (value * 0.2),
-                  child: Opacity(
-                    opacity: value * 0.2,
-                    child: Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            AppTheme.accentLightBlue.withOpacity(0.4),
-                            AppTheme.accentLightBlue.withOpacity(0.1),
-                          ],
-                          begin: Alignment.topRight,
-                          end: Alignment.bottomLeft,
-                        ),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(60),
-                          topRight: Radius.circular(80),
-                          bottomLeft: Radius.circular(80),
-                          bottomRight: Radius.circular(30),
-                        ),
-                      ),
+                      duration: const Duration(milliseconds: 1800),
+                      tween: Tween<double>(begin: 0.0, end: 1.0),
+                      builder: (context, double value, child) {
+                        return Transform.scale(
+                          scale: 0.8 + (value * 0.2),
+                          child: Opacity(
+                            opacity: value * 0.2,
+                            child: Container(
+                              width: shapeConfig.blob2Size,
+                              height: shapeConfig.blob2Size,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppTheme.accentLightBlue.withOpacity(0.4),
+                                    AppTheme.accentLightBlue.withOpacity(0.1),
+                                  ],
+                                  begin: Alignment.topRight,
+                                  end: Alignment.bottomLeft,
+                                ),
+                                borderRadius: BorderRadius.only(
+                                  topLeft: Radius.circular(60),
+                                  topRight: Radius.circular(80),
+                                  bottomLeft: Radius.circular(80),
+                                  bottomRight: Radius.circular(30),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                );
-              },
-            ),
-          ),
 
                   // Main image with stacked shadow effect
                   Center(
@@ -492,13 +498,13 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
                         ),
                       ),
 
-                      // Decorative accent dot
+                      // Decorative accent dot - Structured positioning
                       Positioned(
-                        top: 10,
-                        right: 10,
+                        top: shapeConfig.accentDotTop,
+                        right: shapeConfig.accentDotRight,
                         child: Container(
-                          width: 16,
-                          height: 16,
+                          width: shapeConfig.accentDotSize,
+                          height: shapeConfig.accentDotSize,
                           decoration: BoxDecoration(
                             color: slide.color,
                             shape: BoxShape.circle,
@@ -577,6 +583,51 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
         ),
       ),
     );
+  }
+}
+
+/// Structured configuration for decorative shapes in onboarding
+/// Ensures consistent, organized positioning relative to container size
+class _DecorativeShapeConfig {
+  final double containerWidth;
+  final double containerHeight;
+  
+  // Blob 1 (Top Left) - Primary decorative shape
+  late final double blob1Size;
+  late final double blob1Top;
+  late final double blob1Left;
+  
+  // Blob 2 (Bottom Right) - Secondary decorative shape
+  late final double blob2Size;
+  late final double blob2Bottom;
+  late final double blob2Right;
+  
+  // Accent dot (Top Right of image)
+  late final double accentDotSize;
+  late final double accentDotTop;
+  late final double accentDotRight;
+  
+  _DecorativeShapeConfig({
+    required this.containerWidth,
+    required this.containerHeight,
+  }) {
+    // Calculate sizes relative to container (maintains proportions)
+    final baseSize = containerHeight * 0.64; // ~180px for 280px container
+    
+    // Blob 1: Top-left corner, ~64% of container height
+    blob1Size = baseSize;
+    blob1Top = containerHeight * 0.07; // ~20px for 280px container
+    blob1Left = containerWidth * 0.06; // ~20px for 350px container
+    
+    // Blob 2: Bottom-right corner, ~50% of blob1 size
+    blob2Size = baseSize * 0.78; // ~140px for 280px container
+    blob2Bottom = containerHeight * 0.11; // ~30px for 280px container
+    blob2Right = containerWidth * 0.09; // ~30px for 350px container
+    
+    // Accent dot: Small decorative element, top-right of image
+    accentDotSize = 16.0; // Fixed small size
+    accentDotTop = 10.0; // Fixed offset from top
+    accentDotRight = 10.0; // Fixed offset from right
   }
 }
 

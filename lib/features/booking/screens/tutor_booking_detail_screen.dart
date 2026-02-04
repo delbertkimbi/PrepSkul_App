@@ -156,61 +156,129 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
 
 
   Widget _buildStudentInfoCard(BookingRequest request) {
+    final hasMultipleLearners = request.learnerLabels != null && request.learnerLabels!.isNotEmpty;
+    
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: AppTheme.primaryColor,
-              backgroundImage: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
-                  ? NetworkImage(request.studentAvatarUrl!)
-                  : null,
-              onBackgroundImageError: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
-                  ? (exception, stackTrace) {
-                      // Image failed to load, will show fallback
-                    }
-                  : null,
-              child: request.studentAvatarUrl == null || request.studentAvatarUrl!.isEmpty
-                  ? Text(
-                      request.studentName.isNotEmpty
-                          ? request.studentName[0].toUpperCase()
-                          : 'S',
-                      style: GoogleFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: AppTheme.primaryColor,
+                  backgroundImage: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
+                      ? NetworkImage(request.studentAvatarUrl!)
+                      : null,
+                  onBackgroundImageError: request.studentAvatarUrl != null && request.studentAvatarUrl!.isNotEmpty
+                      ? (exception, stackTrace) {
+                          // Image failed to load, will show fallback
+                        }
+                      : null,
+                  child: request.studentAvatarUrl == null || request.studentAvatarUrl!.isEmpty
+                      ? Text(
+                          request.studentName.isNotEmpty
+                              ? request.studentName[0].toUpperCase()
+                              : 'S',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        request.studentName,
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
                       ),
-                    )
-                  : null,
+                      const SizedBox(height: 4),
+                      Text(
+                        request.studentType == 'parent' ? 'Parent' : 'Student',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    request.studentName,
-                    style: GoogleFonts.poppins(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
+            // Show multi-learner info if applicable
+            if (hasMultipleLearners) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.people_outline,
+                      size: 18,
+                      color: AppTheme.primaryColor,
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    request.studentType == 'parent' ? 'Parent' : 'Student',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: AppTheme.textMedium,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Learners for this booking:',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          ...request.learnerLabels!.map((name) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryColor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  name,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    color: AppTheme.textMedium,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -218,6 +286,15 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   }
 
   Widget _buildRequestDetailsCard(BookingRequest request) {
+    final isOnsite = request.location == 'onsite' || request.location == 'hybrid';
+    final estimatedTransportationCost = request.estimatedTransportationCost;
+    final frequency = request.frequency;
+    final sessionsPerMonth = frequency * 4;
+    final monthlyTransportationTotal = (estimatedTransportationCost != null && estimatedTransportationCost > 0 && isOnsite)
+        ? estimatedTransportationCost * sessionsPerMonth
+        : 0.0;
+    final totalMonthlyPayment = request.monthlyTotal + monthlyTransportationTotal;
+
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -242,7 +319,86 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             if (request.locationDescription != null)
               _buildInfoRow('Location Description', request.locationDescription!),
             _buildInfoRow('Payment Plan', request.paymentPlan.toUpperCase()),
-            _buildInfoRow('Monthly Total', '${request.monthlyTotal.toStringAsFixed(0)} XAF'),
+            const SizedBox(height: 8),
+            Divider(color: Colors.grey[300]),
+            const SizedBox(height: 8),
+            // Payment breakdown
+            Text(
+              'Payment Breakdown',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildInfoRow('Session Fee (Monthly)', '${request.monthlyTotal.toStringAsFixed(0)} XAF', 
+              valueColor: Colors.green[700]),
+            if (isOnsite && monthlyTransportationTotal > 0) ...[
+              const SizedBox(height: 4),
+              _buildInfoRow('Transportation (Monthly)', '${monthlyTransportationTotal.toStringAsFixed(0)} XAF',
+                valueColor: Colors.orange[700]),
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 8),
+                child: Text(
+                  '${estimatedTransportationCost?.toStringAsFixed(0) ?? '0'} XAF per session (round trip)',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: Colors.orange[700],
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Divider(color: Colors.grey[300]),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Total Monthly Payment',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                Text(
+                  '${totalMonthlyPayment.toStringAsFixed(0)} XAF',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+            if (isOnsite && monthlyTransportationTotal > 0) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: Colors.orange[700]),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Transportation cost is parent compensation. Platform fee (15%) applies only to session fee.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: Colors.orange[900],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -293,6 +449,15 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
   }
 
   Widget _buildPaymentCard(BookingRequest request) {
+    final isOnsite = request.location == 'onsite' || request.location == 'hybrid';
+    final estimatedTransportationCost = request.estimatedTransportationCost ?? 0.0;
+    final frequency = request.frequency;
+    final sessionsPerMonth = frequency * 4;
+    final monthlyTransportationTotal = (isOnsite && estimatedTransportationCost > 0)
+        ? estimatedTransportationCost * sessionsPerMonth
+        : 0.0;
+    final totalMonthlyPayment = request.monthlyTotal + monthlyTransportationTotal;
+    
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -311,7 +476,65 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
             ),
             const SizedBox(height: 12),
             _buildInfoRow('Payment Plan', request.paymentPlan.toUpperCase()),
-            _buildInfoRow('Monthly Total', '${request.monthlyTotal.toStringAsFixed(0)} XAF'),
+            _buildInfoRow('Session Fee (Monthly)', '${request.monthlyTotal.toStringAsFixed(0)} XAF'),
+            if (isOnsite && monthlyTransportationTotal > 0) ...[
+              const SizedBox(height: 8),
+              _buildInfoRow('Transportation (Monthly)', '${monthlyTransportationTotal.toStringAsFixed(0)} XAF'),
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 14, color: Colors.orange[700]),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '${estimatedTransportationCost.toStringAsFixed(0)} XAF per session (round trip)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: Colors.orange[900],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[100],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green[300]!),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Total Parent Pays:',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.green[900],
+                    ),
+                  ),
+                  Text(
+                    '${totalMonthlyPayment.toStringAsFixed(0)} XAF',
+                    style: GoogleFonts.poppins(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.green[900],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(12),
@@ -528,7 +751,7 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  Widget _buildInfoRow(String label, String value, {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -551,7 +774,8 @@ class _TutorBookingDetailScreenState extends State<TutorBookingDetailScreen> {
               value,
               style: GoogleFonts.poppins(
                 fontSize: 13,
-                color: AppTheme.textDark,
+                fontWeight: valueColor != null ? FontWeight.w600 : FontWeight.normal,
+                color: valueColor ?? AppTheme.textDark,
               ),
             ),
           ),

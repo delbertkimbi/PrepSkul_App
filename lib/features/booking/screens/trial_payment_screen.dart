@@ -4,6 +4,8 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/auth_service.dart' hide LogService;
+import 'package:prepskul/core/services/whatsapp_support_service.dart';
+import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
@@ -34,15 +36,42 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isProcessing = false;
   bool _isPolling = false;
+  bool _isCancelled = false; // Track if user cancelled polling
+  int _pollAttempts = 0; // Track polling attempts for timeout
   String? _errorMessage;
   String? _phoneError; // Phone number validation error
-  String _paymentStatus = 'idle'; // idle, pending, successful, failed
+  String _paymentStatus = 'idle'; // idle, pending, successful, failed, timeout
   String? _lastTransactionId; // Used to retry Meet link generation
+  double? _payableAmount; // Total amount (single fee or group total with discount)
+  bool _loadingAmount = true;
 
   @override
   void initState() {
     super.initState();
     _loadUserPhone();
+    _loadPayableAmount();
+  }
+
+  /// Load payable amount (single fee or sum of all accepted trials in group).
+  /// Note: Trial sessions have fixed pricing - no multi-learner discounts. All trials use same base price.
+  Future<void> _loadPayableAmount() async {
+    try {
+      final amount = await TrialSessionService.getPayableAmountForTrial(widget.trialSession);
+      if (mounted) {
+        safeSetState(() {
+          _payableAmount = amount;
+          _loadingAmount = false;
+        });
+      }
+    } catch (e) {
+      LogService.warning('Could not load payable amount: $e');
+      if (mounted) {
+        safeSetState(() {
+          _payableAmount = widget.trialSession.trialFee;
+          _loadingAmount = false;
+        });
+      }
+    }
   }
 
   @override
@@ -183,7 +212,10 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       const maxAttempts = 40; // 2 minutes max
       const interval = Duration(seconds: 3);
       
-      while (attempts < maxAttempts && mounted) {
+      // Reset cancellation flag
+      _isCancelled = false;
+      
+      while (attempts < maxAttempts && mounted && !_isCancelled) {
         // Check database first (webhook might have already processed payment)
         try {
           final trial = await TrialSessionService.getTrialSessionById(widget.trialSession.id);
@@ -221,7 +253,26 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
             _paymentStatus = 'successful';
           } else if (status.isFailed) {
             _paymentStatus = 'failed';
-            _errorMessage = 'Payment failed. Please try again.';
+            // Provide user-friendly error messages based on failure reason
+            final statusStr = status.status?.toUpperCase() ?? '';
+            if (statusStr.contains('INSUFFICIENT') || statusStr.contains('BALANCE')) {
+              _errorMessage = 'Payment failed due to insufficient balance. Please check your mobile money account balance and try again.';
+            } else if (statusStr.contains('DECLINED') || statusStr.contains('REJECTED')) {
+              _errorMessage = 'Payment was declined. Please check your mobile money account and try again.';
+            } else if (statusStr.contains('CANCELLED') || statusStr.contains('CANCELED')) {
+              _errorMessage = 'Payment was cancelled. Please try again when ready.';
+            } else if (statusStr.contains('EXPIRED')) {
+              _paymentStatus = 'failed';
+              _errorMessage = 'Payment link expired. Please initiate a new payment.';
+            } else if (statusStr.contains('TIMEOUT') || statusStr.contains('TIMED OUT')) {
+              _errorMessage = 'Payment request timed out. Please check your phone and try again.';
+            } else if (statusStr.contains('NETWORK') || statusStr.contains('CONNECTION')) {
+              _errorMessage = 'Network error occurred. Please check your internet connection and try again.';
+            } else if (statusStr.contains('SIM') || statusStr.contains('NO ACCESS')) {
+              _errorMessage = 'Unable to access your mobile money account. Please ensure your SIM card is inserted and try again.';
+            } else {
+              _errorMessage = 'Payment failed. Please check your mobile money account balance and ensure you have sufficient funds, then try again.';
+            }
                 } else if (status.status.toUpperCase() == 'EXPIRED') {
                   _paymentStatus = 'failed';
                   _errorMessage = 'Payment link expired. Please initiate a new payment.';
@@ -246,11 +297,22 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         // Wait before next attempt
         await Future.delayed(interval);
         attempts++;
+        _pollAttempts = attempts;
         
         if (mounted && attempts % 5 == 0) {
           // Log progress every 15 seconds
           LogService.debug('⏳ Still polling payment status (attempt $attempts/$maxAttempts)...');
         }
+      }
+      
+      // Check if user cancelled
+      if (_isCancelled && mounted) {
+        safeSetState(() {
+          _isPolling = false;
+          _paymentStatus = 'idle';
+          _errorMessage = null; // Clear any previous errors
+        });
+        return;
       }
       
       // Max attempts reached - check database one final time
@@ -274,11 +336,11 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
           LogService.warning('Error in final database check: $e');
         }
         
-        // Still pending after max attempts
+        // Still pending after max attempts - show timeout with retry option
         safeSetState(() {
           _isPolling = false;
-          _paymentStatus = 'pending';
-          _errorMessage = 'Payment is still being processed. Please check back in a few moments. The payment will be confirmed automatically once processed.';
+          _paymentStatus = 'timeout';
+          _errorMessage = 'Payment confirmation timed out. If you completed the payment, it will be confirmed automatically. Otherwise, please try again.';
         });
       }
     } catch (e) {
@@ -654,8 +716,12 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                   const SizedBox(height: 16),
 
                   // Action Buttons
-                  if (_paymentStatus == 'idle' || _paymentStatus == 'failed')
+                  if (_paymentStatus == 'idle' || _paymentStatus == 'failed' || _paymentStatus == 'timeout')
                     _buildPayButton(),
+                  if (_paymentStatus == 'failed' || _paymentStatus == 'timeout') ...[
+                    const SizedBox(height: 12),
+                    _buildRetryButton(),
+                  ],
                   if (needsCalendarAuth) _buildCalendarRetryButton(),
 
                   const SizedBox(height: 16),
@@ -767,16 +833,22 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
             ),
           ),
           Flexible(
-            child: Text(
-              '${widget.trialSession.trialFee.toStringAsFixed(0)} XAF',
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.primaryColor,
-              ),
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-            ),
+            child: _loadingAmount
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor),
+                  )
+                : Text(
+                    '${(_payableAmount ?? widget.trialSession.trialFee).toStringAsFixed(0)} XAF',
+                    style: GoogleFonts.poppins(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primaryColor,
+                    ),
+                    textAlign: TextAlign.right,
+                    overflow: TextOverflow.ellipsis,
+                  ),
           ),
         ],
       ),
@@ -856,31 +928,129 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   }
 
   Widget _buildPaymentPending() {
+    // Calculate progress percentage (max 40 attempts = 100%)
+    final progressPercent = _pollAttempts > 0 ? (_pollAttempts / 40).clamp(0.0, 1.0) : 0.0;
+    
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.orange[50],
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange[200]!),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
+          SizedBox(
+            width: 50,
+            height: 50,
+            child: CircularProgressIndicator(
+              strokeWidth: 4,
+              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+            ),
+          ),
+          const SizedBox(height: 20),
           Text(
             'Waiting for payment confirmation...',
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Colors.orange[900],
+              color: AppTheme.textDark,
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             'Please complete the payment on your mobile device',
+            textAlign: TextAlign.center,
             style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: Colors.orange[700],
+              fontSize: 13,
+              color: AppTheme.textMedium,
+              height: 1.4,
+            ),
+          ),
+          if (_pollAttempts > 0) ...[
+            const SizedBox(height: 16),
+            // Progress indicator
+            Column(
+              children: [
+                LinearProgressIndicator(
+                  value: progressPercent,
+                  backgroundColor: Colors.grey[200],
+                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                  minHeight: 6,
+                  borderRadius: BorderRadius.circular(3),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Checking payment status... (${_pollAttempts}/40)',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppTheme.textLight,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+          // Helpful information card
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue[200]!),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, color: Colors.blue[700], size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'If payment fails or you don\'t have access to your SIM, you can cancel and try again later.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.blue[800],
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: () {
+              safeSetState(() {
+                _isCancelled = true;
+                _isPolling = false;
+                _paymentStatus = 'idle';
+                _pollAttempts = 0;
+                _errorMessage = null;
+              });
+            },
+            icon: const Icon(Icons.close, size: 18),
+            label: Text(
+              'Cancel Payment',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textMedium,
+              side: BorderSide(color: AppTheme.softBorder),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
         ],
@@ -916,45 +1086,185 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   }
 
   Widget _buildErrorMessage() {
+    // Show success message only when payment is successful
+    if (_paymentStatus == 'successful') {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppTheme.primaryColor.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'You\'re all set for this lesson',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _errorMessage ??
+                        'Your payment is done and your lesson is booked.\n'
+                        'Next steps:\n'
+                        '• Open "My Sessions" to see the lesson and, when it is time, tap "Join meeting" there.\n'
+                        '• If you want the lesson to appear in your Google Calendar with a reminder, tap the button below to add it (optional).',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: AppTheme.textDark,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show error message for failed/timeout payments
+    final isError = _paymentStatus == 'failed' || _paymentStatus == 'timeout';
+    if (!isError || _errorMessage == null) {
+      return const SizedBox.shrink();
+    }
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.primaryColor.withOpacity(0.04),
+        color: Colors.red[50],
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.25)),
+        border: Border.all(color: Colors.red[200]!),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline, color: AppTheme.primaryColor, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.error_outline, color: Colors.red[700], size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _paymentStatus == 'timeout' 
+                          ? 'Payment Confirmation Timed Out'
+                          : 'Payment Failed',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red[900],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _errorMessage!,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: Colors.red[800],
+                        height: 1.4,
+                      ),
+                    ),
+                    if (_paymentStatus == 'timeout') ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'If you completed the payment on your phone, it will be confirmed automatically. You can also try again below.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.red[700],
+                          height: 1.4,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_paymentStatus == 'failed') ...[
+            const SizedBox(height: 12),
+            Row(
               children: [
-                Text(
-                  'You\'re all set for this lesson',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      // Just close the screen - user can try again later
+                      Navigator.pop(context, false);
+                    },
+                    icon: const Icon(Icons.schedule, size: 18),
+                    label: Text(
+                      'Try Again Later',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textMedium,
+                      side: BorderSide(color: Colors.grey[300]!),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  _errorMessage ??
-                      'Your payment is done and your lesson is booked.\n'
-                      'Next steps:\n'
-                      '• Open "My Sessions" to see the lesson and, when it is time, tap "Join meeting" there.\n'
-                      '• If you want the lesson to appear in your Google Calendar with a reminder, tap the button below to add it (optional).',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppTheme.textDark,
-                    height: 1.4,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await WhatsAppSupportService.contactSupportForTrialPaymentFailure(
+                          sessionId: widget.trialSession.id,
+                          sessionDate: widget.trialSession.formattedDate,
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'WhatsApp is not installed. Please install WhatsApp to contact support.',
+                                style: GoogleFonts.poppins(),
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: Text(
+                      'Contact Support',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      side: BorderSide(color: AppTheme.primaryColor),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -987,7 +1297,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                     ),
                   )
                 : Text(
-                    'Pay ${widget.trialSession.trialFee.toStringAsFixed(0)} XAF',
+                    'Pay ${(_payableAmount ?? widget.trialSession.trialFee).toStringAsFixed(0)} XAF',
                     style: GoogleFonts.poppins(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1088,5 +1398,37 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         ),
       ),
       );
+  }
+
+  Widget _buildRetryButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _isProcessing ? null : () {
+          safeSetState(() {
+            _paymentStatus = 'idle';
+            _errorMessage = null;
+            _pollAttempts = 0;
+            _isCancelled = false;
+          });
+        },
+        icon: const Icon(Icons.refresh, size: 18),
+        label: Text(
+          'Try Again',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.primaryColor,
+          side: BorderSide(color: AppTheme.primaryColor, width: 2),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
   }
 }

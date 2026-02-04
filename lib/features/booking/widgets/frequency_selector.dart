@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/features/profile/screens/my_children_screen.dart';
 
 /// Step 1: Session Frequency Selector
 ///
@@ -12,12 +13,16 @@ class FrequencySelector extends StatefulWidget {
   final Map<String, dynamic> tutor;
   final int? initialFrequency;
   final Function(int) onFrequencySelected;
+  final bool showMultiLearnerHint; // Show hint for parents with single learner
+  final int? learnerCount; // Number of learners selected (for adapting pricing display)
 
   const FrequencySelector({
     Key? key,
     required this.tutor,
     this.initialFrequency,
     required this.onFrequencySelected,
+    this.showMultiLearnerHint = false,
+    this.learnerCount,
   }) : super(key: key);
 
   @override
@@ -40,8 +45,27 @@ class _FrequencySelectorState extends State<FrequencySelector> {
     );
   }
 
+  /// When learnerCount > 1, returns map of frequency -> discounted monthly total.
+  Future<Map<int, double>> _getMultiLearnerDiscountedMonthly() async {
+    final count = widget.learnerCount ?? 1;
+    if (count <= 1) return {};
+    final result = <int, double>{};
+    for (int f = 1; f <= 4; f++) {
+      final pricing = _calculatePricing(f);
+      final baseMonthly = pricing['perMonth'] as double;
+      final discounted = await PricingService.calculateMultiLearnerMonthlyTotal(
+        baseMonthlyTotal: baseMonthly,
+        learnerCount: count,
+      );
+      result[f] = discounted;
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final useMultiLearnerPricing = widget.learnerCount != null && widget.learnerCount! > 1;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -68,39 +92,157 @@ class _FrequencySelectorState extends State<FrequencySelector> {
           ),
           const SizedBox(height: 32),
 
-          // Frequency options
-          _buildFrequencyOption(
-            frequency: 1,
-            label: '1x per week',
-            description: '4 sessions per month',
-            icon: Icons.calendar_today,
-          ),
-          const SizedBox(height: 12),
-
-          _buildFrequencyOption(
-            frequency: 2,
-            label: '2x per week',
-            description: '8 sessions per month',
-            icon: Icons.event_repeat,
-            isRecommended: true, // Most popular
-          ),
-          const SizedBox(height: 12),
-
-          _buildFrequencyOption(
-            frequency: 3,
-            label: '3x per week',
-            description: '12 sessions per month',
-            icon: Icons.event_available,
-          ),
-          const SizedBox(height: 12),
-
-          _buildFrequencyOption(
-            frequency: 4,
-            label: '4x per week',
-            description: '16 sessions per month',
-            icon: Icons.event_note,
-          ),
+          // Frequency options (with multi-learner discounted prices when learnerCount > 1)
+          useMultiLearnerPricing
+              ? FutureBuilder<Map<int, double>>(
+                  future: _getMultiLearnerDiscountedMonthly(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    }
+                    final discountedMap = snapshot.data ?? {};
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildFrequencyOption(
+                          frequency: 1,
+                          label: '1x per week',
+                          description: '4 sessions per month',
+                          icon: Icons.calendar_today,
+                          displayMonthlyOverride: discountedMap[1],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildFrequencyOption(
+                          frequency: 2,
+                          label: '2x per week',
+                          description: '8 sessions per month',
+                          icon: Icons.event_repeat,
+                          isRecommended: true,
+                          displayMonthlyOverride: discountedMap[2],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildFrequencyOption(
+                          frequency: 3,
+                          label: '3x per week',
+                          description: '12 sessions per month',
+                          icon: Icons.event_available,
+                          displayMonthlyOverride: discountedMap[3],
+                        ),
+                        const SizedBox(height: 12),
+                        _buildFrequencyOption(
+                          frequency: 4,
+                          label: '4x per week',
+                          description: '16 sessions per month',
+                          icon: Icons.event_note,
+                          displayMonthlyOverride: discountedMap[4],
+                        ),
+                      ],
+                    );
+                  },
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildFrequencyOption(
+                      frequency: 1,
+                      label: '1x per week',
+                      description: '4 sessions per month',
+                      icon: Icons.calendar_today,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFrequencyOption(
+                      frequency: 2,
+                      label: '2x per week',
+                      description: '8 sessions per month',
+                      icon: Icons.event_repeat,
+                      isRecommended: true,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFrequencyOption(
+                      frequency: 3,
+                      label: '3x per week',
+                      description: '12 sessions per month',
+                      icon: Icons.event_available,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildFrequencyOption(
+                      frequency: 4,
+                      label: '4x per week',
+                      description: '16 sessions per month',
+                      icon: Icons.event_note,
+                    ),
+                  ],
+                ),
           const SizedBox(height: 24),
+
+          // Multi-learner hint (for parents with single learner)
+          if (widget.showMultiLearnerHint) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: Colors.blue[700],
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'If you have more than one child who needs personal guidance, you can add other children in your profile.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: Colors.grey[800],
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MyChildrenScreen(),
+                          ),
+                        );
+                      },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      ),
+                      child: Text(
+                        'Add other learners',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue[700],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // Info box
           Container(
@@ -143,10 +285,11 @@ class _FrequencySelectorState extends State<FrequencySelector> {
     String? description, // Make optional
     required IconData icon,
     bool isRecommended = false,
+    double? displayMonthlyOverride, // When set (e.g. multi-learner discounted), use instead of single-learner perMonth
   }) {
     final isSelected = _selectedFrequency == frequency;
     final pricing = _calculatePricing(frequency);
-    final monthlyTotal = pricing['perMonth'] as double;
+    final monthlyTotal = displayMonthlyOverride ?? (pricing['perMonth'] as double);
 
     return GestureDetector(
       onTap: () {
@@ -267,7 +410,9 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                     ),
                   ),
                   Text(
-                    'per month',
+                    widget.learnerCount != null && widget.learnerCount! > 1
+                        ? 'per month (${widget.learnerCount} learners)'
+                        : 'per month',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
                       color: Colors.grey[600],
