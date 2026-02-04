@@ -7,6 +7,8 @@ import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/whatsapp_support_service.dart';
+import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:confetti/confetti.dart';
 
 /// Payment Confirmation Screen
@@ -496,7 +498,7 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 24),
+          padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -509,19 +511,19 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
 
               // Processing Indicator (below instructions)
               if (_isPolling || _isProcessing) ...[
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 _buildProcessingIndicator(),
               ],
 
               // Success Message
               if (_paymentStatus == 'successful' && !_isProcessing) ...[
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 _buildSuccessMessage(),
               ],
 
               // Error Message
               if (_errorMessage != null) ...[
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 _buildErrorMessage(),
               ],
             ],
@@ -533,11 +535,10 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
 
   Widget _buildProcessingIndicator() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.primaryColor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: AppTheme.primaryColor.withOpacity(0.2),
           width: 1,
@@ -547,18 +548,18 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(
-            width: 24,
-            height: 24,
+            width: 20,
+            height: 20,
             child: CircularProgressIndicator(
-              strokeWidth: 2.5,
+              strokeWidth: 2,
               valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Text(
             'Processing payment...',
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 14,
               color: AppTheme.textDark,
               fontWeight: FontWeight.w600,
             ),
@@ -570,24 +571,23 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
 
   Widget _buildSuccessMessage() {
     return Container(
-      padding: const EdgeInsets.all(20),
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green[200]!),
+        color: AppTheme.accentGreen.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
       ),
       child: Row(
         children: [
-          Icon(Icons.check_circle, color: Colors.green[700], size: 32),
-          const SizedBox(width: 16),
+          Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 24),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               'Payment successful!',
               style: GoogleFonts.poppins(
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.green[900],
+                color: AppTheme.accentGreen,
               ),
             ),
           ),
@@ -597,28 +597,111 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
   }
 
   Widget _buildErrorMessage() {
+    final isPaymentFailed = _paymentStatus == 'failed' || 
+                           (_errorMessage != null && 
+                            (_errorMessage!.toLowerCase().contains('failed') ||
+                             _errorMessage!.toLowerCase().contains('error') ||
+                             _errorMessage!.toLowerCase().contains('contact support')));
+    
     return Container(
-      padding: const EdgeInsets.all(20),
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red[50],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red[200]!),
+        color: AppTheme.accentOrange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline, color: Colors.red[700], size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _errorMessage!,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.red[900],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.error_outline, color: AppTheme.accentOrange, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _errorMessage!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: AppTheme.accentOrange,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
+          if (isPaymentFailed) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      // Just close the screen - user can try again later
+                      Navigator.pop(context, false);
+                    },
+                    icon: const Icon(Icons.schedule, size: 18),
+                    label: Text(
+                      'Try Again Later',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textMedium,
+                      side: BorderSide(color: Colors.grey[300]!),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await WhatsAppSupportService.contactSupportForPaymentFailure(
+                          paymentId: widget.transactionId,
+                          amount: PricingService.formatPrice(widget.amount),
+                          paymentType: 'Booking Payment',
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'WhatsApp is not installed. Please install WhatsApp to contact support.',
+                                style: GoogleFonts.poppins(),
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: Text(
+                      'Contact Support',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      side: BorderSide(color: AppTheme.primaryColor),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

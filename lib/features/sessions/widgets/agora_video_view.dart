@@ -12,6 +12,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
   final int? uid;
   final bool isLocal;
   final agora_rtc_engine.RtcConnection? connection; // Optional connection for remote video
+  final agora_rtc_engine.VideoSourceType? sourceType; // Optional source type (camera or screen)
 
   const AgoraVideoViewWidget({
     Key? key,
@@ -19,6 +20,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
     required this.uid,
     this.isLocal = false,
     this.connection,
+    this.sourceType,
   }) : super(key: key);
 
   @override
@@ -113,6 +115,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
             rtcEngine: engine,
             canvas: agora_rtc_engine.VideoCanvas(
               uid: 0,
+              sourceType: actualSourceType,
               // mirrorMode is optional - only set if available
             ),
           )
@@ -121,6 +124,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
             connection: connection!, // Safe to use ! here because we checked above
             canvas: agora_rtc_engine.VideoCanvas(
               uid: uid!,
+              sourceType: actualSourceType,
               // mirrorMode is optional - only set if available
             ),
           );

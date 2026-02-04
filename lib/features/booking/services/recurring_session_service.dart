@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/core/services/transportation_cost_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 
@@ -54,6 +55,16 @@ class RecurringSessionService {
         'subject': bookingRequest.subject ?? 'Tutoring Session', // Store subject in recurring_sessions
         'created_at': DateTime.now().toIso8601String(),
       };
+
+      // Add multi-learner support (for parent bookings)
+      if (bookingRequest.learnerLabels != null && bookingRequest.learnerLabels!.isNotEmpty) {
+        sessionData['learner_labels'] = bookingRequest.learnerLabels;
+      }
+
+      // Add transportation cost (for onsite/hybrid sessions)
+      if (bookingRequest.estimatedTransportationCost != null && bookingRequest.estimatedTransportationCost! > 0) {
+        sessionData['transportation_cost_per_session'] = bookingRequest.estimatedTransportationCost;
+      }
 
       // Add location_description if available
       if (bookingRequest.locationDescription != null) {
@@ -414,10 +425,43 @@ class RecurringSessionService {
             continue; // Session already exists, skip
           }
 
-          // Create session data
-          // Note: location should never be 'hybrid' - hybrid is a preference only
-          // If location is 'hybrid', default to 'online' (shouldn't happen, but safety check)
-          final sessionLocation = location == 'hybrid' ? 'online' : location;
+          // Determine session location (for hybrid sessions, check per-session location)
+          String sessionLocation = location;
+          bool isOnsiteSession = false;
+          String? sessionAddress = address;
+          double transportationCostPerSession = 0.0;
+          
+          // For hybrid sessions, check session_locations to determine if this session is onsite
+          if (location == 'hybrid') {
+            // Try to get session_locations from booking_requests via recurring_sessions
+            // Note: session_locations is stored in booking_requests, not recurring_sessions
+            // For now, we'll use the stored transportation_cost_per_session as estimate
+            // Per-session location checking will be implemented when we link booking_requests properly
+            final transportationCostPerSessionFromDB = (recurringSession['transportation_cost_per_session'] as num?)?.toDouble() ?? 0.0;
+            
+            // For hybrid, we need to check if this specific session is onsite
+            // Since we don't have direct access to session_locations here, we'll use a fallback:
+            // If transportation_cost_per_session > 0, assume some sessions are onsite
+            // For now, default to online (transportation will be calculated per session when needed)
+            sessionLocation = 'online'; // Default for hybrid (will be updated per session)
+            isOnsiteSession = false;
+            sessionAddress = null;
+            transportationCostPerSession = 0.0; // Will be calculated per session
+          } else {
+            // For non-hybrid sessions, use the main location
+            isOnsiteSession = location == 'onsite';
+            sessionAddress = isOnsiteSession ? address : null;
+            
+            // Get transportation cost per session (from recurring_sessions)
+            final transportationCostPerSessionFromDB = (recurringSession['transportation_cost_per_session'] as num?)?.toDouble() ?? 0.0;
+            
+            if (isOnsiteSession) {
+              // Use stored transportation cost if available, otherwise use 0 (will be calculated when session completes)
+              transportationCostPerSession = transportationCostPerSessionFromDB;
+            } else {
+              transportationCostPerSession = 0.0; // No transportation for online sessions
+            }
+          }
           
           // Set learner_id and parent_id correctly based on learner_type
           // If learner_type is 'learner': learner_id = studentId, parent_id = null
@@ -438,7 +482,8 @@ class RecurringSessionService {
             'scheduled_time': timeFormatted,
             'duration_minutes': durationMinutes,
             'location': sessionLocation, // Only 'online' or 'onsite'
-            'address': sessionLocation == 'onsite' ? address : null, // Column is 'address', not 'onsite_address'
+            'address': sessionAddress, // Column is 'address', not 'onsite_address'
+            'transportation_cost': transportationCostPerSession, // Transportation cost for onsite sessions only (0 for online)
             'status': 'scheduled',
             'created_at': DateTime.now().toIso8601String(),
           };

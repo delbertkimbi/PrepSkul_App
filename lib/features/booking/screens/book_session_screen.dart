@@ -193,12 +193,26 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
   Widget _buildDurationSelector() {
     return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Row(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: _buildDurationButton('25 min')),
-          const SizedBox(width: 12),
-          Expanded(child: _buildDurationButton('50 min')),
+          Text(
+            'Duration',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _buildDurationButton('25 min')),
+              const SizedBox(width: 8),
+              Expanded(child: _buildDurationButton('50 min')),
+            ],
+          ),
         ],
       ),
     );
@@ -215,22 +229,31 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        height: 44,
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white : AppTheme.softBackground,
-          borderRadius: BorderRadius.circular(12),
+          color: isSelected ? AppTheme.primaryColor : Colors.white,
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? AppTheme.textDark : AppTheme.softBorder,
+            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
             width: isSelected ? 2 : 1,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withOpacity(0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Center(
           child: Text(
             duration,
             style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-              color: isSelected ? AppTheme.textDark : AppTheme.textMedium,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isSelected ? Colors.white : AppTheme.textDark,
             ),
           ),
         ),
@@ -240,7 +263,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
   Widget _buildCalendar() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -248,9 +271,9 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                DateFormat('MMMM yyyy').format(_selectedDate),
+                'Select Date',
                 style: GoogleFonts.poppins(
-                  fontSize: 18,
+                  fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
@@ -259,20 +282,27 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
                 onPressed: () {
                   safeSetState(() => _selectedDate = DateTime.now());
                 },
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
                 child: Text(
                   'Today',
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.primaryColor,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppTheme.primaryColor,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           SizedBox(
-            height: 80,
+            height: 60,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: _weekDates.length,
@@ -293,48 +323,44 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
                     });
                   },
                   child: Container(
-                    width: 70,
-                    margin: const EdgeInsets.only(right: 12),
+                    width: 56,
+                    margin: EdgeInsets.only(right: index < _weekDates.length - 1 ? 8 : 0),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? AppTheme.primaryColor
-                          : AppTheme.softBackground,
-                      borderRadius: BorderRadius.circular(12),
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : (isToday ? AppTheme.primaryColor : AppTheme.softBorder),
+                        width: isToday && !isSelected ? 2 : 1,
+                      ),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          DateFormat('E').format(date),
+                          DateFormat('E').format(date).substring(0, 3), // "Thu"
                           style: GoogleFonts.poppins(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w500,
                             color: isSelected
                                 ? Colors.white
                                 : AppTheme.textMedium,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           DateFormat('d').format(date),
                           style: GoogleFonts.poppins(
-                            fontSize: 24,
+                            fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: isSelected
                                 ? Colors.white
                                 : AppTheme.textDark,
                           ),
                         ),
-                        if (isToday && !isSelected)
-                          Container(
-                            margin: const EdgeInsets.only(top: 4),
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -366,22 +392,22 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
   Widget _buildTimeSlots() {
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Afternoon slots
           if (_afternoonSlots.isNotEmpty) ...[
             _buildTimePeriodHeader('Afternoon', Icons.wb_sunny_outlined),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildSlotGrid(_afternoonSlots),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
           ],
 
           // Evening slots
           if (_eveningSlots.isNotEmpty) ...[
             _buildTimePeriodHeader('Evening', Icons.nights_stay_outlined),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildSlotGrid(_eveningSlots),
           ],
         ],
@@ -408,8 +434,8 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
 
   Widget _buildSlotGrid(List<String> slots) {
     return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+      spacing: 8,
+      runSpacing: 8,
       children: slots.map((slot) {
         final isSelected = _selectedTimeSlot == slot;
 
@@ -418,13 +444,13 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
             safeSetState(() => _selectedTimeSlot = slot);
           },
           child: Container(
-            width: (MediaQuery.of(context).size.width - 64) / 2,
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            width: (MediaQuery.of(context).size.width - 48) / 2,
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             decoration: BoxDecoration(
               color: isSelected
-                  ? AppTheme.primaryColor.withOpacity(0.1)
+                  ? AppTheme.primaryColor
                   : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
                 width: isSelected ? 2 : 1,
@@ -434,9 +460,9 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
               child: Text(
                 slot,
                 style: GoogleFonts.poppins(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                  color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
                 ),
               ),
             ),
@@ -451,7 +477,7 @@ class _BookSessionScreenState extends State<BookSessionScreen> {
     final totalCost = (hourlyRate * duration).round();
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [

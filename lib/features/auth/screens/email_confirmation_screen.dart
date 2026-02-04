@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart' hide LogService;
 import 'package:prepskul/core/services/tutor_onboarding_progress_service.dart';
+import 'package:prepskul/core/services/whatsapp_support_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -564,15 +565,59 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
 
                         const SizedBox(height: 40),
 
-                        // Help text
-                        Text(
-                          t.authDidntReceiveEmail,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            color: AppTheme.textLight,
-                            height: 1.5,
-                          ),
+                        // Help text with clickable contact support
+                        RichText(
                           textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppTheme.textLight,
+                              height: 1.5,
+                            ),
+                            children: [
+                              TextSpan(
+                                text: t.authDidntReceiveEmail.split('contact support')[0].trim(),
+                              ),
+                              const TextSpan(text: ' '),
+                              WidgetSpan(
+                                child: GestureDetector(
+                                  onTap: () async {
+                                    try {
+                                      await WhatsAppSupportService.contactSupportForEmailVerification(
+                                        email: widget.email,
+                                      );
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'WhatsApp is not installed. Please install WhatsApp to contact support.',
+                                              style: GoogleFonts.poppins(),
+                                            ),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  child: Text(
+                                    'contact support',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      color: AppTheme.primaryColor,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              TextSpan(
+                                text: t.authDidntReceiveEmail.toLowerCase().contains('contact support')
+                                    ? t.authDidntReceiveEmail.split(RegExp(r'contact support', caseSensitive: false))[1]
+                                    : '',
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),

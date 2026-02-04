@@ -862,7 +862,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Seamless background
+      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -916,7 +916,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       'Active',
                       style: GoogleFonts.poppins(
                         fontSize: 10,
-                        color: Colors.green[600],
+                        color: AppTheme.accentGreen,
                       ),
                     )
                   else if (_isOtherUserTyping)
@@ -924,7 +924,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       'Typing...',
                       style: GoogleFonts.poppins(
                         fontSize: 10,
-                        color: Colors.green[600],
+                        color: AppTheme.accentGreen,
                         fontStyle: FontStyle.italic,
                       ),
                     )
@@ -933,7 +933,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       _formatLastSeen(widget.conversation.otherUserLastSeen!),
                       style: GoogleFonts.poppins(
                         fontSize: 10,
-                        color: Colors.grey[600],
+                        color: AppTheme.textLight,
                       ),
                     ),
                 ],
@@ -1007,7 +1007,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ? _buildEmptyState()
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         itemCount: _messages.length + 
                                    (_shouldShowBanner() ? 1 : 0) + 
                                    (_isLoadingMore ? 1 : 0),
@@ -1076,9 +1076,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     child: Text(
                                       _formatMessageTime(message.createdAt),
                                       style: GoogleFonts.poppins(
-                                        fontSize: 11,
+                                        fontSize: 10,
                                         fontWeight: FontWeight.w500,
-                                        color: Colors.grey[600],
+                                        color: AppTheme.textMedium,
                                       ),
                                     ),
                                   ),
@@ -1126,9 +1126,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
+                color: AppTheme.softBackground,
                 border: Border(
-                  bottom: BorderSide(color: Colors.grey[300]!, width: 1),
+                  bottom: BorderSide(color: AppTheme.softBorder, width: 1),
                 ),
               ),
               child: Row(
@@ -1168,7 +1168,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(PhosphorIcons.x(), size: 18, color: Colors.grey[600]),
+                    icon: Icon(PhosphorIcons.x(), size: 18, color: AppTheme.textLight),
                     onPressed: () {
                       safeSetState(() {
                         _replyingToMessage = null;
@@ -1183,9 +1183,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           
           // Message input - seamless single color like WhatsApp/Preply
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: Colors.white,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -1200,10 +1200,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
+                        color: AppTheme.softBackground,
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.grey[200]!,
+                          color: AppTheme.softBorder,
                           width: 1,
                         ),
                       ),
@@ -1213,21 +1213,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       minLines: 1,
                       textInputAction: TextInputAction.newline,
                       keyboardType: TextInputType.multiline,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: AppTheme.textDark,
+                      ),
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         hintStyle: GoogleFonts.poppins(
-                          color: Colors.grey[400],
-                          fontSize: 14,
+                          color: AppTheme.textLight,
+                          fontSize: 13,
                         ),
                         filled: true,
-                          fillColor: Colors.white,
+                          fillColor: AppTheme.softBackground,
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius: BorderRadius.circular(20),
                           borderSide: BorderSide.none,
                         ),
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                          horizontal: 14,
+                          vertical: 10,
                           ),
                         ),
                       ),
@@ -1240,12 +1244,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           ? AppTheme.primaryColor.withOpacity(0.3)
                           : AppTheme.primaryColor,
                       shape: BoxShape.circle,
+                      boxShadow: _hasText ? [
+                        BoxShadow(
+                          color: AppTheme.primaryColor.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ] : null,
                     ),
                     child: IconButton(
                       icon: PhosphorIcon(
                         PhosphorIcons.paperPlaneTilt(),
                         color: _hasText ? Colors.white : Colors.white.withOpacity(0.5),
-                        size: 20,
+                        size: 18,
                       ),
                       onPressed: _isSending || !_hasText
                           ? null
@@ -1285,12 +1296,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ? () => _retryFailedMessage(message)
               : null,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: isCurrentUser 
                   ? AppTheme.primaryColor 
-                  : Colors.grey[50],
+                  : Colors.white,
               borderRadius: BorderRadius.circular(12),
+              border: isCurrentUser 
+                  ? null
+                  : Border.all(
+                      color: AppTheme.softBorder,
+                      width: 1,
+                    ),
               // Neumorphic shadow effect
               boxShadow: [
                 // Light shadow (top-left)
@@ -1353,10 +1370,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         Text(
                           message.replyToContent ?? '',
                           style: GoogleFonts.poppins(
-                            fontSize: 9,
+                            fontSize: 10,
                             color: isCurrentUser
                                 ? Colors.white.withOpacity(0.8)
-                                : Colors.grey[700],
+                                : AppTheme.textMedium,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -1369,9 +1386,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 Text(
                   message.content,
                   style: GoogleFonts.poppins(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: isCurrentUser ? Colors.white : AppTheme.textDark,
-                    height: 1.3,
+                    height: 1.4,
                     fontWeight: FontWeight.w400,
                   ),
                 ),
@@ -1383,10 +1400,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     Text(
                       DateFormat('HH:mm').format(message.createdAt),
                       style: GoogleFonts.poppins(
-                        fontSize: 9,
+                        fontSize: 10,
                         color: isCurrentUser 
-                            ? Colors.white.withOpacity(0.7)
-                            : Colors.grey[600],
+                            ? Colors.white.withOpacity(0.8)
+                            : AppTheme.textLight,
                       ),
                     ),
                       if (isCurrentUser) ...[

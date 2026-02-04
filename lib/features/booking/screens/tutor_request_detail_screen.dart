@@ -39,6 +39,10 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
   bool _isLoadingSurvey = true;
   Map<String, dynamic>? _requesterProfile; // Store requester profile (who made the booking)
   bool _isLoadingProfile = true;
+  Map<String, String> _learnerRejectionReasons = {}; // Track rejection reasons per learner
+  Map<String, bool> _expandedLearners = {}; // Track which learners are expanded
+  Map<String, Map<String, dynamic>> _learnerDetails = {}; // Cache learner details from parent_learners
+  bool _isLoadingLearnerDetails = false;
 
   @override
   void initState() {
@@ -209,20 +213,28 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
 
     if (response != null) {
       safeSetState(() => _isProcessing = true);
-      // TODO: Call API to approve
-      await Future.delayed(const Duration(seconds: 1));
-
-      if (!mounted) return;
-      Navigator.pop(context); // Go back to list
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Request accepted successfully!',
-            style: GoogleFonts.poppins(),
-          ),
+      try {
+        final requestId = widget.request['id'] as String;
+        // TutorRequestDetailScreen handles booking_requests (recurring sessions), not trials
+        await BookingService.approveBookingRequest(requestId, responseNotes: response);
+        
+        if (!mounted) return;
+        Navigator.pop(context); // Go back to list
+        BrandedSnackBar.show(
+          context,
+          message: 'Request accepted successfully!',
           backgroundColor: Colors.green,
-        ),
-      );
+          icon: Icons.check_circle,
+        );
+      } catch (e) {
+        LogService.error('Error approving request: $e');
+        if (!mounted) return;
+        safeSetState(() => _isProcessing = false);
+        BrandedSnackBar.showError(
+          context,
+          'Failed to accept request: ${e.toString().replaceFirst('Exception: ', '')}',
+        );
+      }
     }
   }
 
@@ -476,55 +488,70 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
 
             const SizedBox(height: 32),
 
-            // Action Buttons (for pending requests)
-            if (isPending && !_isProcessing) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _showRejectDialog,
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.red[300]!),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+            // Action Buttons (for pending requests - only show if NOT multi-learner)
+            // Multi-learner bookings use per-learner accept/decline in the group card
+            Builder(
+              builder: (context) {
+                final learnerLabels = widget.request['learner_labels'] as List?;
+                final isMultiLearner = learnerLabels != null && learnerLabels.isNotEmpty;
+                
+                // Hide global buttons for multi-learner bookings
+                if (isMultiLearner) {
+                  return const SizedBox.shrink();
+                }
+                
+                // Show global buttons for single-learner bookings
+                if (isPending && !_isProcessing) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _showRejectDialog,
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: Colors.red[300]!),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Decline',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.red[700],
+                            ),
+                          ),
                         ),
                       ),
-                      child: Text(
-                        'Decline',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.red[700],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _approveRequest,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Accept Request',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: _approveRequest,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Accept Request',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                    ],
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
             if (_isProcessing) const Center(child: CircularProgressIndicator()),
           ],
         ),
@@ -777,6 +804,21 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                 ],
               ),
             ),
+            // Multi-learner group card with per-learner accept/decline
+            Builder(
+              builder: (context) {
+                final isTrial = widget.request['is_trial'] == true;
+                if (isTrial) return const SizedBox.shrink();
+                
+                final learnerLabels = widget.request['learner_labels'] as List?;
+                if (learnerLabels == null || learnerLabels.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                
+                // This is a multi-learner booking - show group card with per-learner actions
+                return _buildMultiLearnerGroupCard(learnerLabels);
+              },
+            ),
           ],
         ),
       ),
@@ -985,6 +1027,15 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     final monthlyTotal = widget.request['monthly_total'] as double? ?? 0.0;
     final paymentPlan = widget.request['payment_plan'] as String? ?? 'Not specified';
     final isTrial = widget.request['is_trial'] == true;
+    final location = widget.request['location'] as String? ?? 'online';
+    final estimatedTransportationCost = (widget.request['estimated_transportation_cost'] as num?)?.toDouble();
+    final isOnsite = location == 'onsite' || location == 'hybrid';
+    final frequency = widget.request['frequency'] as int? ?? 1;
+    final sessionsPerMonth = frequency * 4;
+    final monthlyTransportationTotal = (estimatedTransportationCost != null && estimatedTransportationCost > 0 && isOnsite)
+        ? estimatedTransportationCost * sessionsPerMonth
+        : 0.0;
+    final totalMonthlyPayment = monthlyTotal + monthlyTransportationTotal;
 
     return Card(
       elevation: 2,
@@ -1035,7 +1086,65 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
             if (isTrial)
               _buildDetailRow(Icons.money, 'Trial Session', 'FREE', iconColor: Colors.green[700])
             else ...[
-              _buildDetailRow(Icons.attach_money, 'Monthly Revenue', '${monthlyTotal.toStringAsFixed(0)} XAF', iconColor: Colors.green[700]),
+              _buildDetailRow(Icons.attach_money, 'Session Fee (Monthly)', '${monthlyTotal.toStringAsFixed(0)} XAF', iconColor: Colors.green[700]),
+              if (isOnsite && monthlyTransportationTotal > 0) ...[
+                const SizedBox(height: 8),
+                _buildDetailRow(Icons.directions_car, 'Transportation (Monthly)', '${monthlyTransportationTotal.toStringAsFixed(0)} XAF', iconColor: Colors.orange[700]),
+                Container(
+                  margin: const EdgeInsets.only(top: 4, bottom: 8),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 14, color: Colors.orange[700]),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${estimatedTransportationCost?.toStringAsFixed(0) ?? '0'} XAF per session (round trip)',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: Colors.orange[900],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[300]!),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total Parent Pays:',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.green[900],
+                      ),
+                    ),
+                    Text(
+                      '${totalMonthlyPayment.toStringAsFixed(0)} XAF',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.green[900],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 8),
               _buildDetailRow(Icons.payment, 'Payment Plan', paymentPlan.toUpperCase(), iconColor: Colors.green[700]),
             ],
@@ -1331,6 +1440,547 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
         ),
       ],
     );
+  }
+
+  /// Build multi-learner group card with per-learner accept/decline actions
+  Widget _buildMultiLearnerGroupCard(List learnerLabels) {
+    final learnerAcceptanceStatus = widget.request['learner_acceptance_status'] as Map<String, dynamic>?;
+    final isPending = widget.request['status'] == 'pending';
+    
+    return Column(
+      children: [
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue[50],
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.blue[200]!),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.people_outline, size: 20, color: Colors.blue[700]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Learners for this booking (${learnerLabels.length})',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...learnerLabels.asMap().entries.map((entry) {
+                final index = entry.key;
+                final learnerName = entry.value.toString();
+                final learnerStatus = learnerAcceptanceStatus?[learnerName]?['status'] as String?;
+                final learnerReason = learnerAcceptanceStatus?[learnerName]?['reason'] as String?;
+                final isExpanded = _expandedLearners[learnerName] ?? false;
+                final learnerDetails = _learnerDetails[learnerName];
+                
+                return _buildLearnerCard(
+                  learnerName: learnerName,
+                  index: index,
+                  status: learnerStatus,
+                  rejectionReason: learnerReason,
+                  isPending: isPending,
+                  isExpanded: isExpanded,
+                  learnerDetails: learnerDetails,
+                  onToggleExpand: () {
+                    setState(() {
+                      _expandedLearners[learnerName] = !isExpanded;
+                      // Load learner details when expanding
+                      if (!isExpanded && learnerDetails == null) {
+                        _loadLearnerDetails(learnerName);
+                      }
+                    });
+                  },
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Load learner details from parent_learners table
+  Future<void> _loadLearnerDetails(String learnerName) async {
+    if (_isLoadingLearnerDetails) return;
+    
+    try {
+      safeSetState(() => _isLoadingLearnerDetails = true);
+      
+      // Get parent_id from booking request (student_id for parent bookings)
+      final studentId = widget.request['student_id'] as String?;
+      if (studentId == null) return;
+      
+      // Fetch learner from parent_learners by name and parent_id
+      final learners = await SupabaseService.client
+          .from('parent_learners')
+          .select()
+          .eq('parent_id', studentId)
+          .eq('name', learnerName)
+          .maybeSingle();
+      
+      if (learners != null && mounted) {
+        safeSetState(() {
+          _learnerDetails[learnerName] = learners as Map<String, dynamic>;
+          _isLoadingLearnerDetails = false;
+        });
+      } else {
+        safeSetState(() => _isLoadingLearnerDetails = false);
+      }
+    } catch (e) {
+      LogService.warning('Error loading learner details: $e');
+      if (mounted) {
+        safeSetState(() => _isLoadingLearnerDetails = false);
+      }
+    }
+  }
+
+  /// Build individual learner card with accept/decline actions
+  Widget _buildLearnerCard({
+    required String learnerName,
+    required int index,
+    String? status,
+    String? rejectionReason,
+    required bool isPending,
+    required bool isExpanded,
+    Map<String, dynamic>? learnerDetails,
+    required VoidCallback onToggleExpand,
+  }) {
+    final isAccepted = status == 'accepted';
+    final isDeclined = status == 'declined';
+    final isPendingStatus = status == null || status == 'pending';
+    
+    return Container(
+      margin: EdgeInsets.only(bottom: index < (widget.request['learner_labels'] as List).length - 1 ? 12 : 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isAccepted 
+              ? Colors.green[300]!
+              : isDeclined 
+                  ? Colors.red[300]!
+                  : Colors.grey[300]!,
+          width: isAccepted || isDeclined ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              // Status indicator
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isAccepted 
+                      ? Colors.green
+                      : isDeclined 
+                          ? Colors.red
+                          : Colors.grey[400],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      learnerName,
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    if (isAccepted || isDeclined) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        isAccepted ? '✓ Accepted' : '✗ Declined',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: isAccepted ? Colors.green[700] : Colors.red[700],
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // Expand/collapse button
+              if (isPendingStatus)
+                IconButton(
+                  icon: Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: AppTheme.textMedium,
+                  ),
+                  onPressed: onToggleExpand,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+            ],
+          ),
+          
+          // Expanded details and actions
+          if (isExpanded && isPendingStatus) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            
+            // Learner details
+            if (_isLoadingLearnerDetails && learnerDetails == null)
+              const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else if (learnerDetails != null) ...[
+              // Education Level
+              if (learnerDetails['education_level'] != null)
+                _buildLearnerDetailRow(
+                  Icons.school,
+                  'Education Level',
+                  learnerDetails['education_level'].toString(),
+                ),
+              
+              // Class Level
+              if (learnerDetails['class_level'] != null)
+                _buildLearnerDetailRow(
+                  Icons.grade,
+                  'Class Level',
+                  learnerDetails['class_level'].toString(),
+                ),
+              
+              // Subjects
+              if (learnerDetails['subjects'] != null && (learnerDetails['subjects'] as List).isNotEmpty)
+                _buildLearnerDetailRow(
+                  Icons.book,
+                  'Subjects',
+                  (learnerDetails['subjects'] as List).join(', '),
+                ),
+              
+              // Stream (for secondary)
+              if (learnerDetails['stream'] != null)
+                _buildLearnerDetailRow(
+                  Icons.track_changes,
+                  'Stream',
+                  learnerDetails['stream'].toString(),
+                ),
+              
+              // Exam Type
+              if (learnerDetails['exam_type'] != null)
+                _buildLearnerDetailRow(
+                  Icons.quiz,
+                  'Exam Type',
+                  learnerDetails['exam_type'].toString(),
+                ),
+              
+              // Confidence Level
+              if (learnerDetails['confidence_level'] != null)
+                _buildLearnerDetailRow(
+                  Icons.sentiment_satisfied,
+                  'Confidence Level',
+                  learnerDetails['confidence_level'].toString(),
+                ),
+              
+              const SizedBox(height: 8),
+            ] else ...[
+              // Fallback: Show booking subject if learner details not available
+              Text(
+                'Subject: ${widget.request['subject'] ?? 'Not specified'}',
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            
+            // Accept/Decline buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _acceptLearner(learnerName),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.green[300]!),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Accept',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.green[700],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _showDeclineLearnerDialog(learnerName),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.red[300]!),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Text(
+                      'Decline',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.red[700],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          
+          // Show rejection reason if declined
+          if (isDeclined && rejectionReason != null && rejectionReason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.red[700]),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Reason: $rejectionReason',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.red[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Accept a specific learner
+  Future<void> _acceptLearner(String learnerName) async {
+    try {
+      safeSetState(() => _isProcessing = true);
+      
+      final requestId = widget.request['id'] as String;
+      await BookingService.acceptLearner(
+        requestId,
+        learnerName,
+        responseNotes: _responseController.text.trim().isNotEmpty 
+            ? _responseController.text.trim() 
+            : null,
+      );
+      
+      if (!mounted) return;
+      
+      // Reload request to get updated status
+      final updatedRequest = await BookingService.getBookingRequestById(requestId);
+      final updatedRequestData = updatedRequest.toJson();
+      
+      safeSetState(() {
+        widget.request.clear();
+        widget.request.addAll(updatedRequestData);
+        _isProcessing = false;
+      });
+      
+      BrandedSnackBar.show(
+        context,
+        message: '$learnerName accepted successfully!',
+        backgroundColor: Colors.green,
+        icon: Icons.check_circle,
+      );
+      
+      // If all learners responded, show appropriate message
+      if (updatedRequest.allLearnersResponded) {
+        if (updatedRequest.isApproved) {
+          BrandedSnackBar.show(
+            context,
+            message: 'Booking approved! Payment request created for accepted learners.',
+            backgroundColor: Colors.green,
+            icon: Icons.check_circle,
+          );
+        } else if (updatedRequest.isRejected) {
+          BrandedSnackBar.show(
+            context,
+            message: 'All learners declined. Booking rejected.',
+            backgroundColor: Colors.orange,
+            icon: Icons.info_outline,
+          );
+        }
+      }
+    } catch (e) {
+      LogService.error('Error accepting learner: $e');
+      if (!mounted) return;
+      safeSetState(() => _isProcessing = false);
+      BrandedSnackBar.showError(
+        context,
+        'Failed to accept learner: ${e.toString().replaceFirst('Exception: ', '')}',
+      );
+    }
+  }
+
+  /// Show dialog to decline a specific learner
+  Future<void> _showDeclineLearnerDialog(String learnerName) async {
+    final reasonController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Decline $learnerName',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Please provide a reason (required):',
+              style: GoogleFonts.poppins(fontSize: 13, color: Colors.grey[700]),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'E.g., Not teaching this subject, schedule conflict, etc.',
+                hintStyle: GoogleFonts.poppins(fontSize: 13),
+                filled: true,
+                fillColor: Colors.grey[50],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Please provide a reason', style: GoogleFonts.poppins()),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(context, reason);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: Text(
+              'Decline',
+              style: GoogleFonts.poppins(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null) {
+      await _declineLearner(learnerName, result);
+    }
+  }
+
+  /// Decline a specific learner
+  Future<void> _declineLearner(String learnerName, String reason) async {
+    try {
+      safeSetState(() => _isProcessing = true);
+      
+      final requestId = widget.request['id'] as String;
+      await BookingService.declineLearner(
+        requestId,
+        learnerName,
+        reason: reason,
+      );
+      
+      if (!mounted) return;
+      
+      // Reload request to get updated status
+      final updatedRequest = await BookingService.getBookingRequestById(requestId);
+      final updatedRequestData = updatedRequest.toJson();
+      
+      safeSetState(() {
+        widget.request.clear();
+        widget.request.addAll(updatedRequestData);
+        _isProcessing = false;
+      });
+      
+      BrandedSnackBar.show(
+        context,
+        message: '$learnerName declined',
+        backgroundColor: Colors.orange,
+        icon: Icons.info_outline,
+      );
+      
+      // If all learners responded, show appropriate message
+      if (updatedRequest.allLearnersResponded) {
+        if (updatedRequest.isApproved) {
+          BrandedSnackBar.show(
+            context,
+            message: 'Booking approved! Payment request created for accepted learners.',
+            backgroundColor: Colors.green,
+            icon: Icons.check_circle,
+          );
+        } else if (updatedRequest.isRejected) {
+          BrandedSnackBar.show(
+            context,
+            message: 'All learners declined. Booking rejected.',
+            backgroundColor: Colors.orange,
+            icon: Icons.info_outline,
+          );
+        }
+      }
+    } catch (e) {
+      LogService.error('Error declining learner: $e');
+      if (!mounted) return;
+      safeSetState(() => _isProcessing = false);
+      BrandedSnackBar.showError(
+        context,
+        'Failed to decline learner: ${e.toString().replaceFirst('Exception: ', '')}',
+      );
+    }
   }
 
   @override

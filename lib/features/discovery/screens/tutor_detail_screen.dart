@@ -385,8 +385,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
               autoPlay: true, // Auto-play immediately when ready (user clicked play button)
                 mute: false,
               enableCaption: false, // Disable captions for faster loading
-              controlsVisibleAtStart: false, // Hide controls initially for distraction-free viewing
-              hideControls: true, // Auto-hide controls after a few seconds
+              controlsVisibleAtStart: true, // Show controls immediately for better UX
+              hideControls: false, // Keep controls visible so users can pause/play easily
               hideThumbnail: true, // Hide thumbnail once video starts for faster transition
               loop: false,
               forceHD: false, // Don't force HD - let YouTube decide for faster loading
@@ -1141,6 +1141,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       width: 56,
                       margin: const EdgeInsets.only(right: 12),
                       decoration: BoxDecoration(
+                        color: Colors.white,
                         border: Border.all(color: AppTheme.primaryColor, width: 2),
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1208,6 +1209,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                 );
               },
               style: OutlinedButton.styleFrom(
+                backgroundColor: Colors.white,
                 side: BorderSide(color: AppTheme.primaryColor, width: 2),
                 padding: const EdgeInsets.symmetric(vertical: 16),
                     minimumSize: const Size(0, 56), // Same height as message button
@@ -1859,42 +1861,41 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       } else if (_youtubeController != null) {
         return GestureDetector(
           onTap: () {
-            // Tap to pause/play
             if (_youtubeController != null) {
-              if (_youtubeController!.value.isPlaying) {
-                _youtubeController!.pause();
-              } else {
-                _youtubeController!.play();
-              }
+              safeSetState(() {
+                if (_youtubeController!.value.isPlaying) {
+                  _youtubeController!.pause();
+                } else {
+                  _youtubeController!.play();
+                }
+              });
             }
           },
-                      child: YoutubePlayerBuilder(
-                    onExitFullScreen: () {},
-                    player: YoutubePlayer(
-                      controller: _youtubeController!,
-                          showVideoProgressIndicator: true,
-                      progressIndicatorColor: AppTheme.primaryColor,
-                      progressColors: ProgressBarColors(
-                        playedColor: AppTheme.primaryColor,
-                        handleColor: AppTheme.primaryColor,
-                            bufferedColor: Colors.white.withOpacity(0.3),
-                            backgroundColor: Colors.white.withOpacity(0.1),
-                          ),
-                          thumbnail: _getThumbnailUrl() != null
-                              ? CachedNetworkImage(
-                                  imageUrl: _getThumbnailUrl()!,
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
-                          onReady: () {
-                // Video is ready - autoPlay flag will handle playing immediately
+          child: YoutubePlayerBuilder(
+            onExitFullScreen: () {},
+            player: YoutubePlayer(
+              controller: _youtubeController!,
+              showVideoProgressIndicator: true,
+              progressIndicatorColor: AppTheme.primaryColor,
+              progressColors: ProgressBarColors(
+                playedColor: AppTheme.primaryColor,
+                handleColor: AppTheme.primaryColor,
+                bufferedColor: Colors.white.withOpacity(0.3),
+                backgroundColor: Colors.white.withOpacity(0.1),
+              ),
+              thumbnail: _getThumbnailUrl() != null
+                  ? CachedNetworkImage(
+                      imageUrl: _getThumbnailUrl()!,
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+              onReady: () {
                 LogService.debug('✅ Video player ready and will auto-play');
-                          },
-                          onEnded: (metadata) {
-                            // Handle video end - could show replay option
-                            LogService.info('Video ended');
-                          },
-                        ),
+              },
+              onEnded: (metadata) {
+                LogService.info('Video ended');
+              },
+            ),
             builder: (context, player) => player,
           ),
         );
@@ -2010,33 +2011,34 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                     ),
                   ),
                 ),
-        // Play button at bottom right - always visible and clickable
-        Positioned(
-          bottom: 14,
-          right: 14,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                // Initialize video when user taps play button
-                _initializeVideo();
-              },
-              borderRadius: BorderRadius.circular(24),
-              child: Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor, // Deep blue play button
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                      size: 30,
+        // Play button at bottom right - only show when video is not initialized
+        if (!_isVideoInitialized && !_isVideoLoading)
+          Positioned(
+            bottom: 14,
+            right: 14,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  // Initialize video when user taps play button
+                  _initializeVideo();
+                },
+                borderRadius: BorderRadius.circular(24),
+                child: Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor, // Deep blue play button
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.white,
+                        size: 30,
+                  ),
                 ),
               ),
             ),
-          ),
           ),
       ],
     );

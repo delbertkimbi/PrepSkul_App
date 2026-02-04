@@ -2181,6 +2181,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                 child: _buildOptionCard(
                   title: subject,
                   isSelected: isSelected,
+                  isMultiSelect: true,
                   onTap: () {
                     safeSetState(() {
                       if (isSelected) {
@@ -2236,6 +2237,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           child: _buildOptionCard(
             title: subject,
             isSelected: isSelected,
+            isMultiSelect: true,
             onTap: () {
               safeSetState(() {
                 if (isSelected) {
@@ -2285,6 +2287,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           child: _buildOptionCard(
             title: skill,
             isSelected: isSelected,
+            isMultiSelect: true,
             onTap: () {
               safeSetState(() {
                 if (isSelected) {
@@ -2362,6 +2365,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
           child: _buildOptionCard(
             title: subject,
             isSelected: isSelected,
+            isMultiSelect: true,
             onTap: () {
               safeSetState(() {
                 if (isSelected) {
@@ -3189,6 +3193,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
     String? subtitle,
     required bool isSelected,
     required VoidCallback onTap,
+    bool isMultiSelect = false,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -3224,7 +3229,7 @@ class _StudentSurveyState extends State<StudentSurvey> {
                       : AppTheme.softBorder,
                   width: 2,
                 ),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(isMultiSelect ? 5 : 10),
               ),
               child: isSelected
                   ? const Icon(Icons.check, color: Colors.white, size: 12)

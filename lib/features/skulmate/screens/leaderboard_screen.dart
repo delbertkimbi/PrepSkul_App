@@ -35,9 +35,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         _platformAvailable = available;
       });
     }
-  }
-
-  Future<void> _loadLeaderboard() async {
+  }  Future<void> _loadLeaderboard() async {
     try {
       safeSetState(() => _isLoading = true);
       final entries = await SocialService.getLeaderboard(period: LeaderboardPeriod.allTime);
@@ -57,9 +55,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         );
       }
     }
-  }
-
-  @override
+  }  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softBackground,

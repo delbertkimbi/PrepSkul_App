@@ -971,8 +971,20 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.8),
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primaryColor,
+                          AppTheme.primaryColor.withOpacity(0.8),
+                        ],
+                      ),
                       borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryColor.withOpacity(0.3),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -991,7 +1003,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           style: GoogleFonts.poppins(
                             color: Colors.white,
                             fontSize: 11,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -1005,11 +1017,20 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               ],
             ),
             // Right side: Close button
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.white, size: 24),
-              onPressed: _endCall,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _endCall,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.close,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -1029,10 +1050,25 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isLowTime 
-            ? Colors.orange.withOpacity(0.9)
-            : Colors.blue.withOpacity(0.8),
+        gradient: LinearGradient(
+          colors: isLowTime 
+              ? [
+                  AppTheme.accentOrange,
+                  AppTheme.accentOrange.withOpacity(0.8),
+                ]
+              : [
+                  AppTheme.primaryColor,
+                  AppTheme.primaryColor.withOpacity(0.8),
+                ],
+        ),
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: (isLowTime ? AppTheme.accentOrange : AppTheme.primaryColor).withOpacity(0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1174,11 +1210,20 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               color: isDanger
                   ? Colors.red
                   : (isActive 
-                      ? Colors.white.withOpacity(0.2)
+                      ? AppTheme.primaryColor.withOpacity(0.2)
                       : Colors.white.withOpacity(0.15)),
               shape: BoxShape.circle,
               border: showMutedIndicator
-                  ? Border.all(color: Colors.red, width: 2)
+                  ? Border.all(color: AppTheme.accentOrange, width: 2)
+                  : null,
+              boxShadow: isActive && !isDanger
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.primaryColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
                   : null,
             ),
             child: Stack(
@@ -1186,10 +1231,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               children: [
                 Icon(
                   icon,
-                  color: showMutedIndicator ? Colors.red : Colors.white,
-                  size: 24,
+                  color: showMutedIndicator 
+                      ? AppTheme.accentOrange 
+                      : (isActive && !isDanger 
+                          ? AppTheme.primaryColor 
+                          : Colors.white),
+                  size: 26,
                 ),
-                // Muted indicator (red slash)
+                // Muted indicator (orange slash)
                 if (showMutedIndicator)
                   Positioned(
                     top: 8,
@@ -1198,7 +1247,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                       width: 12,
                       height: 2,
                       decoration: BoxDecoration(
-                        color: Colors.red,
+                        color: AppTheme.accentOrange,
                         borderRadius: BorderRadius.circular(1),
                       ),
                       transform: Matrix4.rotationZ(-0.785398), // 45 degrees

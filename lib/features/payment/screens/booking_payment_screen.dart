@@ -5,6 +5,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
+import 'package:prepskul/core/services/whatsapp_support_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
 import 'package:prepskul/features/payment/services/fapshi_webhook_service.dart';
@@ -257,6 +258,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       safeSetState(() {
         _isProcessing = false;
         _detectedProvider = provider;
+        _currentStep = 2; // Go directly to confirmation step
       });
 
       final result = await Navigator.pushReplacement<bool, void>(
@@ -725,93 +727,357 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     final tutorName = metadata?['tutor_name'] as String? ?? 'Tutor';
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: _currentStep > 0
-            ? IconButton(
-                icon: Icon(Icons.arrow_back, color: AppTheme.textDark),
-                onPressed: () => _navigateToStep(_currentStep - 1),
-              )
-            : null,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: AppTheme.textDark),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: Text(
           'Complete Payment',
           style: GoogleFonts.poppins(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: AppTheme.textDark,
           ),
         ),
       ),
-      body: PageView(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(),
-        children: [
-          // Step 1: Phone Entry
-          _buildPhoneEntryStep(tutorName, description, paymentPlan),
-          
-          // Step 2: Payment Summary
-          _buildPaymentSummaryStep(),
-          
-          // Step 3: Payment Confirmation
-          _buildPaymentConfirmationStep(),
-        ],
-      ),
+      body: _currentStep == 2
+          ? _buildPaymentConfirmationStep()
+          : _buildCombinedPaymentView(tutorName, description, paymentPlan),
     );
   }
 
-  // Step 1: Phone Entry
-  Widget _buildPhoneEntryStep(String tutorName, String? description, String paymentPlan) {
+  // Combined Phone Entry + Payment Summary (Single Scrollable View)
+  Widget _buildCombinedPaymentView(String tutorName, String? description, String paymentPlan) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Booking Summary Card
-          _buildBookingSummary(tutorName, description, paymentPlan),
-          const SizedBox(height: 24),
+          // Compact Booking Summary Card
+          _buildCompactBookingSummary(tutorName, description, paymentPlan),
+          const SizedBox(height: 16),
 
-          // Phone Number Input
-          _buildPhoneInput(),
-          const SizedBox(height: 24),
+          // Inline Phone Input with Provider Badge
+          _buildInlinePhoneInput(),
+          const SizedBox(height: 16),
+
+          // Compact Payment Breakdown
+          _buildCompactPaymentBreakdown(),
+          const SizedBox(height: 16),
 
           // Error Message
           if (_errorMessage != null) ...[
-            _buildErrorMessage(),
+            _buildCompactErrorMessage(),
             const SizedBox(height: 16),
           ],
 
-          // Continue Button
+          // Pay Now Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _phoneController.text.trim().isEmpty || _detectedProvider == null
+              onPressed: (_phoneController.text.trim().isEmpty || _detectedProvider == null || _isProcessing)
                   ? null
-                  : () {
-                      if (_detectedProvider != null) {
-                        _navigateToStep(1);
-                      }
-                    },
+                  : _initiatePayment,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                elevation: 2,
+                shadowColor: AppTheme.primaryColor.withOpacity(0.3),
               ),
-              child: Text(
-                'Continue',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
+              child: _isProcessing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Text(
+                      'Pay ${PricingService.formatPrice(_total)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
             ),
           ),
           
           SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+        ],
+      ),
+    );
+  }
+  
+  // Compact Booking Summary
+  Widget _buildCompactBookingSummary(String tutorName, String? description, String paymentPlan) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Session Details',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            tutorName,
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+          if (description != null && description.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              description,
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textMedium,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+  
+  // Inline Phone Input with Provider Badge
+  Widget _buildInlinePhoneInput() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Phone Number',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              // Provider badge inline
+              if (_detectedProvider != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        PaymentProviderHelper.getProviderIcon(_detectedProvider),
+                        size: 14,
+                        color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        PaymentProviderHelper.getProviderName(_detectedProvider),
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
+              prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor, size: 20),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.softBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+          if (_detectedProvider == null && _phoneController.text.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Please enter a valid MTN or Orange number',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.accentOrange,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+  
+  // Compact Payment Breakdown
+  Widget _buildCompactPaymentBreakdown() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Subtotal
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Subtotal',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              Text(
+                PricingService.formatPrice(_subtotal),
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Charges
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Payment Charges (2%)',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              Text(
+                PricingService.formatPrice(_charges),
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20, color: AppTheme.softBorder),
+          // Total
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Total Amount',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              Text(
+                PricingService.formatPrice(_total),
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // Compact Error Message
+  Widget _buildCompactErrorMessage() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.accentOrange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 18, color: AppTheme.accentOrange),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _errorMessage ?? 'An error occurred',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.accentOrange,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1254,6 +1520,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Widget _buildErrorMessage() {
     if (_errorMessage == null) return const SizedBox.shrink();
+    final isPaymentFailed = _paymentStatus == 'failed' || 
+                           (_errorMessage != null && 
+                            (_errorMessage!.toLowerCase().contains('failed') ||
+                             _errorMessage!.toLowerCase().contains('error') ||
+                             _errorMessage!.toLowerCase().contains('contact support')));
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1261,19 +1533,99 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.red.shade200),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline, color: Colors.red.shade700, size: 24),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _errorMessage!,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: Colors.red.shade900,
+          Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.red.shade700, size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _errorMessage!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: Colors.red.shade900,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
+          if (isPaymentFailed) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      // Just close the screen - user can try again later
+                      Navigator.pop(context, false);
+                    },
+                    icon: const Icon(Icons.schedule, size: 18),
+                    label: Text(
+                      'Try Again Later',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textMedium,
+                      side: BorderSide(color: Colors.grey[300]!),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final amount = _paymentRequest != null 
+                            ? PricingService.formatPrice((_paymentRequest!['amount'] as num).toDouble())
+                            : 'N/A';
+                        await WhatsAppSupportService.contactSupportForBookingPaymentFailure(
+                          paymentId: widget.paymentRequestId,
+                          amount: amount,
+                        );
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'WhatsApp is not installed. Please install WhatsApp to contact support.',
+                                style: GoogleFonts.poppins(),
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: Text(
+                      'Contact Support',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      side: BorderSide(color: AppTheme.primaryColor),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

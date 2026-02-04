@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/survey_repository.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
+import 'package:prepskul/core/services/parent_learners_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/data/app_data.dart';
 import 'package:prepskul/data/survey_config.dart';
@@ -1491,10 +1492,18 @@ class _ParentSurveyState extends State<ParentSurvey> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isSelected)
-                      const Icon(
-                        Icons.check_circle,
-                        color: Colors.white,
-                        size: 18,
+                      Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: const Icon(
+                          Icons.check,
+                          color: AppTheme.primaryColor,
+                          size: 14,
+                        ),
                       ),
                     if (isSelected) const SizedBox(width: 6),
                     Text(
@@ -2461,6 +2470,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
           child: _buildOptionCard(
             title: subject,
             isSelected: isSelected,
+            isMultiSelect: true,
             onTap: () {
               setState(() {
                 if (isSelected) {
@@ -2510,6 +2520,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
           child: _buildOptionCard(
             title: skill,
             isSelected: isSelected,
+            isMultiSelect: true,
             onTap: () {
               setState(() {
                 if (isSelected) {
@@ -2587,6 +2598,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
           child: _buildOptionCard(
             title: subject,
             isSelected: isSelected,
+            isMultiSelect: true,
             onTap: () {
               setState(() {
                 if (isSelected) {
@@ -2676,6 +2688,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
     String? subtitle,
     required bool isSelected,
     required VoidCallback onTap,
+    bool isMultiSelect = false,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -2711,7 +2724,7 @@ class _ParentSurveyState extends State<ParentSurvey> {
                       : AppTheme.softBorder,
                   width: 2,
                 ),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(isMultiSelect ? 5 : 10),
               ),
               child: isSelected
                   ? const Icon(Icons.check, color: Colors.white, size: 14)
@@ -3045,6 +3058,15 @@ No direct payments should be made to tutors outside the platform.''';
 
       // Save to database
       await SurveyRepository.saveParentSurvey(userId, surveyData);
+
+      // Sync first child from parent_profiles to parent_learners
+      // This ensures the child entered during onboarding appears in "My children"
+      try {
+        await ParentLearnersService.syncFirstChildFromProfile(userId);
+      } catch (e) {
+        LogService.warning('Error syncing first child after onboarding: $e');
+        // Don't block survey completion if sync fails
+      }
 
       // Get user profile for notification
       final userProfile = await SupabaseService.client

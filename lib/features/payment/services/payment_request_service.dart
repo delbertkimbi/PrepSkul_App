@@ -23,17 +23,44 @@ class PaymentRequestService {
     try {
       LogService.info('Creating payment request(s) for approved booking: ${approvedRequest.id}');
 
+      // Handle multi-learner partial acceptance
+      // If only some learners accepted, recalculate monthly total
+      double? adjustedMonthlyTotal;
+      if (approvedRequest.isMultiLearner && approvedRequest.acceptedLearnersCount > 0) {
+        final totalLearners = approvedRequest.learnerLabels!.length;
+        final acceptedCount = approvedRequest.acceptedLearnersCount;
+        
+        // If not all learners accepted, recalculate monthly total
+        if (acceptedCount < totalLearners) {
+          LogService.info('Partial acceptance: $acceptedCount of $totalLearners learners accepted. Recalculating payment...');
+          
+          // Estimate base per-learner monthly total
+          // The original monthlyTotal includes multi-learner discounts
+          // We approximate by dividing total by total learners (rough estimate)
+          // Then recalculate with discount for accepted count only
+          final estimatedBasePerLearner = approvedRequest.monthlyTotal / totalLearners;
+          
+          // Recalculate with multi-learner discount for accepted learners only
+          adjustedMonthlyTotal = await PricingService.calculateMultiLearnerMonthlyTotal(
+            baseMonthlyTotal: estimatedBasePerLearner,
+            learnerCount: acceptedCount,
+          );
+          
+          LogService.info('Recalculated monthly total: ${approvedRequest.monthlyTotal} -> $adjustedMonthlyTotal (for $acceptedCount learners)');
+        }
+      }
+
       final paymentPlan = approvedRequest.paymentPlan.toLowerCase();
       
       if (paymentPlan == 'monthly') {
-        return await _createSinglePaymentRequest(approvedRequest);
+        return await _createSinglePaymentRequest(approvedRequest, adjustedMonthlyTotal: adjustedMonthlyTotal);
       } else if (paymentPlan == 'bi-weekly' || paymentPlan == 'biweekly') {
-        return await _createRecurringPaymentRequests(approvedRequest, count: 2);
+        return await _createRecurringPaymentRequests(approvedRequest, count: 2, adjustedMonthlyTotal: adjustedMonthlyTotal);
       } else if (paymentPlan == 'weekly') {
-        return await _createRecurringPaymentRequests(approvedRequest, count: 4);
+        return await _createRecurringPaymentRequests(approvedRequest, count: 4, adjustedMonthlyTotal: adjustedMonthlyTotal);
       } else {
         // Default to monthly
-        return await _createSinglePaymentRequest(approvedRequest);
+        return await _createSinglePaymentRequest(approvedRequest, adjustedMonthlyTotal: adjustedMonthlyTotal);
       }
     } catch (e) {
       LogService.error('Error creating payment request: $e');
@@ -47,15 +74,19 @@ class PaymentRequestService {
 
   /// Create a single payment request (for monthly plan)
   static Future<String> _createSinglePaymentRequest(
-    BookingRequest approvedRequest,
-  ) async {
+    BookingRequest approvedRequest, {
+    double? adjustedMonthlyTotal,
+  }) async {
+    // Use adjusted monthly total if provided (for partial multi-learner acceptance)
+    final monthlyTotal = adjustedMonthlyTotal ?? approvedRequest.monthlyTotal;
+    
     final paymentAmount = _calculatePaymentAmount(
-      monthlyTotal: approvedRequest.monthlyTotal,
+      monthlyTotal: monthlyTotal,
       paymentPlan: approvedRequest.paymentPlan,
     );
 
     final baseAmount = _getBaseAmountForPlan(
-      monthlyTotal: approvedRequest.monthlyTotal,
+      monthlyTotal: monthlyTotal,
       paymentPlan: approvedRequest.paymentPlan,
     );
     final pricingDetails = PricingService.calculateDiscount(
@@ -69,7 +100,7 @@ class PaymentRequestService {
       'student_id': approvedRequest.studentId,
       'tutor_id': approvedRequest.tutorId,
       'amount': paymentAmount,
-      'original_amount': approvedRequest.monthlyTotal,
+      'original_amount': monthlyTotal,
       'discount_percent': pricingDetails['discountPercent'] as double,
       'discount_amount': pricingDetails['discountAmount'] as double,
       'payment_plan': approvedRequest.paymentPlan,
@@ -110,9 +141,23 @@ class PaymentRequestService {
   static Future<String> _createRecurringPaymentRequests(
     BookingRequest approvedRequest, {
     required int count,
+    double? adjustedMonthlyTotal,
   }) async {
+    // Use adjusted monthly total if provided (for partial multi-learner acceptance)
+    final baseMonthlyTotal = adjustedMonthlyTotal ?? approvedRequest.monthlyTotal;
+    
+    // Calculate total monthly payment (session fee + transportation)
+    final isOnsite = approvedRequest.location == 'onsite' || approvedRequest.location == 'hybrid';
+    final estimatedTransportationCost = approvedRequest.estimatedTransportationCost ?? 0.0;
+    final frequency = approvedRequest.frequency;
+    final sessionsPerMonth = frequency * 4;
+    final monthlyTransportationTotal = (isOnsite && estimatedTransportationCost > 0)
+        ? estimatedTransportationCost * sessionsPerMonth
+        : 0.0;
+    final totalMonthlyAmount = baseMonthlyTotal + monthlyTransportationTotal;
+    
     final baseAmount = _getBaseAmountForPlan(
-      monthlyTotal: approvedRequest.monthlyTotal,
+      monthlyTotal: totalMonthlyAmount, // Include transportation in base amount
       paymentPlan: approvedRequest.paymentPlan,
     );
     final pricingDetails = PricingService.calculateDiscount(
@@ -142,7 +187,7 @@ class PaymentRequestService {
         'student_id': approvedRequest.studentId,
         'tutor_id': approvedRequest.tutorId,
         'amount': paymentAmount,
-        'original_amount': approvedRequest.monthlyTotal,
+        'original_amount': totalMonthlyAmount, // Total including transportation
         'discount_percent': pricingDetails['discountPercent'] as double,
         'discount_amount': pricingDetails['discountAmount'] as double,
         'payment_plan': approvedRequest.paymentPlan,
@@ -162,6 +207,9 @@ class PaymentRequestService {
           'tutor_name': approvedRequest.tutorName,
           'payment_number': i + 1,
           'total_payments': count,
+          'session_fee_monthly': approvedRequest.monthlyTotal,
+          'transportation_cost_monthly': monthlyTransportationTotal,
+          'transportation_cost_per_session': estimatedTransportationCost,
         },
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),

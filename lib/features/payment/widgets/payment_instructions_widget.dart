@@ -75,20 +75,18 @@ class PaymentInstructionsWidget extends StatelessWidget {
     return Center(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 400),
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: AppTheme.primaryColor.withOpacity(0.15),
+            color: AppTheme.softBorder,
             width: 1,
           ),
-          // Soft shadow (not elevated)
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
+              blurRadius: 8,
               offset: const Offset(0, 2),
             ),
           ],
@@ -101,16 +99,16 @@ class PaymentInstructionsWidget extends StatelessWidget {
             if (logoPath != null) ...[
               Image.asset(
                 logoPath,
-                height: 90,
-                width: 90,
+                height: 60,
+                width: 60,
                 fit: BoxFit.contain,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
             ],
             Text(
               'Confirm Payment',
               style: GoogleFonts.poppins(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textDark,
               ),
@@ -119,20 +117,20 @@ class PaymentInstructionsWidget extends StatelessWidget {
             Text(
               providerName,
               style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: Colors.grey.shade600,
+                fontSize: 12,
+                color: AppTheme.textMedium,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             
             // USSD Code Highlight
             if (ussdCode.isNotEmpty) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: AppTheme.primaryColor.withOpacity(0.2),
                     width: 1,
@@ -145,13 +143,13 @@ class PaymentInstructionsWidget extends StatelessWidget {
                     Icon(
                       Icons.phone,
                       color: AppTheme.primaryColor,
-                      size: 22,
+                      size: 18,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                     Text(
                       'Dial $ussdCode',
                       style: GoogleFonts.poppins(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.primaryColor,
                         letterSpacing: 0.5,
@@ -160,7 +158,7 @@ class PaymentInstructionsWidget extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
             ],
 
             // Step-by-step instructions
@@ -169,24 +167,24 @@ class PaymentInstructionsWidget extends StatelessWidget {
               child: Text(
                 'Follow these steps:',
                 style: GoogleFonts.poppins(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                 ),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 10),
             ...instructions.asMap().entries.map((entry) {
               final index = entry.key;
               final instruction = entry.value;
               return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 24,
-                      height: 24,
+                      width: 20,
+                      height: 20,
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor,
                         shape: BoxShape.circle,
@@ -195,21 +193,21 @@ class PaymentInstructionsWidget extends StatelessWidget {
                         child: Text(
                           '${index + 1}',
                           style: GoogleFonts.poppins(
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         instruction,
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: Colors.grey.shade700,
-                          height: 1.5,
+                          fontSize: 12,
+                          color: AppTheme.textMedium,
+                          height: 1.4,
                         ),
                       ),
                     ),
@@ -218,11 +216,11 @@ class PaymentInstructionsWidget extends StatelessWidget {
               );
             }),
             
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             
             // Helpful tip
             Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor.withOpacity(0.06),
                 borderRadius: BorderRadius.circular(10),
@@ -237,31 +235,17 @@ class PaymentInstructionsWidget extends StatelessWidget {
                   Icon(
                     Icons.info_outline,
                     color: AppTheme.primaryColor,
-                    size: 18,
+                    size: 16,
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Tip',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Check your phone ($phoneNumber) for the payment notification. You have 2 minutes to confirm.',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: Colors.grey.shade700,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'Check your phone ($phoneNumber) for the payment notification. You have 2 minutes to confirm.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: AppTheme.textMedium,
+                        height: 1.4,
+                      ),
                     ),
                   ),
                 ],

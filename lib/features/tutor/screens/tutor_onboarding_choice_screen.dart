@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
-import '../../../core/services/notification_service.dart';
+import '../../../core/services/notification_helper_service.dart';
 import 'tutor_onboarding_screen.dart';
 
 class TutorOnboardingChoiceScreen extends StatefulWidget {
@@ -94,16 +94,12 @@ class _TutorOnboardingChoiceScreenState
         rememberMe: true,
       );
 
-      // Send notification about completing onboarding
-      await NotificationService.createNotification(
+      // Send onboarding reminder (in-app + email + push via API)
+      await NotificationHelperService.sendOnboardingReminder(
         userId: userId,
-        type: 'onboarding_reminder',
         title: 'Complete Your Profile to Get Verified',
         message: 'Your profile isn\'t visible to students yet. Complete your onboarding to get verified and start connecting with students who match your expertise.',
-        priority: 'high',
         actionUrl: '/tutor-onboarding',
-        actionText: 'Complete Profile',
-        icon: '🎓',
         metadata: {
           'onboarding_skipped': true,
           'onboarding_complete': false,

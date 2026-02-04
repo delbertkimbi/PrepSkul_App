@@ -445,6 +445,30 @@ All 7 priority tasks have been implemented and verified:
 
 ---
 
+## 📌 **PLANNED: Tutor Video, Booking Flow & Onsite Session Improvements**
+
+*(From plan: tutor video + booking flow UX; ONSITE_SESSION_TRACKING_IMPROVEMENTS_PLAN.md)*
+
+### Tutor video & booking flow
+- [ ] **Tutor video:** Single-click play (no double-click); show YouTube controls; visible pause/play
+- [ ] **Tutor video:** Loading state with thumbnail (no black screen)
+- [ ] **Booking:** Child/learner selection **before** frequency (sessions per week) for all parents; adapt frequency/pricing by number of learners selected
+- [ ] **Booking:** "Me (Parent)" option last in "Who is this for?" list
+- [ ] **Booking:** Continue button state updates when selections change
+- [ ] **Booking:** Payment/review screen visible for at least 1–2 s before transition
+
+### Onsite session tracking improvements (Phase 1–5)
+- [ ] **Phase 1 – Continuous location monitoring:** Create ContinuousLocationMonitoringService; periodic location checks (5–10 min); deviation detection; location history in DB; UI for location status
+- [ ] **Phase 2 – Selfie verification:** Check-in group photo (tutor + student(s)); optional tutor face verification vs profile; face/photo UI at check-in only
+- [ ] **Phase 3 – Activity verification:** SessionActivityVerificationService; activity submission UI; photo upload for work/whiteboard; notes/summary
+- [ ] **Phase 4 – Multi-learner tracking:** Check-in for multiple learners; group photo verification; per-learner tracking
+- [ ] **Phase 5 – Safety monitoring:** SessionSafetyService enhancements; real-time location; panic button; emergency contacts; safety alerts
+- [ ] **Migration 058:** Create and run `058_onsite_tracking_improvements.sql` (from ONSITE_SESSION_TRACKING_IMPROVEMENTS_PLAN.md spec)
+- [ ] **In-app tutor instructions:** Benefit-focused copy (keep app in background; don’t close; helps document session / smooth payment)
+- [ ] **Feedback form:** Add "Did this session take place?" (Yes/No/Partially) for family; multi-learner "Which learners attended?"
+
+---
+
 ## 🎯 **NEXT IMMEDIATE ACTIONS**
 
 ### **✅ COMPLETED TODAY (January 2025)**

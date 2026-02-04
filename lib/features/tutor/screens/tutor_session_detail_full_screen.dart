@@ -8,9 +8,14 @@ import '../../../core/services/log_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/trial_session_service.dart';
+import '../../../features/booking/services/session_lifecycle_service.dart';
 import '../../../features/booking/models/trial_session_model.dart';
 import '../../../features/booking/services/session_reschedule_service.dart';
 import '../../../features/sessions/services/meet_service.dart';
+import '../../../features/sessions/screens/agora_video_session_screen.dart';
+import '../../../features/sessions/widgets/session_location_map.dart';
+import '../../../features/sessions/services/location_checkin_service.dart';
+import '../../../core/widgets/image_picker_bottom_sheet.dart';
 
 /// Full-screen detail view for tutor sessions
 /// Profile-like UI with all session details and action buttons at the bottom
@@ -41,7 +46,6 @@ class _TutorSessionDetailFullScreenState
   Future<void> _loadSessionData() async {
     setState(() => _isLoading = true);
     try {
-      // Session data is already passed in, but we can enrich it if needed
       _sessionData = widget.session;
     } catch (e) {
       LogService.error('Error loading session data: $e');
@@ -49,6 +53,35 @@ class _TutorSessionDetailFullScreenState
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  /// Refetch session status from DB after start/end so UI updates.
+  Future<void> _refreshSessionStatus() async {
+    final sessionId = _getSessionId();
+    final isIndividual = _isIndividualSession();
+    try {
+      if (isIndividual) {
+        final row = await SupabaseService.client
+            .from('individual_sessions')
+            .select('status')
+            .eq('id', sessionId)
+            .maybeSingle();
+        if (row != null && mounted && _sessionData != null) {
+          setState(() => _sessionData = {..._sessionData!, 'status': row['status']});
+        }
+      } else {
+        final row = await SupabaseService.client
+            .from('trial_sessions')
+            .select('status')
+            .eq('id', sessionId)
+            .maybeSingle();
+        if (row != null && mounted && _sessionData != null) {
+          setState(() => _sessionData = {..._sessionData!, 'status': row['status']});
+        }
+      }
+    } catch (e) {
+      LogService.warning('Could not refresh session status: $e');
     }
   }
 
@@ -338,6 +371,17 @@ class _TutorSessionDetailFullScreenState
     return _sessionData!['id'] as String;
   }
 
+  /// Combined date and time for check-in window (presence 1h before–2h after).
+  DateTime? _getScheduledDateTime() {
+    final d = _getSessionDate();
+    final t = _getSessionTime();
+    if (d == null || t == null) return null;
+    final parts = t.split(':');
+    final hour = parts.isNotEmpty ? (int.tryParse(parts[0].trim()) ?? 0) : 0;
+    final minute = parts.length > 1 ? (int.tryParse(parts[1].trim().split(' ').first) ?? 0) : 0;
+    return DateTime(d.year, d.month, d.day, hour, minute);
+  }
+
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'scheduled':
@@ -572,6 +616,35 @@ class _TutorSessionDetailFullScreenState
               'Address',
               address,
             ),
+            // Onsite check-in / check-out and safety (tutor session detail)
+            if (!isOnline && _shouldShowActions()) ...[
+              const SizedBox(height: 16),
+              SessionLocationMap(
+                address: address,
+                coordinates: null,
+                sessionId: _getSessionId(),
+                currentUserId: SupabaseService.client.auth.currentUser?.id,
+                userType: 'tutor',
+                showCheckIn: true,
+                scheduledDateTime: _getScheduledDateTime(),
+                locationType: 'onsite',
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _isLoading ? null : () => _handleUploadSelfie(_getSessionId()),
+                icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                label: Text(
+                  'Upload Selfie',
+                  style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primaryColor,
+                  side: BorderSide(color: AppTheme.primaryColor),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
           ],
           if (isOnline && meetLink != null && meetLink.isNotEmpty) ...[
             const SizedBox(height: 16),
@@ -593,7 +666,7 @@ class _TutorSessionDetailFullScreenState
                       ),
                       const SizedBox(height: 4),
                       GestureDetector(
-                        onTap: () => _joinMeeting(meetLink),
+                        onTap: () => _joinOrStartAndOpenVideo(),
                         child: Text(
                           'Join Meeting',
                           style: GoogleFonts.poppins(
@@ -691,6 +764,7 @@ class _TutorSessionDetailFullScreenState
     final meetLink = _getMeetLink();
     final sessionId = _getSessionId();
     final isIndividual = _isIndividualSession();
+    final isOnline = location == 'online';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -707,17 +781,15 @@ class _TutorSessionDetailFullScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (status == 'in_progress' &&
-              location == 'online' &&
-              meetLink != null &&
-              meetLink.isNotEmpty)
+          // Start & Join (scheduled + online) or Join (in_progress + online)
+          if (isOnline && (status == 'scheduled' || (status == 'in_progress' && meetLink != null && meetLink.isNotEmpty)))
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => _joinMeeting(meetLink!),
+                onPressed: _isLoading ? null : () => _joinOrStartAndOpenVideo(),
                 icon: const Icon(Icons.video_call, size: 20),
                 label: Text(
-                  'Join Session',
+                  status == 'scheduled' ? 'Start & Join Session' : 'Join Session',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -733,12 +805,59 @@ class _TutorSessionDetailFullScreenState
                 ),
               ),
             ),
+          // Start Session (scheduled + onsite)
+          if (status == 'scheduled' && !isOnline)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : () => _startSessionFromDetail(),
+                icon: const Icon(Icons.play_arrow, size: 20),
+                label: Text(
+                  'Start Session',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          // End Session (in_progress)
+          if (status == 'in_progress')
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : () => _handleEndSession(),
+                  icon: const Icon(Icons.stop, size: 20),
+                  label: Text(
+                    'End Session',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (status == 'scheduled' || status == 'in_progress') ...[
-            if (status == 'in_progress' &&
-                location == 'online' &&
-                meetLink != null &&
-                meetLink.isNotEmpty)
-              const SizedBox(height: 12),
+            if (status == 'in_progress' || status == 'scheduled') const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -790,6 +909,224 @@ class _TutorSessionDetailFullScreenState
         ],
       ),
     );
+  }
+
+  Future<void> _startSessionFromDetail() async {
+    final sessionId = _getSessionId();
+    final isIndividual = _isIndividualSession();
+    final isOnline = _getLocation() == 'online';
+    setState(() => _isLoading = true);
+    try {
+      if (isIndividual) {
+        await SessionLifecycleService.startSession(sessionId, isOnline: isOnline);
+      } else {
+        await TrialSessionService.startTrialSessionAsTutor(sessionId, isOnline: isOnline);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text('Session started', style: GoogleFonts.poppins()),
+              ],
+            ),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+        _refreshSessionStatus();
+      }
+    } catch (e) {
+      LogService.error('Error starting session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _joinOrStartAndOpenVideo() async {
+    final sessionId = _getSessionId();
+    final status = _getStatus();
+    final isIndividual = _isIndividualSession();
+    final isOnline = _getLocation() == 'online';
+    setState(() => _isLoading = true);
+    try {
+      if (status == 'scheduled') {
+        if (isIndividual) {
+          await SessionLifecycleService.startSession(sessionId, isOnline: true);
+        } else {
+          await TrialSessionService.startTrialSessionAsTutor(sessionId, isOnline: true);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Text('Session started', style: GoogleFonts.poppins()),
+                ],
+              ),
+              backgroundColor: AppTheme.accentGreen,
+            ),
+          );
+        }
+      }
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: 'tutor',
+            ),
+          ),
+        ).then((_) => _refreshSessionStatus());
+      }
+    } catch (e) {
+      LogService.error('Error joining session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to join session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleEndSession() async {
+    final sessionId = _getSessionId();
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) {
+        final notesController = TextEditingController();
+        return AlertDialog(
+          title: Text('End Session', style: GoogleFonts.poppins()),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add optional notes about this session:',
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: 'E.g., "Great progress on algebra today!"',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context, {
+                  'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                });
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: Text('End Session', style: GoogleFonts.poppins()),
+            ),
+          ],
+        );
+      },
+    );
+    if (result == null) return;
+    setState(() => _isLoading = true);
+    try {
+      await SessionLifecycleService.endSession(
+        sessionId,
+        tutorNotes: result['notes'] as String?,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Text('Session ended', style: GoogleFonts.poppins()),
+              ],
+            ),
+            backgroundColor: AppTheme.accentGreen,
+          ),
+        );
+        _refreshSessionStatus();
+      }
+    } catch (e) {
+      LogService.error('Error ending session: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to end session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleUploadSelfie(String sessionId) async {
+    final userId = SupabaseService.client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final pickedFile = await showModalBottomSheet<dynamic>(
+        context: context,
+        builder: (context) => const ImagePickerBottomSheet(),
+        isScrollControlled: true,
+      );
+      if (pickedFile == null || !mounted) return;
+      setState(() => _isLoading = true);
+      final result = await LocationCheckInService.uploadPresenceSelfie(
+        sessionId: sessionId,
+        userId: userId,
+        userType: 'tutor',
+        selfieFile: pickedFile,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] as String? ?? 'Selfie uploaded'),
+          backgroundColor: result['success'] == true ? AppTheme.accentGreen : Colors.red,
+        ),
+      );
+    } catch (e) {
+      LogService.error('Error uploading selfie: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload selfie: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _joinMeeting(String meetLink) async {

@@ -35,6 +35,9 @@ class SessionPaymentService {
             learner_id,
             parent_id,
             recurring_session_id,
+            location,
+            onsite_address,
+            transportation_cost,
             recurring_sessions!inner(
               monthly_total,
               frequency
@@ -55,8 +58,16 @@ class SessionPaymentService {
       // Calculate session fee (monthly_total / (frequency * 4))
       // Assuming 4 weeks per month
       final sessionFee = (monthlyTotal / (frequency * 4)).toDouble();
-      final platformFee = sessionFee * 0.15; // 15%
+      final platformFee = sessionFee * 0.15; // 15% (ONLY on session fee, NOT transportation)
       final tutorEarnings = sessionFee * 0.85; // 85%
+
+      // Get transportation cost (if onsite session)
+      final location = session['location'] as String? ?? 'online';
+      final isOnsite = location == 'onsite' || location == 'hybrid';
+      final transportationCost = isOnsite 
+          ? ((session['transportation_cost'] as num?)?.toDouble() ?? 0.0)
+          : 0.0;
+      final transportationEarnings = transportationCost; // 100% to tutor (no platform fee)
 
       final now = DateTime.now();
 
@@ -66,6 +77,9 @@ class SessionPaymentService {
         'session_fee': sessionFee,
         'platform_fee': platformFee,
         'tutor_earnings': tutorEarnings,
+        'transportation_cost': transportationCost,
+        'transportation_earnings': transportationEarnings,
+        'is_onsite': isOnsite && transportationCost > 0,
         'payment_status': 'unpaid',
         'created_at': now.toIso8601String(),
         'updated_at': now.toIso8601String(),
@@ -88,12 +102,18 @@ class SessionPaymentService {
       final paymentId = paymentResponse['id'] as String;
 
       // Create tutor_earnings record
+      // For combined earnings (session + transportation), use 'combined' type
+      final totalTutorEarnings = tutorEarnings + transportationEarnings;
+      final earningsType = transportationCost > 0 ? 'combined' : 'session';
+      
       final earningsData = <String, dynamic>{
         'tutor_id': session['tutor_id'],
         'session_id': sessionId,
         'session_fee': sessionFee,
         'platform_fee': platformFee,
-        'tutor_earnings': tutorEarnings,
+        'tutor_earnings': totalTutorEarnings, // Total: session + transportation
+        'transportation_earnings': transportationEarnings,
+        'earnings_type': earningsType,
         'earnings_status':
             'pending', // Will become 'active' when payment confirmed
         'session_payment_id': paymentId,

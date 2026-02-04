@@ -833,6 +833,8 @@ class SessionLifecycleService {
           .select('''
             tutor_id,
             recurring_session_id,
+            location,
+            transportation_cost,
             recurring_sessions!inner(
               monthly_total,
               frequency
@@ -852,8 +854,18 @@ class SessionLifecycleService {
       // Calculate session fee (monthly_total / (frequency * 4))
       // Assuming 4 weeks per month
       final sessionFee = (monthlyTotal / (frequency * 4)).toDouble();
-      final platformFee = sessionFee * 0.15; // 15%
+      final platformFee = sessionFee * 0.15; // 15% (ONLY on session fee, NOT transportation)
       final tutorEarnings = sessionFee * 0.85; // 85%
+
+      // Get transportation cost (if onsite session)
+      final location = session['location'] as String? ?? 'online';
+      final isOnsite = location == 'onsite';
+      final transportationCost = isOnsite 
+          ? ((session['transportation_cost'] as num?)?.toDouble() ?? 0.0)
+          : 0.0;
+      final transportationEarnings = transportationCost; // 100% to tutor (no platform fee)
+      final totalTutorEarnings = tutorEarnings + transportationEarnings;
+      final earningsType = transportationCost > 0 ? 'combined' : 'session';
 
       // Create earnings record
       final earningsData = <String, dynamic>{
@@ -861,7 +873,9 @@ class SessionLifecycleService {
         'session_id': sessionId,
         'session_fee': sessionFee,
         'platform_fee': platformFee,
-        'tutor_earnings': tutorEarnings,
+        'tutor_earnings': totalTutorEarnings, // Total: session + transportation
+        'transportation_earnings': transportationEarnings,
+        'earnings_type': earningsType,
         'earnings_status': 'pending', // Will become 'active' when payment confirmed
         'created_at': DateTime.now().toIso8601String(),
       };

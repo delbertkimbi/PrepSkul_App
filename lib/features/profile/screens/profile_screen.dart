@@ -19,6 +19,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../notifications/screens/notification_preferences_screen.dart';
 import '../../support/screens/help_support_screen.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'my_children_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userType;
@@ -409,7 +410,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final t = AppLocalizations.of(context)!;
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: AppTheme.softBackground,
         appBar: AppBar(
           automaticallyImplyLeading: false, // No back button in bottom nav
           backgroundColor: AppTheme.primaryColor, // Deep blue
@@ -434,8 +435,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Center(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                          horizontal: 20,
+                          vertical: 12,
+                          horizontal: 16,
                         ),
                         child: Column(
                           children: [
@@ -471,7 +472,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ],
                                     ),
                                     child: CircleAvatar(
-                                      radius: 42,
+                                      radius: 36,
                                       backgroundColor: Colors.white.withOpacity(
                                         0.2,
                                       ),
@@ -485,7 +486,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               _profilePhotoUrl!.isEmpty
                                           ? Icon(
                                               PhosphorIcons.user(),
-                                              size: 40,
+                                              size: 32,
                                               color: Colors.white.withOpacity(
                                                 0.9,
                                               ),
@@ -530,7 +531,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Text(
                               _userInfo?['fullName']?.toString() ?? 'User',
                               style: GoogleFonts.poppins(
-                                fontSize: 18,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.white,
                                 letterSpacing: -0.3,
@@ -569,7 +570,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // Quick Info Cards (Neumorphic style)
                   Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
                         Expanded(
@@ -579,7 +580,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             value: _userInfo?['email']?.toString() ?? 'Not set',
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildNeumorphicInfoCard(
                             icon: PhosphorIcons.phone(),
@@ -593,7 +594,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
 
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
                   
                   // Survey Completion Card (if not completed)
@@ -603,17 +604,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       (_surveyData == null || 
                        (_userInfo?['surveyCompleted'] != true))) ...[
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: _buildSurveyCompletionCard(),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                   ],
                   // Personal Information Section (from survey)
                   // Learning information card removed temporarily
 
                   // Settings Section (Neumorphic style)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: _buildNeumorphicSection(
                       title: t.profileSettings,
                       icon: PhosphorIcons.gear(),
@@ -636,8 +637,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               }
                             },
                           ),
-                          const SizedBox(height: 12),
-                          
+                          const SizedBox(height: 10),
+                          if (widget.userType == 'parent') ...[
+                            _buildNeumorphicSettingsItem(
+                              icon: PhosphorIcons.users(),
+                              title: 'My children',
+                              subtitle: 'Manage who you book for',
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (context) => const MyChildrenScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                          ],
                           if (widget.userType == 'tutor') ...[
                             _buildNeumorphicSettingsItem(
                               icon: PhosphorIcons.graduationCap(),
@@ -814,22 +829,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     required String value,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceColor,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: AppTheme.softBorder,
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.6),
-            blurRadius: 8,
-            offset: const Offset(-3, -3),
-            spreadRadius: 0,
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(3, 3),
-            spreadRadius: 0,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -837,26 +849,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
               color: AppTheme.primaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 18),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 16),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 11,
+              fontSize: 10,
               color: AppTheme.textMedium,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           Text(
             value.length > 15 ? '${value.substring(0, 15)}...' : value,
             style: GoogleFonts.poppins(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
@@ -938,14 +950,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         splashColor: AppTheme.primaryColor.withOpacity(0.1),
         highlightColor: AppTheme.primaryColor.withOpacity(0.05),
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: AppTheme.softBorder,
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 6,
                 offset: const Offset(0, 2),
               ),
             ],
@@ -953,14 +969,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+                child: Icon(icon, color: AppTheme.primaryColor, size: 18),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -968,7 +984,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       title,
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textDark,
                       ),
@@ -978,7 +994,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(
                         subtitle,
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: AppTheme.textMedium,
                         ),
                       ),
@@ -986,7 +1002,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              Icon(PhosphorIcons.caretRight(), color: AppTheme.textLight, size: 20),
+              Icon(PhosphorIcons.caretRight(), color: AppTheme.textLight, size: 18),
             ],
           ),
         ),

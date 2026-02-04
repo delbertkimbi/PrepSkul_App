@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -141,14 +142,14 @@ class TutorPayoutService {
   }
 
   /// Process payout via Fapshi disbursement (admin only)
-  /// 
-  /// This should be called by admin after verifying the payout request
+  ///
+  /// Calls PrepSkul_Web API to process payout via Fapshi disbursement.
+  /// The server updates payout status and notifies the tutor.
   static Future<void> processPayout({
     required String payoutRequestId,
     required String adminId,
   }) async {
     try {
-      // Get payout request
       final payoutRequest = await _supabase
           .from('payout_requests')
           .select('*')
@@ -163,35 +164,37 @@ class TutorPayoutService {
         throw Exception('Payout request is not pending');
       }
 
-      final amount = (payoutRequest['amount'] as num).toDouble();
-      final phoneNumber = payoutRequest['phone_number'] as String;
-      final tutorId = payoutRequest['tutor_id'] as String;
+      final accessToken = SupabaseService.client.auth.currentSession?.accessToken;
+      if (accessToken == null) {
+        throw Exception('Not authenticated');
+      }
 
-      // Process via Fapshi disbursement API
-      // TODO: Implement Fapshi disbursement when API is available
-      // For now, mark as processed manually
-      await _supabase
-          .from('payout_requests')
-          .update({
-            'status': 'processing',
-            'processed_by': adminId,
-            'processed_at': DateTime.now().toIso8601String(),
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', payoutRequestId);
+      final apiUrl = AppConfig.effectiveApiBaseUrl;
+      final response = await http.post(
+        Uri.parse('$apiUrl/payouts/process'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({
+          'payoutRequestId': payoutRequestId,
+          'adminId': adminId,
+        }),
+      );
 
-      LogService.success('Payout request marked as processing: $payoutRequestId');
+      if (response.statusCode == 200) {
+        LogService.success('Payout processing initiated via Fapshi: $payoutRequestId');
+        return;
+      }
 
-      // Notify tutor
+      final body = response.body;
       try {
-        await _notifyTutorOfPayoutStatus(
-          tutorId: tutorId,
-          payoutRequestId: payoutRequestId,
-          status: 'processing',
-          amount: amount,
-        );
+        final json = jsonDecode(body) as Map<String, dynamic>;
+        final err = json['error'] as String? ?? body;
+        throw Exception(err);
       } catch (e) {
-        LogService.warning('Failed to notify tutor of payout status: $e');
+        if (e is Exception) rethrow;
+        throw Exception(body);
       }
     } catch (e) {
       LogService.error('Error processing payout: $e');

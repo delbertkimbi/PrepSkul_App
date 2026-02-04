@@ -29,6 +29,9 @@ class RecurringSession {
   final String? studentAvatarUrl;
   final String studentType;
 
+  // Multi-learner support (for parent bookings)
+  final List<String>? learnerLabels; // Array of learner names when parent books for multiple children
+
   // Tutor info
   final String tutorName;
   final String? tutorAvatarUrl;
@@ -56,6 +59,7 @@ class RecurringSession {
     required this.studentName,
     this.studentAvatarUrl,
     required this.studentType,
+    this.learnerLabels,
     required this.tutorName,
     this.tutorAvatarUrl,
     required this.tutorRating,
@@ -89,6 +93,9 @@ class RecurringSession {
       studentName: json['student_name'] as String,
       studentAvatarUrl: json['student_avatar_url'] as String?,
       studentType: json['student_type'] as String,
+      learnerLabels: json['learner_labels'] != null
+          ? List<String>.from(json['learner_labels'] as List)
+          : null,
       tutorName: json['tutor_name'] as String,
       tutorAvatarUrl: json['tutor_avatar_url'] as String?,
       tutorRating: (json['tutor_rating'] as num).toDouble(),
@@ -149,6 +156,7 @@ class RecurringSession {
       studentName: request.studentName,
       studentAvatarUrl: request.studentAvatarUrl,
       studentType: request.studentType,
+      learnerLabels: request.learnerLabels,
       tutorName: request.tutorName,
       tutorAvatarUrl: request.tutorAvatarUrl,
       tutorRating: request.tutorRating,

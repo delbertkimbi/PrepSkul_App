@@ -312,7 +312,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         title: Text(
           'Edit Profile',
           style: GoogleFonts.poppins(
-            fontSize: 16,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -330,7 +330,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   : Text(
                       'Save',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
                       ),
@@ -341,7 +341,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: _isLoading
           ? ShimmerLoading.editProfileScreen()
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -354,7 +354,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           Stack(
                             children: [
                               CircleAvatar(
-                                radius: 60,
+                                radius: 50,
                                 backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
                                 backgroundImage: _profilePhotoUrl != null && 
                                     _profilePhotoUrl!.isNotEmpty
@@ -364,7 +364,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     _profilePhotoUrl!.isEmpty
                                     ? Icon(
                                         Icons.person,
-                                        size: 60,
+                                        size: 50,
                                         color: AppTheme.primaryColor,
                                       )
                                     : null,
@@ -388,14 +388,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                           TextButton.icon(
                             onPressed: _pickProfilePhoto,
-                            icon: const Icon(Icons.edit, size: 16),
+                            icon: const Icon(Icons.edit, size: 14),
                             label: Text(
                               'Change Photo',
                               style: GoogleFonts.poppins(
-                                fontSize: 14,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -406,7 +406,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
 
                     // Basic Information
                     _buildNeumorphicSection(
@@ -425,7 +425,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               return null;
                             },
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           _buildTextField(
                             controller: _phoneController,
                             label: 'Phone Number',
@@ -449,7 +449,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               return null;
                             },
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           _buildTextField(
                             controller: _emailController,
                             label: 'Email Address',
@@ -518,12 +518,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                     ],
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 20),
 
                     // Save Button
                     SizedBox(
                       width: double.infinity,
-                      height: 52,
+                      height: 48,
                       child: ElevatedButton(
                         onPressed: _isSaving ? null : _saveProfile,
                         style: ElevatedButton.styleFrom(
@@ -546,7 +546,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             : Text(
                                 'Save Changes',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -566,7 +566,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surfaceColor,
         borderRadius: BorderRadius.circular(16),
@@ -596,13 +596,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   color: AppTheme.primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: AppTheme.primaryColor, size: 18),
+                child: Icon(icon, color: AppTheme.primaryColor, size: 16),
               ),
               const SizedBox(width: 10),
               Text(
                 title,
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textDark,
                   letterSpacing: -0.2,
@@ -610,7 +610,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           child,
         ],
       ),
@@ -631,7 +631,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       enabled: enabled,
       validator: validator,
       style: GoogleFonts.poppins(
-        fontSize: 14,
+        fontSize: 13,
         color: AppTheme.textDark,
       ),
       decoration: InputDecoration(

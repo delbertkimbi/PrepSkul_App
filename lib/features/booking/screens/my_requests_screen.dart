@@ -21,12 +21,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/features/booking/services/booking_service.dart';
 import 'package:prepskul/features/booking/services/tutor_request_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/booking/services/session_reschedule_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../utils/session_date_utils.dart';
 
@@ -657,9 +659,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           ),
         ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
+          preferredSize: const Size.fromHeight(48),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: Colors.white,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -2935,19 +2937,83 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
   }
 
-  /// Show reschedule dialog for paid sessions
+  /// Show reschedule dialog for trial sessions (scheduled/upcoming)
   Future<void> _showRescheduleDialog(TrialSession session) async {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Reschedule feature coming soon. Please contact support if you need to reschedule.',
-          style: GoogleFonts.poppins(),
-        ),
-        duration: const Duration(seconds: 3),
-        backgroundColor: AppTheme.primaryColor,
+    
+    // For trial sessions, use the booking flow with reschedule flag
+    // This allows suggested dates and full booking flow
+    try {
+      final tutorData = await _loadTutorInfoForReschedule(session.tutorId);
+      if (tutorData != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => BookTrialSessionScreen(
+              tutor: tutorData,
+              rescheduleSessionId: session.id,
+              isReschedule: true,
+            ),
+          ),
+        ).then((_) {
+          if (mounted) _loadRequests();
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ErrorHandlerService.showErrorSnackbar(context, e, 'Failed to load tutor information');
+      }
+    }
+  }
+
+  /// Show reschedule dialog for recurring sessions
+  Future<void> _showRescheduleRecurringDialog(String sessionId) async {
+    if (!mounted) return;
+    
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _RescheduleRecurringSessionDialog(
+        sessionId: sessionId,
       ),
     );
+
+    if (result != null && result['confirmed'] == true) {
+      try {
+        await SessionRescheduleService.requestReschedule(
+          sessionId: sessionId,
+          proposedDate: result['proposedDate'] as DateTime,
+          proposedTime: result['proposedTime'] as String,
+          reason: result['reason'] as String? ?? 'Reschedule requested by student',
+          additionalNotes: result['additionalNotes'] as String?,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Reschedule request sent. Waiting for tutor approval.',
+                      style: GoogleFonts.poppins(),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: AppTheme.accentGreen,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+          _loadRequests();
+        }
+      } catch (e) {
+        if (mounted) {
+          ErrorHandlerService.showErrorSnackbar(context, e, 'Failed to reschedule session');
+        }
+      }
+    }
   }
 
   /// Build payment status chip using cached payment status (no FutureBuilder flickering)
@@ -4166,9 +4232,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       },
       selectedColor: AppTheme.primaryColor, // Deep blue background
       checkmarkColor: Colors.white,
+      backgroundColor: AppTheme.softBackground,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       labelStyle: GoogleFonts.poppins(
-        fontSize: 13,
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
         color: isSelected
             ? Colors.white
             : AppTheme.textDark, // White text on selected
@@ -4211,6 +4281,230 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
   }
 
+}
+
+// Reschedule Dialog for Recurring Sessions
+class _RescheduleRecurringSessionDialog extends StatefulWidget {
+  final String sessionId;
+
+  const _RescheduleRecurringSessionDialog({
+    required this.sessionId,
+  });
+
+  @override
+  State<_RescheduleRecurringSessionDialog> createState() => _RescheduleRecurringSessionDialogState();
+}
+
+class _RescheduleRecurringSessionDialogState extends State<_RescheduleRecurringSessionDialog> {
+  DateTime? _selectedDate;
+  TimeOfDay? _selectedTime;
+  final _reasonController = TextEditingController();
+  final _notesController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessionDetails();
+  }
+
+  Future<void> _loadSessionDetails() async {
+    try {
+      final response = await SupabaseService.client
+          .from('individual_sessions')
+          .select('scheduled_date, scheduled_time')
+          .eq('id', widget.sessionId)
+          .maybeSingle();
+
+      if (response != null && mounted) {
+        final scheduledDate = DateTime.parse(response['scheduled_date'] as String);
+        final scheduledTime = response['scheduled_time'] as String? ?? '00:00';
+        final timeParts = scheduledTime.split(':');
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
+
+        setState(() {
+          _selectedDate = scheduledDate;
+          _selectedTime = TimeOfDay(hour: hour, minute: minute);
+        });
+      }
+    } catch (e) {
+      LogService.error('Error loading session details: $e');
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  Future<void> _selectTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime ?? const TimeOfDay(hour: 9, minute: 0),
+    );
+    if (picked != null) {
+      setState(() => _selectedTime = picked);
+    }
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isValid = _selectedDate != null && _selectedTime != null;
+
+    return AlertDialog(
+      title: Text('Reschedule Session', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select a new date and time for this session. The tutor will need to approve the change.',
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            // Date picker
+            InkWell(
+              onTap: _selectDate,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.softBorder),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today, size: 20, color: AppTheme.primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _selectedDate != null
+                            ? DateFormat('MMM d, y').format(_selectedDate!)
+                            : 'Select date',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: _selectedDate != null ? AppTheme.textDark : AppTheme.textLight,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Time picker
+            InkWell(
+              onTap: _selectTime,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.softBorder),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 20, color: AppTheme.primaryColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _selectedTime != null
+                            ? _selectedTime!.format(context)
+                            : 'Select time',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          color: _selectedTime != null ? AppTheme.textDark : AppTheme.textLight,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textLight),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Reason field
+            TextField(
+              controller: _reasonController,
+              decoration: InputDecoration(
+                labelText: 'Reason for reschedule',
+                hintText: 'E.g., "Schedule conflict", "Family emergency"',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            // Additional notes
+            TextField(
+              controller: _notesController,
+              decoration: InputDecoration(
+                labelText: 'Additional notes (optional)',
+                hintText: 'Any additional information for the tutor',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              maxLines: 2,
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isLoading ? null : () => Navigator.pop(context, {'confirmed': false}),
+          child: Text('Cancel', style: GoogleFonts.poppins()),
+        ),
+        ElevatedButton(
+          onPressed: (_isLoading || !isValid)
+              ? null
+              : () async {
+                  setState(() => _isLoading = true);
+                  await Future.delayed(const Duration(milliseconds: 300));
+                  if (mounted) {
+                    final timeString = '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}';
+                    Navigator.pop(context, {
+                      'confirmed': true,
+                      'proposedDate': _selectedDate,
+                      'proposedTime': timeString,
+                      'reason': _reasonController.text.trim(),
+                      'additionalNotes': _notesController.text.trim(),
+                    });
+                  }
+                },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryColor,
+            foregroundColor: Colors.white,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                )
+              : Text('Request Reschedule', style: GoogleFonts.poppins()),
+        ),
+      ],
+    );
+  }
 }
 
 // Helper class to combine different request types

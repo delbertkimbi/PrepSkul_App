@@ -392,7 +392,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         title: Text(
           'Notifications',
           style: GoogleFonts.poppins(
-            fontSize: 20,
+            fontSize: 18,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
@@ -415,7 +415,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               child: Text(
                 'Mark all read',
                 style: GoogleFonts.poppins(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.primaryColor,
                 ),
@@ -427,20 +427,20 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         children: [
           // Filter Chips
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             color: Colors.white,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
                   _buildFilterChip('all', 'All'),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip('unread', 'Unread'),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip('booking_request', 'Bookings'),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip('payment_received', 'Payments'),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   _buildFilterChip('session_completed', 'Sessions'),
                 ],
               ),
@@ -477,15 +477,20 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           _filter = filter;
         });
       },
-      selectedColor: AppTheme.primaryColor.withOpacity(0.2),
+      selectedColor: AppTheme.primaryColor.withOpacity(0.15),
       checkmarkColor: AppTheme.primaryColor,
+      backgroundColor: AppTheme.softBackground,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       labelStyle: GoogleFonts.poppins(
-        fontSize: 13,
-        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
         color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
+      ),
+      side: BorderSide(
+        color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
+        width: isSelected ? 1.5 : 1,
       ),
     );
   }
@@ -523,12 +528,12 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
           }
           if (!_hasMore && _notifications.isNotEmpty && index == totalItems - 1) {
             return Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(12.0),
               child: Center(
                 child: Text(
                   'No more notifications',
                   style: GoogleFonts.poppins(
-                    fontSize: 16, // Increased from 14 (added 2)
+                    fontSize: 13,
                     color: AppTheme.textMedium,
                   ),
                 ),
@@ -553,13 +558,13 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               // Render time group header
               return Padding(
                 padding: EdgeInsets.only(
-                  bottom: 12,
-                  top: index > 0 ? 24 : 0,
+                  bottom: 8,
+                  top: index > 0 ? 16 : 0,
                 ),
                 child: Text(
                   currentTimeGroup!,
                   style: GoogleFonts.poppins(
-                    fontSize: 16, // Increased from 14 (added 2)
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: AppTheme.textMedium,
                   ),

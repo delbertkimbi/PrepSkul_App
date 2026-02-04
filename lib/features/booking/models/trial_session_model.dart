@@ -32,6 +32,11 @@ class TrialSession {
   final String? paymentId;
   final String? meetLink;
 
+  // Multi-learner support (optional)
+  final String? bookingGroupId; // Deprecated for trials - kept for backward compat
+  final String? learnerLabel; // Single learner name (for backward compat)
+  final List<String>? learnerLabels; // Array of learner names when parent books for multiple children
+
   // Outcome
   final bool convertedToRecurring;
   final String? recurringSessionId;
@@ -62,6 +67,9 @@ class TrialSession {
     this.paymentStatus = 'unpaid',
     this.paymentId,
     this.meetLink,
+    this.bookingGroupId,
+    this.learnerLabel,
+    this.learnerLabels,
     this.convertedToRecurring = false,
     this.recurringSessionId,
     required this.createdAt,
@@ -92,6 +100,8 @@ class TrialSession {
       paymentStatus: json['payment_status'] as String? ?? 'unpaid',
       paymentId: json['payment_id'] as String?,
       meetLink: json['meet_link'] as String?,
+      bookingGroupId: json['booking_group_id'] as String?,
+      learnerLabel: json['learner_label'] as String?,
       convertedToRecurring: json['converted_to_recurring'] as bool? ?? false,
       recurringSessionId: json['recurring_session_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -127,6 +137,9 @@ class TrialSession {
       'payment_status': paymentStatus,
       'payment_id': paymentId,
       'meet_link': meetLink,
+      if (bookingGroupId != null) 'booking_group_id': bookingGroupId,
+      if (learnerLabel != null) 'learner_label': learnerLabel,
+      if (learnerLabels != null) 'learner_labels': learnerLabels,
       'converted_to_recurring': convertedToRecurring,
       'recurring_session_id': recurringSessionId,
       'created_at': createdAt.toIso8601String(),

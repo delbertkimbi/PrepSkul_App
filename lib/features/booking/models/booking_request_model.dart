@@ -41,6 +41,13 @@ class BookingRequest {
   final String? studentAvatarUrl;
   final String studentType; // student or parent
 
+  // Multi-learner support (for parent bookings)
+  final List<String>? learnerLabels; // Array of learner names when parent books for multiple children
+  final Map<String, Map<String, dynamic>>? learnerAcceptanceStatus; // Per-learner acceptance status: {"Emma": {"status": "accepted", "reason": null, "responded_at": "..."}}
+
+  // Transportation cost (for onsite sessions)
+  final double? estimatedTransportationCost; // Estimated transportation cost per session
+
   // Tutor info (denormalized for easy display)
   final String tutorName;
   final String? tutorAvatarUrl;
@@ -77,6 +84,9 @@ class BookingRequest {
     required this.studentName,
     this.studentAvatarUrl,
     required this.studentType,
+    this.learnerLabels,
+    this.learnerAcceptanceStatus,
+    this.estimatedTransportationCost,
     required this.tutorName,
     this.tutorAvatarUrl,
     required this.tutorRating,
@@ -112,6 +122,22 @@ class BookingRequest {
       studentName: json['student_name'] as String,
       studentAvatarUrl: json['student_avatar_url'] as String?,
       studentType: json['student_type'] as String,
+      learnerLabels: json['learner_labels'] != null
+          ? List<String>.from(json['learner_labels'] as List)
+          : null,
+      learnerAcceptanceStatus: json['learner_acceptance_status'] != null
+          ? Map<String, Map<String, dynamic>>.from(
+              (json['learner_acceptance_status'] as Map).map(
+                (key, value) => MapEntry(
+                  key.toString(),
+                  Map<String, dynamic>.from(value as Map),
+                ),
+              ),
+            )
+          : null,
+      estimatedTransportationCost: json['estimated_transportation_cost'] != null
+          ? (json['estimated_transportation_cost'] as num).toDouble()
+          : null,
       tutorName: json['tutor_name'] as String,
       tutorAvatarUrl: json['tutor_avatar_url'] as String?,
       tutorRating: (json['tutor_rating'] as num).toDouble(),
@@ -196,6 +222,8 @@ class BookingRequest {
       'student_name': studentName,
       'student_avatar_url': studentAvatarUrl,
       'student_type': studentType,
+      if (learnerLabels != null) 'learner_labels': learnerLabels,
+      if (estimatedTransportationCost != null) 'estimated_transportation_cost': estimatedTransportationCost,
       'tutor_name': tutorName,
       'tutor_avatar_url': tutorAvatarUrl,
       'tutor_rating': tutorRating,
@@ -246,6 +274,9 @@ class BookingRequest {
       studentName: studentName,
       studentAvatarUrl: studentAvatarUrl,
       studentType: studentType,
+      learnerLabels: learnerLabels,
+      learnerAcceptanceStatus: learnerAcceptanceStatus,
+      estimatedTransportationCost: estimatedTransportationCost,
       tutorName: tutorName,
       tutorAvatarUrl: tutorAvatarUrl,
       tutorRating: tutorRating,
@@ -331,6 +362,61 @@ class BookingRequest {
   /// Get days summary
   String getDaysSummary() {
     return days.join(', ');
+  }
+
+  /// Check if this is a multi-learner booking
+  bool get isMultiLearner => learnerLabels != null && learnerLabels!.isNotEmpty;
+
+  /// Get acceptance status for a specific learner
+  String? getLearnerStatus(String learnerName) {
+    if (learnerAcceptanceStatus == null) return null;
+    return learnerAcceptanceStatus![learnerName]?['status'] as String?;
+  }
+
+  /// Get rejection reason for a specific learner
+  String? getLearnerRejectionReason(String learnerName) {
+    if (learnerAcceptanceStatus == null) return null;
+    return learnerAcceptanceStatus![learnerName]?['reason'] as String?;
+  }
+
+  /// Check if all learners have been responded to (accepted or declined)
+  bool get allLearnersResponded {
+    if (!isMultiLearner) return true; // Not a multi-learner booking
+    if (learnerAcceptanceStatus == null) return false;
+    
+    for (final learnerName in learnerLabels!) {
+      final status = getLearnerStatus(learnerName);
+      if (status == null || status == 'pending') {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Get count of accepted learners
+  int get acceptedLearnersCount {
+    if (!isMultiLearner || learnerAcceptanceStatus == null) return 0;
+    
+    int count = 0;
+    for (final learnerName in learnerLabels!) {
+      if (getLearnerStatus(learnerName) == 'accepted') {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /// Get count of declined learners
+  int get declinedLearnersCount {
+    if (!isMultiLearner || learnerAcceptanceStatus == null) return 0;
+    
+    int count = 0;
+    for (final learnerName in learnerLabels!) {
+      if (getLearnerStatus(learnerName) == 'declined') {
+        count++;
+      }
+    }
+    return count;
   }
 
   /// Try to format raw time strings (e.g. "09:00:00") into user-friendly "9:00 AM"

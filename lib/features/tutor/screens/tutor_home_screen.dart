@@ -11,7 +11,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/survey_repository.dart';
 import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
-import '../../../core/services/notification_service.dart';
+import '../../../core/services/notification_helper_service.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/models/profile_completion.dart';
 import '../../../core/widgets/profile_completion_widget.dart';
@@ -330,25 +330,23 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         final today = DateTime.now().toIso8601String().split('T')[0];
         
         if (lastNotificationDate != today) {
-          // Send professional notification
-          await NotificationService.createNotification(
+          // Get next missing stage for stage-specific messaging (optional)
+          final stage = await TutorOnboardingProgressService.getNextMissingStage(userId);
+          final title = 'Complete Your Profile to Get Verified';
+          final message = onboardingSkipped
+              ? 'Your profile isn\'t visible to students yet. Complete your onboarding to get verified and start connecting with students who match your expertise.'
+              : 'Finish your profile setup to get verified and start connecting with students who need your expertise. Complete your onboarding to become visible and start teaching.';
+          await NotificationHelperService.sendOnboardingReminder(
             userId: userId,
-            type: 'onboarding_reminder',
-            title: 'Complete Your Profile to Get Verified',
-            message: onboardingSkipped
-                ? 'Your profile isn\'t visible to students yet. Complete your onboarding to get verified and start connecting with students who match your expertise.'
-                : 'Finish your profile setup to get verified and start connecting with students who need your expertise. Complete your onboarding to become visible and start teaching.',
-            priority: 'high',
+            title: title,
+            message: message,
             actionUrl: '/tutor-onboarding',
-            actionText: 'Complete Profile',
-            icon: '🎓',
             metadata: {
               'onboarding_skipped': onboardingSkipped,
               'onboarding_complete': onboardingComplete,
+              if (stage != null) 'reminder_stage': stage,
             },
           );
-          
-          // Save today's date to avoid sending multiple notifications per day
           await prefs.setString('onboarding_notification_date', today);
           LogService.success('Onboarding notification sent to tutor: $userId');
         }

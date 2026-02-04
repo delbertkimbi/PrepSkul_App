@@ -22,6 +22,10 @@ class BookingService {
     required String paymentPlan,
     required double monthlyTotal,
     String? customRequestId, // Link to original custom tutor request
+    List<String>? learnerLabels, // Array of learner names for multi-learner bookings
+    double? estimatedTransportationCost, // Estimated transportation cost for onsite/hybrid sessions
+    Map<String, String>? sessionLocations, // For hybrid: which sessions are onsite
+    Map<String, Map<String, String?>>? locationDetails, // For hybrid: location details per session
   }) async {
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -272,6 +276,13 @@ class BookingService {
         'created_at': DateTime.now().toIso8601String(),
         // Link to custom request if provided
         if (customRequestId != null) 'custom_request_id': customRequestId,
+        // Multi-learner support (for parent bookings)
+        if (learnerLabels != null && learnerLabels.isNotEmpty) 'learner_labels': learnerLabels,
+        // Transportation cost (for onsite/hybrid sessions)
+        // Note: For hybrid sessions, transportation is calculated per onsite session, not upfront
+        // estimated_transportation_cost is stored for reference but actual cost is per session
+        if (estimatedTransportationCost != null && estimatedTransportationCost > 0)
+          'estimated_transportation_cost': estimatedTransportationCost,
         // Denormalized data
         'student_name': userProfile['full_name'],
         'student_avatar_url': studentAvatarUrl,
@@ -281,6 +292,12 @@ class BookingService {
         'tutor_rating':
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
       };
+      
+      // Store session locations and location details for hybrid sessions (in JSONB)
+      if (location == 'hybrid' && sessionLocations != null && locationDetails != null) {
+        requestData['session_locations'] = sessionLocations;
+        requestData['location_details'] = locationDetails;
+      }
 
       // Log the data being inserted for debugging (use error level so it shows in console)
       LogService.error('🔍 DEBUG: About to insert booking request. student_type: "$studentType", user_type: "$rawUserType", student_id: $userId, tutor_id: $tutorUserId');
@@ -1234,5 +1251,369 @@ class BookingService {
   static String _getDayName(DateTime date) {
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     return days[date.weekday - 1];
+  }
+
+  // ========================================
+  // PER-LEARNER ACCEPTANCE (Multi-Learner Bookings)
+  // ========================================
+
+  /// Accept a specific learner in a multi-learner booking
+  /// Returns updated booking request
+  static Future<BookingRequest> acceptLearner(
+    String requestId,
+    String learnerName, {
+    String? responseNotes,
+  }) async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get current request
+      final request = await getBookingRequestById(requestId);
+      if (request.tutorId != userId) {
+        throw Exception('Unauthorized: This request is not for you');
+      }
+
+      if (!request.isMultiLearner) {
+        throw Exception('This is not a multi-learner booking');
+      }
+
+      if (!request.learnerLabels!.contains(learnerName)) {
+        throw Exception('Learner "$learnerName" not found in this booking');
+      }
+
+      // Get current acceptance status or initialize
+      final currentStatus = request.learnerAcceptanceStatus ?? <String, Map<String, dynamic>>{};
+      
+      // Update status for this learner
+      final updatedStatus = Map<String, Map<String, dynamic>>.from(currentStatus);
+      updatedStatus[learnerName] = {
+        'status': 'accepted',
+        'reason': null,
+        'responded_at': DateTime.now().toIso8601String(),
+        if (responseNotes != null && responseNotes.isNotEmpty) 'response_notes': responseNotes,
+      };
+
+      // Update database
+      final updateData = {
+        'learner_acceptance_status': updatedStatus,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Check if all learners have been responded to
+      final allResponded = await SupabaseService.client.rpc(
+        'check_all_learners_responded',
+        params: {'p_request_id': requestId},
+      );
+
+      // If all learners responded and at least one is accepted, mark request as approved
+      if (allResponded == true) {
+        final acceptedCount = await SupabaseService.client.rpc(
+          'get_accepted_learners_count',
+          params: {'p_request_id': requestId},
+        );
+        
+        if (acceptedCount > 0) {
+          // At least one learner accepted - approve the request
+          updateData['status'] = 'approved';
+          updateData['responded_at'] = DateTime.now().toIso8601String();
+          if (responseNotes != null && responseNotes.isNotEmpty) {
+            updateData['tutor_response'] = responseNotes;
+          }
+        } else {
+          // All learners declined - reject the request
+          updateData['status'] = 'rejected';
+          updateData['responded_at'] = DateTime.now().toIso8601String();
+          updateData['rejection_reason'] = 'All learners declined';
+        }
+      }
+
+      final updated = await SupabaseService.client
+          .from('booking_requests')
+          .update(updateData)
+          .eq('id', requestId)
+          .select()
+          .maybeSingle();
+
+      if (updated == null) {
+        throw Exception('Failed to update learner acceptance status');
+      }
+
+      final updatedRequest = BookingRequest.fromJson(updated);
+
+      LogService.success('✅ Learner "$learnerName" accepted in booking: $requestId');
+
+      // If all learners responded and request is approved, create payment and session
+      if (allResponded == true && updatedRequest.isApproved) {
+        // Create payment request for accepted learners only
+        try {
+          LogService.info('💳 Creating payment request for accepted learners...');
+          final paymentRequestId = await PaymentRequestService.createPaymentRequestOnApproval(
+            updatedRequest,
+          );
+          LogService.success('✅ Payment request created: $paymentRequestId');
+
+          // Create recurring session
+          try {
+            LogService.info('📅 Creating recurring session...');
+            await RecurringSessionService.createRecurringSessionFromBooking(
+              updatedRequest,
+              paymentRequestId: paymentRequestId,
+            );
+            LogService.success('✅ Recurring session created');
+          } catch (e) {
+            LogService.error('❌ Failed to create recurring session: $e');
+          }
+
+          // Create conversation
+          try {
+            await ConversationLifecycleService.createConversationForBooking(
+              bookingRequestId: requestId,
+              studentId: request.studentId,
+              tutorId: request.tutorId,
+            );
+          } catch (e) {
+            LogService.warning('⚠️ Failed to create conversation: $e');
+          }
+
+          // Send notification with multi-learner context
+          try {
+            if (updatedRequest.isMultiLearner) {
+              final acceptedLearners = updatedRequest.learnerLabels!
+                  .where((name) => updatedRequest.getLearnerStatus(name) == 'accepted')
+                  .toList();
+              final declinedLearners = updatedRequest.learnerLabels!
+                  .where((name) => updatedRequest.getLearnerStatus(name) == 'declined')
+                  .toList();
+              
+              await NotificationHelperService.notifyMultiLearnerBookingAccepted(
+                studentId: request.studentId,
+                tutorId: request.tutorId,
+                requestId: requestId,
+                tutorName: request.tutorName,
+                acceptedLearners: acceptedLearners,
+                declinedLearners: declinedLearners,
+                paymentRequestId: paymentRequestId,
+                senderAvatarUrl: request.tutorAvatarUrl,
+              );
+            } else {
+              await NotificationHelperService.notifyBookingRequestAccepted(
+                studentId: request.studentId,
+                tutorId: request.tutorId,
+                requestId: requestId,
+                tutorName: request.tutorName,
+                subject: 'Tutoring Sessions',
+                paymentRequestId: paymentRequestId,
+                senderAvatarUrl: request.tutorAvatarUrl,
+              );
+            }
+          } catch (e) {
+            LogService.error('❌ Failed to send notification: $e');
+          }
+        } catch (e) {
+          LogService.error('❌ Failed to create payment request: $e');
+        }
+      }
+
+      return updatedRequest;
+    } catch (e) {
+      LogService.error('Error accepting learner: $e');
+      rethrow;
+    }
+  }
+
+  /// Decline a specific learner in a multi-learner booking
+  /// Returns updated booking request
+  static Future<BookingRequest> declineLearner(
+    String requestId,
+    String learnerName, {
+    required String reason,
+  }) async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Get current request
+      final request = await getBookingRequestById(requestId);
+      if (request.tutorId != userId) {
+        throw Exception('Unauthorized: This request is not for you');
+      }
+
+      if (!request.isMultiLearner) {
+        throw Exception('This is not a multi-learner booking');
+      }
+
+      if (!request.learnerLabels!.contains(learnerName)) {
+        throw Exception('Learner "$learnerName" not found in this booking');
+      }
+
+      // Get current acceptance status or initialize
+      final currentStatus = request.learnerAcceptanceStatus ?? <String, Map<String, dynamic>>{};
+      
+      // Update status for this learner
+      final updatedStatus = Map<String, Map<String, dynamic>>.from(currentStatus);
+      updatedStatus[learnerName] = {
+        'status': 'declined',
+        'reason': reason,
+        'responded_at': DateTime.now().toIso8601String(),
+      };
+
+      // Update database
+      final updateData = {
+        'learner_acceptance_status': updatedStatus,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // Check if all learners have been responded to
+      final allResponded = await SupabaseService.client.rpc(
+        'check_all_learners_responded',
+        params: {'p_request_id': requestId},
+      );
+
+      // If all learners responded
+      if (allResponded == true) {
+        final acceptedCount = await SupabaseService.client.rpc(
+          'get_accepted_learners_count',
+          params: {'p_request_id': requestId},
+        );
+        
+        if (acceptedCount > 0) {
+          // At least one learner accepted - approve the request
+          updateData['status'] = 'approved';
+          updateData['responded_at'] = DateTime.now().toIso8601String();
+        } else {
+          // All learners declined - reject the request
+          updateData['status'] = 'rejected';
+          updateData['responded_at'] = DateTime.now().toIso8601String();
+          updateData['rejection_reason'] = 'All learners declined';
+        }
+      }
+
+      final updated = await SupabaseService.client
+          .from('booking_requests')
+          .update(updateData)
+          .eq('id', requestId)
+          .select()
+          .maybeSingle();
+
+      if (updated == null) {
+        throw Exception('Failed to update learner acceptance status');
+      }
+
+      final updatedRequest = BookingRequest.fromJson(updated);
+
+      LogService.success('✅ Learner "$learnerName" declined in booking: $requestId');
+
+      // If all learners responded and request is approved, create payment and session
+      if (allResponded == true && updatedRequest.isApproved) {
+        // Create payment request for accepted learners only
+        try {
+          LogService.info('💳 Creating payment request for accepted learners...');
+          final paymentRequestId = await PaymentRequestService.createPaymentRequestOnApproval(
+            updatedRequest,
+          );
+          LogService.success('✅ Payment request created: $paymentRequestId');
+
+          // Create recurring session
+          try {
+            LogService.info('📅 Creating recurring session...');
+            await RecurringSessionService.createRecurringSessionFromBooking(
+              updatedRequest,
+              paymentRequestId: paymentRequestId,
+            );
+            LogService.success('✅ Recurring session created');
+          } catch (e) {
+            LogService.error('❌ Failed to create recurring session: $e');
+          }
+
+          // Create conversation
+          try {
+            await ConversationLifecycleService.createConversationForBooking(
+              bookingRequestId: requestId,
+              studentId: request.studentId,
+              tutorId: request.tutorId,
+            );
+          } catch (e) {
+            LogService.warning('⚠️ Failed to create conversation: $e');
+          }
+
+          // Send notification with multi-learner context
+          try {
+            if (updatedRequest.isMultiLearner) {
+              final acceptedLearners = updatedRequest.learnerLabels!
+                  .where((name) => updatedRequest.getLearnerStatus(name) == 'accepted')
+                  .toList();
+              final declinedLearners = updatedRequest.learnerLabels!
+                  .where((name) => updatedRequest.getLearnerStatus(name) == 'declined')
+                  .toList();
+              
+              await NotificationHelperService.notifyMultiLearnerBookingAccepted(
+                studentId: request.studentId,
+                tutorId: request.tutorId,
+                requestId: requestId,
+                tutorName: request.tutorName,
+                acceptedLearners: acceptedLearners,
+                declinedLearners: declinedLearners,
+                paymentRequestId: paymentRequestId,
+                senderAvatarUrl: request.tutorAvatarUrl,
+              );
+            } else {
+              await NotificationHelperService.notifyBookingRequestAccepted(
+                studentId: request.studentId,
+                tutorId: request.tutorId,
+                requestId: requestId,
+                tutorName: request.tutorName,
+                subject: 'Tutoring Sessions',
+                paymentRequestId: paymentRequestId,
+                senderAvatarUrl: request.tutorAvatarUrl,
+              );
+            }
+          } catch (e) {
+            LogService.error('❌ Failed to send notification: $e');
+          }
+        } catch (e) {
+          LogService.error('❌ Failed to create payment request: $e');
+        }
+      } else if (allResponded == true && updatedRequest.isRejected) {
+        // All learners declined - send rejection notification
+        try {
+          if (updatedRequest.isMultiLearner) {
+            final declinedLearners = updatedRequest.learnerLabels!
+                .where((name) => updatedRequest.getLearnerStatus(name) == 'declined')
+                .toList();
+            
+            await NotificationHelperService.notifyMultiLearnerBookingRejected(
+              studentId: request.studentId,
+              tutorId: request.tutorId,
+              requestId: requestId,
+              tutorName: request.tutorName,
+              declinedLearners: declinedLearners,
+              reason: 'All learners declined',
+              senderAvatarUrl: request.tutorAvatarUrl,
+            );
+          } else {
+            await NotificationHelperService.notifyBookingRequestRejected(
+              studentId: request.studentId,
+              tutorId: request.tutorId,
+              requestId: requestId,
+              tutorName: request.tutorName,
+              rejectionReason: 'All learners declined',
+              senderAvatarUrl: request.tutorAvatarUrl,
+            );
+          }
+        } catch (e) {
+          LogService.error('❌ Failed to send rejection notification: $e');
+        }
+      }
+
+      return updatedRequest;
+    } catch (e) {
+      LogService.error('Error declining learner: $e');
+      rethrow;
+    }
   }
 }

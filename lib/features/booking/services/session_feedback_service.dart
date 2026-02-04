@@ -74,11 +74,23 @@ class SessionFeedbackService {
       }
 
       // Check if feedback already exists
-      final existingFeedback = await _supabase
-          .from('session_feedback')
-          .select('id, student_feedback_submitted_at, tutor_feedback_submitted_at')
-          .eq('session_id', sessionId)
-          .maybeSingle();
+      Map<String, dynamic>? existingFeedback;
+      try {
+        existingFeedback = await _supabase
+            .from('session_feedback')
+            .select('id, student_feedback_submitted_at, tutor_feedback_submitted_at')
+            .eq('session_id', sessionId)
+            .maybeSingle();
+      } catch (e) {
+        final errorStr = e.toString();
+        if (errorStr.contains('PGRST205') || 
+            errorStr.contains('Could not find the table') || 
+            errorStr.contains('session_feedback')) {
+          LogService.error('session_feedback table does not exist in schema cache. Please ensure migration 022_normal_sessions_tables.sql has been run.');
+          throw Exception('Feedback system is not available. The database table has not been created yet. Please contact support or wait for the system update.');
+        }
+        rethrow;
+      }
 
       final now = DateTime.now();
       final feedbackData = <String, dynamic>{
@@ -184,33 +196,44 @@ class SessionFeedbackService {
         feedbackData['would_continue_lessons'] = wouldContinueLessons;
       }
 
-      if (existingFeedback != null) {
-        // Update existing feedback
-        await _supabase
-            .from('session_feedback')
-            .update(feedbackData)
-            .eq('id', existingFeedback['id']);
-      } else {
-        // Create new feedback record
-        feedbackData['session_id'] = sessionId;
-        feedbackData['created_at'] = now.toIso8601String();
-        await _supabase.from('session_feedback').insert(feedbackData);
-
-        // Update session with feedback_id
-        final newFeedback = await _supabase
-            .from('session_feedback')
-            .select('id')
-            .eq('session_id', sessionId)
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
-
-        if (newFeedback != null) {
+      try {
+        if (existingFeedback != null) {
+          // Update existing feedback
           await _supabase
-              .from('individual_sessions')
-              .update({'feedback_id': newFeedback['id']})
-              .eq('id', sessionId);
+              .from('session_feedback')
+              .update(feedbackData)
+              .eq('id', existingFeedback['id']);
+        } else {
+          // Create new feedback record
+          feedbackData['session_id'] = sessionId;
+          feedbackData['created_at'] = now.toIso8601String();
+          await _supabase.from('session_feedback').insert(feedbackData);
+
+          // Update session with feedback_id
+          final newFeedback = await _supabase
+              .from('session_feedback')
+              .select('id')
+              .eq('session_id', sessionId)
+              .order('created_at', ascending: false)
+              .limit(1)
+              .maybeSingle();
+
+          if (newFeedback != null) {
+            await _supabase
+                .from('individual_sessions')
+                .update({'feedback_id': newFeedback['id']})
+                .eq('id', sessionId);
+          }
         }
+      } catch (e) {
+        final errorStr = e.toString();
+        if (errorStr.contains('PGRST205') || 
+            errorStr.contains('Could not find the table') || 
+            errorStr.contains('session_feedback')) {
+          LogService.error('session_feedback table does not exist in schema cache. Please ensure migration 022_normal_sessions_tables.sql has been run.');
+          throw Exception('Feedback system is not available. The database table has not been created yet. Please contact support or wait for the system update.');
+        }
+        rethrow;
       }
 
       // Process feedback to update tutor rating (only for student/parent feedback)
@@ -259,24 +282,36 @@ class SessionFeedbackService {
   static Future<void> processFeedback(String sessionId) async {
     try {
       // Get feedback with session details
-      final feedback = await _supabase
-          .from('session_feedback')
-          .select('''
-            id,
-            session_id,
-            student_rating,
-            student_review,
-            student_would_recommend,
-            feedback_processed,
-            tutor_rating_updated,
-            review_displayed,
-            individual_sessions!inner(
-              tutor_id,
-              status
-            )
-          ''')
-          .eq('session_id', sessionId)
-          .maybeSingle();
+      Map<String, dynamic>? feedback;
+      try {
+        feedback = await _supabase
+            .from('session_feedback')
+            .select('''
+              id,
+              session_id,
+              student_rating,
+              student_review,
+              student_would_recommend,
+              feedback_processed,
+              tutor_rating_updated,
+              review_displayed,
+              individual_sessions!inner(
+                tutor_id,
+                status
+              )
+            ''')
+            .eq('session_id', sessionId)
+            .maybeSingle();
+      } catch (e) {
+        final errorStr = e.toString();
+        if (errorStr.contains('PGRST205') || 
+            errorStr.contains('Could not find the table') || 
+            errorStr.contains('session_feedback')) {
+          LogService.warning('session_feedback table does not exist. Skipping feedback processing.');
+          return; // Don't throw - this is a background process
+        }
+        rethrow;
+      }
 
       if (feedback == null) {
         throw Exception('Feedback not found for session: $sessionId');
@@ -478,6 +513,13 @@ class SessionFeedbackService {
 
       return feedback;
     } catch (e) {
+      final errorStr = e.toString();
+      if (errorStr.contains('PGRST205') || 
+          errorStr.contains('Could not find the table') || 
+          errorStr.contains('session_feedback')) {
+        LogService.info('session_feedback table does not exist yet. Feedback will be available after migration.');
+        return null;
+      }
       LogService.error('Error fetching session feedback: $e');
       return null;
     }
