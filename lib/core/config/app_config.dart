@@ -29,7 +29,7 @@ class AppConfig {
   /// ⚠️ Always verify environment variables are set correctly:
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
-  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
+  static const bool isProduction = false; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // 🔐 Authentication Feature Flags
@@ -63,7 +63,7 @@ class AppConfig {
   /// Change this value to adjust session length across the entire app.
   /// 
   /// Example: Set to 60 for 1-hour sessions, 90 for 1.5-hour sessions, etc.
-  static const int sessionDurationMinutes = 2; // ← Default: 61 minutes per session
+  static const int sessionDurationMinutes = 5; // ← Default: 61 minutes per session
   
   // ============================================
   // Environment Detection
