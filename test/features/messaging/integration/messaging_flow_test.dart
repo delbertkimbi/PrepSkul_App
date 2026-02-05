@@ -264,9 +264,7 @@ void main() {
       test('should handle API timeout', () async {
         // Test timeout handling
         expect(ChatService.sendMessage, isA<Function>());
-      });
-
-      test('should handle invalid conversation access', () async {
+      });      test('should handle invalid conversation access', () async {
         // Test authorization
         expect(ChatService.getMessages, isA<Function>());
       });

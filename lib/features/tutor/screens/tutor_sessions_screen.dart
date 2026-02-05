@@ -944,7 +944,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            color: isExpired
+            color: isExpired 
                 ? Colors.red.withOpacity(0.02)
                 : modeColor.withOpacity(0.03),
             border: Border(
@@ -963,29 +963,29 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
-                    children: [
-                      // Trial Badge
-                      if (isTrialSession)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(5),
-                            border: Border.all(
-                              color: Colors.orange.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: Text(
-                            'TRIAL',
-                            style: GoogleFonts.poppins(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.orange[700],
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                children: [
+                  // Trial Badge
+                  if (isTrialSession)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.2),
+                          width: 1,
                         ),
+                      ),
+                      child: Text(
+                        'TRIAL',
+                        style: GoogleFonts.poppins(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange[700],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
                       if (isTrialSession) const SizedBox(width: 6),
                       _buildSessionModeBadge(location),
                     ],
@@ -1258,7 +1258,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                   address: address,
                   scheduledDate: sessionDate,
                   scheduledTime: sessionTime,
-                ),
+              ),
               // Expired session indicator
               if (isExpired) ...[
                 const SizedBox(height: 12),
@@ -1804,7 +1804,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
       );
       final now = DateTime.now();
       final difference = sessionDateTime.difference(now);
-
+      
       String countdownText;
       String countdownSubtext = '';
       if (difference.isNegative) {
@@ -1829,11 +1829,11 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         if (hours > 0) {
           countdownText = 'Starts today • in ${hours}h ${minutes}m';
           countdownSubtext = 'Happening today';
-        } else if (difference.inMinutes > 0) {
+      } else if (difference.inMinutes > 0) {
           countdownText = 'Starts in ${minutes}m ${seconds}s';
           countdownSubtext = 'Get ready soon';
-        } else {
-          countdownText = 'Starting soon';
+      } else {
+        countdownText = 'Starting soon';
           countdownSubtext = 'Get ready';
         }
       }
@@ -1846,12 +1846,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            countdownText,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.primaryColor,
-            ),
+        countdownText,
+        style: GoogleFonts.poppins(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.primaryColor,
+        ),
           ),
           if (countdownSubtext.isNotEmpty) ...[
             const SizedBox(height: 2),

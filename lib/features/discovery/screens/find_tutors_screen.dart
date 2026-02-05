@@ -1900,27 +1900,50 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       if (isNetworkUrl) {
-        // Use CachedNetworkImage for better performance and caching
+        // Use CachedNetworkImage for URLs from Supabase storage
+        // Show letter placeholder immediately, then image when loaded (no loading indicator)
         return CachedNetworkImage(
           imageUrl: avatarUrl,
           fit: BoxFit.cover,
-          placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge),
+          width: isLarge ? double.infinity : null, // Fill width when large
+          height: isLarge ? double.infinity : null, // Fill height when large
+          cacheKey: 'tutor_avatar_${avatarUrl.hashCode}',
+          memCacheWidth: isLarge ? 600 : 140, // Optimize memory usage
+          memCacheHeight: isLarge ? 600 : 140,
+          maxWidthDiskCache: isLarge ? 1200 : 280, // Cache at reasonable size
+          maxHeightDiskCache: isLarge ? 1200 : 280,
+          placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge), // Show letter immediately instead of loading indicator
           errorWidget: (context, url, error) {
-            // Log error for debugging
+            // Log error for debugging (but don't crash on cache errors)
+            if (error.toString().contains('readonly database') || 
+                error.toString().contains('DatabaseException')) {
+              // Cache permission issue - try direct network load as fallback
+              LogService.debug('Cache database permission issue, falling back to network image');
+              return Image.network(
+                url,
+                fit: BoxFit.cover,
+                width: isLarge ? double.infinity : null, // Fill width when large
+                height: isLarge ? double.infinity : null, // Fill height when large
+                errorBuilder: (context, error, stackTrace) {
+                  return _buildAvatarPlaceholder(name, isLarge: isLarge);
+                },
+                loadingBuilder: (context, child, loadingProgress) {
+                  // Show letter placeholder while loading, then image when ready
+                  if (loadingProgress == null) return child;
+                  return _buildAvatarPlaceholder(name, isLarge: isLarge);
+                },
+              );
+            }
             LogService.warning('Failed to load avatar image: $url, error: $error');
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
-          fadeInDuration: const Duration(milliseconds: 300),
-          fadeOutDuration: const Duration(milliseconds: 100),
-          // Add timeout to prevent infinite loading
-          httpHeaders: const {'Cache-Control': 'max-age=3600'},
         );
       } else {
         // Use Image.asset for local asset paths
         return Image.asset(
           avatarUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
         );
@@ -1933,37 +1956,42 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
 
   Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
     if (isLarge) {
-                      return Container(
-                        height: 300,
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
+      // For large popup - fill container and maintain aspect ratio
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: AppTheme.primaryColor.withOpacity(0.1),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
                 name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 80,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                name,
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
+                style: GoogleFonts.poppins(
+                  fontSize: 80,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                name,
+                style: GoogleFonts.poppins(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     
+    // For card avatars - ensure it fills the circular container
     return Container(
+      width: double.infinity,
+      height: double.infinity,
       color: AppTheme.primaryColor.withOpacity(0.1),
       child: Center(
         child: Text(
@@ -1984,32 +2012,40 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
       context: context,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
         child: Stack(
           children: [
-            // Profile Image
+            // Profile Image - maintain aspect ratio like detail screen
             GestureDetector(
               onTap: () => Navigator.pop(context),
-              child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.7,
-                  maxWidth: MediaQuery.of(context).size.width * 0.9,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
+                    maxWidth: MediaQuery.of(context).size.width * 0.9,
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 1.0, // Square aspect ratio to prevent stretching
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: _buildAvatarImage(
+                          tutor['avatar_url'] ?? tutor['profile_photo_url'],
+                          name,
+                          isLarge: true,
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: _buildAvatarImage(
-                    tutor['avatar_url'],
-                    name,
-                    isLarge: true,
                   ),
                 ),
               ),

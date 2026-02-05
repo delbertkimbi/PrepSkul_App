@@ -54,6 +54,8 @@ class BookingReview extends StatefulWidget {
 class _BookingReviewState extends State<BookingReview> {
   String? _selectedPaymentPlan;
   DateTime? _reviewScreenShownAt; // Track when review screen was shown for timing check
+  // Cache the multi-learner totals future to prevent re-running on every rebuild
+  Future<({double baseTotal, double discountedTotal})?>? _cachedMultiLearnerTotals;
 
   @override
   void initState() {
@@ -61,6 +63,11 @@ class _BookingReviewState extends State<BookingReview> {
     _selectedPaymentPlan =
         widget.initialPaymentPlan; // Don't default to monthly
     _reviewScreenShownAt = DateTime.now(); // Record when screen was shown
+    // Pre-calculate multi-learner totals if needed (only once)
+    final useMultiLearnerDiscount = widget.learnerCount != null && widget.learnerCount! > 1;
+    if (useMultiLearnerDiscount) {
+      _cachedMultiLearnerTotals = _getMultiLearnerTotals();
+    }
     // Track that user reached review screen (for abandoned booking reminders)
     _trackReviewScreenReached();
   }
@@ -120,6 +127,42 @@ class _BookingReviewState extends State<BookingReview> {
   void _selectPaymentPlan(String plan) {
     setState(() => _selectedPaymentPlan = plan);
     widget.onPaymentPlanSelected(plan);
+  }
+
+  /// Calculate the discounted amount for a payment plan
+  double _calculatePaymentPlanAmount(double monthlyTotal, String plan) {
+    final discountInfo = PricingService.calculateDiscount(
+      monthlyTotal: monthlyTotal,
+      paymentPlan: plan,
+    );
+    final discountedMonthlyTotal = discountInfo['finalAmount'] as double;
+    
+    // For biweekly and weekly, divide the discounted monthly total
+    switch (plan.toLowerCase()) {
+      case 'monthly':
+        return discountedMonthlyTotal;
+      case 'biweekly':
+        return discountedMonthlyTotal / 2;
+      case 'weekly':
+        return discountedMonthlyTotal / 4;
+      default:
+        return monthlyTotal;
+    }
+  }
+
+  /// Calculate discount information for a payment plan
+  String? _calculatePaymentPlanDiscount(double monthlyTotal, String plan) {
+    final discountInfo = PricingService.calculateDiscount(
+      monthlyTotal: monthlyTotal,
+      paymentPlan: plan,
+    );
+    final discountPercent = discountInfo['discountPercent'] as double;
+    final savings = discountInfo['savings'] as String?;
+    
+    if (discountPercent > 0 && savings != null) {
+      return 'Save $savings (${discountPercent.toInt()}% off)';
+    }
+    return null;
   }
 
   /// When learnerCount > 1, returns (baseTotal, discountedTotal) for payment screen display.
@@ -354,7 +397,7 @@ class _BookingReviewState extends State<BookingReview> {
           // Pricing Breakdown (and Payment Plan when multi-learner: use FutureBuilder for discounted totals)
           useMultiLearnerDiscount
               ? FutureBuilder<({double baseTotal, double discountedTotal})?>(
-                  future: _getMultiLearnerTotals(),
+                  future: _cachedMultiLearnerTotals,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Padding(
@@ -457,8 +500,8 @@ class _BookingReviewState extends State<BookingReview> {
                           plan: 'monthly',
                           title: 'Pay Monthly',
                           subtitle: 'Full month upfront',
-                          amount: displayTotal,
-                          discount: null,
+                          amount: _calculatePaymentPlanAmount(displayTotal, 'monthly'),
+                          discount: _calculatePaymentPlanDiscount(displayTotal, 'monthly'),
                           badge: 'Most Popular',
                         ),
                         const SizedBox(height: 12),
@@ -466,16 +509,16 @@ class _BookingReviewState extends State<BookingReview> {
                           plan: 'biweekly',
                           title: 'Pay Bi-Weekly',
                           subtitle: '2 weeks at a time',
-                          amount: displayTotal / 2,
-                          discount: null,
+                          amount: _calculatePaymentPlanAmount(displayTotal, 'biweekly'),
+                          discount: _calculatePaymentPlanDiscount(displayTotal, 'biweekly'),
                         ),
                         const SizedBox(height: 12),
                         _buildPaymentPlanOption(
                           plan: 'weekly',
                           title: 'Pay Weekly',
                           subtitle: '1 week at a time',
-                          amount: displayTotal / 4,
-                          discount: null,
+                          amount: _calculatePaymentPlanAmount(displayTotal, 'weekly'),
+                          discount: _calculatePaymentPlanDiscount(displayTotal, 'weekly'),
                         ),
                       ],
                     );
@@ -563,8 +606,8 @@ class _BookingReviewState extends State<BookingReview> {
                       plan: 'monthly',
                       title: 'Pay Monthly',
                       subtitle: 'Full month upfront',
-                      amount: monthlyTotal,
-                      discount: null,
+                      amount: _calculatePaymentPlanAmount(monthlyTotal, 'monthly'),
+                      discount: _calculatePaymentPlanDiscount(monthlyTotal, 'monthly'),
                       badge: 'Most Popular',
                     ),
                     const SizedBox(height: 12),
@@ -572,16 +615,16 @@ class _BookingReviewState extends State<BookingReview> {
                       plan: 'biweekly',
                       title: 'Pay Bi-Weekly',
                       subtitle: '2 weeks at a time',
-                      amount: monthlyTotal / 2,
-                      discount: null,
+                      amount: _calculatePaymentPlanAmount(monthlyTotal, 'biweekly'),
+                      discount: _calculatePaymentPlanDiscount(monthlyTotal, 'biweekly'),
                     ),
                     const SizedBox(height: 12),
                     _buildPaymentPlanOption(
                       plan: 'weekly',
                       title: 'Pay Weekly',
                       subtitle: '1 week at a time',
-                      amount: monthlyTotal / 4,
-                      discount: null,
+                      amount: _calculatePaymentPlanAmount(monthlyTotal, 'weekly'),
+                      discount: _calculatePaymentPlanDiscount(monthlyTotal, 'weekly'),
                     ),
                   ],
                 ),
@@ -885,103 +928,135 @@ class _BookingReviewState extends State<BookingReview> {
             width: isSelected ? 2 : 1,
           ),
         ),
-        child: Row(
+        child: Stack(
           children: [
-            // Radio button
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected ? AppTheme.primaryColor : Colors.grey[400]!,
-                  width: 2,
+            // Badge at top right (if present)
+            if (badge != null)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.1),
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(12),
+                      bottomLeft: Radius.circular(4),
+                    ),
+                  ),
+                  child: Text(
+                    badge,
+                    style: GoogleFonts.poppins(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
                 ),
               ),
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : Colors.transparent,
+            // Main content
+            Row(
+              children: [
+                // Radio button
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? AppTheme.primaryColor : Colors.grey[400]!,
+                      width: 2,
+                    ),
+                  ),
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : Colors.transparent,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 16),
+                const SizedBox(width: 16),
 
-            // Plan details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+                // Plan details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                      Text(
+                        title,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (badge != null) ...[
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (discount != null) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green[50],
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: Colors.green[200]!),
+                          ),
+                          child: Text(
+                            discount,
+                            style: GoogleFonts.poppins(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green[800],
                             ),
-                            decoration: BoxDecoration(
-                              color: Colors.green[100],
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              badge,
-                              style: GoogleFonts.poppins(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.green[800],
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // Amount
-            Flexible(
-              child: Text(
-                PricingService.formatPrice(amount),
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primaryColor,
                 ),
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.right,
-              ),
+
+                const SizedBox(width: 12),
+
+                // Amount
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        PricingService.formatPrice(amount),
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

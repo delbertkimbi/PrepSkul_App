@@ -554,11 +554,19 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
 
           ...['monthly', 'biweekly', 'weekly'].map((plan) {
             final isSelected = _selectedPaymentPlan == plan;
+            // Calculate discounted amount for payment plan
+            final discountInfo = PricingService.calculateDiscount(
+              monthlyTotal: monthlyTotal,
+              paymentPlan: plan,
+            );
+            final discountedMonthlyTotal = discountInfo['finalAmount'] as double;
             final planAmount = plan == 'monthly'
-                ? monthlyTotal
+                ? discountedMonthlyTotal
                 : plan == 'biweekly'
-                ? monthlyTotal / 2
-                : monthlyTotal / 4;
+                ? discountedMonthlyTotal / 2
+                : discountedMonthlyTotal / 4;
+            final discountPercent = discountInfo['discountPercent'] as double;
+            final savings = discountInfo['savings'] as String?;
 
             return GestureDetector(
               onTap: () => safeSetState(() => _selectedPaymentPlan = plan),
@@ -600,17 +608,49 @@ class _PostTrialConversionScreenState extends State<PostTrialConversionScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        plan.toUpperCase(),
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            plan == 'monthly'
+                                ? 'Pay Monthly'
+                                : plan == 'biweekly'
+                                    ? 'Pay Bi-Weekly'
+                                    : 'Pay Weekly',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black,
+                            ),
+                          ),
+                          if (discountPercent > 0 && savings != null) ...[
+                            const SizedBox(height: 2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: Colors.green[200]!),
+                              ),
+                              child: Text(
+                                'Save $savings (${discountPercent.toInt()}% off)',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green[800],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     Text(
-                      '${planAmount.toStringAsFixed(0)} XAF',
+                      PricingService.formatPrice(planAmount),
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,

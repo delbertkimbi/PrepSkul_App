@@ -119,8 +119,18 @@ class ShimmerLoading {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.all(Radius.circular(16)),
-        border: Border.all(color: AppTheme.softBorder),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Shimmer.fromColors(
         baseColor: Colors.grey[300]!,
@@ -128,12 +138,23 @@ class ShimmerLoading {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Trial badge shimmer (small)
+            Container(
+              width: 50,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Tutor info row
             Row(
               children: [
                 // Avatar shimmer
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: 56,
+                  height: 56,
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
@@ -144,48 +165,105 @@ class ShimmerLoading {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title shimmer
+                      // Tutor name shimmer
                       Container(
-                        width: double.infinity,
+                        width: 150,
                         height: 16,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: const BorderRadius.all(Radius.circular(4)),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      // Subtitle shimmer
+                      const SizedBox(height: 6),
+                      // Subject shimmer
                       Container(
-                        width: 150,
+                        width: 100,
                         height: 14,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: const BorderRadius.all(Radius.circular(4)),
+                          borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     ],
                   ),
                 ),
-                // Status badge shimmer
+                // Message icon shimmer
                 Container(
-                  width: 80,
-                  height: 24,
-                  decoration: BoxDecoration(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
                     color: Colors.white,
-                    borderRadius: const BorderRadius.all(Radius.circular(12)),
+                    shape: BoxShape.circle,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            // Date/time shimmer
-            Container(
-              width: 200,
-              height: 14,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.all(Radius.circular(4)),
-              ),
+            const SizedBox(height: 16),
+            // Session details shimmer
+            Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 120,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 100,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 80,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

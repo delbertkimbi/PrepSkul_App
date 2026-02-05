@@ -301,7 +301,15 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         return true;
       case 4: // Flexible Session Location Selector (only for hybrid)
         if (_selectedLocation != 'hybrid') return true; // Skip validation if not hybrid
-        return _sessionLocations.length == _selectedDays.length;
+        if (_sessionLocations.length != _selectedDays.length) return false;
+        // If any session is onsite, all onsite sessions must have a non-empty address
+        for (final e in _sessionLocations.entries) {
+          if (e.value == 'onsite') {
+            final addr = _locationDetails[e.key]?['address']?.trim();
+            if (addr == null || addr.isEmpty) return false;
+          }
+        }
+        return true;
       case 5: // Review
         // Require payment plan selection AND minimum display time (1-2 seconds)
         if (_selectedPaymentPlan == null) return false;

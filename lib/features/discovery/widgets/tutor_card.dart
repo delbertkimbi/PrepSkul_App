@@ -113,6 +113,7 @@ class TutorCard extends StatelessWidget {
                                   ],
                                 ),
                                 child: ClipOval(
+                                  clipBehavior: Clip.antiAlias,
                                   child: _buildAvatarImage(
                                     tutor['avatar_url'] ?? tutor['profile_photo_url'],
                                     name,
@@ -374,32 +375,40 @@ class TutorCard extends StatelessWidget {
       context: context,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(20),
         child: Stack(
           children: [
-            // Profile Image
+            // Profile Image - maintain aspect ratio like detail screen
             GestureDetector(
               onTap: () => Navigator.pop(context),
-              child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.7,
-                  maxWidth: MediaQuery.of(context).size.width * 0.9,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
+                    maxWidth: MediaQuery.of(context).size.width * 0.9,
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 1.0, // Square aspect ratio to prevent stretching
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: _buildAvatarImage(
+                          tutor['avatar_url'] ?? tutor['profile_photo_url'],
+                          tutor['full_name'] ?? 'Tutor',
+                          isLarge: true,
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: _buildAvatarImage(
-                    tutor['avatar_url'] ?? tutor['profile_photo_url'],
-                    tutor['full_name'] ?? 'Tutor',
-                    isLarge: true,
                   ),
                 ),
               ),
@@ -441,17 +450,18 @@ class TutorCard extends StatelessWidget {
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       if (isNetworkUrl) {
         // Use CachedNetworkImage for URLs from Supabase storage
+        // Show letter placeholder first, then image when loaded (no loading indicator)
         return CachedNetworkImage(
           imageUrl: avatarUrl,
-          fit: BoxFit.cover,
-          width: isLarge ? null : 70,
-          height: isLarge ? null : 70,
-          placeholder: (context, url) => Center(
-            child: CircularProgressIndicator(
-              color: AppTheme.primaryColor,
-              strokeWidth: 2,
-            ),
-          ),
+          fit: isLarge ? BoxFit.cover : BoxFit.cover, // Use cover for both to match detail screen
+          width: isLarge ? double.infinity : 70, // Fill width when large
+          height: isLarge ? double.infinity : 70, // Fill height when large
+          cacheKey: 'tutor_avatar_${avatarUrl.hashCode}',
+          memCacheWidth: isLarge ? 600 : 140, // Optimize memory usage
+          memCacheHeight: isLarge ? 600 : 140,
+          maxWidthDiskCache: isLarge ? 1200 : 280, // Cache at reasonable size
+          maxHeightDiskCache: isLarge ? 1200 : 280,
+          placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge), // Show letter instead of loading indicator
           errorWidget: (context, url, error) {
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },
@@ -460,7 +470,7 @@ class TutorCard extends StatelessWidget {
         // Use Image.asset for local asset paths
         return Image.asset(
           avatarUrl,
-          fit: BoxFit.cover,
+          fit: isLarge ? BoxFit.contain : BoxFit.cover, // contain for popup, cover for circular avatar
           width: isLarge ? null : 70,
           height: isLarge ? null : 70,
           errorBuilder: (context, error, stackTrace) {
@@ -476,9 +486,10 @@ class TutorCard extends StatelessWidget {
 
   Widget _buildAvatarPlaceholder(String name, {bool isLarge = false}) {
     if (isLarge) {
+      // For large popup - fill container and maintain aspect ratio
       return Container(
-        height: 300,
-        width: 300,
+        width: double.infinity,
+        height: double.infinity,
         color: AppTheme.primaryColor.withOpacity(0.1),
         child: Center(
           child: Column(
@@ -507,7 +518,10 @@ class TutorCard extends StatelessWidget {
       );
     }
 
+    // For card avatar - fill circular container
     return Container(
+      width: double.infinity,
+      height: double.infinity,
       color: AppTheme.primaryColor.withOpacity(0.1),
       child: Center(
         child: Text(

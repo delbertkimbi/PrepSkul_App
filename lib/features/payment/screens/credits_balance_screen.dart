@@ -167,7 +167,16 @@ class _CreditsBalanceScreenState extends State<CreditsBalanceScreen> {
     );
   }
 
+  /// Calculate sessions available from points
+  /// New system: 10 points per session
+  int _calculateSessionsFromPoints(int points) {
+    if (points <= 0) return 0;
+    return (points / 10).floor();
+  }
+
   Widget _buildStatisticsCard() {
+    final sessionsAvailable = _calculateSessionsFromPoints(_currentBalance);
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -196,9 +205,11 @@ class _CreditsBalanceScreenState extends State<CreditsBalanceScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatItem('Total Purchased', '$_totalPurchased credits'),
+              _buildStatItem('Total Purchased', '$_totalPurchased points'),
               Container(width: 1, height: 40, color: Colors.grey[300]),
-              _buildStatItem('Current Balance', '$_currentBalance credits'),
+              _buildStatItem('Current Balance', '$_currentBalance points'),
+              Container(width: 1, height: 40, color: Colors.grey[300]),
+              _buildStatItem('Sessions Available', '$sessionsAvailable sessions'),
             ],
           ),
         ],

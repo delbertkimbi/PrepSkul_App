@@ -37,14 +37,17 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
   Map<String, String> _sessionLocations = {};
   
   // Map of session key to location details (address, coordinates, description)
-  // Only stored for onsite sessions
+  // Only stored for onsite sessions; when using single-address flow, all onsite share one address
   Map<String, Map<String, String?>> _locationDetails = {};
   
-  // Two-step flow: selection mode and review mode
-  bool _isReviewMode = false;
-  bool _isLoadingAddresses = false;
-  
-  // Map picker removed - using simple text fields instead
+  // Single address for all onsite sessions (ask once, not per session)
+  final TextEditingController _singleAddressController = TextEditingController();
+  final TextEditingController _singleDescriptionController = TextEditingController();
+  bool _singleAddressTouched = false;
+
+  // Survey address fetched on init (same as normal onsite flow) for pre-fill when user selects onsite
+  String? _surveyAddress;
+  String? _surveyDescription;
 
   @override
   void initState() {
@@ -56,7 +59,7 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
     if (widget.initialLocationDetails != null) {
       _locationDetails = Map<String, Map<String, String?>>.from(widget.initialLocationDetails!);
     }
-    
+
     // Initialize all sessions to "online" by default if not set
     for (final day in widget.selectedDays) {
       final time = widget.selectedTimes[day] ?? '';
@@ -67,32 +70,107 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
         }
       }
     }
-    
+
     // Defer notification until after build phase completes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _notifyParent();
     });
+
+    // Fetch survey address on init (same as normal onsite flow) so we can pre-fill when user selects onsite
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchSurveyAddress());
+    // Pre-fill single address when any session is already onsite (e.g. from initial data or when user taps Onsite)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _prefillSingleAddressFromSurvey());
+  }
+
+  /// Fetch survey address on init (same as normal onsite flow) and store for pre-fill
+  Future<void> _fetchSurveyAddress() async {
+    try {
+      final userProfile = await AuthService.getUserProfile();
+      if (userProfile == null || !mounted) return;
+      final userType = userProfile['user_type'] as String?;
+      if (userType == null) return;
+      Map<String, dynamic>? surveyData;
+      if (userType == 'student') {
+        surveyData = await SurveyRepository.getStudentSurvey(userProfile['id']);
+      } else if (userType == 'parent') {
+        surveyData = await SurveyRepository.getParentSurvey(userProfile['id']);
+      }
+      if (surveyData == null || !mounted) return;
+      final city = surveyData['city'];
+      final quarter = surveyData['quarter'];
+      if (city == null || quarter == null) return;
+      final street = surveyData['street'];
+      final streetStr = street != null && street.toString().isNotEmpty ? ', ${street.toString()}' : '';
+      final address = '${city.toString()}, ${quarter.toString()}$streetStr';
+      final locationDesc = surveyData['location_description'];
+      final description = locationDesc != null && locationDesc.toString().isNotEmpty
+          ? locationDesc.toString()
+          : (surveyData['additional_address_info'] != null &&
+                 surveyData['additional_address_info'].toString().isNotEmpty
+              ? surveyData['additional_address_info'].toString()
+              : null);
+      if (!mounted) return;
+      safeSetState(() {
+        _surveyAddress = address;
+        _surveyDescription = description;
+      });
+      // If user already selected onsite, pre-fill the address field now
+      _prefillSingleAddressFromSurvey();
+    } catch (e) {
+      LogService.warning('Could not fetch address from survey: $e');
+    }
+  }
+
+  /// Pre-fill single address from initialLocationDetails or from survey (when any session is onsite)
+  Future<void> _prefillSingleAddressFromSurvey() async {
+    final onsiteKeys = _getOnsiteSessionKeys();
+    if (onsiteKeys.isEmpty) return;
+    if (_singleAddressController.text.trim().isNotEmpty) return; // Already filled
+    // 1) Prefer existing address from initialLocationDetails (e.g. returning to step)
+    final firstKey = onsiteKeys.first;
+    final existing = _locationDetails[firstKey]?['address'];
+    if (existing != null && existing.toString().trim().isNotEmpty) {
+      _singleAddressController.text = existing;
+      final desc = _locationDetails[firstKey]?['locationDescription']?.toString() ?? '';
+      if (desc.isNotEmpty) _singleDescriptionController.text = desc;
+      _applySingleAddressToAllOnsite();
+      return;
+    }
+    // 2) Pre-fill from survey (same as normal onsite flow)
+    if (_surveyAddress != null && _surveyAddress!.trim().isNotEmpty) {
+      safeSetState(() {
+        _singleAddressController.text = _surveyAddress!;
+        if (_surveyDescription != null && _surveyDescription!.isNotEmpty) {
+          _singleDescriptionController.text = _surveyDescription!;
+        }
+        _applySingleAddressToAllOnsite();
+      });
+    }
   }
 
   void _setSessionLocation(String sessionKey, String location) {
     safeSetState(() {
       _sessionLocations[sessionKey] = location;
-      
+
       // If changed to online, remove location details
       if (location == 'online') {
         _locationDetails.remove(sessionKey);
       } else {
-        // If changed to onsite, ensure location details entry exists
-        if (!_locationDetails.containsKey(sessionKey)) {
-          _locationDetails[sessionKey] = {
-            'address': null,
-            'coordinates': null,
-            'locationDescription': null,
-          };
-        }
+        // If changed to onsite, use single address if we have one (or pre-fill from survey)
+        final address = _singleAddressController.text.trim();
+        final description = _singleDescriptionController.text.trim();
+        _locationDetails[sessionKey] = {
+          'address': address.isEmpty ? null : address,
+          'coordinates': null,
+          'locationDescription': description.isEmpty ? null : description,
+        };
       }
     });
     _notifyParent();
+    // When user first selects Onsite, pre-fill address from survey if field is still empty
+    if (location == 'onsite') {
+      _prefillSingleAddressFromSurvey();
+    }
   }
 
   /// Check if all sessions have location selected
@@ -117,98 +195,18 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
         .toList();
   }
 
-  /// Fetch addresses from survey for all onsite sessions
-  Future<void> _fetchAddressesForOnsiteSessions() async {
-    safeSetState(() {
-      _isLoadingAddresses = true;
-    });
-
-    try {
-      final userProfile = await AuthService.getUserProfile();
-      if (userProfile == null) {
-        safeSetState(() {
-          _isLoadingAddresses = false;
-          _isReviewMode = true;
-        });
-        return;
-      }
-
-      final userType = userProfile['user_type'] as String?;
-      if (userType == null) {
-        safeSetState(() {
-          _isLoadingAddresses = false;
-          _isReviewMode = true;
-        });
-        return;
-      }
-
-      Map<String, dynamic>? surveyData;
-
-      if (userType == 'student') {
-        surveyData = await SurveyRepository.getStudentSurvey(userProfile['id']);
-      } else if (userType == 'parent') {
-        surveyData = await SurveyRepository.getParentSurvey(userProfile['id']);
-      }
-
-      if (surveyData != null && mounted) {
-        final city = surveyData['city'];
-        final quarter = surveyData['quarter'];
-        
-        if (city != null && quarter != null) {
-          final street = surveyData['street'];
-          final streetStr = street != null && street.toString().isNotEmpty 
-              ? ', ${street.toString()}' 
-              : '';
-          
-          final address = '${city.toString()}, ${quarter.toString()}$streetStr';
-          
-          // Pre-fill location description if available
-          final locationDesc = surveyData['location_description'];
-          final description = locationDesc != null && locationDesc.toString().isNotEmpty
-              ? locationDesc.toString()
-              : (surveyData['additional_address_info'] != null && 
-                 surveyData['additional_address_info'].toString().isNotEmpty
-                  ? surveyData['additional_address_info'].toString()
-                  : null);
-
-          // Apply address to all onsite sessions that don't have one
-          final onsiteKeys = _getOnsiteSessionKeys();
-          safeSetState(() {
-            for (final sessionKey in onsiteKeys) {
-              if (!_locationDetails.containsKey(sessionKey) || 
-                  _locationDetails[sessionKey]?['address'] == null) {
-                _locationDetails[sessionKey] = {
-                  'address': address,
-                  'coordinates': null,
-                  'locationDescription': description,
-                };
-              }
-            }
-            _isLoadingAddresses = false;
-            _isReviewMode = true;
-          });
-          _notifyParent();
-          return;
-        }
-      }
-    } catch (e) {
-      LogService.warning('Could not fetch addresses from survey: $e');
-    }
-
-    safeSetState(() {
-      _isLoadingAddresses = false;
-      _isReviewMode = true;
-    });
-  }
-
-  void _updateLocationDetails(String sessionKey, String? address, String? coordinates, String? locationDescription) {
-    safeSetState(() {
-      _locationDetails[sessionKey] = {
-        'address': address,
-        'coordinates': coordinates,
-        'locationDescription': locationDescription,
+  /// Apply the single address/description to all onsite session keys in _locationDetails
+  void _applySingleAddressToAllOnsite() {
+    final address = _singleAddressController.text.trim();
+    final description = _singleDescriptionController.text.trim();
+    final onsiteKeys = _getOnsiteSessionKeys();
+    for (final key in onsiteKeys) {
+      _locationDetails[key] = {
+        'address': address.isEmpty ? null : address,
+        'coordinates': null,
+        'locationDescription': description.isEmpty ? null : description,
       };
-    });
+    }
     _notifyParent();
   }
 
@@ -221,13 +219,16 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
   }
 
   @override
+  void dispose() {
+    _singleAddressController.dispose();
+    _singleDescriptionController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (_isReviewMode) {
-      return _buildReviewMode();
-    }
-    
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -241,7 +242,7 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
               height: 1.3,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Text(
             'Select online or onsite for each scheduled session',
             style: GoogleFonts.poppins(
@@ -250,7 +251,7 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
               height: 1.5,
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 16),
 
           // Session list
           ...widget.selectedDays.map((day) {
@@ -317,8 +318,7 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        
+                        const SizedBox(height: 10),
                         // Location toggle
                         Row(
                           children: [
@@ -346,313 +346,106 @@ class _FlexibleSessionLocationSelectorState extends State<FlexibleSessionLocatio
                           ],
                         ),
                         
-                        // No address fields in selection mode - will show in review mode
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
               ],
             );
           }).toList(),
-          
-          // Continue button to proceed to review
-          if (!_isReviewMode && _allSessionsHaveLocation()) ...[
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoadingAddresses ? null : () => _fetchAddressesForOnsiteSessions(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryColor,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isLoadingAddresses
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : Text(
-                        'Continue to Review Locations',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
+
+          // Single address for all onsite sessions (shown only when at least one session is onsite)
+          if (_getOnsiteSessionKeys().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  /// Build review mode UI - shows all onsite sessions with addresses for editing
-  Widget _buildReviewMode() {
-    final onsiteSessions = _getOnsiteSessionKeys();
-    
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Title
-          Text(
-            'Review Onsite Locations',
-            style: GoogleFonts.poppins(
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-              color: Colors.black,
-              height: 1.3,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            onsiteSessions.isEmpty
-                ? 'All sessions are online. No addresses needed.'
-                : 'Review and edit addresses for onsite sessions, or confirm to proceed.',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.grey[600],
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // Show only onsite sessions for review
-          if (onsiteSessions.isEmpty)
-            Center(
               child: Padding(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(12),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.check_circle_outline, size: 64, color: Colors.green),
-                    const SizedBox(height: 16),
                     Text(
-                      'All sessions are online',
+                      'Address for all onsite sessions',
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
+                        color: Colors.black87,
                       ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'This address will be used for every session you chose as onsite.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _singleAddressController,
+                      decoration: InputDecoration(
+                        labelText: 'Address',
+                        hintText: 'Enter address for onsite sessions',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.green, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        isDense: true,
+                      ),
+                      onChanged: (_) {
+                        _singleAddressTouched = true;
+                        safeSetState(() => _applySingleAddressToAllOnsite());
+                      },
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _singleDescriptionController,
+                      decoration: InputDecoration(
+                        labelText: 'Description (Optional)',
+                        hintText: 'e.g., Apartment 3B, Near the main gate',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey[300]!),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.green, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[50],
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onChanged: (_) {
+                        safeSetState(() => _applySingleAddressToAllOnsite());
+                      },
+                      maxLines: 2,
                     ),
                   ],
                 ),
               ),
-            )
-          else
-            ...onsiteSessions.map((sessionKey) {
-              final parts = sessionKey.split('-');
-              final day = parts[0];
-              final time = parts.length > 1 ? parts.sublist(1).join('-') : '';
-              
-              return _buildOnsiteSessionReviewCard(sessionKey, day, time);
-            }).toList(),
-
-          // Action buttons
-          const SizedBox(height: 32),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    safeSetState(() {
-                      _isReviewMode = false;
-                    });
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: AppTheme.primaryColor),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Back',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton(
-                  onPressed: () {
-                    // Confirm and proceed
-                    _notifyParent();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-                    'Confirm & Continue',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Build review card for an onsite session
-  Widget _buildOnsiteSessionReviewCard(String sessionKey, String day, String time) {
-    final address = _locationDetails[sessionKey]?['address'] ?? '';
-    final description = _locationDetails[sessionKey]?['locationDescription'] ?? '';
-    final addressController = TextEditingController(text: address);
-    final descriptionController = TextEditingController(text: description);
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Session header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _getDayAbbreviation(day),
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.green[700],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        day,
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      Text(
-                        time,
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.home, color: Colors.green[700], size: 20),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // Address field
-            TextFormField(
-              controller: addressController,
-              decoration: InputDecoration(
-                labelText: 'Address',
-                hintText: 'Enter address for this session',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.green, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              onChanged: (value) {
-                _updateLocationDetails(
-                  sessionKey,
-                  value.trim().isNotEmpty ? value.trim() : null,
-                  null,
-                  descriptionController.text.trim().isNotEmpty 
-                      ? descriptionController.text.trim() 
-                      : null,
-                );
-              },
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
-            
-            // Description field
-            TextFormField(
-              controller: descriptionController,
-              decoration: InputDecoration(
-                labelText: 'Description (Optional)',
-                hintText: 'e.g., Apartment 3B, Near the main gate',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey[300]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.green, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.grey[50],
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              ),
-              onChanged: (value) {
-                _updateLocationDetails(
-                  sessionKey,
-                  addressController.text.trim().isNotEmpty 
-                      ? addressController.text.trim() 
-                      : null,
-                  null,
-                  value.trim().isNotEmpty ? value.trim() : null,
-                );
-              },
-              maxLines: 2,
             ),
           ],
-        ),
+        ],
       ),
     );
   }

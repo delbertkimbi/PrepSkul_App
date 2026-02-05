@@ -40,6 +40,9 @@ import 'package:prepskul/features/messaging/services/conversation_lifecycle_serv
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:shimmer/shimmer.dart';
+import 'session_detail_screen.dart';
+import '../../../core/widgets/shimmer_loading.dart';
 
 /// My Sessions Screen
 ///
@@ -315,10 +318,20 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         await _loadTutorInfoForTrials(trialSessions);
 
         for (final trial in trialSessions) {
+          // Filter out pending/unpaid trial sessions from upcoming sessions
+          // Only show approved and paid trial sessions in upcoming
+          final status = trial.status;
+          final paymentStatus = trial.paymentStatus;
+          
+          // Skip if not approved or not paid (for upcoming sessions)
+          final isApproved = status == 'approved';
+          final isPaid = paymentStatus == 'paid' || paymentStatus == 'pending';
+          
+          // For upcoming sessions: only show approved AND paid trials
+          // For past sessions: show all (including pending/unpaid for historical reference)
           final sessionMap = _convertTrialToSessionMap(trial);
           if (sessionMap != null) {
             // Classify as upcoming or past using SessionDateUtils
-            final status = sessionMap['status'];
             final isCompleted = status == 'completed' || status == 'cancelled' || status == 'rejected' || status == 'expired';
             
             // Use SessionDateUtils for time-based classification
@@ -338,7 +351,13 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               if (isExpired || !isUpcoming || status == 'expired') {
                 past.add(sessionMap);
               } else {
-                upcoming.add(sessionMap);
+                // Only add to upcoming if approved AND paid
+                if (isApproved && isPaid) {
+                  upcoming.add(sessionMap);
+                } else {
+                  // Move unapproved/unpaid trials to past (they shouldn't be shown as upcoming)
+                  past.add(sessionMap);
+                }
               }
             }
           }
@@ -558,6 +577,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     return {
       'id': trial.id,
       'status': trial.status,
+      'payment_status': trial.paymentStatus, // Include payment status for filtering
       'scheduled_date': trial.scheduledDate.toIso8601String(),
       'scheduled_time': trial.scheduledTime,
       'location': trial.location,
@@ -933,7 +953,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const Center(child: CircularProgressIndicator()),
+          builder: (context) => const SizedBox.shrink(), // Shimmer will show in the background
         );
       }
 
@@ -1005,7 +1025,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
-  /// Build visual countdown widget
+  /// Build visual countdown widget with improved display
+  /// Shows countdown timer if within 24 hours, days remaining otherwise
   Widget _buildCountdownWidget(String scheduledDate, String scheduledTime) {
     try {
       final dateParts = scheduledDate.split('T')[0].split('-');
@@ -1021,77 +1042,120 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       final sessionDateTime = DateTime(year, month, day, hour, minute);
       final now = DateTime.now();
       final difference = sessionDateTime.difference(now);
+      
+      // Check if within 24 hours
+      final isWithin24Hours = difference.inHours < 24 && !difference.isNegative;
+      
       String countdownText;
       String countdownSubtext = '';
+      double progress = 0.0;
+      
       if (difference.isNegative) {
         final elapsed = now.difference(sessionDateTime);
         if (elapsed.inMinutes < 2) {
           countdownText = 'Starting now';
           countdownSubtext = 'Get ready';
+          progress = 1.0;
         } else if (elapsed.inHours < 1) {
           countdownText = 'Started ${elapsed.inMinutes} min ago';
           countdownSubtext = 'Session is live';
+          progress = 1.0;
         } else {
           countdownText = 'Started ${elapsed.inHours}h ago';
           countdownSubtext = 'Session is live';
+          progress = 1.0;
         }
       } else if (difference.inDays > 0) {
-        countdownText = 'Starts in ${difference.inDays} day${difference.inDays > 1 ? 's' : ''}';
-        countdownSubtext = 'Upcoming session';
-      } else {
+        // More than 24 hours - show days
+        countdownText = '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} remaining';
+        countdownSubtext = 'Session starts ${DateFormat('MMM d, y').format(sessionDateTime)}';
+        // Progress based on days (assuming max 30 days)
+        progress = (difference.inDays / 30).clamp(0.0, 1.0);
+      } else if (isWithin24Hours) {
+        // Within 24 hours - show detailed countdown
         final hours = difference.inHours;
         final minutes = difference.inMinutes.remainder(60);
         final seconds = difference.inSeconds.remainder(60);
+        
         if (hours > 0) {
-          countdownText = 'Starts today • in ${hours}h ${minutes}m';
-          countdownSubtext = 'Happening today';
+          countdownText = '${hours}h ${minutes}m ${seconds}s';
+          countdownSubtext = 'Starts today at ${DateFormat('h:mm a').format(sessionDateTime)}';
         } else if (difference.inMinutes > 0) {
-          countdownText = 'Starts in ${minutes}m ${seconds}s';
-          countdownSubtext = 'Get ready soon';
+          countdownText = '${minutes}m ${seconds}s';
+          countdownSubtext = 'Starting very soon';
         } else {
-          countdownText = 'Starting soon';
-          countdownSubtext = 'Get ready';
+          countdownText = '${seconds}s';
+          countdownSubtext = 'Starting now';
         }
+        
+        // Progress for 24-hour window
+        final totalWindowSeconds = const Duration(hours: 24).inSeconds;
+        final remainingSeconds = difference.inSeconds.clamp(0, totalWindowSeconds);
+        progress = 1 - (remainingSeconds / totalWindowSeconds);
+      } else {
+        countdownText = 'Starting soon';
+        countdownSubtext = 'Get ready';
+        progress = 0.0;
       }
-
-      final totalWindowSeconds = const Duration(hours: 24).inSeconds;
-      final remainingSeconds = difference.inSeconds.clamp(0, totalWindowSeconds);
-      final progress = 1 - (remainingSeconds / totalWindowSeconds);
       
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Main countdown text
           Text(
             countdownText,
             style: GoogleFonts.poppins(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: isWithin24Hours ? 16 : 14,
+              fontWeight: FontWeight.w800,
               color: AppTheme.primaryColor,
+              letterSpacing: isWithin24Hours ? 0.5 : 0,
             ),
           ),
           if (countdownSubtext.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 4),
             Text(
               countdownSubtext,
               style: GoogleFonts.poppins(
-                fontSize: 10,
-                color: AppTheme.textMedium,
+                fontSize: 11,
+                color: Colors.grey[700],
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress.isNaN ? 0 : progress,
-              minHeight: 4,
-              backgroundColor: AppTheme.primaryColor.withOpacity(0.12),
-              valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+          const SizedBox(height: 10),
+          // Neumorphic progress indicator
+          Container(
+            height: 8,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              color: Colors.grey[200],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(2, 2),
+                ),
+                BoxShadow(
+                  color: Colors.white.withOpacity(0.8),
+                  blurRadius: 4,
+                  offset: const Offset(-2, -2),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: progress.isNaN ? 0 : progress.clamp(0.0, 1.0),
+                minHeight: 8,
+                backgroundColor: Colors.transparent,
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+              ),
             ),
           ),
         ],
       );
     } catch (e) {
+      LogService.error('Error building countdown widget: $e');
       return const SizedBox.shrink();
     }
   }
@@ -1152,86 +1216,151 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
   Widget _buildCreditsHeader() {
     return FutureBuilder<int>(
-      future: _getUserBalance(),
+      future: _calculateUserPoints(),
       builder: (context, snapshot) {
-        final balance = snapshot.data ?? 0;
+        final points = snapshot.data ?? 0;
+        final sessionsAvailable = _getSessionsFromPoints(points);
+        final upcomingCount = _upcomingSessions.where((s) {
+          final status = s['status'] as String?;
+          return status == 'scheduled' || status == 'in_progress';
+        }).length;
+        
+        // Neumorphic design for points header
         return Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey[200]!),
+            color: Colors.grey[50],
+            borderRadius: BorderRadius.circular(20),
             boxShadow: [
+              // Outer shadow (dark)
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                offset: const Offset(8, 8),
+              ),
+              // Inner shadow (light)
+              BoxShadow(
+                color: Colors.white.withOpacity(0.8),
+                blurRadius: 20,
+                offset: const Offset(-8, -8),
               ),
             ],
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Credits Balance',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '$balance',
-                          style: GoogleFonts.poppins(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primaryColor,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'credits',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$balance sessions',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
+          child: InkWell(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CreditsBalanceScreen(),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward_ios, size: 16),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => CreditsBalanceScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
+              );
+            },
+            borderRadius: BorderRadius.circular(20),
+            child: Row(
+              children: [
+                // Neumorphic icon container
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(4, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.9),
+                        blurRadius: 8,
+                        offset: const Offset(-4, -4),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    PhosphorIcons.star(),
+                    size: 24,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Your Points',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '$points',
+                            style: GoogleFonts.poppins(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              color: AppTheme.primaryColor,
+                              letterSpacing: -1,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'points',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$upcomingCount remaining sessions',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 4,
+                        offset: const Offset(2, 2),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.9),
+                        blurRadius: 4,
+                        offset: const Offset(-2, -2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    PhosphorIcons.caretRight(),
+                    size: 16,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -1247,6 +1376,38 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       LogService.error('Error getting user balance: $e');
       return 0;
     }
+  }
+
+  /// Calculate user points based on remaining sessions
+  /// New system: 10 points per session
+  /// Example: 8 sessions = 80 points, but can have partial points like 89 (8 sessions + 9 extra)
+  /// A session is only counted when you have at least 10 points
+  Future<int> _calculateUserPoints() async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      if (userId == null) return 0;
+
+      // Count upcoming sessions (scheduled + in_progress)
+      final upcomingCount = _upcomingSessions.where((s) {
+        final status = s['status'] as String?;
+        return status == 'scheduled' || status == 'in_progress';
+      }).length;
+
+      // Each session = 10 points
+      // Points = upcoming sessions * 10
+      final points = upcomingCount * 10;
+      
+      return points;
+    } catch (e) {
+      LogService.error('Error calculating user points: $e');
+      return 0;
+    }
+  }
+
+  /// Get number of sessions available based on points
+  /// A session requires 10 points, so divide points by 10
+  int _getSessionsFromPoints(int points) {
+    return (points / 10).floor();
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session, bool isUpcoming) {
@@ -1312,38 +1473,32 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     final modeColor =
         location == 'online' ? AppTheme.primaryColor : AppTheme.accentGreen;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isExpired 
-              ? Colors.red.withOpacity(0.2)
-              : modeColor.withOpacity(0.15),
-          width: 1,
-        ),
-      ),
+    // Neumorphic card design
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: () {
-          // Show session details
-          _showSessionDetails(session);
+          // Navigate to session detail screen instead of popup
+          _navigateToSessionDetail(session);
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
           decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            color: isExpired
-                ? Colors.red.withOpacity(0.02)
-                : modeColor.withOpacity(0.03),
-            border: Border(
-              left: BorderSide(
-                color: modeColor.withOpacity(0.7),
-                width: 3,
-              ),
+            border: Border.all(
+              color: Colors.grey[200]!,
+              width: 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1376,77 +1531,134 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           ),
                         ),
                       if (isTrial) const SizedBox(width: 6),
-                      _buildSessionModeBadge(location),
+                      // Removed ONLINE badge - location info already in card
                     ],
                   ),
-                  // Status badge (more compact)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      _getStatusLabel(status),
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Color(int.parse(_getStatusColor(status).replaceFirst('#', '0xFF'))),
-                      ),
-                    ),
-                  ),
+                  // Removed Scheduled status badge - not needed
                 ],
               ),
               const SizedBox(height: 8),
-              // Tutor info row
+              // Tutor info row - improved design
               Row(
                 children: [
-                  // Tutor avatar (smaller)
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                    backgroundImage: tutorAvatar != null && tutorAvatar.isNotEmpty
-                        ? CachedNetworkImageProvider(tutorAvatar)
-                        : null,
-                    child: tutorAvatar == null || tutorAvatar.isEmpty
-                        ? Text(
-                            tutorName.isNotEmpty ? tutorName[0].toUpperCase() : 'T',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryColor,
+                  // Tutor avatar - optimized with CachedNetworkImage
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: modeColor.withOpacity(0.3),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: modeColor.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: tutorAvatar != null && tutorAvatar.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: tutorAvatar,
+                              fit: BoxFit.cover,
+                              width: 56,
+                              height: 56,
+                              cacheKey: 'tutor_avatar_${tutorAvatar.hashCode}',
+                              memCacheWidth: 112,
+                              memCacheHeight: 112,
+                              maxWidthDiskCache: 224,
+                              maxHeightDiskCache: 224,
+                              placeholder: (context, url) => Container(
+                                color: AppTheme.primaryColor.withOpacity(0.1),
+                                child: Center(
+                                  child: Text(
+                                    (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      color: modeColor,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: AppTheme.primaryColor.withOpacity(0.1),
+                                child: Center(
+                                  child: Text(
+                                    (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w700,
+                                      color: modeColor,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              child: Center(
+                                child: Text(
+                                  (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    color: modeColor,
+                                  ),
+                                ),
+                              ),
                             ),
-                          )
-                        : null,
+                    ),
                   ),
-                  const SizedBox(width: 10),
-                  // Tutor name and subject
+                  const SizedBox(width: 12),
+                  // Tutor name and subject - improved typography
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          tutorName,
+                          tutorName ?? 'Loading...',
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black,
                             height: 1.2,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subject,
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            height: 1.2,
-                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              PhosphorIcons.bookOpen(),
+                              size: 12,
+                              color: Colors.grey[600],
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                subject,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13,
+                                  color: Colors.grey[700],
+                                  height: 1.2,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                  // Chat button - show if session is valid (scheduled, in_progress, or completed)
+                  // Chat button - improved design
                   Builder(
                     builder: (context) {
                       final status = session['status'] as String?;
@@ -1458,11 +1670,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         return const SizedBox.shrink();
                       }
                       
-                      return IconButton(
-                        icon: Icon(PhosphorIcons.chatCircle(), size: 22),
-                        color: AppTheme.primaryColor,
-                        tooltip: 'Message Tutor',
-                        onPressed: () => _navigateToChatFromSession(context, session),
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: IconButton(
+                          icon: Icon(PhosphorIcons.chatCircleDots(), size: 20),
+                          color: AppTheme.primaryColor,
+                          tooltip: 'Message Tutor',
+                          onPressed: () => _navigateToChatFromSession(context, session),
+                          padding: const EdgeInsets.all(8),
+                        ),
                       );
                     },
                   ),
@@ -1622,27 +1841,41 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ],
                 ),
               ],
-                    // Countdown timer for upcoming sessions
+                    // Countdown timer for upcoming sessions - improved design
                     if (isUpcoming && (status == 'scheduled' || status == 'in_progress')) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
+                          gradient: LinearGradient(
+                            colors: [
+                              AppTheme.primaryColor.withOpacity(0.15),
+                              AppTheme.primaryColor.withOpacity(0.08),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: AppTheme.primaryColor.withOpacity(0.2),
-                            width: 1,
+                            color: AppTheme.primaryColor.withOpacity(0.3),
+                            width: 1.5,
                           ),
                         ),
                         child: Row(
                           children: [
-                            Icon(
-                              PhosphorIcons.timer(),
-                              size: 16,
-                              color: AppTheme.primaryColor,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                PhosphorIcons.timer(),
+                                size: 20,
+                                color: AppTheme.primaryColor,
+                              ),
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 12),
                             Expanded(
                               child: _buildCountdownWidget(scheduledDate, scheduledTime),
                             ),
@@ -1865,6 +2098,17 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
   }
 
+  /// Navigate to session detail screen instead of showing popup
+  void _navigateToSessionDetail(Map<String, dynamic> session) {
+    // Navigate to dedicated session detail screen instead of showing popup
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SessionDetailScreen(session: session),
+      ),
+    );
+  }
+
   void _showSessionDetails(Map<String, dynamic> session) async {
     final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
     final tutorName = recurringData?['tutor_name'] as String? ?? 'Tutor';
@@ -1981,32 +2225,24 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           elevation: 0,
                         ),
                       ),
-                    // Add to Calendar button (if no calendar event exists)
-                    if (session['calendar_event_id'] == null || 
-                        (session['calendar_event_id'] as String? ?? '').isEmpty)
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _addSessionToCalendar(session);
-                        },
-                        icon: Icon(
-                          _isCalendarConnected == true 
-                              ? Icons.calendar_today 
-                              : Icons.calendar_today_outlined,
-                          size: 18,
-                        ),
-                        label: Text(
-                          _isCalendarConnected == true
-                              ? 'Add to Calendar'
-                              : 'Connect & Add',
-                          style: GoogleFonts.poppins(),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                          side: BorderSide(color: AppTheme.primaryColor),
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                        ),
+                    // Message tutor/student/parents button
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _navigateToChatFromSession(context, session);
+                      },
+                      icon: Icon(PhosphorIcons.chatCircleDots(), size: 18),
+                      label: Text(
+                        'Message Tutor',
+                        style: GoogleFonts.poppins(),
                       ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        elevation: 0,
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -2136,7 +2372,66 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Credits header shimmer
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey[200]!),
+                    ),
+                    child: Shimmer.fromColors(
+                      baseColor: Colors.grey[300]!,
+                      highlightColor: Colors.grey[100]!,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 120,
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  width: 80,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Session cards shimmer
+                  ShimmerLoading.sessionList(count: 5),
+                ],
+              ),
+            )
           : TabBarView(
               controller: _tabController,
               children: [
@@ -2295,7 +2590,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => const SizedBox.shrink(), // Shimmer will show in the background
       );
 
       // Get or create conversation

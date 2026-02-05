@@ -339,33 +339,68 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              // Avatar with unread badge
+              // Avatar with unread badge - using CachedNetworkImage widget for better loading
               Stack(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                    backgroundImage: conversation.otherUserAvatarUrl != null &&
+                  ClipOval(
+                    child: conversation.otherUserAvatarUrl != null &&
                             conversation.otherUserAvatarUrl!.isNotEmpty &&
                             (conversation.otherUserAvatarUrl!.startsWith('http://') ||
                              conversation.otherUserAvatarUrl!.startsWith('https://'))
-                        ? CachedNetworkImageProvider(conversation.otherUserAvatarUrl!)
-                        : null,
-                    child: conversation.otherUserAvatarUrl == null ||
-                            conversation.otherUserAvatarUrl!.isEmpty ||
-                            (!conversation.otherUserAvatarUrl!.startsWith('http://') &&
-                             !conversation.otherUserAvatarUrl!.startsWith('https://'))
-                        ? Text(
-                            conversation.otherUserName?.isNotEmpty == true
-                                ? conversation.otherUserName![0].toUpperCase()
-                                : 'U',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryColor,
+                        ? CachedNetworkImage(
+                            imageUrl: conversation.otherUserAvatarUrl!,
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            cacheKey: 'conversation_avatar_${conversation.id}',
+                            memCacheWidth: 96,
+                            memCacheHeight: 96,
+                            placeholder: (context, url) => Container(
+                              width: 48,
+                              height: 48,
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              width: 48,
+                              height: 48,
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              child: Center(
+                                child: Text(
+                                  conversation.otherUserName?.isNotEmpty == true
+                                      ? conversation.otherUserName![0].toUpperCase()
+                                      : 'U',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
                             ),
                           )
-                        : null,
+                        : Container(
+                            width: 48,
+                            height: 48,
+                            color: AppTheme.primaryColor.withOpacity(0.1),
+                            child: Center(
+                              child: Text(
+                                conversation.otherUserName?.isNotEmpty == true
+                                    ? conversation.otherUserName![0].toUpperCase()
+                                    : 'U',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                            ),
+                          ),
                   ),
                   if (conversation.unreadCount > 0)
                     Positioned(

@@ -4,13 +4,14 @@ import 'package:prepskul/core/theme/app_theme.dart';
 
 /// Credits Balance Widget
 ///
-/// Displays current credits balance and estimated session count
-/// Note: 1 credit = 100 XAF. Session costs vary by tutor.
-/// Sessions are estimated based on average session cost (~3,500 XAF = 35 credits per session)
+/// Displays current points balance and session count
+/// New system: 10 points per session
+/// Example: 89 points = 8 sessions (80 points) + 9 extra points
+/// A session requires 10 points
 class CreditsBalanceWidget extends StatelessWidget {
-  final int currentCredits;
+  final int currentCredits; // Actually points in new system
   final bool isLoading;
-  final int? sessionsRemaining; // Optional: if provided, will use this value. Otherwise calculates estimate.
+  final int? sessionsRemaining; // Optional: if provided, will use this value. Otherwise calculates from points.
 
   const CreditsBalanceWidget({
     Key? key,
@@ -19,14 +20,13 @@ class CreditsBalanceWidget extends StatelessWidget {
     this.sessionsRemaining,
   }) : super(key: key);
 
-  /// Calculate estimated sessions based on average session cost
-  /// Average session cost: ~3,500 XAF = 35 credits per session
-  /// Formula: credits / 35 (rounded down to show conservative estimate)
-  int _calculateEstimatedSessions() {
+  /// Calculate sessions from points
+  /// New system: 10 points per session
+  /// Formula: points / 10 (rounded down)
+  int _calculateSessionsFromPoints() {
     if (currentCredits <= 0) return 0;
-    // Average session cost: 3,500 XAF = 35 credits
-    // Round down to show conservative estimate
-    return (currentCredits / 35).floor();
+    // 10 points per session
+    return (currentCredits / 10).floor();
   }
 
   @override
@@ -87,7 +87,7 @@ class CreditsBalanceWidget extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'credits',
+                      'points',
                       style: GoogleFonts.poppins(
                         fontSize: 16,
                         fontWeight: FontWeight.w400,
@@ -100,8 +100,8 @@ class CreditsBalanceWidget extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     sessionsRemaining != null
-                        ? '$sessionsRemaining sessions'
-                        : '~${_calculateEstimatedSessions()} sessions (est.)',
+                        ? '$sessionsRemaining sessions available'
+                        : '${_calculateSessionsFromPoints()} sessions available',
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,

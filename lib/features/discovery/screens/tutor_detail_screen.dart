@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
@@ -6,7 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
-import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:prepskul/features/discovery/widgets/youtube_video_player.dart';
 import 'package:prepskul/features/booking/screens/book_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/book_trial_session_screen.dart';
 import 'package:prepskul/features/booking/services/session_feedback_service.dart' hide LogService;
@@ -19,10 +20,6 @@ import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:convert';
-// Conditional import for web-specific video helper
-import 'web_video_helper_stub.dart'
-    if (dart.library.html) 'web_video_helper.dart'
-    as web_video;
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
@@ -45,11 +42,7 @@ class TutorDetailScreen extends StatefulWidget {
 }
 
 class _TutorDetailScreenState extends State<TutorDetailScreen> {
-  YoutubePlayerController? _youtubeController; // Nullable for web
-  bool _isVideoInitialized = false;
-  bool _isVideoLoading = false;
-  String? _videoId; // For web iframe embed
-  bool _isVideoPaused = false; // Track if video is paused
+  String? _videoId; // YouTube video ID
   List<Map<String, dynamic>> _reviews = [];
   Map<String, dynamic>? _ratingStats;
   bool _isLoadingReviews = false;
@@ -266,6 +259,43 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     _extractVideoIdFromData(tutorData);
   }
 
+  /// Extract YouTube video ID from URL
+  /// Supports various YouTube URL formats:
+  /// - https://www.youtube.com/watch?v=VIDEO_ID
+  /// - https://youtu.be/VIDEO_ID
+  /// - https://www.youtube.com/embed/VIDEO_ID
+  String? _extractVideoIdFromUrl(String url) {
+    if (url.isEmpty) return null;
+    
+    try {
+      // Pattern for youtube.com/shorts/VIDEO_ID (YouTube Shorts)
+      final shortsPattern = RegExp(r'youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})');
+      final shortsMatch = shortsPattern.firstMatch(url);
+      if (shortsMatch != null && shortsMatch.groupCount >= 1) {
+        return shortsMatch.group(1);
+      }
+      
+      // Pattern for youtube.com/watch?v=VIDEO_ID
+      final watchPattern = RegExp(r'(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})');
+      final match = watchPattern.firstMatch(url);
+      if (match != null && match.groupCount >= 1) {
+        return match.group(1);
+      }
+      
+      // Pattern for youtube.com/embed/VIDEO_ID
+      final embedPattern = RegExp(r'youtube\.com\/embed\/([a-zA-Z0-9_-]{11})');
+      final embedMatch = embedPattern.firstMatch(url);
+      if (embedMatch != null && embedMatch.groupCount >= 1) {
+        return embedMatch.group(1);
+      }
+      
+      return null;
+    } catch (e) {
+      LogService.error('Error extracting video ID from URL: $e');
+      return null;
+    }
+  }
+
   void _extractVideoIdFromData(Map<String, dynamic> tutorData) {
     try {
       // Use video_url (primary), fallback to video_intro or video_link
@@ -276,7 +306,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           '';
       
       if (newVideoUrl.isNotEmpty) {
-        final newVideoId = YoutubePlayer.convertUrlToId(newVideoUrl);
+        final newVideoId = _extractVideoIdFromUrl(newVideoUrl);
         if (newVideoId != null && newVideoId.isNotEmpty) {
           // Check if video ID has changed or if this is the first time setting it
           final oldVideoId = _videoId;
@@ -288,49 +318,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           safeSetState(() {
             _videoUrl = newVideoUrl;
             _videoId = newVideoId;
-            // Preload video controller to reduce play button delay
-            if (!kIsWeb && _youtubeController == null) {
-              // Pre-initialize controller in background for faster play
-              Future.microtask(() {
-                if (mounted && _videoId == newVideoId) {
-                  try {
-                    _youtubeController = YoutubePlayerController(
-                      initialVideoId: newVideoId,
-                      flags: const YoutubePlayerFlags(
-                        autoPlay: false, // Don't auto-play, just preload
-                        mute: false,
-                        enableCaption: false,
-                        controlsVisibleAtStart: false,
-                        hideControls: true,
-                        hideThumbnail: true,
-                        loop: false,
-                        forceHD: false,
-                        startAt: 0,
-                        showLiveFullscreenButton: false,
-                        useHybridComposition: true,
-                      ),
-                    );
-                    LogService.debug('📹 Video controller preloaded for faster play');
-                  } catch (e) {
-                    LogService.warning('Error preloading video controller: $e');
-                  }
-                }
-              });
-            }
             
-            // If video ID changed OR this is the first time, reset video initialization
             if (videoIdChanged || isFirstTime) {
               if (videoIdChanged) {
-                LogService.info('🔄 Video ID changed from $oldVideoId to $newVideoId - resetting player');
+                LogService.info('🔄 Video ID changed from $oldVideoId to $newVideoId');
               } else {
-                LogService.info('🎬 Video ID extracted: $newVideoId - showing thumbnail preview');
+                LogService.info('🎬 Video ID extracted: $newVideoId');
               }
-              _isVideoInitialized = false;
-              _isVideoLoading = false;
-              // Dispose old controller if exists
-              _youtubeController?.dispose();
-              _youtubeController = null;
-              // DO NOT auto-initialize - wait for user to click play button
             }
           });
           
@@ -343,12 +337,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         safeSetState(() {
           _videoUrl = '';
           _videoId = null;
-          // Reset video if URL is empty
-          if (_isVideoInitialized) {
-            _isVideoInitialized = false;
-            _youtubeController?.dispose();
-            _youtubeController = null;
-          }
         });
       }
     } catch (e) {
@@ -359,65 +347,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
   /// Get current tutor data (refreshed if available, otherwise from widget)
   Map<String, dynamic> get _currentTutorData => _refreshedTutorData ?? widget.tutor;
 
-  void _initializeVideo() {
-    if (_isVideoInitialized || _isVideoLoading || _videoId == null) return;
-
-    safeSetState(() {
-      _isVideoLoading = true;
-    });
-
-    try {
-      // Check if running on web - use iframe embed instead
-      if (kIsWeb) {
-        // For web, we'll use an iframe embed (handled in build method)
-        safeSetState(() {
-          _isVideoInitialized = true;
-          _isVideoLoading = false;
-        });
-      } else {
-        // For mobile, use YoutubePlayerController with optimized settings for faster loading
-        // Use preloaded controller if available, otherwise create new one
-        if (_youtubeController == null || _youtubeController!.initialVideoId != _videoId) {
-          _youtubeController?.dispose();
-          _youtubeController = YoutubePlayerController(
-            initialVideoId: _videoId!,
-              flags: const YoutubePlayerFlags(
-              autoPlay: true, // Auto-play immediately when ready (user clicked play button)
-                mute: false,
-              enableCaption: false, // Disable captions for faster loading
-              controlsVisibleAtStart: true, // Show controls immediately for better UX
-              hideControls: false, // Keep controls visible so users can pause/play easily
-              hideThumbnail: true, // Hide thumbnail once video starts for faster transition
-              loop: false,
-              forceHD: false, // Don't force HD - let YouTube decide for faster loading
-              startAt: 0,
-              showLiveFullscreenButton: false, // Hide fullscreen button for cleaner UI
-              useHybridComposition: true, // Better performance on Android
-              // Optimize for faster loading
-              disableDragSeek: false,
-              isLive: false,
-            ),
-          );
-        } else {
-          // Controller already exists and matches video ID - just play it
-          _youtubeController!.play();
-        }
-        
-        safeSetState(() {
-          _isVideoInitialized = true;
-          _isVideoLoading = false;
-        });
-        
-        // No manual play() call needed - autoPlay: true handles it immediately
-      }
-    } catch (e) {
-      LogService.error('Error initializing video: $e');
-      safeSetState(() {
-        _isVideoLoading = false;
-      });
-    }
-  }
-
   /// Get YouTube thumbnail URL
   String? _getThumbnailUrl() {
     if (_videoId == null) return null;
@@ -425,34 +354,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     return 'https://img.youtube.com/vi/$_videoId/hqdefault.jpg';
   }
 
-  /// Pause video (both mobile and web)
-  void _pauseVideo() {
-    if (_isVideoPaused) return; // Already paused
-    
-    // Pause mobile YouTube player
-    _youtubeController?.pause();
-    
-    // Pause web iframe video
-    if (kIsWeb && _videoId != null) {
-      web_video.pauseYouTubeVideo(_videoId!);
-    }
-    
-    // Mark as paused
-    _isVideoPaused = true;
-  }
-
-  @override
-  void deactivate() {
-    // Pause video when navigating away from this screen
-    _pauseVideo();
-    super.deactivate();
-  }
-
   @override
   void dispose() {
-    // Ensure video is paused before disposing
-    _pauseVideo();
-    _youtubeController?.dispose();
     super.dispose();
   }
 
@@ -581,12 +484,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
 
             // Video section below AppBar
             SliverToBoxAdapter(
-              child: Container(
-                color: Colors.white, // White background to match UI
-                child: AspectRatio(
-                  aspectRatio: 16 / 9, // Standard video aspect ratio
-                  child: _buildVideoSection(),
-                ),
+              child: AspectRatio(
+                aspectRatio: 16 / 9, // Standard video aspect ratio
+                child: _buildVideoSection(),
               ),
             ),
 
@@ -1127,17 +1027,16 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           // Message button and Book Trial Session row
           Row(
             children: [
-              // Message button (only show if there's an active booking/trial) - LEFT SIDE
+              // Message button - only show when user has active booking/trial with this tutor
               FutureBuilder<bool>(
                 future: _hasActiveBookingWithTutor(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const SizedBox.shrink();
                   }
-                  
                   if (snapshot.data == true) {
                     return Container(
-                      height: 56, // Same height as Book Trial button
+                      height: 56,
                       width: 56,
                       margin: const EdgeInsets.only(right: 12),
                       decoration: BoxDecoration(
@@ -1158,11 +1057,10 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                           size: 24,
                         ),
                         tooltip: 'Message Tutor',
-                        padding: EdgeInsets.zero, // Remove default padding to match button height
+                        padding: EdgeInsets.zero,
                       ),
                     );
                   }
-                  
                   return const SizedBox.shrink();
                 },
               ),
@@ -1176,7 +1074,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       )
                   : () {
                 // Pause video before navigating
-                _pauseVideo();
                 // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
                 final tutorData = _currentTutorData;
                     
@@ -1241,7 +1138,6 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                       )
                   : () {
                 // Pause video before navigating
-                _pauseVideo();
                 // Use refreshed tutor data if available (includes latest video_url and profile_photo_url)
                 final tutorData = _currentTutorData;
                 Navigator.push(
@@ -1828,9 +1724,9 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
     );
   }
 
-  /// Build video section with lazy loading and thumbnail preview
+  /// Build video section - simple implementation using YoutubeVideoPlayer widget
   Widget _buildVideoSection() {
-    // If no video URL, show placeholder
+    // If no video ID, show placeholder
     if (_videoId == null) {
       return Container(
         key: const ValueKey('video-placeholder'),
@@ -1845,239 +1741,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
       );
     }
 
-    // Use video ID as key to force rebuild when video changes
-    final videoKey = ValueKey('video-$_videoId');
-
-    // Always show thumbnail preview first (before video is initialized)
-    // Only show player after user clicks play and video is initialized
-    if (!_isVideoInitialized && !_isVideoLoading) {
-      return _buildThumbnailPreview();
-    }
-
-    // If video is initialized, show player
-    if (_isVideoInitialized) {
-      if (kIsWeb && _videoId != null) {
-        return _buildWebVideoPlayer(_videoId!, key: videoKey);
-      } else if (_youtubeController != null) {
-        return GestureDetector(
-          onTap: () {
-            if (_youtubeController != null) {
-              safeSetState(() {
-                if (_youtubeController!.value.isPlaying) {
-                  _youtubeController!.pause();
-                } else {
-                  _youtubeController!.play();
-                }
-              });
-            }
-          },
-          child: YoutubePlayerBuilder(
-            onExitFullScreen: () {},
-            player: YoutubePlayer(
-              controller: _youtubeController!,
-              showVideoProgressIndicator: true,
-              progressIndicatorColor: AppTheme.primaryColor,
-              progressColors: ProgressBarColors(
-                playedColor: AppTheme.primaryColor,
-                handleColor: AppTheme.primaryColor,
-                bufferedColor: Colors.white.withOpacity(0.3),
-                backgroundColor: Colors.white.withOpacity(0.1),
-              ),
-              thumbnail: _getThumbnailUrl() != null
-                  ? CachedNetworkImage(
-                      imageUrl: _getThumbnailUrl()!,
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-              onReady: () {
-                LogService.debug('✅ Video player ready and will auto-play');
-              },
-              onEnded: (metadata) {
-                LogService.info('Video ended');
-              },
-            ),
-            builder: (context, player) => player,
-          ),
-        );
-      } else {
-        return _buildThumbnailPreview();
-      }
-    }
-
-    // Show loading state with better UX
-    if (_isVideoLoading) {
-      return Container(
-        color: Colors.white, // Changed from black to white
-        child: Stack(
-          children: [
-            // Show thumbnail while loading
-            if (_getThumbnailUrl() != null)
-              CachedNetworkImage(
-                imageUrl: _getThumbnailUrl()!,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                height: double.infinity,
-                placeholder: (context, url) => Container(
-                  color: Colors.grey[200], // Changed from grey[900] to grey[200]
-                  child: const Center(
-                      child: CircularProgressIndicator(
-                        color: AppTheme.primaryColor,
-                        strokeWidth: 2,
-                      ),
-                  ),
-                ),
-                errorWidget: (context, url, error) =>
-                    Container(color: Colors.grey[200]), // Changed from grey[900] to grey[200]
-              ),
-            // Modern loading overlay with pulse animation
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.black.withOpacity(0.6),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 3,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Loading video...',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Fallback: Show thumbnail preview if somehow we get here
-    return _buildThumbnailPreview();
-  }
-
-  /// Build thumbnail preview with modern play button overlay
-  Widget _buildThumbnailPreview() {
-    final thumbnailUrl = _getThumbnailUrl();
-
-    return Stack(
-        fit: StackFit.expand,
-        children: [
-          // Thumbnail image with caching
-          thumbnailUrl != null
-              ? CachedNetworkImage(
-                  imageUrl: thumbnailUrl,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  height: double.infinity,
-                  placeholder: (context, url) => Container(
-                  color: Colors.grey[200],
-                    child: const Center(
-                          child: CircularProgressIndicator(
-                      color: AppTheme.primaryColor,
-                            strokeWidth: 2,
-                          ),
-                    ),
-                  ),
-                  errorWidget: (context, url, error) {
-                    return Container(
-                    color: Colors.grey[200],
-                    child: Center(
-                        child: Icon(
-                          Icons.video_library_outlined,
-                          size: 80,
-                        color: Colors.grey[400],
-                        ),
-                      ),
-                    );
-                  },
-                )
-              : Container(
-                color: Colors.grey[200],
-                child: Center(
-                    child: Icon(
-                      Icons.video_library_outlined,
-                      size: 80,
-                    color: Colors.grey[400],
-                    ),
-                  ),
-                ),
-        // Play button at bottom right - only show when video is not initialized
-        if (!_isVideoInitialized && !_isVideoLoading)
-          Positioned(
-            bottom: 14,
-            right: 14,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  // Initialize video when user taps play button
-                  _initializeVideo();
-                },
-                borderRadius: BorderRadius.circular(24),
-                child: Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor, // Deep blue play button
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow,
-                    color: Colors.white,
-                        size: 30,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// Build web-compatible YouTube video player using iframe
-  Widget _buildWebVideoPlayer(String videoId, {Key? key}) {
-    if (kIsWeb) {
-      // Use HtmlElementView for web
-      final String viewType = 'youtube-iframe-$videoId';
-
-      // Register the platform view (will be idempotent if already registered)
-      try {
-        web_video.registerYouTubeIframe(viewType, videoId);
-      } catch (e) {
-        // View factory might already be registered, that's okay
-        LogService.info('View factory registration: $e');
-      }
-
-      return Container(
-        key: key, // Use key to force rebuild when video changes
-        color: Colors.white, // Changed from black to white
-        width: double.infinity,
-        height: double.infinity,
-        child: HtmlElementView(viewType: viewType),
-      );
-    } else {
-      // Fallback for non-web platforms
-      return Container(
-        color: Colors.grey[200],
-        child: Center(
-          child: Icon(
-            Icons.play_circle_outline,
-            size: 80,
-            color: Colors.grey[400],
-          ),
-        ),
-      );
-    }
+    // Use simple YoutubeVideoPlayer widget
+    return YoutubeVideoPlayer(videoId: _videoId!);
   }
 
   void _showProfileImage(BuildContext context) {
@@ -2874,6 +2539,61 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
         }
       }
 
+      // If still no conversation but user has trial or booking, create one on demand
+      if (conversationResponse == null) {
+        final trialSession = await supabase
+            .from('trial_sessions')
+            .select('id')
+            .eq('learner_id', currentUserId)
+            .eq('tutor_id', tutorUserId)
+            .inFilter('status', ['pending', 'approved', 'scheduled'])
+            .limit(1)
+            .maybeSingle();
+
+        if (trialSession != null) {
+          final trialId = trialSession['id'] as String;
+          final newId = await ConversationLifecycleService.createConversationForTrial(
+            trialSessionId: trialId,
+            studentId: currentUserId,
+            tutorId: tutorUserId,
+          );
+          if (newId != null) {
+            conversationResponse = await supabase
+                .from('conversations')
+                .select('*')
+                .eq('id', newId)
+                .maybeSingle();
+          }
+        }
+      }
+
+      if (conversationResponse == null) {
+        final bookingRequest = await supabase
+            .from('booking_requests')
+            .select('id')
+            .eq('student_id', currentUserId)
+            .eq('tutor_id', tutorUserId)
+            .inFilter('status', ['pending', 'approved'])
+            .limit(1)
+            .maybeSingle();
+
+        if (bookingRequest != null) {
+          final bookingId = bookingRequest['id'] as String;
+          final newId = await ConversationLifecycleService.createConversationForBooking(
+            bookingRequestId: bookingId,
+            studentId: currentUserId,
+            tutorId: tutorUserId,
+          );
+          if (newId != null) {
+            conversationResponse = await supabase
+                .from('conversations')
+                .select('*')
+                .eq('id', newId)
+                .maybeSingle();
+          }
+        }
+      }
+
       // Dismiss loading
       if (loadingShown && mounted && Navigator.of(context).canPop()) {
         Navigator.pop(context);
@@ -2884,7 +2604,7 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'No active conversation found. Please book a session first.',
+                'Book a trial or session to start chatting with this tutor.',
                 style: GoogleFonts.poppins(),
               ),
               backgroundColor: Colors.orange,

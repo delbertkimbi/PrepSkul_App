@@ -293,11 +293,16 @@ class BookingService {
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
       };
       
-      // Store session locations and location details for hybrid sessions (in JSONB)
-      if (location == 'hybrid' && sessionLocations != null && locationDetails != null) {
-        requestData['session_locations'] = sessionLocations;
-        requestData['location_details'] = locationDetails;
-      }
+      // Note: session_locations column doesn't exist in booking_requests table
+      // The location information is already stored in location_description and location field
+      // For hybrid sessions, location_description should contain the details
+      // We do NOT store session_locations in the database as the column doesn't exist
+      
+      // Explicitly ensure location_details, locationDetails, and session_locations are NOT in requestData
+      // (they don't exist in DB schema)
+      requestData.remove('location_details');
+      requestData.remove('locationDetails');
+      requestData.remove('session_locations');
 
       // Log the data being inserted for debugging (use error level so it shows in console)
       LogService.error('🔍 DEBUG: About to insert booking request. student_type: "$studentType", user_type: "$rawUserType", student_id: $userId, tutor_id: $tutorUserId');
@@ -564,44 +569,44 @@ class BookingService {
     String studentId,
   ) async {
     try {
-      LogService.error('🔍 [BOOKING_REQUESTS] Fetching booking requests for student: $studentId');
-      
+      LogService.debug('🔍 [BOOKING_REQUESTS] Fetching booking requests for student: $studentId');
+
       // First, check if ANY booking requests exist in the table (for debugging)
       try {
         final allRequestsCheck = await SupabaseService.client
             .from('booking_requests')
             .select('id, student_id, tutor_id, status, created_at')
             .limit(10);
-        
-        LogService.error('📊 [BOOKING_REQUESTS] Total booking requests in table: ${(allRequestsCheck as List).length}');
+
+        LogService.debug('📊 [BOOKING_REQUESTS] Total booking requests in table: ${(allRequestsCheck as List).length}');
         if ((allRequestsCheck as List).isNotEmpty) {
-          LogService.error('📋 [BOOKING_REQUESTS] Sample requests:');
+          LogService.debug('📋 [BOOKING_REQUESTS] Sample requests:');
           for (var req in (allRequestsCheck as List).take(3)) {
-            LogService.error('   - id: ${req['id']}, student_id: ${req['student_id']}, status: ${req['status']}');
+            LogService.debug('   - id: ${req['id']}, student_id: ${req['student_id']}, status: ${req['status']}');
           }
         }
       } catch (e) {
-        LogService.error('❌ [BOOKING_REQUESTS] Error checking all requests: $e');
+        LogService.warning('❌ [BOOKING_REQUESTS] Error checking all requests: $e');
       }
-      
+
       // First, try a simple query without joins to test RLS
       try {
-        LogService.error('🔍 [BOOKING_REQUESTS] Running simple query for student_id: $studentId');
+        LogService.debug('🔍 [BOOKING_REQUESTS] Running simple query for student_id: $studentId');
         final simpleResponse = await SupabaseService.client
             .from('booking_requests')
             .select('id, student_id, status, created_at')
             .eq('student_id', studentId)
             .order('created_at', ascending: false);
-        
-        LogService.error('📊 [BOOKING_REQUESTS] Simple query result: ${(simpleResponse as List).length} rows');
+
+        LogService.debug('📊 [BOOKING_REQUESTS] Simple query result: ${(simpleResponse as List).length} rows');
         if ((simpleResponse as List).isNotEmpty) {
-          LogService.error('📋 [BOOKING_REQUESTS] Simple query sample: ${simpleResponse[0]}');
+          LogService.debug('📋 [BOOKING_REQUESTS] Simple query sample: ${simpleResponse[0]}');
         } else {
-          LogService.error('⚠️ [BOOKING_REQUESTS] No booking requests found with student_id: $studentId');
+          LogService.debug('⚠️ [BOOKING_REQUESTS] No booking requests found with student_id: $studentId');
         }
       } catch (e, stackTrace) {
         LogService.error('❌ [BOOKING_REQUESTS] Simple query failed: $e');
-        LogService.error('📚 [BOOKING_REQUESTS] Stack trace: $stackTrace');
+        LogService.debug('📚 [BOOKING_REQUESTS] Stack trace: $stackTrace');
       }
       
       // Fix: tutor_id references profiles.id, not tutor_profiles.user_id
@@ -619,10 +624,10 @@ class BookingService {
           )
           .eq('student_id', studentId);
 
-      LogService.error('🔍 [BOOKING_REQUESTS] Running full query with joins for student_id: $studentId');
+      LogService.debug('🔍 [BOOKING_REQUESTS] Running full query with joins for student_id: $studentId');
       final response = await query.order('created_at', ascending: false);
-      
-      LogService.error('📊 [BOOKING_REQUESTS] Full query response type: ${response.runtimeType}, length: ${(response as List).length}');
+
+      LogService.debug('📊 [BOOKING_REQUESTS] Full query response type: ${response.runtimeType}, length: ${(response as List).length}');
 
       final bookingRequests = (response as List).map((json) {
         try {
@@ -670,12 +675,12 @@ class BookingService {
         }
       }).toList();
       
-      LogService.error('✅ [BOOKING_REQUESTS] Successfully fetched ${bookingRequests.length} booking requests for student: $studentId');
+      LogService.success('✅ [BOOKING_REQUESTS] Successfully fetched ${bookingRequests.length} booking requests for student: $studentId');
       if (bookingRequests.isNotEmpty) {
-        LogService.error('📋 [BOOKING_REQUESTS] Request IDs: ${bookingRequests.map((r) => r.id).join(", ")}');
-        LogService.error('📋 [BOOKING_REQUESTS] Request statuses: ${bookingRequests.map((r) => r.status).join(", ")}');
+        LogService.debug('📋 [BOOKING_REQUESTS] Request IDs: ${bookingRequests.map((r) => r.id).join(", ")}');
+        LogService.debug('📋 [BOOKING_REQUESTS] Request statuses: ${bookingRequests.map((r) => r.status).join(", ")}');
       } else {
-        LogService.error('⚠️ [BOOKING_REQUESTS] No booking requests returned for student: $studentId');
+        LogService.debug('⚠️ [BOOKING_REQUESTS] No booking requests returned for student: $studentId');
       }
       
       return bookingRequests;
