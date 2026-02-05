@@ -44,9 +44,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
       LogService.error('Error loading challenges: $e');
       safeSetState(() => _isLoading = false);
     }
-  }
-
-  List<Challenge> get _filteredChallenges {
+  }  List<Challenge> get _filteredChallenges {
     final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) return [];
 
@@ -151,9 +149,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildChallengeCard(Challenge challenge) {
+  }  Widget _buildChallengeCard(Challenge challenge) {
     final userId = SupabaseService.client.auth.currentUser?.id;
     final isChallenger = challenge.challengerId == userId;
     final opponentName = isChallenger ? challenge.challengeeName : challenge.challengerName;

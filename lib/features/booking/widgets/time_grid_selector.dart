@@ -141,20 +141,6 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
     widget.onTimesSelected(_selectedTimes);
   }
 
-  void _nextDay() {
-    if (_currentDayIndex < widget.selectedDays.length - 1) {
-      safeSetState(() => _currentDayIndex++);
-      _loadAvailability();
-    }
-  }
-
-  void _previousDay() {
-    if (_currentDayIndex > 0) {
-      safeSetState(() => _currentDayIndex--);
-      _loadAvailability();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.selectedDays.isEmpty) {
@@ -187,7 +173,7 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
           ),
           const SizedBox(height: 24),
 
-          // Day progress indicator
+          // Day tabs (tappable – switch day without Next Day button)
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -204,24 +190,32 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
                 final hasTime = _selectedTimes.containsKey(day);
 
                 return Expanded(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? AppTheme.primaryColor
-                          : (hasTime ? Colors.green[100] : Colors.transparent),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      abbreviation,
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                  child: GestureDetector(
+                    onTap: () {
+                      if (index != _currentDayIndex) {
+                        safeSetState(() => _currentDayIndex = index);
+                        _loadAvailability();
+                      }
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
                         color: isActive
-                            ? Colors.white
-                            : (hasTime ? Colors.green[700] : Colors.grey[600]),
+                            ? AppTheme.primaryColor
+                            : (hasTime ? Colors.green[100] : Colors.transparent),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        abbreviation,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isActive
+                              ? Colors.white
+                              : (hasTime ? Colors.green[700] : Colors.grey[600]),
+                        ),
                       ),
                     ),
                   ),
@@ -279,49 +273,19 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
               ),
           ],
 
-          const SizedBox(height: 32),
-
-          // Navigation buttons
+          const SizedBox(height: 24),
+          // Hint: tap day tabs to switch; Continue is active when all days have a time selected
           if (widget.selectedDays.length > 1)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (_currentDayIndex > 0)
-                  TextButton.icon(
-                    onPressed: _previousDay,
-                    icon: const Icon(Icons.arrow_back, size: 18),
-                    label: Text(
-                      'Previous Day',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                    ),
-                  )
-                else
-                  const SizedBox(),
-                if (_currentDayIndex < widget.selectedDays.length - 1 &&
-                    _selectedTimes.containsKey(_currentDay))
-                  ElevatedButton.icon(
-                    onPressed: _nextDay,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    icon: const Icon(Icons.arrow_forward, size: 18),
-                    label: Text(
-                      'Next Day',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-              ],
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Tap a day above to pick its time. Continue when every day has a time.',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
         ],
       ),

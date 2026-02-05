@@ -31,11 +31,30 @@ class FrequencySelector extends StatefulWidget {
 
 class _FrequencySelectorState extends State<FrequencySelector> {
   int? _selectedFrequency;
+  // Cache the multi-learner pricing future to prevent re-running on every rebuild
+  Future<Map<int, ({double base, double discounted})>>? _cachedMultiLearnerPricing;
 
   @override
   void initState() {
     super.initState();
     _selectedFrequency = widget.initialFrequency;
+    // Pre-calculate multi-learner pricing if needed (only once)
+    if (widget.learnerCount != null && widget.learnerCount! > 1) {
+      _cachedMultiLearnerPricing = _getMultiLearnerPricing();
+    }
+  }
+
+  @override
+  void didUpdateWidget(FrequencySelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only recalculate if learnerCount actually changed
+    if (widget.learnerCount != oldWidget.learnerCount) {
+      if (widget.learnerCount != null && widget.learnerCount! > 1) {
+        _cachedMultiLearnerPricing = _getMultiLearnerPricing();
+      } else {
+        _cachedMultiLearnerPricing = null;
+      }
+    }
   }
 
   Map<String, dynamic> _calculatePricing(int sessionsPerWeek) {
@@ -45,19 +64,21 @@ class _FrequencySelectorState extends State<FrequencySelector> {
     );
   }
 
-  /// When learnerCount > 1, returns map of frequency -> discounted monthly total.
-  Future<Map<int, double>> _getMultiLearnerDiscountedMonthly() async {
+  /// When learnerCount > 1, returns map of frequency -> (normal total before discount, discounted monthly).
+  Future<Map<int, ({double base, double discounted})>> _getMultiLearnerPricing() async {
     final count = widget.learnerCount ?? 1;
     if (count <= 1) return {};
-    final result = <int, double>{};
+    final result = <int, ({double base, double discounted})>{};
     for (int f = 1; f <= 4; f++) {
       final pricing = _calculatePricing(f);
       final baseMonthly = pricing['perMonth'] as double;
+      // Normal price = full price × learner count (what they'd pay with no discount)
+      final normalTotal = baseMonthly * count;
       final discounted = await PricingService.calculateMultiLearnerMonthlyTotal(
         baseMonthlyTotal: baseMonthly,
         learnerCount: count,
       );
-      result[f] = discounted;
+      result[f] = (base: normalTotal, discounted: discounted);
     }
     return result;
   }
@@ -94,8 +115,8 @@ class _FrequencySelectorState extends State<FrequencySelector> {
 
           // Frequency options (with multi-learner discounted prices when learnerCount > 1)
           useMultiLearnerPricing
-              ? FutureBuilder<Map<int, double>>(
-                  future: _getMultiLearnerDiscountedMonthly(),
+              ? FutureBuilder<Map<int, ({double base, double discounted})>>(
+                  future: _cachedMultiLearnerPricing,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(
@@ -105,7 +126,7 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                         ),
                       );
                     }
-                    final discountedMap = snapshot.data ?? {};
+                    final pricingMap = snapshot.data ?? {};
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -114,7 +135,8 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                           label: '1x per week',
                           description: '4 sessions per month',
                           icon: Icons.calendar_today,
-                          displayMonthlyOverride: discountedMap[1],
+                          baseMonthlyForStrike: pricingMap[1]?.base,
+                          displayMonthlyOverride: pricingMap[1]?.discounted,
                         ),
                         const SizedBox(height: 12),
                         _buildFrequencyOption(
@@ -123,7 +145,8 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                           description: '8 sessions per month',
                           icon: Icons.event_repeat,
                           isRecommended: true,
-                          displayMonthlyOverride: discountedMap[2],
+                          baseMonthlyForStrike: pricingMap[2]?.base,
+                          displayMonthlyOverride: pricingMap[2]?.discounted,
                         ),
                         const SizedBox(height: 12),
                         _buildFrequencyOption(
@@ -131,7 +154,8 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                           label: '3x per week',
                           description: '12 sessions per month',
                           icon: Icons.event_available,
-                          displayMonthlyOverride: discountedMap[3],
+                          baseMonthlyForStrike: pricingMap[3]?.base,
+                          displayMonthlyOverride: pricingMap[3]?.discounted,
                         ),
                         const SizedBox(height: 12),
                         _buildFrequencyOption(
@@ -139,7 +163,8 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                           label: '4x per week',
                           description: '16 sessions per month',
                           icon: Icons.event_note,
-                          displayMonthlyOverride: discountedMap[4],
+                          baseMonthlyForStrike: pricingMap[4]?.base,
+                          displayMonthlyOverride: pricingMap[4]?.discounted,
                         ),
                       ],
                     );
@@ -286,10 +311,12 @@ class _FrequencySelectorState extends State<FrequencySelector> {
     required IconData icon,
     bool isRecommended = false,
     double? displayMonthlyOverride, // When set (e.g. multi-learner discounted), use instead of single-learner perMonth
+    double? baseMonthlyForStrike, // When set with displayMonthlyOverride, show normal price struck through above discounted
   }) {
     final isSelected = _selectedFrequency == frequency;
     final pricing = _calculatePricing(frequency);
     final monthlyTotal = displayMonthlyOverride ?? (pricing['perMonth'] as double);
+    final showDiscount = baseMonthlyForStrike != null && displayMonthlyOverride != null && baseMonthlyForStrike > displayMonthlyOverride;
 
     return GestureDetector(
       onTap: () {
@@ -401,6 +428,19 @@ class _FrequencySelectorState extends State<FrequencySelector> {
                     ],
                   ),
                   const SizedBox(height: 6),
+                  if (showDiscount) ...[
+                    Text(
+                      PricingService.formatPrice(baseMonthlyForStrike!),
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        decoration: TextDecoration.lineThrough,
+                        decorationColor: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                  ],
                   Text(
                     PricingService.formatPrice(monthlyTotal),
                     style: GoogleFonts.poppins(

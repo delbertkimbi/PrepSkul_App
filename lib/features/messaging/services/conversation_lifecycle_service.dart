@@ -286,12 +286,14 @@ class ConversationLifecycleService {
     }
   }
 
-  /// Get or create conversation for a booking request, recurring session, or individual session
+  /// Get or create conversation for a booking request, recurring session, individual session, or trial session
   /// Returns the conversation ID and full Conversation object
+  /// The one_context constraint requires exactly ONE context ID to be provided
   static Future<Map<String, dynamic>?> getOrCreateConversation({
     String? bookingRequestId,
     String? recurringSessionId,
     String? individualSessionId,
+    String? trialSessionId,
     String? tutorId,
     String? studentId,
   }) async {
@@ -396,6 +398,7 @@ class ConversationLifecycleService {
       conversationId = await _createConversationDirectly(
         studentId: finalStudentId,
         tutorId: finalTutorId,
+        trialSessionId: trialSessionId,
         bookingRequestId: bookingRequestId,
         recurringSessionId: recurringSessionId,
         individualSessionId: individualSessionId,
