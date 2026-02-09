@@ -26,10 +26,10 @@ class AppConfig {
   /// - API credentials (production vs development)
   /// - All payment processing
   /// 
-  /// ⚠️ Always verify environment variables are set correctly:
+  /// ⚠️ Always verify environment variables are Rset correctly:
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
-  static const bool isProduction = false; // ← PRODUCTION MODE ENABLED
+  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // 🔐 Authentication Feature Flags

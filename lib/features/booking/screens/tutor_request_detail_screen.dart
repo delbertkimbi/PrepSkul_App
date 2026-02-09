@@ -1577,65 +1577,66 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              // Status indicator
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isAccepted 
-                      ? Colors.green
-                      : isDeclined 
-                          ? Colors.red
-                          : Colors.grey[400],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      learnerName,
-                      style: GoogleFonts.poppins(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textDark,
-                      ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onToggleExpand,
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                children: [
+                  // Status indicator
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isAccepted 
+                          ? Colors.green
+                          : isDeclined 
+                              ? Colors.red
+                              : Colors.grey[400],
                     ),
-                    if (isAccepted || isDeclined) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        isAccepted ? '✓ Accepted' : '✗ Declined',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: isAccepted ? Colors.green[700] : Colors.red[700],
-                          fontWeight: FontWeight.w500,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          learnerName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              // Expand/collapse button
-              if (isPendingStatus)
-                IconButton(
-                  icon: Icon(
+                        if (isAccepted || isDeclined) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            isAccepted ? '✓ Accepted' : '✗ Declined',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              color: isAccepted ? Colors.green[700] : Colors.red[700],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  // Expand/collapse (tap learner to view class, subjects, etc.)
+                  Icon(
                     isExpanded ? Icons.expand_less : Icons.expand_more,
                     size: 20,
                     color: AppTheme.textMedium,
                   ),
-                  onPressed: onToggleExpand,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-            ],
+                ],
+              ),
+            ),
           ),
           
-          // Expanded details and actions
-          if (isExpanded && isPendingStatus) ...[
+          // Expanded details (tap any learner to view class, subjects, etc.)
+          if (isExpanded) ...[
             const SizedBox(height: 12),
             const Divider(height: 1),
             const SizedBox(height: 12),
@@ -1708,7 +1709,8 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
               const SizedBox(height: 8),
             ],
             
-            // Accept/Decline buttons
+            // Accept/Decline buttons (only when pending)
+            if (isPendingStatus) ...[
             Row(
               children: [
                 Expanded(
@@ -1754,6 +1756,7 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
                 ),
               ],
             ),
+            ],
           ],
           
           // Show rejection reason if declined

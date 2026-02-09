@@ -264,8 +264,10 @@ class TutorRequestService {
         throw Exception('Cannot edit request with status: $status');
       }
 
+      // Edit puts request back to pending so admins re-review
       final updateData = <String, dynamic>{
         'updated_at': DateTime.now().toIso8601String(),
+        'status': 'pending',
       };
 
       if (subjects != null) updateData['subjects'] = subjects;

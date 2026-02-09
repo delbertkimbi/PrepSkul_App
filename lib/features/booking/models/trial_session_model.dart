@@ -77,6 +77,14 @@ class TrialSession {
     this.updatedAt,
   });
 
+  /// Parse learner_labels from API (handles List<dynamic>, JSONB array)
+  static List<String>? _parseLearnerLabels(dynamic value) {
+    if (value == null) return null;
+    if (value is! List) return null;
+    final list = value.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+    return list.isEmpty ? null : list;
+  }
+
   /// Create from JSON (from Supabase)
   factory TrialSession.fromJson(Map<String, dynamic> json) {
     return TrialSession(
@@ -102,6 +110,7 @@ class TrialSession {
       meetLink: json['meet_link'] as String?,
       bookingGroupId: json['booking_group_id'] as String?,
       learnerLabel: json['learner_label'] as String?,
+      learnerLabels: _parseLearnerLabels(json['learner_labels']),
       convertedToRecurring: json['converted_to_recurring'] as bool? ?? false,
       recurringSessionId: json['recurring_session_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -155,6 +164,15 @@ class TrialSession {
   bool get isScheduled => status == 'scheduled';
   bool get isCompleted => status == 'completed';
   bool get isCancelled => status == 'cancelled';
+
+  /// Learners to display: multi-learner labels or single learner label
+  List<String> get displayLearnerNames {
+    if (learnerLabels != null && learnerLabels!.isNotEmpty) return learnerLabels!;
+    if (learnerLabel != null && learnerLabel!.isNotEmpty) return [learnerLabel!];
+    return [];
+  }
+
+  bool get hasMultipleLearners => displayLearnerNames.length > 1;
 
   /// Format duration for display
   String get formattedDuration {

@@ -1948,7 +1948,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                             color: Colors.grey[700],
                           ),
                         ),
-                        if (rating > 0 && totalReviews > 0) ...[
+                        if (rating > 0 && totalReviews >= 3) ...[
                           const SizedBox(width: 4),
                           Text(
                             '($totalReviews)',

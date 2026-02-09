@@ -24,7 +24,6 @@ import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
-import '../../../core/widgets/offline_indicator.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -47,6 +46,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
   bool _hasSavedProgress = false; // Track if user has any saved progress
   double _activeBalance = 0.0;
   double _pendingBalance = 0.0;
+  int _studentCount = 0;
+  int _sessionCount = 0;
   bool _isOffline = false;
   final ConnectivityService _connectivity = ConnectivityService();
 
@@ -276,6 +277,19 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         }
       }
 
+      // Load Quick Stats (students and sessions) for approved tutors
+      int studentCount = 0;
+      int sessionCount = 0;
+      if (newApprovalStatus == 'approved') {
+        try {
+          final stats = await _loadTutorQuickStats(userId);
+          studentCount = stats['students'] as int;
+          sessionCount = stats['sessions'] as int;
+        } catch (e) {
+          LogService.warning('Error loading tutor quick stats: $e');
+        }
+      }
+
       safeSetState(() {
         _userInfo = {
           ...user,
@@ -291,6 +305,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _hasSavedProgress = hasProgress;
         _activeBalance = activeBalance;
         _pendingBalance = pendingBalance;
+        _studentCount = studentCount;
+        _sessionCount = sessionCount;
         _isLoading = false;
       });
       
@@ -365,6 +381,50 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
     return parts.isNotEmpty ? parts[0] : fullName;
   }
 
+  /// Load real student and session counts for Quick Stats (approved tutors only).
+  Future<Map<String, int>> _loadTutorQuickStats(String userId) async {
+    final supabase = SupabaseService.client;
+    int sessionCount = 0;
+    final Set<String> learnerIds = {};
+
+    try {
+      // Individual sessions: count and collect learner_id
+      final ind = await supabase
+          .from('individual_sessions')
+          .select('id, learner_id')
+          .eq('tutor_id', userId)
+          .limit(2000);
+      final indList = (ind as List).cast<Map<String, dynamic>>();
+      sessionCount += indList.length;
+      for (final row in indList) {
+        final id = row['learner_id'] as String?;
+        if (id != null && id.isNotEmpty) learnerIds.add(id);
+      }
+
+      // Trial sessions: count (only active/completed, exclude cancelled/rejected/expired) and collect learner_id
+      final trial = await supabase
+          .from('trial_sessions')
+          .select('id, learner_id')
+          .eq('tutor_id', userId)
+          .inFilter('status', [
+            'pending', 'approved', 'scheduled', 'in_progress',
+            'completed', 'no_show_tutor', 'no_show_learner', 'missed',
+          ])
+          .limit(2000);
+      final trialList = (trial as List).cast<Map<String, dynamic>>();
+      sessionCount += trialList.length;
+      for (final row in trialList) {
+        final id = row['learner_id'] as String?;
+        if (id != null && id.isNotEmpty) learnerIds.add(id);
+      }
+    } catch (e) {
+      LogService.warning('Tutor quick stats: $e');
+      rethrow;
+    }
+
+    return {'students': learnerIds.length, 'sessions': sessionCount};
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -402,38 +462,6 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const OfflineIndicator(),
-                  if (_isOffline)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        bottom: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20),
-                      ),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange[200]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.cloud_off, color: Colors.orange[800], size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Offline mode: progress and approvals update when you are back online.',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: Colors.orange[900],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   // Onboarding Progress Tracker
                   // Show ONLY if: (skipped OR has saved progress) AND not yet submitted
                   // Hide after submission - only show Profile Completion widget then
@@ -594,9 +622,9 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   Row(
                     children: [
-                      _buildStatCard('Students', '0', Icons.people),
+                      _buildStatCard('Students', '$_studentCount', Icons.people),
                       SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-                      _buildStatCard('Sessions', '0', Icons.event),
+                      _buildStatCard('Sessions', '$_sessionCount', Icons.event),
                     ],
                   ),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),

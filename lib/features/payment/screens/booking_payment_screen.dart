@@ -22,14 +22,11 @@ import 'package:prepskul/features/booking/services/recurring_session_service.dar
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
 
-
 /// Booking Payment Screen
-/// 
-/// Professional multi-step payment flow for regular booking payments
-/// Step 1: Booking Summary & Phone Entry
-/// Step 2: Payment Summary with Charges
-/// Step 3: Payment Confirmation
-/// Step 4: Success
+///
+/// Professional multi-step payment flow for recurring booking payments.
+/// Combined view: Session Details, Phone Entry, Payment Breakdown, Pay.
+/// After Pay → PaymentConfirmationScreen (logos, confetti, status).
 
 class BookingPaymentScreen extends StatefulWidget {
   final String paymentRequestId;
@@ -53,10 +50,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   bool _isProcessing = false;
   bool _isPolling = false;
   String? _errorMessage;
-  String _paymentStatus = 'idle'; // idle, pending, successful, failed
+  String _paymentStatus = 'idle';
   Map<String, dynamic>? _paymentRequest;
   String? _detectedProvider;
-  int _currentStep = 0; // 0: Phone Entry, 1: Payment Summary, 2: Confirmation
+  int _currentStep = 0; // 0: Combined view, 2: Confirmation (after Pay)
 
   // Payment calculations
   double _subtotal = 0.0;
@@ -101,14 +98,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     try {
       final request = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
       if (request != null && mounted) {
-        // Use original_amount if available, otherwise use amount
         final originalAmount = (request['original_amount'] as num?)?.toDouble() ?? 
                               (request['amount'] as num).toDouble();
-        
-        // Calculate charges (2% of subtotal)
         final charges = originalAmount * 0.02;
         final total = originalAmount + charges;
-        
         safeSetState(() {
           _paymentRequest = request;
           _subtotal = originalAmount;
@@ -252,15 +245,13 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       }
     }
     
-    // Navigate to dedicated payment confirmation screen IMMEDIATELY
-    // Always navigate, even if there was an error (let the new screen handle it)
+    // Navigate to PaymentConfirmationScreen (same flow as recurring: nice UX, logos, confetti)
     if (mounted && transId != null) {
       safeSetState(() {
         _isProcessing = false;
         _detectedProvider = provider;
-        _currentStep = 2; // Go directly to confirmation step
+        _currentStep = 2;
       });
-
       final result = await Navigator.pushReplacement<bool, void>(
         context,
         MaterialPageRoute(
@@ -273,18 +264,15 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             onPaymentComplete: (transId) async {
               try {
                 await _completePayment(transId);
-                return true; // Return success
+                return true;
               } catch (e) {
                 LogService.error('Error completing payment: $e');
-                // Even on error, if payment was confirmed, return true
-                return true; // Payment is successful, even if other steps failed
+                return true;
               }
             },
           ),
         ),
       );
-
-      // If payment was successful, show success dialog and navigate
       if (result == true && mounted) {
         _showSuccessDialog();
       }
@@ -311,11 +299,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
       if (mounted) {
         if (status.isSuccessful) {
-          // Keep _isPolling true until success dialog is shown
-          // This ensures processing overlay stays visible
           _paymentStatus = 'successful';
           await _completePayment(transId);
-          // Set _isPolling to false after dialog is shown
           if (mounted) {
             safeSetState(() {
               _isPolling = false;
@@ -750,32 +735,22 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  // Combined Phone Entry + Payment Summary (Single Scrollable View)
   Widget _buildCombinedPaymentView(String tutorName, String? description, String paymentPlan) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Compact Booking Summary Card
           _buildCompactBookingSummary(tutorName, description, paymentPlan),
           const SizedBox(height: 16),
-
-          // Inline Phone Input with Provider Badge
           _buildInlinePhoneInput(),
           const SizedBox(height: 16),
-
-          // Compact Payment Breakdown
           _buildCompactPaymentBreakdown(),
           const SizedBox(height: 16),
-
-          // Error Message
           if (_errorMessage != null) ...[
             _buildCompactErrorMessage(),
             const SizedBox(height: 16),
           ],
-
-          // Pay Now Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -810,14 +785,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                     ),
             ),
           ),
-          
           SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
         ],
       ),
     );
   }
-  
-  // Compact Booking Summary
+
   Widget _buildCompactBookingSummary(String tutorName, String? description, String paymentPlan) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -866,7 +839,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       ),
     );
   }
-  
+
   // Inline Phone Input with Provider Badge
   Widget _buildInlinePhoneInput() {
     return Container(

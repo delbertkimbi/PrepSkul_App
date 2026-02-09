@@ -23,6 +23,9 @@ import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
+import '../../../features/booking/services/individual_session_service.dart';
+import '../../../features/booking/services/trial_session_service.dart';
+import '../../../features/booking/utils/session_date_utils.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -42,6 +45,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   bool _surveyCompleted = false;
   bool _showReminderCard = false;
   bool _isOffline = false;
+  int _activeTutorsCount = 0;
+  int _upcomingSessionsCount = 0;
   final ConnectivityService _connectivity = ConnectivityService();
 
   @override
@@ -218,8 +223,37 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         _showReminderCard = await SurveyReminderCard.shouldShow();
       }
 
+      // Load active tutors and upcoming sessions counts
+      int activeTutors = 0;
+      int upcomingSessions = 0;
+      try {
+        final indUpcoming =
+            await IndividualSessionService.getStudentUpcomingSessions(limit: 50);
+        final tutorIds = <String>{};
+        for (final s in indUpcoming) {
+          final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
+          final tid = recurring?['tutor_id'] as String?;
+          if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
+        }
+        upcomingSessions += indUpcoming.length;
+
+        final trials = await TrialSessionService.getStudentTrialSessions();
+        for (final t in trials) {
+          if ((t.status == 'approved' || t.status == 'scheduled') &&
+              !SessionDateUtils.isSessionExpired(t)) {
+            upcomingSessions += 1;
+            if (t.tutorId.isNotEmpty) tutorIds.add(t.tutorId);
+          }
+        }
+        activeTutors = tutorIds.length;
+      } catch (e) {
+        LogService.debug('Student home stats load: $e');
+      }
+
       if (mounted) {
         safeSetState(() {
+          _activeTutorsCount = activeTutors;
+          _upcomingSessionsCount = upcomingSessions;
           _isLoading = false;
         });
       }
@@ -324,18 +358,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hero Header with gradient - Responsive
+            // Hero Header - soft top-to-bottom gradient (matches theme-color deep blue)
             Container(
               width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.primaryColor,
-                    AppTheme.primaryColor.withOpacity(0.8),
-                  ],
-                ),
+              decoration: const BoxDecoration(
+                gradient: AppTheme.headerGradient,
               ),
               padding: EdgeInsets.fromLTRB(
                 ResponsiveHelper.responsiveHorizontalPadding(context),
@@ -413,7 +440,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                         child: _buildStatCard(
                           icon: PhosphorIcons.graduationCap(),
                           label: AppLocalizations.of(context)!.activeTutors,
-                          value: '0',
+                          value: '$_activeTutorsCount',
                           color: AppTheme.primaryColor,
                         ),
                       ),
@@ -422,32 +449,33 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                         child: _buildStatCard(
                           icon: PhosphorIcons.calendar(),
                           label: AppLocalizations.of(context)!.sessions,
-                          value: '0',
-                          color: Colors.orange,
+                          value: '$_upcomingSessionsCount',
+                          color: AppTheme.primaryColor,
                         ),
                       ),
                     ],
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 20, tablet: 24, desktop: 28)),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 24, tablet: 28, desktop: 32)),
 
-                  // Quick Actions - Responsive
+                  // Quick Actions — one Sessions card with upcoming count; Requests has its own tab
                   _buildSectionTitle(AppLocalizations.of(context)!.quickActions),
                   SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
                   _buildActionCard(
                     icon: PhosphorIcons.calendarCheck(),
                     title: AppLocalizations.of(context)!.mySessions,
                     subtitle: 'View upcoming and completed sessions',
-                    color: Colors.purple,
+                    color: AppTheme.primaryColor,
+                    trailingCount: _upcomingSessionsCount,
                     onTap: () {
                       Navigator.pushNamed(context, '/my-sessions');
                     },
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
                   _buildActionCard(
                     icon: PhosphorIcons.creditCard(),
                     title: AppLocalizations.of(context)!.paymentHistory,
                     subtitle: 'View and manage your payments',
-                    color: Colors.green,
+                    color: AppTheme.primaryColor,
                     onTap: () {
                       Navigator.pushNamed(context, '/payment-history');
                     },
@@ -459,7 +487,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       icon: PhosphorIcons.trendUp(),
                       title: 'Learning Progress',
                       subtitle: 'Track your child\'s learning journey and improvement',
-                      color: AppTheme.accentGreen,
+                      color: AppTheme.primaryColor,
                       onTap: () {
                         showDialog(
                           context: context,
@@ -472,12 +500,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.accentGreen.withOpacity(0.1),
+                                    color: AppTheme.primaryColor.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
                                     PhosphorIcons.trendUp(),
-                                    color: AppTheme.accentGreen,
+                                    color: AppTheme.primaryColor,
                                     size: 22,
                                   ),
                                 ),
@@ -519,10 +547,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                 Container(
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.accentGreen.withOpacity(0.1),
+                                    color: AppTheme.primaryColor.withOpacity(0.06),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
-                                      color: AppTheme.accentGreen.withOpacity(0.3),
+                                      color: AppTheme.primaryColor.withOpacity(0.2),
                                       width: 1,
                                     ),
                                   ),
@@ -530,7 +558,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                                     children: [
                                       Icon(
                                         PhosphorIcons.info(),
-                                        color: AppTheme.accentGreen,
+                                        color: AppTheme.primaryColor,
                                         size: 20,
                                       ),
                                       const SizedBox(width: 10),
@@ -605,17 +633,17 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required Color color,
   }) {
     final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 22, tablet: 26, desktop: 30);
-    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
-    final valueSize = ResponsiveHelper.isSmallHeight(context) 
+    final padding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
+    final valueSize = ResponsiveHelper.isSmallHeight(context)
         ? ResponsiveHelper.responsiveSubheadingSize(context)
         : ResponsiveHelper.responsiveSubheadingSize(context) + 2;
-    
+
     return Container(
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: AppTheme.surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.softBorder),
       ),
       child: Column(
         children: [
@@ -626,7 +654,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             style: GoogleFonts.poppins(
               fontSize: valueSize,
               fontWeight: FontWeight.w700,
-              color: color,
+              color: AppTheme.primaryColor,
             ),
           ),
           SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
@@ -650,71 +678,94 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
     required String title,
     required String subtitle,
     required Color color,
+    int? trailingCount,
     required VoidCallback onTap,
   }) {
-    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16);
-    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 19, tablet: 22, desktop: 24);
-    final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12);
-    
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: EdgeInsets.all(cardPadding),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey[200]!),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(iconPadding),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
+    final cardPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18);
+    final iconSize = ResponsiveHelper.responsiveIconSize(context, mobile: 20, tablet: 22, desktop: 24);
+    final iconPadding = ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: EdgeInsets.all(cardPadding),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceColor,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.softBorder, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primaryColor.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
               ),
-              child: Icon(icon, color: color, size: iconSize),
-            ),
-            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(iconPadding),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: AppTheme.primaryColor, size: iconSize),
+              ),
+              SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 2 : 4),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.poppins(
+                        fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
+                        color: AppTheme.textMedium,
+                        height: 1.35,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (trailingCount != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$trailingCount',
                     style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 1,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: color,
                     ),
                   ),
-                  SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
-                  Text(
-                    subtitle,
-                    style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
-                      color: AppTheme.textMedium,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                ),
+                const SizedBox(width: 8),
+              ],
+              Icon(
+                PhosphorIcons.caretRight(),
+                size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
+                color: AppTheme.textLight,
               ),
-            ),
-            Icon(
-              PhosphorIcons.caretRight(), 
-              size: ResponsiveHelper.responsiveIconSize(context, mobile: 12, tablet: 14, desktop: 16), 
-              color: Colors.grey[400]
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

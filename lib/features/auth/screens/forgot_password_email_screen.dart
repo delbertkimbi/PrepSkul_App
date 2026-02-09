@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
@@ -66,7 +67,8 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -80,15 +82,8 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
               clipper: WaveClipper(),
               child: Container(
                 height: 200,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -334,6 +329,28 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                     ),
                   ],
 
+                  const SizedBox(height: 16),
+
+                  // Reset with phone instead
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.pushReplacementNamed(
+                          context,
+                          '/forgot-password',
+                        );
+                      },
+                      child: Text(
+                        'Reset with phone instead?',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 32),
 
                   // Back to Login
@@ -358,6 +375,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 

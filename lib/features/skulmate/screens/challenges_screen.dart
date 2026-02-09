@@ -46,9 +46,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
     }
   }  List<Challenge> get _filteredChallenges {
     final userId = SupabaseService.client.auth.currentUser?.id;
-    if (userId == null) return [];
-
-    switch (_selectedTab) {
+    if (userId == null) return [];    switch (_selectedTab) {
       case 'sent':
         return _challenges.where((c) => c.challengerId == userId).toList();
       case 'received':
@@ -153,9 +151,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
     final userId = SupabaseService.client.auth.currentUser?.id;
     final isChallenger = challenge.challengerId == userId;
     final opponentName = isChallenger ? challenge.challengeeName : challenge.challengerName;
-    final opponentAvatar = isChallenger ? challenge.challengeeAvatarUrl : challenge.challengerAvatarUrl;
-
-    Color statusColor;
+    final opponentAvatar = isChallenger ? challenge.challengeeAvatarUrl : challenge.challengerAvatarUrl;    Color statusColor;
     String statusLabel;
     IconData statusIcon;
     

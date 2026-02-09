@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
@@ -28,7 +29,8 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return Scaffold(
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -42,15 +44,8 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
               clipper: WaveClipper(),
               child: Container(
                 height: 200,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -577,6 +572,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 

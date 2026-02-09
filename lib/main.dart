@@ -14,7 +14,9 @@ import 'package:prepskul/features/profile/screens/survey_intro_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_login_screen.dart';
 import 'package:prepskul/features/auth/screens/beautiful_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/forgot_password_screen.dart';
+import 'package:prepskul/features/auth/screens/forgot_password_email_screen.dart';
 import 'package:prepskul/features/auth/screens/reset_password_screen.dart';
+import 'package:prepskul/features/auth/screens/reset_password_otp_screen.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 import 'package:prepskul/features/auth/screens/auth_method_selection_screen.dart';
 import 'package:prepskul/features/auth/screens/role_selection_screen.dart';
@@ -509,8 +511,12 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       path = uri.path;
     }
 
-    if (path.isEmpty) {
-      return;
+    // Allow path "/" or empty when query has code+type (e.g. email reset opens app: ?code=...&type=recovery)
+    final code = uri.queryParameters['code'];
+    final type = uri.queryParameters['type'];
+    if (path.isEmpty || path == '/') {
+      if (code != null && type != null) path = '/reset-password';
+      else return;
     }
 
     // Handle tutor detail deep links: /tutor/{tutorId}
@@ -585,8 +591,6 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     // Check if this is a Google OAuth callback
     // Google OAuth redirects: https://app.prepskul.com/?code=...&provider=google
     final provider = uri.queryParameters['provider'];
-    final code = uri.queryParameters['code'];
-    final type = uri.queryParameters['type'];
     final token = uri.queryParameters['token'];
     
     // Handle Google OAuth callback
@@ -647,6 +651,56 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       }
     }
     
+    // Check if this is a password reset (recovery) link from email (mobile deep link).
+    // When the user taps the reset link in email, the app must receive the URL (use a redirect URL
+    // that opens the app: e.g. https://app.prepskul.com/... with App Links / Universal Links, or your
+    // custom scheme). Then we exchange the code for a session and open the set-new-password screen.
+    // Link format: ...?code=...&type=recovery (path can be / or contain reset/recovery)
+    if (code != null &&
+        (type == 'recovery' ||
+            path.contains('reset') ||
+            path.contains('recovery'))) {
+      LogService.debug('🔑 [DEEP_LINK] Password reset (recovery) link detected');
+      try {
+        await SupabaseService.client.auth.exchangeCodeForSession(code);
+        LogService.success('✅ [DEEP_LINK] Password reset code verified! Navigating to reset screen.');
+        final navService = NavigationService();
+        if (navService.isReady && mounted) {
+          Navigator.of(context).pushReplacementNamed(
+            '/reset-password',
+            arguments: {'isEmailRecovery': true},
+          );
+        } else {
+          navService.queueDeepLink(Uri(
+            path: '/reset-password',
+            queryParameters: {'isEmailRecovery': 'true'},
+          ));
+        }
+        return;
+      } catch (e) {
+        LogService.error('❌ [DEEP_LINK] Error handling password reset link: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Password reset link expired or invalid. Please request a new one.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.primaryColor,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(16),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        final navService = NavigationService();
+        if (navService.isReady) {
+          await navService.navigateToRoute('/forgot-password-email', replace: true);
+        }
+        return;
+      }
+    }
+
     // Check if this is an email verification link from Supabase
     // Supabase verification links: https://[project].supabase.co/auth/v1/verify?token=...&type=signup
     // OR: https://app.prepskul.com/?code=...&type=signup (redirected from Supabase)
@@ -894,6 +948,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             return _createFadeRoute(() => const EmailLoginScreen());
           case '/forgot-password':
             return _createFadeRoute(() => const ForgotPasswordScreen());
+          case '/forgot-password-email':
+            return _createFadeRoute(() => const ForgotPasswordEmailScreen());
           case '/skulmate/upload':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
@@ -1002,14 +1058,26 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             () => TutorOnboardingScreen(basicInfo: args ?? {}),
           );
         }
+        if (settings.name == '/reset-password-otp') {
+          final args = settings.arguments as Map<String, dynamic>?;
+          final phone = args?['phone'] ?? '';
+          return _createFadeRoute(
+            () => ResetPasswordOTPScreen(phone: phone),
+          );
+        }
         if (settings.name == '/reset-password') {
           final args = settings.arguments as Map<String, dynamic>?;
           final phone = args?['phone'] ?? '';
-          final isEmailRecovery = args?['isEmailRecovery'] ?? false;
+          final isEmailRecovery = args?['isEmailRecovery'] == true ||
+              args?['isEmailRecovery'] == 'true';
+          final setNewPasswordOnly =
+              args?['setNewPasswordOnly'] == true ||
+              args?['setNewPasswordOnly'] == 'true';
           return _createFadeRoute(
             () => ResetPasswordScreen(
               phone: phone,
               isEmailRecovery: isEmailRecovery,
+              setNewPasswordOnly: setNewPasswordOnly,
             ),
           );
         }
@@ -1457,10 +1525,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             setState(() {
               _navigationComplete = true;
             });
-            // On web, wait for the new screen to render before removing HTML splash
+            // On web, wait briefly for the new screen to render before removing HTML splash
             if (kIsWeb) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                Future.delayed(const Duration(milliseconds: 500), () {
+                Future.delayed(const Duration(milliseconds: 300), () {
                   if (mounted) {
                     WebSplashService.removeSplash();
                   }
@@ -1489,12 +1557,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           setState(() {
             _navigationComplete = true;
           });
-          // On web, wait for the new screen to render before removing HTML splash
-          // This prevents white screen flash
+          // On web, wait for the new screen to paint before removing HTML splash (stable refresh)
           if (kIsWeb) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              // Wait for the new screen to fully render
-              Future.delayed(const Duration(milliseconds: 500), () {
+              Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted) {
                   WebSplashService.removeSplash();
                 }
@@ -1513,10 +1579,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 reverseTransitionDuration: Duration.zero,
               ),
             );
-            // On web, wait for the new screen to render before removing HTML splash
+            // On web, wait for the new screen to paint (stable refresh)
             if (kIsWeb) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                Future.delayed(const Duration(milliseconds: 500), () {
+                Future.delayed(const Duration(milliseconds: 300), () {
                   if (mounted) {
                     WebSplashService.removeSplash();
                   }
@@ -1540,10 +1606,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                   reverseTransitionDuration: Duration.zero,
                 ),
               );
-              // On web, wait for the new screen to render before removing HTML splash
+              // On web, wait for the new screen to paint (stable refresh)
               if (kIsWeb) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  Future.delayed(const Duration(milliseconds: 500), () {
+                  Future.delayed(const Duration(milliseconds: 300), () {
                     if (mounted) {
                       WebSplashService.removeSplash();
                     }
@@ -1555,10 +1621,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           });
         } catch (e2) {
           LogService.error('[INIT_LOAD] Error in fallback navigation: $e2');
-          // Still try to remove splash even if navigation fails
-          // Increased delay on web to ensure Flutter content is fully rendered before removing HTML splash
+          // Still try to remove splash even if navigation fails (stable refresh)
           if (mounted) {
-            Future.delayed(Duration(milliseconds: kIsWeb ? 300 : 100), () {
+            Future.delayed(Duration(milliseconds: kIsWeb ? 400 : 100), () {
               if (mounted) {
                 WebSplashService.removeSplash();
               }
@@ -1576,10 +1641,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_navigationComplete) {
       return const SizedBox.shrink();
     }
-    // Show the InitialLoadingScreen on all platforms
-    // On web, the HTML splash will be removed once Flutter content is ready
-    // This ensures smooth transition and prevents white screen flash
-    return Material(color: Colors.white, child: const InitialLoadingScreen());
+    // Use deep blue so first frame is never white (avoids white flash before logo shows).
+    // On hot restart the loading screen may be skipped (state preserved); only cold start shows animated logo.
+    return Material(
+      color: const Color(0xFF1B2C4F), // PrepSkul primary / splash blue
+      child: const InitialLoadingScreen(),
+    );
   }
 }
 

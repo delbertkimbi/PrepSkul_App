@@ -23,6 +23,7 @@ class BookingService {
     required double monthlyTotal,
     String? customRequestId, // Link to original custom tutor request
     List<String>? learnerLabels, // Array of learner names for multi-learner bookings
+    Map<String, List<String>>? learnerSubjects, // Per-learner subjects (learner name -> list of subjects)
     double? estimatedTransportationCost, // Estimated transportation cost for onsite/hybrid sessions
     Map<String, String>? sessionLocations, // For hybrid: which sessions are onsite
     Map<String, Map<String, String?>>? locationDetails, // For hybrid: location details per session
@@ -278,6 +279,8 @@ class BookingService {
         if (customRequestId != null) 'custom_request_id': customRequestId,
         // Multi-learner support (for parent bookings)
         if (learnerLabels != null && learnerLabels.isNotEmpty) 'learner_labels': learnerLabels,
+        // Per-learner subjects (requires booking_requests.learner_subjects JSONB column)
+        if (learnerSubjects != null && learnerSubjects.isNotEmpty) 'learner_subjects': learnerSubjects,
         // Transportation cost (for onsite/hybrid sessions)
         // Note: For hybrid sessions, transportation is calculated per onsite session, not upfront
         // estimated_transportation_cost is stored for reference but actual cost is per session
@@ -385,6 +388,7 @@ class BookingService {
       LogService.debug('Fetching all requests for tutor: $userId');
 
       // 1. Fetch Recurring Booking Requests with student profile data and payment status
+      // (* includes learner_labels and learner_acceptance_status for multi-learner display)
       var bookingQuery = SupabaseService.client
           .from('booking_requests')
           .select(
@@ -819,6 +823,7 @@ class BookingService {
           subject: subject,
           paymentRequestId: paymentRequestId,
           senderAvatarUrl: request.tutorAvatarUrl,
+          tutorMessage: bookingRequest.tutorResponse,
         );
         LogService.success('✅ Approval notification sent to student');
       } catch (e, stackTrace) {
@@ -976,6 +981,7 @@ class BookingService {
           subject: 'Trial Session: ${bookingRequest.subject ?? "Tutoring"}',
           paymentRequestId: paymentRequestId,
           senderAvatarUrl: tutorAvatarUrl,
+          tutorMessage: responseNotes,
         );
       } catch (e) {
         LogService.warning('Error sending approval notification for trial: $e');
@@ -1412,6 +1418,7 @@ class BookingService {
                 subject: 'Tutoring Sessions',
                 paymentRequestId: paymentRequestId,
                 senderAvatarUrl: request.tutorAvatarUrl,
+                tutorMessage: updatedRequest.tutorResponse,
               );
             }
           } catch (e) {
@@ -1575,6 +1582,7 @@ class BookingService {
                 subject: 'Tutoring Sessions',
                 paymentRequestId: paymentRequestId,
                 senderAvatarUrl: request.tutorAvatarUrl,
+                tutorMessage: updatedRequest.tutorResponse,
               );
             }
           } catch (e) {

@@ -126,6 +126,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileLearningInformation => 'Learning Information';
 
   @override
+  String get loadRequestsError => 'Unable to load requests. Please try again.';
+
+  @override
+  String get requestAnotherTutor => 'Request Another Tutor';
+
+  @override
   String get myRequestsTitle => 'My Requests';
 
   @override

@@ -186,7 +186,8 @@ class TutorCard extends StatelessWidget {
                                   color: Colors.black,
                                 ),
                               ),
-                              if (rating > 0 && totalReviews > 0)
+                              // Only show review count when at least 3 students have rated (avoids fake-looking same count for all)
+                              if (rating > 0 && totalReviews >= 3)
                               Text(
                                 ' ($totalReviews)',
                                 style: GoogleFonts.poppins(

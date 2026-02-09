@@ -2015,8 +2015,8 @@ safeSetState(() {
         await _sendWhatsAppNotification(newRequestId);
       }
 
-      // Close loading
-      if (mounted) Navigator.pop(context);
+      // Close loading and return true so caller (e.g. RequestDetailScreen) can refresh
+      if (mounted) Navigator.pop(context, true);
 
       // Show success
       _showSuccessDialog();

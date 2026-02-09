@@ -126,6 +126,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get profileLearningInformation => 'Informations d\'apprentissage';
 
   @override
+  String get loadRequestsError => 'Impossible de charger les demandes. Veuillez réessayer.';
+
+  @override
+  String get requestAnotherTutor => 'Demander un autre tuteur';
+
+  @override
   String get myRequestsTitle => 'Mes demandes';
 
   @override

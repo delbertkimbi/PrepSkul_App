@@ -295,7 +295,9 @@ class RouteGuard {
         '/email-login',
         '/email-confirmation', // Allow email confirmation screen during verification
         '/forgot-password',
+        '/forgot-password-email',
         '/reset-password',
+        '/reset-password-otp',
         '/otp-verification',
       ];
 

@@ -36,11 +36,23 @@ class _TutorSessionDetailFullScreenState
     extends State<TutorSessionDetailFullScreen> {
   bool _isLoading = false;
   Map<String, dynamic>? _sessionData;
+  int _countdownTick = 0; // Force rebuild for countdown
 
   @override
   void initState() {
     super.initState();
     _loadSessionData();
+    // Update countdown every 30s when on scheduled session
+    Future.delayed(const Duration(seconds: 30), _tickCountdown);
+  }
+
+  void _tickCountdown() {
+    if (!mounted || _sessionData == null) return;
+    final status = _getStatus();
+    if (status == 'scheduled' && _getScheduledDateTime() != null) {
+      setState(() => _countdownTick++);
+    }
+    Future.delayed(const Duration(seconds: 30), _tickCountdown);
   }
 
   Future<void> _loadSessionData() async {
@@ -781,30 +793,71 @@ class _TutorSessionDetailFullScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Start & Join (scheduled + online) or Join (in_progress + online)
-          if (isOnline && (status == 'scheduled' || (status == 'in_progress' && meetLink != null && meetLink.isNotEmpty)))
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : () => _joinOrStartAndOpenVideo(),
-                icon: const Icon(Icons.video_call, size: 20),
-                label: Text(
-                  status == 'scheduled' ? 'Start & Join Session' : 'Join Session',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+          // Join only at session time (match learner UX): countdown when scheduled, enabled when in_progress or time reached
+          if (isOnline && (status == 'scheduled' || (status == 'in_progress' && meetLink != null && meetLink.isNotEmpty))) ...[
+            Builder(
+              builder: (context) {
+                final start = _getScheduledDateTime();
+                final now = DateTime.now();
+                final inProgress = status == 'in_progress';
+                final canJoin = inProgress || (start != null && !now.isBefore(start));
+                String countdownText = '';
+                if (!inProgress && start != null && now.isBefore(start)) {
+                  final diff = start.difference(now);
+                  if (diff.inDays > 0) {
+                    countdownText = 'Starts in ${diff.inDays}d ${diff.inHours % 24}h';
+                  } else if (diff.inHours > 0) {
+                    countdownText = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+                  } else if (diff.inMinutes > 0) {
+                    countdownText = 'Starts in ${diff.inMinutes} min';
+                  } else {
+                    countdownText = 'Starting soon';
+                  }
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (countdownText.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          countdownText,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.textMedium,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: (_isLoading || !canJoin) ? null : () => _joinOrStartAndOpenVideo(),
+                        icon: const Icon(Icons.video_call, size: 20),
+                        label: Text(
+                          status == 'scheduled' ? 'Start & Join Session' : 'Join Session',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: canJoin ? AppTheme.accentGreen : Colors.grey[400],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
+          ],
           // Start Session (scheduled + onsite)
           if (status == 'scheduled' && !isOnline)
             SizedBox(

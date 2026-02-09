@@ -25,9 +25,9 @@
     name="google-signin-client_id"
     content="330494350717-5oicjf2uan3j7d8sctl34ihpiiao6es4.apps.googleusercontent.com">
   
-  <!-- Theme Color for Web Browsers (matches app primary color from manifest) -->
-  <meta name="theme-color" content="#0175C2">
-  <meta name="msapplication-navbutton-color" content="#0175C2">
+  <!-- Theme Color for Web Browsers (matches AppTheme.primaryColor #1B2C4F) -->
+  <meta name="theme-color" content="#1B2C4F">
+  <meta name="msapplication-navbutton-color" content="#1B2C4F">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
   <!-- Open Graph / Facebook -->
@@ -63,7 +63,7 @@
   <link rel="manifest" href="manifest.json">
   
   <style>
-    /* Simple Loading Screen */
+    /* Loading Screen - white background so blue logo is visible */
     #flutter-loading {
       position: fixed;
       top: 0;
@@ -72,10 +72,11 @@
       height: 100%;
       background: #ffffff;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 9999;
-      transition: opacity 0.3s ease-out;
+      transition: opacity 0.35s ease-out;
     }
     
     #flutter-loading.hidden {
@@ -93,6 +94,31 @@
       margin: 0 auto;
       animation: frontToBack 3s ease-in-out infinite;
       filter: drop-shadow(0 4px 10px rgba(27, 44, 79, 0.2));
+    }
+    
+    /* Indeterminate progress bar - visible on white background */
+    .loader-progress {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: rgba(27, 44, 79, 0.12);
+      overflow: hidden;
+    }
+    .loader-progress::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 40%;
+      background: rgba(27, 44, 79, 0.5);
+      animation: loaderSlide 1.2s ease-in-out infinite;
+    }
+    @keyframes loaderSlide {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
     }
     
     @keyframes frontToBack {
@@ -206,34 +232,34 @@
           if (loader && loader.parentNode) {
             loader.remove();
           }
-        }, 300);
+        }, 380);
       }
     };
     
-    // Fallback: Remove splash after 5 seconds max (prevents stuck logo)
-    // Increased timeout to give Flutter more time to initialize and show content
+    // Fallback: Remove splash after 3s if Flutter never calls removeSplash (stable refresh)
     setTimeout(function() {
       const loader = document.getElementById('flutter-loading');
       if (loader && !loader.classList.contains('hidden')) {
-        console.warn('Flutter did not call removeSplash within 5000ms, forcing removal');
+        console.warn('Flutter did not call removeSplash within 3000ms, forcing removal');
         loader.classList.add('hidden');
         setTimeout(function() {
           if (loader && loader.parentNode) {
             loader.remove();
           }
-        }, 300);
+        }, 380);
       }
-    }, 5000);
+    }, 3000);
   </script>
 </head>
 <body>
-  <!-- Simple Loading Screen -->
+  <!-- Loading Screen - theme blue, progress bar for stable refresh -->
   <div id="flutter-loading">
     <div class="loader-container">
       <div class="loader-logo">
         <img src="app_logo(blue).png" alt="PrepSkul Logo" />
       </div>
     </div>
+    <div class="loader-progress" aria-hidden="true"></div>
   </div>
   
   <!-- Agora Web SDK for video sessions -->

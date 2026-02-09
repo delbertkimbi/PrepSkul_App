@@ -1854,29 +1854,44 @@ class TrialSessionService {
         // Don't fail payment completion if notification fails
       }
 
-      // Send notification to student and tutor
-      final studentMessage = calendarOk
-          ? 'Your trial session payment has been confirmed. Meet link is now available.'
-          : 'Your trial session payment has been confirmed. Your lesson will appear under "My Sessions". '
-              'You can still join from there even if Google Calendar is not connected.';
+      // Send notification to student and tutor (dedupe: skip if webhook already created them). Agora for video — no Meet/Calendar in copy.
+      const studentMessage = 'Your trial session payment has been confirmed. Your lesson will appear under "My Sessions" — join from there at session time.';
+      const tutorMessage = 'Student has completed payment for the trial session. Session is saved and ready — they can join from My Sessions at session time.';
 
-      final tutorMessage = calendarOk
-          ? 'Student has completed payment for the trial session. Meet link generated.'
-          : 'Student has completed payment for the trial session. The session is saved, but Google Calendar is not connected.';
+      final sessionIdStr = sessionId.toString();
+      final data = {'session_id': sessionIdStr, 'session_type': 'trial'};
 
-      await NotificationService.createNotification(
+      final learnerHasRecent = await NotificationService.hasRecentNotificationForSession(
         userId: trial.learnerId,
-        type: 'trial_payment_completed',
-        title: 'Payment Successful',
-        message: studentMessage,
+        typeOrTypes: 'trial_payment_completed',
+        sessionId: sessionIdStr,
       );
+      if (!learnerHasRecent) {
+        await NotificationService.createNotification(
+          userId: trial.learnerId,
+          type: 'trial_payment_completed',
+          title: 'Payment Successful',
+          message: studentMessage,
+          data: data,
+          actionUrl: '/sessions', // Tap takes them to Sessions page
+        );
+      }
 
-      await NotificationService.createNotification(
+      final tutorHasRecent = await NotificationService.hasRecentNotificationForSession(
         userId: trial.tutorId,
-        type: 'trial_payment_completed',
-        title: 'Trial Payment Received',
-        message: tutorMessage,
+        typeOrTypes: ['trial_payment_completed', 'trial_payment_received'],
+        sessionId: sessionIdStr,
       );
+      if (!tutorHasRecent) {
+        await NotificationService.createNotification(
+          userId: trial.tutorId,
+          type: 'trial_payment_completed',
+          title: 'Trial Payment Received',
+          message: tutorMessage,
+          data: data,
+          actionUrl: '/sessions', // Tap takes tutor to Sessions page
+        );
+      }
 
       // Create conversation for messaging after payment is confirmed
       try {

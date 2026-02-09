@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -372,7 +373,8 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -385,16 +387,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
             child: ClipPath(
               clipper: WaveClipper(),
               child: Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                height: 205,
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -406,11 +401,11 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
               children: [
                 // Header content inside the wave
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 20.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 8),
                       Text(
                         'Verify Phone',
                         style: GoogleFonts.poppins(
@@ -562,6 +557,7 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -715,22 +711,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 }
 
-// Custom wave clipper (same as signup screen)
+// Custom wave clipper – shallow curve so subtitle + phone stay visible above wave
 class WaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     var path = Path();
-    path.lineTo(0, size.height - 50);
-    var controlPoint1 = Offset(size.width * 0.25, size.height - 30);
-    var endPoint1 = Offset(size.width * 0.5, size.height - 40);
+    path.lineTo(0, size.height - 28);
+    var controlPoint1 = Offset(size.width * 0.25, size.height - 14);
+    var endPoint1 = Offset(size.width * 0.5, size.height - 20);
     path.quadraticBezierTo(
       controlPoint1.dx,
       controlPoint1.dy,
       endPoint1.dx,
       endPoint1.dy,
     );
-    var controlPoint2 = Offset(size.width * 0.75, size.height - 50);
-    var endPoint2 = Offset(size.width, size.height - 40);
+    var controlPoint2 = Offset(size.width * 0.75, size.height - 28);
+    var endPoint2 = Offset(size.width, size.height - 20);
     path.quadraticBezierTo(
       controlPoint2.dx,
       controlPoint2.dy,

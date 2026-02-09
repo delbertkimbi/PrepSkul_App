@@ -9,6 +9,8 @@ import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import 'package:prepskul/features/payment/services/fapshi_service.dart';
+import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
+import 'package:prepskul/features/payment/utils/payment_provider_helper.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/services/error_handler_service.dart';
@@ -36,20 +38,40 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isProcessing = false;
   bool _isPolling = false;
-  bool _isCancelled = false; // Track if user cancelled polling
-  int _pollAttempts = 0; // Track polling attempts for timeout
+  bool _isCancelled = false;
+  int _pollAttempts = 0;
   String? _errorMessage;
-  String? _phoneError; // Phone number validation error
-  String _paymentStatus = 'idle'; // idle, pending, successful, failed, timeout
-  String? _lastTransactionId; // Used to retry Meet link generation
-  double? _payableAmount; // Total amount (single fee or group total with discount)
+  String? _phoneError;
+  String _paymentStatus = 'idle';
+  String? _lastTransactionId;
+  double? _payableAmount;
   bool _loadingAmount = true;
+  String? _detectedProvider; // MTN / Orange for provider badge (same as recurring)
 
   @override
   void initState() {
     super.initState();
     _loadUserPhone();
     _loadPayableAmount();
+    _phoneController.addListener(_onPhoneChanged);
+  }
+
+  void _onPhoneChanged() {
+    final phone = _phoneController.text.trim();
+    if (phone.isNotEmpty) {
+      final provider = FapshiService.detectPhoneProvider(phone);
+      if (mounted) {
+        safeSetState(() {
+          _detectedProvider = provider;
+        });
+      }
+    } else {
+      if (mounted) {
+        safeSetState(() {
+          _detectedProvider = null;
+        });
+      }
+    }
   }
 
   /// Load payable amount (single fee or sum of all accepted trials in group).
@@ -76,6 +98,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
 
   @override
   void dispose() {
+    _phoneController.removeListener(_onPhoneChanged);
     _phoneController.dispose();
     super.dispose();
   }
@@ -162,21 +185,58 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
 
     try {
       // Initiate payment via trial session service
-      // Pass trial session to avoid unnecessary fetch
       final transId = await TrialSessionService.initiatePayment(
         sessionId: widget.trialSession.id,
-        phoneNumber: normalizedPhone, // Use validated and normalized phone number
+        phoneNumber: normalizedPhone,
         trialSession: widget.trialSession,
       );
 
+      if (!mounted) return;
       safeSetState(() {
-        _paymentStatus = 'pending';
         _isProcessing = false;
-        _isPolling = true;
       });
 
-      // Start polling for payment status
-      _pollPaymentStatus(transId);
+      // Same flow as recurring: navigate to PaymentConfirmationScreen (logos, confetti, clear UX)
+      final provider = FapshiService.detectPhoneProvider(normalizedPhone);
+      final amount = _payableAmount ?? widget.trialSession.trialFee;
+      final result = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PaymentConfirmationScreen(
+            provider: provider,
+            phoneNumber: normalizedPhone,
+            amount: amount,
+            transactionId: transId,
+            isSandbox: !FapshiService.isProduction,
+            onPaymentComplete: (tId) async {
+              try {
+                await TrialSessionService.completePaymentAndGenerateMeet(
+                  sessionId: widget.trialSession.id,
+                  transactionId: tId,
+                );
+                // Return true when payment + session creation succeeded.
+                // calendarOk is only for calendar integration — session is saved either way.
+                return true;
+              } catch (e) {
+                LogService.error('Trial completePayment error: $e');
+                return false;
+              }
+            },
+          ),
+        ),
+      );
+
+      if (result == true && mounted) {
+        Navigator.pop(context, true);
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/student-nav',
+            (route) => route.isFirst,
+            arguments: {'initialTab': 2},
+          );
+        }
+      }
     } catch (e) {
       // FapshiService already provides user-friendly messages, so use them directly
       // Remove "Exception: " prefix if present
@@ -381,17 +441,14 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         ),
       );
       
-      // Navigate to sessions screen
+      // Navigate to Sessions tab so user can continue
       if (mounted) {
         await Future.delayed(const Duration(milliseconds: 500));
         if (mounted) {
           Navigator.of(context).pushNamedAndRemoveUntil(
-            '/my-sessions',
-            (route) => route.settings.name == '/student-nav' || route.isFirst,
-            arguments: {
-              'initialTab': 0, // Upcoming tab
-              'sessionId': widget.trialSession.id,
-            },
+            '/student-nav',
+            (route) => route.isFirst,
+            arguments: {'initialTab': 2},
           );
         }
       }
@@ -462,20 +519,14 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         _showCelebrationDialog(calendarOk);
       }
 
-      // Navigate to sessions screen after successful payment
+      // Navigate to Sessions tab in main app so user can continue
       if (mounted) {
-        // Small delay to ensure database update is complete and user sees celebration
         await Future.delayed(const Duration(milliseconds: 2000));
-        
-          if (mounted) {
-          // Navigate directly to sessions screen with the paid session
+        if (mounted) {
           Navigator.of(context).pushNamedAndRemoveUntil(
-            '/my-sessions',
-            (route) => route.settings.name == '/student-nav' || route.isFirst,
-            arguments: {
-              'initialTab': 0, // Upcoming tab
-              'sessionId': widget.trialSession.id, // Scroll to this session
-            },
+            '/student-nav',
+            (route) => route.isFirst,
+            arguments: {'initialTab': 2}, // Sessions tab
           );
         }
       }
@@ -552,6 +603,17 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
                       onPressed: () {
                         confettiController.dispose();
                         Navigator.pop(context); // Close dialog
+                        Navigator.pop(context, true); // Close payment screen
+                        // Go to Sessions tab so user can continue
+                        Future.delayed(const Duration(milliseconds: 300), () {
+                          if (context.mounted) {
+                            Navigator.of(context).pushNamedAndRemoveUntil(
+                              '/student-nav',
+                              (route) => route.isFirst,
+                              arguments: {'initialTab': 2},
+                            );
+                          }
+                        });
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
@@ -685,7 +747,7 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: Column(
@@ -855,75 +917,114 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
     );
   }
 
+  /// Phone input with provider badge (same UX as recurring)
   Widget _buildPhoneInput() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Phone Number',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-          onChanged: (value) {
-            // Validate phone number as user types
-            safeSetState(() {
-              if (value.trim().isEmpty) {
-                _phoneError = null; // Don't show error for empty field
-              } else {
-                // Use FapshiService validation logic
-                final normalized = _validatePhoneNumber(value.trim());
-                if (normalized == null) {
-                  _phoneError = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Phone Number',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textDark,
+                ),
+              ),
+              if (_detectedProvider != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        PaymentProviderHelper.getProviderIcon(_detectedProvider),
+                        size: 14,
+                        color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        PaymentProviderHelper.getProviderName(_detectedProvider),
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            onChanged: (value) {
+              safeSetState(() {
+                if (value.trim().isEmpty) {
+                  _phoneError = null;
                 } else {
-                  _phoneError = null; // Valid phone number
+                  final normalized = _validatePhoneNumber(value.trim());
+                  _phoneError = normalized == null
+                      ? 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)'
+                      : null;
                 }
-              }
-            });
-          },
-          decoration: InputDecoration(
-            hintText: '670000000',
-            prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor),
-            filled: true,
-            fillColor: Colors.white,
-            errorText: _phoneError,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[300]!),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey[300]!),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.red, width: 2),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.red, width: 2),
+              });
+            },
+            decoration: InputDecoration(
+              hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
+              prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor, size: 20),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.softBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              errorText: _phoneError,
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'You will receive a payment request on this number',
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: Colors.grey[600],
-          ),
-        ),
-      ],
+          if (_detectedProvider == null && _phoneController.text.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Please enter a valid MTN or Orange number',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.accentOrange,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1279,7 +1380,9 @@ class _TrialPaymentScreenState extends State<TrialPaymentScreen> {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _isProcessing ? null : _initiatePayment,
+            onPressed: (_phoneController.text.trim().isEmpty || _detectedProvider == null || _isProcessing)
+                ? null
+                : _initiatePayment,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
               padding: const EdgeInsets.symmetric(vertical: 16),

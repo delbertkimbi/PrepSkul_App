@@ -31,6 +31,14 @@ class AppTheme {
   static const Color accentLightGreen = Color(0xFFD1FAE5);
   static const Color accentLightOrange = Color(0xFFFEF3C7);
 
+  // PrepSkul brand accents (deep blue + sky blue + yellow): soft and exciting
+  /// Sky blue — calm, focus; pairs with deep blue header
+  static const Color skyBlue = Color(0xFF0EA5E9);
+  static const Color skyBlueLight = Color(0xFFE0F2FE);
+  /// Soft yellow — warmth, energy; use for key stats and CTAs
+  static const Color softYellow = Color(0xFFEAB308);
+  static const Color softYellowLight = Color(0xFFFEF9C3);
+
   // Neutral Colors - Soft grays
   static const Color neutral50 = Color(0xFFF9FAFB);
   static const Color neutral100 = Color(0xFFF3F4F6);
@@ -58,6 +66,13 @@ class AppTheme {
     colors: [Color(0xFF1B2C4F), Color(0xFF4A6FBF)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
+  );
+
+  /// Soft top-to-bottom gradient for app bar / auth headers. Stays close to deep blue for theme-color consistency; subtle neumorphic depth.
+  static const LinearGradient headerGradient = LinearGradient(
+    colors: [Color(0xFF1B2C4F), Color(0xFF1E3254)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
   );
 
   static const LinearGradient softGradient = LinearGradient(

@@ -39,6 +39,8 @@
   "profileHelpSupportSubtitle": "Get help and contact support",
   "profileLogout": "Logout",
   "profileLearningInformation": "Learning Information",
+  "loadRequestsError": "Unable to load requests. Please try again.",
+  "requestAnotherTutor": "Request Another Tutor",
   "myRequestsTitle": "My Requests",
   "myRequestsFilterAll": "All",
   "myRequestsFilterPending": "Pending Approval Request",
