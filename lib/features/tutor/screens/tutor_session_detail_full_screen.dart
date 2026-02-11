@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/config/live_session_test_config.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
@@ -800,7 +801,12 @@ class _TutorSessionDetailFullScreenState
                 final start = _getScheduledDateTime();
                 final now = DateTime.now();
                 final inProgress = status == 'in_progress';
-                final canJoin = inProgress || (start != null && !now.isBefore(start));
+                final currentUserId = SupabaseService.currentUser?.id;
+                final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(currentUserId);
+                final canJoin = allowedToJoin &&
+                    (inProgress ||
+                        (start != null && !now.isBefore(start)) ||
+                        LiveSessionTestConfig.isTestUser(currentUserId));
                 String countdownText = '';
                 if (!inProgress && start != null && now.isBefore(start)) {
                   final diff = start.difference(now);
@@ -1006,6 +1012,18 @@ class _TutorSessionDetailFullScreenState
   }
 
   Future<void> _joinOrStartAndOpenVideo() async {
+    final currentUserId = SupabaseService.currentUser?.id;
+    if (!LiveSessionTestConfig.canUserJoinSession(currentUserId)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
     final sessionId = _getSessionId();
     final status = _getStatus();
     final isIndividual = _isIndividualSession();

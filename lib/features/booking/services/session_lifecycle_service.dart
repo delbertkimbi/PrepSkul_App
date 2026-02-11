@@ -154,6 +154,7 @@ class SessionLifecycleService {
         // Start Agora Cloud Recording for online sessions
         // This replaces Fathom recording for Agora video sessions
         try {
+          LogService.info('🎙️ [Recording] Starting for session: $sessionId');
           await AgoraRecordingService.startRecording(sessionId);
           LogService.success('Agora recording started for session: $sessionId');
         } catch (e) {
@@ -421,6 +422,7 @@ class SessionLifecycleService {
       // Stop Agora Cloud Recording for online sessions
       if (session['location'] == 'online') {
         try {
+          LogService.info('🛑 [Recording] Stopping for session: $sessionId');
           await AgoraRecordingService.stopRecording(sessionId);
           LogService.success('Agora recording stopped for session: $sessionId');
         } catch (e) {

@@ -2193,8 +2193,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       flex: 3,
                       child: Builder(
                         builder: (context) {
-                          // Check if session time has passed
+                          // Check if session is completely over vs currently in progress.
+                          // NOTE: SessionDateUtils.isSessionExpired is based on *end* time,
+                          // not just the start time, so ongoing sessions are not treated
+                          // as expired.
                           final hasPassed = SessionDateUtils.isSessionExpired(session);
+                          final isInProgress = SessionDateUtils.isSessionInProgress(session);
                           
                           // Check if session is cancelled with expiration reason
                           final isCancelledExpired = session.status == 'cancelled' && 
@@ -2202,9 +2206,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                                       session.rejectionReason?.contains('not completed') == true);
                           
                           // Show Reschedule for:
-                          // 1. Sessions that have passed (expired) - includes paid sessions that passed
-                          // 2. Cancelled sessions with expiration reason
-                          if (hasPassed || isCancelledExpired) {
+                          // 1. Sessions that have fully passed (expired and not currently in progress)
+                          //    – this includes paid sessions whose time window is over.
+                          // 2. Cancelled sessions with an explicit expiration / not‑completed reason.
+                          //
+                          // This prevents the bad UX where "Reschedule" appears on an
+                          // active, paid session while the time is still ongoing;
+                          // during the active window, the "View Session" button below
+                          // remains available instead.
+                          if ((hasPassed && !isInProgress) || isCancelledExpired) {
                             return OutlinedButton.icon(
                               onPressed: () async {
                                 LogService.info('📅 Reschedule button clicked for trial session: ${session.id}');

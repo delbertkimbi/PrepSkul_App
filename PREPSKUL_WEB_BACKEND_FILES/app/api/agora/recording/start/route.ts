@@ -47,14 +47,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get session details
-    const { data: session, error: sessionError } = await supabase
+    // Get session details (individual_sessions first; fallback to trial_sessions for trial sessions)
+    let session: { id: string; tutor_id: string; learner_id: string; agora_channel_name: string | null } | null = null;
+
+    const individualResult = await supabase
       .from('individual_sessions')
       .select('id, tutor_id, learner_id, agora_channel_name')
       .eq('id', sessionId)
       .single();
 
-    if (sessionError || !session) {
+    if (individualResult.data) {
+      session = individualResult.data;
+    } else {
+      // Trial session: ensure individual_sessions row exists (client may have sent trial id)
+      const trialResult = await supabase
+        .from('trial_sessions')
+        .select('id, tutor_id, learner_id, parent_id, scheduled_date, scheduled_time, duration_minutes, location, subject')
+        .eq('id', sessionId)
+        .single();
+
+      if (trialResult.data) {
+        const trial = trialResult.data as {
+          id: string;
+          tutor_id: string;
+          learner_id: string;
+          parent_id?: string | null;
+          scheduled_date?: string;
+          scheduled_time?: string;
+          duration_minutes?: number;
+          location?: string;
+          subject?: string | null;
+        };
+        const channelName = `session_${sessionId}`;
+        const scheduledDate = trial.scheduled_date ?? new Date().toISOString().slice(0, 10);
+        const scheduledTime = trial.scheduled_time ?? '00:00';
+        const durationMinutes = trial.duration_minutes ?? 60;
+        await supabase.from('individual_sessions').upsert(
+          {
+            id: sessionId,
+            tutor_id: trial.tutor_id,
+            learner_id: trial.learner_id,
+            parent_id: trial.parent_id ?? null,
+            recurring_session_id: null,
+            status: 'in_progress',
+            scheduled_date: scheduledDate,
+            scheduled_time: scheduledTime,
+            duration_minutes: durationMinutes,
+            location: trial.location ?? 'online',
+            subject: trial.subject ?? null,
+            agora_channel_name: channelName,
+          },
+          { onConflict: 'id' }
+        );
+        session = {
+          id: sessionId,
+          tutor_id: trial.tutor_id,
+          learner_id: trial.learner_id,
+          agora_channel_name: channelName,
+        };
+      }
+    }
+
+    if (!session) {
       return NextResponse.json(
         { error: 'Session not found' },
         { status: 404 }
