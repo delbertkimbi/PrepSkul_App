@@ -11,6 +11,7 @@ import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/sessions/services/agora_recording_service.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math';
 
@@ -2360,6 +2361,20 @@ class TrialSessionService {
       }
     } catch (e) {
       LogService.warning('Could not create/update individual_sessions record: $e');
+    }
+
+    // Start Agora Cloud Recording for online trial sessions.
+    // (Trial sessions reuse the same sessionId in individual_sessions, so backend inserts into session_recordings.)
+    if (isSessionOnline) {
+      try {
+        LogService.info('🎙️ [Trial] Starting Agora recording for session: $trialSessionId');
+        final result = await AgoraRecordingService.startRecording(trialSessionId);
+        if (result == null) {
+          LogService.warning('⚠️ [Trial] Agora recording start returned null (check API/server logs)');
+        }
+      } catch (e) {
+        LogService.warning('⚠️ [Trial] Failed to start Agora recording: $e');
+      }
     }
 
     LogService.success('Trial session started: $trialSessionId');

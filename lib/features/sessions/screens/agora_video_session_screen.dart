@@ -89,6 +89,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   Duration? _timeRemaining;
   StreamSubscription<Duration>? _timeRemainingSubscription;
   StreamSubscription<String>? _sessionEndedSubscription;
+  bool _timerStarted = false; // Ensure timer starts only once (when both users are in)
 
   @override
   void initState() {
@@ -268,11 +269,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       safeSetState(() {
         _sessionState = state;
       });
-      
-      // Start timer when session connects
-      if (state == AgoraSessionState.connected) {
-        _startSessionTimer();
-      }
     });
 
     _userJoinedSubscription = _agoraService.userJoinedStream.listen((uid) {
@@ -280,6 +276,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         _remoteUID = uid;
         _remoteUserLeft = false; // User joined, reset left state
       });
+
+      // Start session timer the first time we detect a remote participant.
+      // This ensures both tutor and learner are in the call before time starts counting.
+      if (!_timerStarted) {
+        LogService.info('⏱️ Remote participant joined – starting shared session timer');
+        _timerStarted = true;
+        _startSessionTimer();
+      }
     });
 
     _errorSubscription = _agoraService.errorStream.listen((error) {
@@ -401,29 +405,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     _sessionEndedSubscription = _timerService.sessionEndedStream.listen((sessionId) {
       if (sessionId == widget.sessionId) {
         LogService.info('⏱️ Session time expired - auto-terminating');
-        // Show notification
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.timer_off, color: Colors.white, size: 20),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Session time has ended',
-                      style: GoogleFonts.poppins(),
-                    ),
-                  ),
-                ],
-              ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-        // End the call
-        _endCall();
+        // Show end-of-class message and auto-leave (no OK/Cancel)
+        _endCall(isSessionEndedByTime: true);
       }
     });
   }
@@ -548,27 +531,56 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     });
   }
 
-  /// End call and leave session
-  Future<void> _endCall() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('End Session'),
-        content: const Text('Are you sure you want to end this session?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+  /// End call and leave session.
+  /// When [isSessionEndedByTime] is true (timer expired), show a friendly
+  /// end-of-class message and automatically leave without asking OK/Cancel.
+  Future<void> _endCall({bool isSessionEndedByTime = false}) async {
+    if (isSessionEndedByTime) {
+      // End of class: show message then auto-leave (no OK/Cancel - no user action required)
+      if (mounted) {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: Text(
+              'End of class',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+            content: Text(
+              'You have come to the end of the class. Hope you had a great lesson!',
+              style: GoogleFonts.poppins(fontSize: 15),
+            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('End Session'),
+        );
+        // Brief display then auto-close dialog and proceed to cleanup
+        await Future.delayed(const Duration(milliseconds: 2200));
+        if (mounted) Navigator.pop(context); // close the dialog
+      }
+    } else {
+      // User tapped Leave: confirm first
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Leave Session'),
+          content: const Text(
+            'Are you sure you want to leave this session?',
           ),
-        ],
-      ),
-    );
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
 
-    if (confirmed != true) return;
+      if (confirmed != true) return;
+    }
 
     // Show loading indicator during cleanup
     if (mounted) {

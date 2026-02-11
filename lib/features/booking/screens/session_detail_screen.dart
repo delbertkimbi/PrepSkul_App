@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/config/live_session_test_config.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -223,6 +224,17 @@ class SessionDetailScreen extends StatelessWidget {
 
   Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
     try {
+      if (!LiveSessionTestConfig.canUserJoinSession(SupabaseService.currentUser?.id)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       // Get user type to determine role
       final userProfile = await AuthService.getUserProfile();
       final userType = userProfile?['user_type'] as String?;
@@ -563,6 +575,7 @@ class SessionDetailScreen extends StatelessWidget {
                       status: status,
                       scheduledDate: scheduledDate,
                       scheduledTime: scheduledTime,
+                      currentUserId: SupabaseService.currentUser?.id,
                       onJoin: () => _joinAgoraSession(context, sessionId),
                     ),
                   const SizedBox(height: 12),
@@ -669,6 +682,7 @@ class _JoinVideoButtonWithCountdown extends StatefulWidget {
   final String status;
   final String scheduledDate;
   final String scheduledTime;
+  final String? currentUserId;
   final VoidCallback onJoin;
 
   const _JoinVideoButtonWithCountdown({
@@ -676,6 +690,7 @@ class _JoinVideoButtonWithCountdown extends StatefulWidget {
     required this.status,
     required this.scheduledDate,
     required this.scheduledTime,
+    this.currentUserId,
     required this.onJoin,
   });
 
@@ -720,7 +735,11 @@ class _JoinVideoButtonWithCountdownState extends State<_JoinVideoButtonWithCount
     final start = _parseStart(widget.scheduledDate, widget.scheduledTime);
     final now = DateTime.now();
     final inProgress = widget.status == 'in_progress';
-    final canJoin = inProgress || (start != null && !now.isBefore(start));
+    final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(widget.currentUserId);
+    final canJoin = allowedToJoin &&
+        (inProgress ||
+            (start != null && !now.isBefore(start)) ||
+            LiveSessionTestConfig.isTestUser(widget.currentUserId));
 
     String countdownText = '';
     if (!inProgress && start != null && now.isBefore(start)) {

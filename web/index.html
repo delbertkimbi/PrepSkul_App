@@ -223,32 +223,86 @@
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
     };
     
-    // Simple splash screen removal - Flutter calls this when ready
-    window.removeSplash = function() {
-      const loader = document.getElementById('flutter-loading');
-      if (loader) {
-        loader.classList.add('hidden');
+    /**
+     * Robust splash removal helpers
+     * --------------------------------
+     * In rare cases the centered PrepSkul logo could remain visible after the
+     * Flutter app finished rendering (e.g. navigation errors, hot reload quirks).
+     * To guarantee good UX, we now have multiple independent removal paths:
+     *  - Explicit call from Flutter via window.removeSplash()
+     *  - window load event (when the page has fully loaded)
+     *  - A short timeout fallback (3s)
+     *  - A repeating safety check for up to ~10s
+     */
+    function hideAndRemoveSplash(reason) {
+      try {
+        var loader = document.getElementById('flutter-loading');
+        if (!loader) {
+          return;
+        }
+
+        if (!loader.classList.contains('hidden')) {
+          if (reason) {
+            console.debug('Removing splash:', reason);
+          }
+          loader.classList.add('hidden');
+        }
+
+        // Remove from DOM shortly after fade-out
         setTimeout(function() {
-          if (loader && loader.parentNode) {
-            loader.remove();
+          try {
+            var el = document.getElementById('flutter-loading');
+            if (el && el.parentNode) {
+              el.parentNode.removeChild(el);
+            }
+          } catch (e) {
+            console.warn('Error while removing splash element:', e);
           }
         }, 380);
+      } catch (e) {
+        console.warn('hideAndRemoveSplash failed:', e);
       }
+    }
+
+    // Called by Flutter (via WebSplashService.removeSplash) once the first
+    // real frame is rendered.
+    window.removeSplash = function() {
+      hideAndRemoveSplash('Flutter signalled readiness');
     };
     
-    // Fallback: Remove splash after 3s if Flutter never calls removeSplash (stable refresh)
+    // Fallback: Remove splash after 3s if Flutter never calls removeSplash
+    // (e.g. during a flaky reload). This prevents the centered logo from
+    // staying on top of a fully loaded UI.
     setTimeout(function() {
-      const loader = document.getElementById('flutter-loading');
-      if (loader && !loader.classList.contains('hidden')) {
-        console.warn('Flutter did not call removeSplash within 3000ms, forcing removal');
-        loader.classList.add('hidden');
-        setTimeout(function() {
-          if (loader && loader.parentNode) {
-            loader.remove();
-          }
-        }, 380);
-      }
+      hideAndRemoveSplash('3s timeout fallback');
     }, 3000);
+
+    // Extra safety: once the whole page has loaded, ensure the splash is gone.
+    // This covers cases where Flutter rendered successfully but never
+    // invoked the JS bridge for any reason.
+    window.addEventListener('load', function() {
+      hideAndRemoveSplash('window load event');
+    });
+
+    // Final safety net: for about 10 seconds after startup, periodically
+    // check that the splash has actually been removed. If for any reason it
+    // is still present, force-remove it. After that window, we stop polling.
+    (function startSplashGuard() {
+      var checks = 0;
+      var maxChecks = 20; // 20 * 500ms ≈ 10s
+      var interval = setInterval(function() {
+        var loader = document.getElementById('flutter-loading');
+        if (!loader || loader.classList.contains('hidden')) {
+          clearInterval(interval);
+          return;
+        }
+        checks++;
+        hideAndRemoveSplash('interval safety check #' + checks);
+        if (checks >= maxChecks) {
+          clearInterval(interval);
+        }
+      }, 500);
+    })();
   </script>
 </head>
 <body>

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/config/live_session_test_config.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/session_lifecycle_service.dart';
@@ -1567,9 +1568,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     // If parsing fails, don't show button
                     isSessionActive = false;
                   }
-                  
-                  // Only show Join Session button when session is active
-                  if (isSessionActive && location == 'online') {
+                  final isTestUser = LiveSessionTestConfig.isTestUser(_currentUserId);
+                  final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(_currentUserId);
+                  final canShowJoin = allowedToJoin && (isSessionActive || isTestUser) && (status == 'scheduled' || status == 'in_progress') && location == 'online';
+                  if (canShowJoin) {
                     return Column(
                       children: [
                         const SizedBox(height: 10),
@@ -2346,6 +2348,17 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   /// Join Agora video session (independent of meetLink)
   Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
     try {
+      if (!LiveSessionTestConfig.canUserJoinSession(_currentUserId)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       LogService.info('🎥 [Join Agora] Tutor joining Agora video session: $sessionId');
       
       // Verify the session exists in the database before navigating
@@ -3409,6 +3422,18 @@ class _SessionDetailsSheet extends StatelessWidget {
   /// Join Agora video session (independent of meetLink)
   Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
     try {
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (!LiveSessionTestConfig.canUserJoinSession(currentUserId)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       LogService.info('🎥 Tutor joining Agora video session from details: $sessionId');
       
       // Verify the session exists (check both individual_sessions and trial_sessions)

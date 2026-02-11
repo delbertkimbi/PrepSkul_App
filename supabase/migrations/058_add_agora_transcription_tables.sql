@@ -37,6 +37,7 @@ ON public.session_participants(user_id)
 WHERE user_id IS NOT NULL;
 
 -- ========================================
+
 -- 3. CREATE session_transcripts TABLE
 -- ========================================
 
