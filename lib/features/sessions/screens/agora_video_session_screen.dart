@@ -65,6 +65,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   // Reactions
   bool _showReactionsPanel = false;
   final List<Widget> _reactionAnimations = [];
+  //hjgsdfjs
   
   // Stream subscriptions
   StreamSubscription<AgoraSessionState>? _stateSubscription;
