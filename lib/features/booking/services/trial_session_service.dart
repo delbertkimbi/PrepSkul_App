@@ -11,6 +11,7 @@ import 'package:prepskul/core/services/google_calendar_service.dart';
 import 'package:prepskul/core/services/google_calendar_auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
+import 'package:prepskul/features/sessions/services/agora_recording_service.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math';
 
@@ -1854,29 +1855,44 @@ class TrialSessionService {
         // Don't fail payment completion if notification fails
       }
 
-      // Send notification to student and tutor
-      final studentMessage = calendarOk
-          ? 'Your trial session payment has been confirmed. Meet link is now available.'
-          : 'Your trial session payment has been confirmed. Your lesson will appear under "My Sessions". '
-              'You can still join from there even if Google Calendar is not connected.';
+      // Send notification to student and tutor (dedupe: skip if webhook already created them). Agora for video — no Meet/Calendar in copy.
+      const studentMessage = 'Your trial session payment has been confirmed. Your lesson will appear under "My Sessions" — join from there at session time.';
+      const tutorMessage = 'Student has completed payment for the trial session. Session is saved and ready — they can join from My Sessions at session time.';
 
-      final tutorMessage = calendarOk
-          ? 'Student has completed payment for the trial session. Meet link generated.'
-          : 'Student has completed payment for the trial session. The session is saved, but Google Calendar is not connected.';
+      final sessionIdStr = sessionId.toString();
+      final data = {'session_id': sessionIdStr, 'session_type': 'trial'};
 
-      await NotificationService.createNotification(
+      final learnerHasRecent = await NotificationService.hasRecentNotificationForSession(
         userId: trial.learnerId,
-        type: 'trial_payment_completed',
-        title: 'Payment Successful',
-        message: studentMessage,
+        typeOrTypes: 'trial_payment_completed',
+        sessionId: sessionIdStr,
       );
+      if (!learnerHasRecent) {
+        await NotificationService.createNotification(
+          userId: trial.learnerId,
+          type: 'trial_payment_completed',
+          title: 'Payment Successful',
+          message: studentMessage,
+          data: data,
+          actionUrl: '/sessions', // Tap takes them to Sessions page
+        );
+      }
 
-      await NotificationService.createNotification(
+      final tutorHasRecent = await NotificationService.hasRecentNotificationForSession(
         userId: trial.tutorId,
-        type: 'trial_payment_completed',
-        title: 'Trial Payment Received',
-        message: tutorMessage,
+        typeOrTypes: ['trial_payment_completed', 'trial_payment_received'],
+        sessionId: sessionIdStr,
       );
+      if (!tutorHasRecent) {
+        await NotificationService.createNotification(
+          userId: trial.tutorId,
+          type: 'trial_payment_completed',
+          title: 'Trial Payment Received',
+          message: tutorMessage,
+          data: data,
+          actionUrl: '/sessions', // Tap takes tutor to Sessions page
+        );
+      }
 
       // Create conversation for messaging after payment is confirmed
       try {
@@ -2345,6 +2361,20 @@ class TrialSessionService {
       }
     } catch (e) {
       LogService.warning('Could not create/update individual_sessions record: $e');
+    }
+
+    // Start Agora Cloud Recording for online trial sessions.
+    // (Trial sessions reuse the same sessionId in individual_sessions, so backend inserts into session_recordings.)
+    if (isSessionOnline) {
+      try {
+        LogService.info('🎙️ [Trial] Starting Agora recording for session: $trialSessionId');
+        final result = await AgoraRecordingService.startRecording(trialSessionId);
+        if (result == null) {
+          LogService.warning('⚠️ [Trial] Agora recording start returned null (check API/server logs)');
+        }
+      } catch (e) {
+        LogService.warning('⚠️ [Trial] Failed to start Agora recording: $e');
+      }
     }
 
     LogService.success('Trial session started: $trialSessionId');

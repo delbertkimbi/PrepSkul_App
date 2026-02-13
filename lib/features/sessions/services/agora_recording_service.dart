@@ -1,23 +1,20 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 /// Agora Recording Service
 ///
 /// Handles starting and stopping Agora Cloud Recording via Next.js backend API.
+/// Uses [AppConfig.effectiveApiBaseUrl] so recording hits the same API as the rest
+/// of the app (e.g. localhost in dev), ensuring session_recordings gets populated.
 class AgoraRecordingService {
   static SupabaseClient get _supabase => SupabaseService.client;
 
-  /// Get Next.js API URL from environment or use default
-  static String _getApiUrl() {
-    const apiUrl = String.fromEnvironment(
-      'NEXTJS_API_URL',
-      defaultValue: 'https://www.prepskul.com',
-    );
-    return apiUrl;
-  }
+  /// Base URL for recording API (matches rest of app: localhost in dev, production otherwise)
+  static String get _apiBaseUrl => AppConfig.effectiveApiBaseUrl;
 
   /// Start Agora Cloud Recording for a session
   ///
@@ -31,8 +28,8 @@ class AgoraRecordingService {
         throw Exception('User not authenticated');
       }
 
-      final apiUrl = _getApiUrl();
-      final url = '$apiUrl/api/agora/recording/start';
+      final url = '$_apiBaseUrl/agora/recording/start';
+      LogService.info('🎙️ [Recording] POST $url (sessionId=$sessionId)');
 
       final response = await http.post(
         Uri.parse(url),
@@ -50,8 +47,16 @@ class AgoraRecordingService {
         LogService.success('Agora recording started: ${data['resourceId']}');
         return data;
       } else {
-        final errorBody = jsonDecode(response.body);
-        LogService.warning('Failed to start recording: ${errorBody['error']}');
+        // Don't assume backend always returns JSON (avoid crashing on html/text errors)
+        try {
+          final errorBody = jsonDecode(response.body);
+          LogService.warning(
+            '⚠️ [Recording] start failed (${response.statusCode}): ${errorBody is Map ? errorBody['error'] : errorBody}',
+          );
+        } catch (_) {
+          final bodyPreview = response.body.length > 500 ? '${response.body.substring(0, 500)}…' : response.body;
+          LogService.warning('⚠️ [Recording] start failed (${response.statusCode}). Body: $bodyPreview');
+        }
         return null; // Don't fail session start if recording fails
       }
     } catch (e) {
@@ -71,8 +76,8 @@ class AgoraRecordingService {
         throw Exception('User not authenticated');
       }
 
-      final apiUrl = _getApiUrl();
-      final url = '$apiUrl/api/agora/recording/stop';
+      final url = '$_apiBaseUrl/agora/recording/stop';
+      LogService.info('🛑 [Recording] POST $url (sessionId=$sessionId)');
 
       final response = await http.post(
         Uri.parse(url),
@@ -88,8 +93,15 @@ class AgoraRecordingService {
       if (response.statusCode == 200) {
         LogService.success('Agora recording stopped for session: $sessionId');
       } else {
-        final errorBody = jsonDecode(response.body);
-        LogService.warning('Failed to stop recording: ${errorBody['error']}');
+        try {
+          final errorBody = jsonDecode(response.body);
+          LogService.warning(
+            '⚠️ [Recording] stop failed (${response.statusCode}): ${errorBody is Map ? errorBody['error'] : errorBody}',
+          );
+        } catch (_) {
+          final bodyPreview = response.body.length > 500 ? '${response.body.substring(0, 500)}…' : response.body;
+          LogService.warning('⚠️ [Recording] stop failed (${response.statusCode}). Body: $bodyPreview');
+        }
         // Don't throw - recording stop failure shouldn't block session end
       }
     } catch (e) {

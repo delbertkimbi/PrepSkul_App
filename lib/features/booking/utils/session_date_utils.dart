@@ -2,41 +2,120 @@ import '../models/trial_session_model.dart';
 
 /// Utility class for session date/time operations
 class SessionDateUtils {
-  /// Get the full DateTime for a trial session (combines date and time)
-  static DateTime getSessionDateTime(TrialSession session) {
+  static final RegExp _timeRegex = RegExp(
+    r'^\s*(\d{1,2})\s*:\s*(\d{2})(?:\s*:\s*(\d{2}))?\s*([AaPp][Mm])?\s*$',
+  );
+
+  static ({int hour, int minute}) _parseTimeToHourMinute(String time) {
+    final trimmed = time.trim();
+
+    // Quick path for common "HH:mm" / "HH:mm:ss"
+    // (still supports whitespace and optional seconds via regex)
+    final match = _timeRegex.firstMatch(trimmed);
+    if (match == null) {
+      // If parsing fails, fall back to 00:00 instead of throwing.
+      return (hour: 0, minute: 0);
+    }
+
+    var hour = int.tryParse(match.group(1) ?? '') ?? 0;
+    final minute = int.tryParse(match.group(2) ?? '') ?? 0;
+    final ampm = match.group(4)?.toUpperCase();
+
+    // Normalize for 12-hour formats if AM/PM is present.
+    if (ampm == 'PM' && hour != 12) {
+      hour += 12;
+    } else if (ampm == 'AM' && hour == 12) {
+      hour = 0;
+    }
+
+    // Clamp to safe ranges.
+    if (hour < 0) hour = 0;
+    if (hour > 23) hour = hour % 24;
+    final safeMinute = minute.clamp(0, 59);
+
+    return (hour: hour, minute: safeMinute);
+  }
+
+  /// Get the session *start* DateTime (combines date and time).
+  ///
+  /// This was previously exposed as [getSessionDateTime]; that method now
+  /// delegates to this helper for backwards compatibility.
+  static DateTime getSessionStartTime(TrialSession session) {
     final date = session.scheduledDate;
-    final timeParts = session.scheduledTime.split(':');
-    final hour = int.tryParse(timeParts[0]) ?? 0;
-    final minute = timeParts.length > 1 ? (int.tryParse(timeParts[1]) ?? 0) : 0;
-    return DateTime(date.year, date.month, date.day, hour, minute);
+    final parsed = _parseTimeToHourMinute(session.scheduledTime);
+    return DateTime(date.year, date.month, date.day, parsed.hour, parsed.minute);
+  }
+
+  /// Get the full DateTime for a trial session (start time).
+  ///
+  /// Kept for backwards compatibility – callers that previously reasoned
+  /// about "session time" continue to get the *start* of the session.
+  static DateTime getSessionDateTime(TrialSession session) {
+    return getSessionStartTime(session);
+  }
+
+  /// Get the session *end* DateTime, including a small grace period.
+  ///
+  /// We add a configurable [extraGrace] so that the system doesn't mark
+  /// the session as "expired" at the exact theoretical end time while
+  /// participants may still be wrapping up.
+  static DateTime getSessionEndTime(
+    TrialSession session, {
+    Duration? extraGrace,
+  }) {
+    final start = getSessionStartTime(session);
+    final duration = Duration(minutes: session.durationMinutes);
+    final grace = extraGrace ?? const Duration(minutes: 5);
+    return start.add(duration).add(grace);
   }
 
   /// Check if a session has expired (date/time has passed)
   static bool isSessionExpired(TrialSession session) {
-    final sessionDateTime = getSessionDateTime(session);
-    return sessionDateTime.isBefore(DateTime.now());
+    final endTime = getSessionEndTime(session);
+    return DateTime.now().isAfter(endTime);
   }
 
   /// Check if a session is in the future
   static bool isSessionUpcoming(TrialSession session) {
-    final sessionDateTime = getSessionDateTime(session);
+    final sessionDateTime = getSessionStartTime(session);
     return sessionDateTime.isAfter(DateTime.now());
+  }
+
+  /// Check if a session is currently in progress (between start and end).
+  ///
+  /// This is useful when we want to distinguish between:
+  /// - upcoming (hasn't started yet),
+  /// - in‑progress (should show "View/Join Session"), and
+  /// - fully past (eligible for "Reschedule").
+  static bool isSessionInProgress(TrialSession session) {
+    final now = DateTime.now();
+    final start = getSessionStartTime(session);
+    // Use end time *without* extra grace here; grace is only for expiry.
+    final end = getSessionEndTime(session, extraGrace: Duration.zero);
+    final hasStarted =
+        now.isAfter(start) || now.isAtSameMomentAs(start);
+    return hasStarted && now.isBefore(end);
   }
 
   /// Calculate payment deadline (default: 24 hours before session)
   static DateTime getPaymentDeadline(TrialSession session, {int hoursBefore = 24}) {
-    final sessionDateTime = getSessionDateTime(session);
+    final sessionDateTime = getSessionStartTime(session);
     return sessionDateTime.subtract(Duration(hours: hoursBefore));
   }
 
   /// Get time remaining until session as a formatted string
   static String getTimeUntilSession(TrialSession session) {
-    final sessionDateTime = getSessionDateTime(session);
     final now = DateTime.now();
     
-    if (sessionDateTime.isBefore(now)) {
+    if (isSessionExpired(session)) {
       return 'Expired';
     }
+
+    if (isSessionInProgress(session)) {
+      return 'In progress';
+    }
+
+    final sessionDateTime = getSessionStartTime(session);
     
     final difference = sessionDateTime.difference(now);
     

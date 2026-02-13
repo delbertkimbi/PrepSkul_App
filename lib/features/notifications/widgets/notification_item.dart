@@ -389,11 +389,16 @@ class _NotificationItemState extends State<NotificationItem> {
             NotificationService.markAsRead(notificationId);
           }
           
-          // Navigate to action URL if it exists
-          if (actionUrl != null && actionUrl.isNotEmpty) {
+          // Navigate to action URL if it exists, or to sessions for trial payment notifications
+          final url = actionUrl != null && actionUrl.isNotEmpty
+              ? actionUrl
+              : (notificationType == 'trial_payment_completed' || notificationType == 'trial_payment_received')
+                  ? '/sessions'
+                  : null;
+          if (url != null) {
             NotificationNavigationService.navigateToAction(
               context: context,
-              actionUrl: actionUrl,
+              actionUrl: url,
               notificationType: notificationType,
               metadata: metadata,
             );

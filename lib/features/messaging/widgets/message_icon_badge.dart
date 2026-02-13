@@ -116,7 +116,13 @@ class _MessageIconBadgeState extends State<MessageIconBadge> with WidgetsBinding
         });
       }
     } catch (e) {
-      LogService.error('Error loading unread message count: $e');
+      // "Failed to fetch" on web is usually CORS or network; badge shows 0, no need to alarm
+      final msg = e.toString();
+      if (msg.contains('Failed to fetch') || msg.contains('ClientException')) {
+        LogService.debug('Unread count unavailable (network/CORS): $msg');
+      } else {
+        LogService.error('Error loading unread message count: $e');
+      }
       if (mounted) {
         setState(() {
           _unreadCount = 0;

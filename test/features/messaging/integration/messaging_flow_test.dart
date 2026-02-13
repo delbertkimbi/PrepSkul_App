@@ -267,9 +267,7 @@ void main() {
       });      test('should handle invalid conversation access', () async {
         // Test authorization
         expect(ChatService.getMessages, isA<Function>());
-      });
-
-      test('should handle blocked message gracefully', () async {
+      });      test('should handle blocked message gracefully', () async {
         // Test blocked message handling
         expect(ChatService.previewMessage, isA<Function>());
       });
@@ -300,9 +298,7 @@ void main() {
         expect(conversation.studentId, 'student-123');
         expect(conversation.tutorId, 'tutor-123');
         expect(conversation.status, 'active');
-      });
-
-      test('should create valid Message from JSON', () {
+      });      test('should create valid Message from JSON', () {
         final json = {
           'id': 'msg-123',
           'conversation_id': 'conv-123',
@@ -338,9 +334,7 @@ void main() {
         // Test blocked message handling
         expect(ChatService.previewMessage, isA<Function>());
       });
-    });
-
-    group('booking integration', () {
+    });    group('booking integration', () {
       test('should verify conversation creation methods exist', () {
         // Test that conversation creation methods exist for booking/trial
         expect(
@@ -374,9 +368,7 @@ void main() {
           'sender_id': 'user-123',
           'content': 'Test message',
           'created_at': '2024-01-01T12:00:00Z',
-        };
-
-        final message = Message.fromJson(json, currentUserId: 'user-123');
+        };        final message = Message.fromJson(json, currentUserId: 'user-123');
         expect(message.id, 'msg-123');
         expect(message.conversationId, 'conv-123');
         expect(message.content, 'Test message');

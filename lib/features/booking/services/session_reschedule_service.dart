@@ -75,7 +75,8 @@ class SessionRescheduleService {
                 location,
                 onsite_address,
                 location_description,
-                status
+                status,
+                payment_status
               ''')
               .eq('id', sessionId)
               .maybeSingle();

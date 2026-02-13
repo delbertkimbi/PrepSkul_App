@@ -13,6 +13,7 @@ import '../../../features/booking/services/booking_service.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import 'package:prepskul/features/payment/services/payment_request_service.dart';
 import 'tutor_request_detail_full_screen.dart';
+import '../../../core/localization/app_localizations.dart';
 
 
 class TutorRequestsScreen extends StatefulWidget {
@@ -87,7 +88,10 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load requests: $e'),
+            content: Text(
+              AppLocalizations.of(context)!.loadRequestsError,
+              style: GoogleFonts.poppins(),
+            ),
             backgroundColor: Colors.red,
           ),
         );
@@ -239,6 +243,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context)!;
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
@@ -246,7 +251,7 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         elevation: 0,
         automaticallyImplyLeading: false, // No back button in bottom nav
         title: Text(
-          'Requests',
+          t.navRequests,
           style: GoogleFonts.poppins(
             fontSize: 20,
             fontWeight: FontWeight.w600,
@@ -348,19 +353,41 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   Widget _buildRequestCard(BookingRequest request) {
     final typeLower = request.studentType.toLowerCase();
     final isStudent = typeLower == 'learner' || typeLower == 'student';
+    final isPending = request.status.toLowerCase() == 'pending';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: AppTheme.softBorder,
-          width: 1,
+          color: isPending ? AppTheme.primaryColor.withOpacity(0.25) : AppTheme.softBorder,
+          width: isPending ? 1.5 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+            spreadRadius: 0,
+          ),
+        ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Row(
+          children: [
+            if (isPending)
+              Container(
+                width: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(14)),
+                ),
+              ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -410,6 +437,27 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                           color: AppTheme.textMedium,
                         ),
                       ),
+                      if (request.isMultiLearner && request.learnerLabels != null && request.learnerLabels!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(Icons.people_outline, size: 12, color: AppTheme.primaryColor),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                '${request.learnerLabels!.length} learner${request.learnerLabels!.length == 1 ? '' : 's'}: ${request.learnerLabels!.join(', ')}',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.primaryColor,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -547,6 +595,10 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                     fontWeight: FontWeight.w600,
                     color: AppTheme.primaryColor,
                   ),
+                ),
+              ),
+            ),
+                  ],
                 ),
               ),
             ),

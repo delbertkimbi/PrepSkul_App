@@ -44,6 +44,8 @@ class BookingRequest {
   // Multi-learner support (for parent bookings)
   final List<String>? learnerLabels; // Array of learner names when parent books for multiple children
   final Map<String, Map<String, dynamic>>? learnerAcceptanceStatus; // Per-learner acceptance status: {"Emma": {"status": "accepted", "reason": null, "responded_at": "..."}}
+  /// Per-learner subjects (learner name -> list of subjects). Set when parent/learner selects subjects in booking flow.
+  final Map<String, List<String>>? learnerSubjects;
 
   // Transportation cost (for onsite sessions)
   final double? estimatedTransportationCost; // Estimated transportation cost per session
@@ -86,12 +88,35 @@ class BookingRequest {
     required this.studentType,
     this.learnerLabels,
     this.learnerAcceptanceStatus,
+    this.learnerSubjects,
     this.estimatedTransportationCost,
     required this.tutorName,
     this.tutorAvatarUrl,
     required this.tutorRating,
     required this.tutorIsVerified,
   });
+
+  /// Parse learner_labels from API (handles List<dynamic>, JSONB array)
+  static List<String>? _parseLearnerLabels(dynamic value) {
+    if (value == null) return null;
+    if (value is! List) return null;
+    final list = value.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+    return list.isEmpty ? null : list;
+  }
+
+  /// Parse learner_subjects from API (JSONB: {"Learner Name": ["Math", "Physics"]})
+  static Map<String, List<String>>? _parseLearnerSubjects(dynamic value) {
+    if (value == null || value is! Map) return null;
+    final map = <String, List<String>>{};
+    for (final entry in value.entries) {
+      final key = entry.key.toString();
+      final val = entry.value;
+      if (val is List) {
+        map[key] = val.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+      }
+    }
+    return map.isEmpty ? null : map;
+  }
 
   /// Create from Supabase JSON (Booking Requests table)
   factory BookingRequest.fromJson(Map<String, dynamic> json) {
@@ -122,9 +147,7 @@ class BookingRequest {
       studentName: json['student_name'] as String,
       studentAvatarUrl: json['student_avatar_url'] as String?,
       studentType: json['student_type'] as String,
-      learnerLabels: json['learner_labels'] != null
-          ? List<String>.from(json['learner_labels'] as List)
-          : null,
+      learnerLabels: _parseLearnerLabels(json['learner_labels']),
       learnerAcceptanceStatus: json['learner_acceptance_status'] != null
           ? Map<String, Map<String, dynamic>>.from(
               (json['learner_acceptance_status'] as Map).map(
@@ -135,6 +158,7 @@ class BookingRequest {
               ),
             )
           : null,
+      learnerSubjects: _parseLearnerSubjects(json['learner_subjects']),
       estimatedTransportationCost: json['estimated_transportation_cost'] != null
           ? (json['estimated_transportation_cost'] as num).toDouble()
           : null,
@@ -190,6 +214,13 @@ class BookingRequest {
       studentName: _extractStudentNameFromProfile(studentProfile),
       studentAvatarUrl: studentProfile['avatar_url'] ?? studentProfile['profile_photo_url'],
       studentType: studentProfile['user_type'] ?? 'learner',
+      // Multi-learner: from trial_sessions.learner_labels or learner_label (single)
+      learnerLabels: _parseLearnerLabels(json['learner_labels']) ??
+          (json['learner_label'] != null && (json['learner_label'] as String).trim().isNotEmpty
+              ? [(json['learner_label'] as String).trim()]
+              : null),
+      learnerSubjects: _parseLearnerSubjects(json['learner_subjects']),
+      learnerAcceptanceStatus: null,
       // Tutor info
       tutorName: tutorProfile?['full_name'] ?? 'Tutor',
       tutorAvatarUrl: tutorProfile?['avatar_url'] ?? tutorProfile?['profile_photo_url'],
@@ -223,6 +254,7 @@ class BookingRequest {
       'student_avatar_url': studentAvatarUrl,
       'student_type': studentType,
       if (learnerLabels != null) 'learner_labels': learnerLabels,
+      if (learnerSubjects != null) 'learner_subjects': learnerSubjects,
       if (estimatedTransportationCost != null) 'estimated_transportation_cost': estimatedTransportationCost,
       'tutor_name': tutorName,
       'tutor_avatar_url': tutorAvatarUrl,
@@ -276,6 +308,7 @@ class BookingRequest {
       studentType: studentType,
       learnerLabels: learnerLabels,
       learnerAcceptanceStatus: learnerAcceptanceStatus,
+      learnerSubjects: learnerSubjects,
       estimatedTransportationCost: estimatedTransportationCost,
       tutorName: tutorName,
       tutorAvatarUrl: tutorAvatarUrl,
@@ -377,6 +410,15 @@ class BookingRequest {
   String? getLearnerRejectionReason(String learnerName) {
     if (learnerAcceptanceStatus == null) return null;
     return learnerAcceptanceStatus![learnerName]?['reason'] as String?;
+  }
+
+  /// Get subjects for a specific learner (from per-learner selection or single subject for trial)
+  List<String> getLearnerSubjects(String learnerName) {
+    if (learnerSubjects != null && learnerSubjects![learnerName] != null && learnerSubjects![learnerName]!.isNotEmpty) {
+      return learnerSubjects![learnerName]!;
+    }
+    if (subject != null && subject!.trim().isNotEmpty) return [subject!.trim()];
+    return [];
   }
 
   /// Check if all learners have been responded to (accepted or declined)

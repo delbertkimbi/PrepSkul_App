@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
@@ -30,10 +31,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       await AuthService.sendPasswordResetOTP(phone);
 
       if (mounted) {
-        // Navigate to reset password screen
+        // Navigate to OTP step (same UI as OTP verification: 6 boxes + countdown)
         Navigator.pushNamed(
           context,
-          '/reset-password',
+          '/reset-password-otp',
           arguments: {'phone': phone},
         );
       }
@@ -72,7 +73,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return Scaffold(
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
@@ -85,15 +87,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               clipper: WaveClipper(),
               child: Container(
                 height: 200,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -292,6 +287,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                 ),
                               ),
 
+                              const SizedBox(height: 16),
+
+                              // Reset with email instead
+                              Center(
+                                child: TextButton(
+                                  onPressed: () {
+                                    Navigator.pushReplacementNamed(
+                                      context,
+                                      '/forgot-password-email',
+                                    );
+                                  },
+                                  child: Text(
+                                    'Reset with email instead?',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppTheme.textMedium,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
                               const SizedBox(height: 24),
 
                               // Back to Login
@@ -324,6 +341,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 

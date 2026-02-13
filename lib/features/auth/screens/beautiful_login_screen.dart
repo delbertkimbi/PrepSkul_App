@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
@@ -24,7 +25,8 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    return Scaffold(
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
@@ -36,16 +38,9 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
             child: ClipPath(
               clipper: WaveClipper(),
               child: Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                height: 205,
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -57,11 +52,11 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
               children: [
                 // Header content inside the wave
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 29.0, 24.0, 30.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 8),
                       Center(
                         child: Text(
                           t.authLogin,
@@ -398,6 +393,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -496,37 +492,28 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   }
 }
 
-// Custom wave clipper for the header - Clean and professional
+// Custom wave clipper – shallow curve so subtitle stays visible above wave
 class WaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     var path = Path();
-
-    // Start from top-left corner
-    path.lineTo(0, size.height - 50); // Straight down left side
-
-    // Create smooth, gentle wave curve
-    var controlPoint1 = Offset(size.width * 0.25, size.height - 30);
-    var endPoint1 = Offset(size.width * 0.5, size.height - 40);
-
+    path.lineTo(0, size.height - 28);
+    var controlPoint1 = Offset(size.width * 0.25, size.height - 14);
+    var endPoint1 = Offset(size.width * 0.5, size.height - 20);
     path.quadraticBezierTo(
       controlPoint1.dx,
       controlPoint1.dy,
       endPoint1.dx,
       endPoint1.dy,
     );
-
-    var controlPoint2 = Offset(size.width * 0.75, size.height - 50);
-    var endPoint2 = Offset(size.width, size.height - 40);
-
+    var controlPoint2 = Offset(size.width * 0.75, size.height - 28);
+    var endPoint2 = Offset(size.width, size.height - 20);
     path.quadraticBezierTo(
       controlPoint2.dx,
       controlPoint2.dy,
       endPoint2.dx,
       endPoint2.dy,
     );
-
-    // Complete the path
     path.lineTo(size.width, 0);
     path.close();
 

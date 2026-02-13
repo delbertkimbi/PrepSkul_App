@@ -7,7 +7,7 @@
 -- First, drop the existing constraint if it exists
 DO $$ 
 BEGIN
-  -- Drop old constraint if it exists
+  -- Drop old constraint if it existss
   IF EXISTS (
     SELECT 1 FROM pg_constraint 
     WHERE conname = 'tutor_profiles_status_check'
@@ -17,7 +17,7 @@ BEGIN
   END IF;
 END $$;
 
--- Add new constraint with 'needs_improvement' status
+-- Add new constraint with 'needs_improvement' statusewfe
 ALTER TABLE public.tutor_profiles 
 ADD CONSTRAINT tutor_profiles_status_check 
 CHECK (status IN ('pending', 'approved', 'rejected', 'needs_improvement', 'suspended'));

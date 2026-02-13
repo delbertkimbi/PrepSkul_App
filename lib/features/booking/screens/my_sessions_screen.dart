@@ -8,6 +8,7 @@ import 'package:prepskul/features/booking/models/trial_session_model.dart';
 import 'package:prepskul/features/booking/utils/session_date_utils.dart';
 import 'package:prepskul/features/booking/services/trial_session_service.dart' hide LogService;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/config/live_session_test_config.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/services/log_service.dart';
 import '../services/individual_session_service.dart';
@@ -41,6 +42,7 @@ import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:table_calendar/table_calendar.dart';
 import 'session_detail_screen.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 
@@ -81,10 +83,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   
   // Timer for countdown updates
   Timer? _countdownTimer;
+  // View mode: list | by_day | calendar
+  String _viewMode = 'list';
+  DateTime? _calendarFocusedDay;
 
   @override
   void initState() {
     super.initState();
+    _calendarFocusedDay = DateTime.now();
     // Use initialTab from arguments if provided, otherwise default to 0
     final initialTabIndex = widget.initialTab ?? 0;
     _tabController = TabController(
@@ -323,24 +329,29 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           final status = trial.status;
           final paymentStatus = trial.paymentStatus;
           
-          // Skip if not approved or not paid (for upcoming sessions)
-          final isApproved = status == 'approved';
-          final isPaid = paymentStatus == 'paid' || paymentStatus == 'pending';
+          // Skip if not approved/scheduled or not paid (for upcoming sessions)
+          // NOTE: Some flows set trial status to 'scheduled' after approval/payment.
+          final isApproved = status == 'approved' || status == 'scheduled' || status == 'in_progress';
+          final isPaid = paymentStatus == 'paid' || paymentStatus == 'completed';
           
           // For upcoming sessions: only show approved AND paid trials
           // For past sessions: show all (including pending/unpaid for historical reference)
           final sessionMap = _convertTrialToSessionMap(trial);
           if (sessionMap != null) {
             // Classify as upcoming or past using SessionDateUtils
-            final isCompleted = status == 'completed' || status == 'cancelled' || status == 'rejected' || status == 'expired';
+            final isCompleted = status == 'completed' ||
+                status == 'cancelled' ||
+                status == 'rejected' ||
+                status == 'expired';
             
             // Use SessionDateUtils for time-based classification
             if (isCompleted) {
               past.add(sessionMap);
             } else {
-              // Check if session is expired or upcoming using SessionDateUtils
+              // Distinguish clearly between upcoming, in‑progress, and expired.
               final isExpired = SessionDateUtils.isSessionExpired(trial);
-              final isUpcoming = SessionDateUtils.isSessionUpcoming(trial);
+              final isInProgress = SessionDateUtils.isSessionInProgress(trial);
+              final isUpcomingTime = SessionDateUtils.isSessionUpcoming(trial);
               
               // If expired but not yet marked, mark it now
               if (isExpired && status != 'expired') {
@@ -348,16 +359,23 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 sessionMap['status'] = 'expired';
               }
               
-              if (isExpired || !isUpcoming || status == 'expired') {
+              if (isExpired || status == 'expired') {
+                // Fully past sessions (time window over) belong in Past.
                 past.add(sessionMap);
-              } else {
-                // Only add to upcoming if approved AND paid
+              } else if (isInProgress || isUpcomingTime) {
+                // Time window is either upcoming or currently active.
+                // Only show on Upcoming tab when the trial is approved/scheduled and paid.
                 if (isApproved && isPaid) {
                   upcoming.add(sessionMap);
                 } else {
-                  // Move unapproved/unpaid trials to past (they shouldn't be shown as upcoming)
+                  // Unapproved/unpaid trials remain in Past/history so they don't
+                  // clutter the "Upcoming" view used for joining sessions.
                   past.add(sessionMap);
                 }
+              } else {
+                // Fallback: if we can't confidently classify, keep in Past so
+                // the learner can still see the record without breaking UX.
+                past.add(sessionMap);
               }
             }
           }
@@ -598,12 +616,21 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   DateTime? _parseSessionDateTime(String date, String time) {
     try {
       final dateTime = DateTime.parse(date);
-      // Parse time (format: "HH:MM" or "HH:MM:SS")
-      final timeParts = time.split(':');
-      if (timeParts.length >= 2) {
-        final hour = int.parse(timeParts[0]);
-        final minute = int.parse(timeParts[1]);
-        return DateTime(dateTime.year, dateTime.month, dateTime.day, hour, minute);
+      // Parse time robustly (supports "HH:mm", "HH:mm:ss", "h:mm AM/PM", "h:mmAM", etc.)
+      final match = RegExp(
+        r'^\s*(\d{1,2})\s*:\s*(\d{2})(?:\s*:\s*(\d{2}))?\s*([AaPp][Mm])?\s*$',
+      ).firstMatch(time.trim());
+      if (match != null) {
+        var hour = int.tryParse(match.group(1) ?? '') ?? 0;
+        final minute = int.tryParse(match.group(2) ?? '') ?? 0;
+        final ampm = match.group(4)?.toUpperCase();
+
+        if (ampm == 'PM' && hour != 12) hour += 12;
+        if (ampm == 'AM' && hour == 12) hour = 0;
+
+        hour = hour.clamp(0, 23);
+        final safeMinute = minute.clamp(0, 59);
+        return DateTime(dateTime.year, dateTime.month, dateTime.day, hour, safeMinute);
       }
       return dateTime;
     } catch (e) {
@@ -697,6 +724,18 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   /// Join Agora video session (independent of meetLink)
   Future<void> _joinAgoraSession(String sessionId) async {
     try {
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (!LiveSessionTestConfig.canUserJoinSession(currentUserId)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       // Get current user role
       final userProfile = await AuthService.getUserProfile();
       final userType = userProfile?['user_type'] as String?;
@@ -1968,9 +2007,15 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     // If parsing fails, don't show button
                     isSessionActive = false;
                   }
+                  final currentUserId = SupabaseService.currentUser?.id;
+                  if (!isSessionActive && LiveSessionTestConfig.isTestUser(currentUserId) &&
+                      (status == 'scheduled' || status == 'in_progress') && location == 'online') {
+                    isSessionActive = true;
+                  }
+                  final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(currentUserId);
                   
-                  // Only show Join Session button when session is active
-                  if (isSessionActive && location == 'online') {
+                  // Only show Join Session button when session is active and user is allowed (local testing may restrict to test accounts)
+                  if (isSessionActive && allowedToJoin && location == 'online') {
                     return Column(
                       children: [
                         const SizedBox(height: 12),
@@ -2204,41 +2249,89 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    // Agora Video Session button - show for ALL online sessions
-                    if (location == 'online')
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _joinAgoraSession(sessionId);
+                    // Join button: inactive until session time, with countdown
+                    if (location == 'online') ...[
+                      Builder(
+                        builder: (context) {
+                          final start = _parseSessionDateTime(scheduledDate, scheduledTime);
+                          final now = DateTime.now();
+                          final inProgress = status == 'in_progress';
+                          final isTestUser = LiveSessionTestConfig.isTestUserForEarlyJoin(currentUserId);
+                          final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(currentUserId);
+                          final canJoin = allowedToJoin && (inProgress || (start != null && !now.isBefore(start)) || isTestUser);
+                          String countdownText = '';
+                          if (!inProgress && start != null && now.isBefore(start)) {
+                            final diff = start.difference(now);
+                            if (diff.inDays > 0) {
+                              countdownText = 'Starts in ${diff.inDays}d ${diff.inHours % 24}h';
+                            } else if (diff.inHours > 0) {
+                              countdownText = 'Starts in ${diff.inHours}h ${diff.inMinutes % 60}m';
+                            } else if (diff.inMinutes > 0) {
+                              countdownText = 'Starts in ${diff.inMinutes} min';
+                            } else {
+                              countdownText = 'Starting soon';
+                            }
+                          }
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (countdownText.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: Text(
+                                    countdownText,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: AppTheme.textMedium,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ElevatedButton.icon(
+                                onPressed: canJoin
+                                    ? () {
+                                        Navigator.pop(context);
+                                        _joinAgoraSession(sessionId);
+                                      }
+                                    : null,
+                                icon: Icon(PhosphorIcons.videoCamera(), size: 18),
+                                label: Text(
+                                  status == 'in_progress' ? 'Join Session' : 'Join Video Session',
+                                  style: GoogleFonts.poppins(),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: canJoin
+                                      ? (status == 'in_progress' ? AppTheme.accentGreen : AppTheme.primaryColor)
+                                      : Colors.grey[400],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  elevation: 0,
+                                ),
+                              ),
+                            ],
+                          );
                         },
-                        icon: Icon(PhosphorIcons.videoCamera(), size: 18),
-                        label: Text(
-                          status == 'in_progress' ? 'Join Session' : 'Join Video Session',
-                          style: GoogleFonts.poppins(),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: status == 'in_progress' 
-                              ? AppTheme.accentGreen 
-                              : AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                          elevation: 0,
-                        ),
                       ),
-                    // Message tutor/student/parents button
-                    ElevatedButton.icon(
+                    ],
+                    // Message Tutor button (white, deep blue border + text)
+                    OutlinedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);
                         _navigateToChatFromSession(context, session);
                       },
-                      icon: Icon(PhosphorIcons.chatCircleDots(), size: 18),
+                      icon: Icon(PhosphorIcons.chatCircleDots(), size: 18, color: AppTheme.primaryColor),
                       label: Text(
                         'Message Tutor',
-                        style: GoogleFonts.poppins(),
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
                       ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: AppTheme.primaryColor,
+                        side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
                         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                         elevation: 0,
                       ),
@@ -2325,8 +2418,22 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                     final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
                     Navigator.pushReplacementNamed(context, route);
                   } catch (e) {
-                    // Fallback to parent nav
-                    Navigator.pushReplacementNamed(context, '/parent-nav');
+                    // Fallback: try Supabase profile for user_type so parents get parent-nav
+                    try {
+                      final userId = SupabaseService.currentUser?.id;
+                      if (userId != null) {
+                        final profile = await SupabaseService.client
+                            .from('profiles')
+                            .select('user_type')
+                            .eq('id', userId)
+                            .maybeSingle();
+                        final userType = profile?['user_type'] as String?;
+                        final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
+                        if (context.mounted) Navigator.pushReplacementNamed(context, route);
+                        return;
+                      }
+                    } catch (_) {}
+                    if (context.mounted) Navigator.pushReplacementNamed(context, '/student-nav');
                   }
                 },
               );
@@ -2371,8 +2478,37 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           ],
         ),
       ),
-      body: _isLoading
-          ? SingleChildScrollView(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // View: List | By day | Calendar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text(
+                    'View: ',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _buildViewChip('list', 'List'),
+                  const SizedBox(width: 8),
+                  _buildViewChip('by_day', 'By day'),
+                  const SizedBox(width: 8),
+                  _buildViewChip('calendar', 'Calendar'),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
@@ -2468,21 +2604,24 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       )
                     : RefreshIndicator(
                         onRefresh: _loadSessions,
-                        child: ListView.builder(
-                          controller: _upcomingScrollController,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          itemCount: _upcomingSessions.length + 1, // +1 for credits widget
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              // Credits balance widget at top
-                              return _buildCreditsHeader();
-                            }
-                            return _buildSessionCard(
-                              _upcomingSessions[index - 1],
-                              true,
-                            );
-                          },
-                        ),
+                        child: _viewMode == 'calendar'
+                            ? _buildUpcomingCalendarView()
+                            : _viewMode == 'by_day'
+                                ? _buildUpcomingGroupedByDay()
+                                : ListView.builder(
+                                controller: _upcomingScrollController,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                itemCount: _upcomingSessions.length + 1, // +1 for credits widget
+                                itemBuilder: (context, index) {
+                                  if (index == 0) {
+                                    return _buildCreditsHeader();
+                                  }
+                                  return _buildSessionCard(
+                                    _upcomingSessions[index - 1],
+                                    true,
+                                  );
+                                },
+                              ),
                       ),
                 // Completed Sessions
                 _pastSessions.isEmpty
@@ -2517,21 +2656,316 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       )
                     : RefreshIndicator(
                         onRefresh: _loadSessions,
-                        child: ListView.builder(
-                          controller: _pastScrollController,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          itemCount: _pastSessions.length,
-                          itemBuilder: (context, index) {
-                            return _buildSessionCard(
-                              _pastSessions[index],
-                              false,
-                            );
-                          },
-                        ),
+                        child: _viewMode == 'calendar'
+                            ? _buildPastCalendarView()
+                            : _viewMode == 'by_day'
+                                ? _buildPastGroupedByDay()
+                                : ListView.builder(
+                                controller: _pastScrollController,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                itemCount: _pastSessions.length,
+                                itemBuilder: (context, index) {
+                                  return _buildSessionCard(
+                                    _pastSessions[index],
+                                    false,
+                                  );
+                                },
+                              ),
                       ),
               ],
             ),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Group upcoming sessions by date (Today, Tomorrow, or formatted date).
+  Widget _buildUpcomingGroupedByDay() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final Map<String, List<Map<String, dynamic>>> byDate = {};
+    for (final s in _upcomingSessions) {
+      final key = _sessionDateKey(s);
+      if (key == null) continue;
+      byDate.putIfAbsent(key, () => []).add(s);
+    }
+    for (final list in byDate.values) {
+      list.sort((a, b) {
+        final tA = a['scheduled_time'] as String? ?? '00:00';
+        final tB = b['scheduled_time'] as String? ?? '00:00';
+        return tA.compareTo(tB);
+      });
+    }
+    final sortedKeys = byDate.keys.toList()..sort();
+    final List<Widget> children = [_buildCreditsHeader(), const SizedBox(height: 12)];
+    for (final key in sortedKeys) {
+      final d = DateTime.parse(key);
+      final dayStart = DateTime(d.year, d.month, d.day);
+      final label = dayStart == today
+          ? 'Today'
+          : dayStart == tomorrow
+              ? 'Tomorrow'
+              : DateFormat('EEEE, MMM d').format(d);
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 6),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+      ));
+      for (final s in byDate[key]!) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildSessionCard(s, true),
+        ));
+      }
+    }
+    return ListView(
+      controller: _upcomingScrollController,
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
+      children: children,
+    );
+  }
+
+  /// Group past sessions by date.
+  Widget _buildPastGroupedByDay() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final Map<String, List<Map<String, dynamic>>> byDate = {};
+    for (final s in _pastSessions) {
+      final key = _sessionDateKey(s);
+      if (key == null) continue;
+      byDate.putIfAbsent(key, () => []).add(s);
+    }
+    for (final list in byDate.values) {
+      list.sort((a, b) {
+        final tA = a['scheduled_time'] as String? ?? '00:00';
+        final tB = b['scheduled_time'] as String? ?? '00:00';
+        return tA.compareTo(tB);
+      });
+    }
+    final sortedKeys = byDate.keys.toList()..sort();
+    final List<Widget> children = [];
+    for (final key in sortedKeys) {
+      final d = DateTime.parse(key);
+      final dayStart = DateTime(d.year, d.month, d.day);
+      final label = dayStart == today
+          ? 'Today'
+          : dayStart == tomorrow
+              ? 'Tomorrow'
+              : DateFormat('EEEE, MMM d').format(d);
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 6),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+      ));
+      for (final s in byDate[key]!) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildSessionCard(s, false),
+        ));
+      }
+    }
+    return ListView(
+      controller: _pastScrollController,
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
+      children: children,
+    );
+  }
+
+  /// Returns YYYY-MM-DD for grouping, or null if session has no date.
+  String? _sessionDateKey(Map<String, dynamic> session) {
+    final raw = session['scheduled_date'];
+    if (raw == null) return null;
+    final dateStr = raw is String ? raw.split('T')[0] : raw.toString().split('T')[0];
+    final date = DateTime.tryParse(dateStr);
+    return date != null
+        ? '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
+        : null;
+  }
+
+  Widget _buildViewChip(String mode, String label) {
+    final selected = _viewMode == mode;
+    return FilterChip(
+      label: Text(selected ? '$label ✓' : label),
+      selected: selected,
+      onSelected: (_) {
+        safeSetState(() {
+          _viewMode = mode;
+          if (mode == 'calendar' && _calendarFocusedDay == null) {
+            _calendarFocusedDay = DateTime.now();
+          }
+        });
+      },
+      selectedColor: AppTheme.primaryColor,
+      checkmarkColor: Colors.white,
+      labelStyle: GoogleFonts.poppins(
+        fontSize: 13,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+        color: selected ? Colors.white : AppTheme.textDark,
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _sessionsForDay(List<Map<String, dynamic>> sessions, DateTime day) {
+    final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    return sessions.where((s) => _sessionDateKey(s) == key).toList()
+      ..sort((a, b) {
+        final tA = a['scheduled_time'] as String? ?? '00:00';
+        final tB = b['scheduled_time'] as String? ?? '00:00';
+        return tA.compareTo(tB);
+      });
+  }
+
+  /// Clamp focused day to the valid calendar range so TableCalendar assertion holds.
+  DateTime _clampFocusedToRange(DateTime focused, bool isUpcoming) {
+    final now = DateTime.now();
+    final start = isUpcoming ? now : now.subtract(const Duration(days: 365));
+    final end = isUpcoming ? now.add(const Duration(days: 365)) : now;
+    final startDate = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(end.year, end.month, end.day);
+    if (focused.isBefore(startDate)) return startDate;
+    if (focused.isAfter(endDate)) return endDate;
+    return focused;
+  }
+
+  Widget _buildUpcomingCalendarView() {
+    final raw = _calendarFocusedDay ?? DateTime.now();
+    final focused = _clampFocusedToRange(raw, true);
+    return ListView(
+      controller: _upcomingScrollController,
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
+      children: [
+        _buildCreditsHeader(),
+        const SizedBox(height: 12),
+        _buildSessionCalendar(_upcomingSessions, focused, true),
+        const SizedBox(height: 16),
+        ..._buildSessionsForDayList(_sessionsForDay(_upcomingSessions, focused), true),
+      ],
+    );
+  }
+
+  Widget _buildPastCalendarView() {
+    final raw = _calendarFocusedDay ?? DateTime.now();
+    final focused = _clampFocusedToRange(raw, false);
+    return ListView(
+      controller: _pastScrollController,
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
+      children: [
+        _buildSessionCalendar(_pastSessions, focused, false),
+        const SizedBox(height: 16),
+        ..._buildSessionsForDayList(_sessionsForDay(_pastSessions, focused), false),
+      ],
+    );
+  }
+
+  Widget _buildSessionCalendar(
+    List<Map<String, dynamic>> sessions,
+    DateTime focusedDay,
+    bool isUpcoming,
+  ) {
+    final now = DateTime.now();
+    final firstDay = isUpcoming ? now : now.subtract(const Duration(days: 365));
+    final lastDay = isUpcoming ? now.add(const Duration(days: 365)) : now;
+    // TableCalendar requires firstDay <= focusedDay <= lastDay; clamp to avoid assertion
+    final startDate = DateTime(firstDay.year, firstDay.month, firstDay.day);
+    final endDate = DateTime(lastDay.year, lastDay.month, lastDay.day);
+    final clampedFocused = focusedDay.isBefore(startDate)
+        ? startDate
+        : focusedDay.isAfter(endDate)
+            ? endDate
+            : focusedDay;
+    final datesWithSessions = <DateTime>{};
+    for (final s in sessions) {
+      final key = _sessionDateKey(s);
+      if (key != null) {
+        datesWithSessions.add(DateTime.parse(key));
+      }
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: TableCalendar(
+        firstDay: startDate,
+        lastDay: endDate,
+        focusedDay: clampedFocused,
+        selectedDayPredicate: (day) => _isSameDay(clampedFocused, day),
+        onDaySelected: (selectedDay, focusedDay) {
+          safeSetState(() => _calendarFocusedDay = focusedDay);
+        },
+        eventLoader: (day) =>
+            datesWithSessions.any((d) => _isSameDay(d, day)) ? ['session'] : [],
+        calendarFormat: CalendarFormat.month,
+        headerStyle: HeaderStyle(
+          formatButtonVisible: false,
+          titleCentered: true,
+          titleTextStyle: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        calendarStyle: CalendarStyle(
+          selectedDecoration: const BoxDecoration(
+            color: AppTheme.primaryColor,
+            shape: BoxShape.circle,
+          ),
+          todayDecoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.3),
+            shape: BoxShape.circle,
+          ),
+          markerDecoration: BoxDecoration(
+            color: AppTheme.primaryColor.withOpacity(0.6),
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  List<Widget> _buildSessionsForDayList(
+    List<Map<String, dynamic>> list,
+    bool isUpcoming,
+  ) {
+    if (list.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            'No sessions on this day',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+          ),
+        ),
+      ];
+    }
+    return list
+        .map((s) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _buildSessionCard(s, isUpcoming),
+            ))
+        .toList();
   }
 
   /// Get conversation ID for a session

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/config/live_session_test_config.dart';
 import '../../../features/booking/services/recurring_session_service.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/session_lifecycle_service.dart';
@@ -25,6 +26,7 @@ import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:table_calendar/table_calendar.dart';
 import 'tutor_session_detail_full_screen.dart';
 
 class TutorSessionsScreen extends StatefulWidget {
@@ -40,6 +42,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   bool _isLoading = true;
   final Map<String, bool> _sessionLoadingStates = {};
   String _selectedFilter = 'upcoming'; // upcoming, all, past (upcoming shown first)
+  bool _groupByDay = false; // When true, list is grouped by date (calendar-style)
+  bool _viewCalendar = false; // When true, show month calendar + sessions for selected day
+  DateTime? _calendarFocusedDay;
   bool? _isCalendarConnected;
   Timer? _countdownTimer;
   String? _currentUserId;
@@ -48,6 +53,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   @override
   void initState() {
     super.initState();
+    _calendarFocusedDay = DateTime.now();
     _currentUserId = SupabaseService.currentUser?.id;
     _loadSessions();
     _checkCalendarConnection();
@@ -633,30 +639,75 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     'past',
                     'Past (${_getCountForFilter('past')})',
                   ),
+                  const SizedBox(width: 8),
+                  // By day: group sessions by date (calendar-style)
+                  FilterChip(
+                    label: Text(_groupByDay ? 'By day ✓' : 'By day'),
+                    selected: _groupByDay,
+                    onSelected: (selected) {
+                      safeSetState(() {
+                        _groupByDay = selected;
+                        if (selected) _viewCalendar = false;
+                      });
+                    },
+                    selectedColor: AppTheme.primaryColor,
+                    checkmarkColor: Colors.white,
+                    labelStyle: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: _groupByDay ? FontWeight.w600 : FontWeight.w400,
+                      color: _groupByDay ? Colors.white : AppTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Calendar: month grid + sessions for selected day
+                  FilterChip(
+                    label: Text(_viewCalendar ? 'Calendar ✓' : 'Calendar'),
+                    selected: _viewCalendar,
+                    onSelected: (selected) {
+                      safeSetState(() {
+                        _viewCalendar = selected;
+                        if (selected) {
+                          _groupByDay = false;
+                          if (_calendarFocusedDay == null) _calendarFocusedDay = DateTime.now();
+                        }
+                      });
+                    },
+                    selectedColor: AppTheme.primaryColor,
+                    checkmarkColor: Colors.white,
+                    labelStyle: GoogleFonts.poppins(
+                      fontSize: 13,
+                      fontWeight: _viewCalendar ? FontWeight.w600 : FontWeight.w400,
+                      color: _viewCalendar ? Colors.white : AppTheme.textDark,
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          // Sessions List
+          // Sessions List (grouped by day when _groupByDay)
           Expanded(
             child: _isLoading
-                ? ListView.builder(
+                ? SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: 5,
-                    itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
+                    child: ShimmerLoading.sessionList(count: 5),
                   )
                 : _sessions.isEmpty
                 ? _buildEmptyState()
                 : RefreshIndicator(
                     onRefresh: _loadSessions,
                     color: AppTheme.primaryColor,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _sessions.length,
-                      itemBuilder: (context, index) {
-                        return _buildSessionCard(_sessions[index]);
-                      },
-                    ),
+                    child: _viewCalendar
+                        ? _buildTutorCalendarView()
+                        : _groupByDay
+                            ? _buildSessionsGroupedByDay()
+                            : ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                itemCount: _sessions.length,
+                                itemBuilder: (context, index) {
+                                  return _buildSessionCard(_sessions[index]);
+                                },
+                              ),
                   ),
           ),
         ],
@@ -665,6 +716,181 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
 }
 
 
+
+  /// Group sessions by scheduled date and build list with day headers (Today, Tomorrow, or date).
+  Widget _buildSessionsGroupedByDay() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+
+    final Map<String, List<Map<String, dynamic>>> byDate = {};
+    for (final s in _sessions) {
+      final dateStr = s['scheduled_date'] as String?;
+      if (dateStr == null) continue;
+      final date = DateTime.tryParse(dateStr);
+      if (date == null) continue;
+      final key = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      byDate.putIfAbsent(key, () => []).add(s);
+    }
+
+    for (final list in byDate.values) {
+      list.sort((a, b) {
+        final tA = a['scheduled_time'] as String? ?? '00:00';
+        final tB = b['scheduled_time'] as String? ?? '00:00';
+        return tA.compareTo(tB);
+      });
+    }
+
+    final sortedKeys = byDate.keys.toList()..sort();
+    final List<Widget> children = [];
+    for (final key in sortedKeys) {
+      final d = DateTime.parse(key);
+      final dayStart = DateTime(d.year, d.month, d.day);
+      final label = dayStart == today
+          ? 'Today'
+          : dayStart == tomorrow
+              ? 'Tomorrow'
+              : DateFormat('EEEE, MMM d').format(d);
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 16, bottom: 8),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+      ));
+      for (final s in byDate[key]!) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _buildSessionCard(s),
+        ));
+      }
+    }
+    return ListView(
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
+      children: children,
+    );
+  }
+
+  String? _tutorSessionDateKey(Map<String, dynamic> s) {
+    final raw = s['scheduled_date'];
+    if (raw == null) return null;
+    final dateStr = raw is String ? raw.split('T')[0] : raw.toString().split('T')[0];
+    final date = DateTime.tryParse(dateStr);
+    return date != null
+        ? '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
+        : null;
+  }
+
+  List<Map<String, dynamic>> _tutorSessionsForDay(DateTime day) {
+    final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    return _sessions.where((s) => _tutorSessionDateKey(s) == key).toList()
+      ..sort((a, b) {
+        final tA = a['scheduled_time'] as String? ?? '00:00';
+        final tB = b['scheduled_time'] as String? ?? '00:00';
+        return tA.compareTo(tB);
+      });
+  }
+
+  bool _tutorIsSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Widget _buildTutorCalendarView() {
+    final now = DateTime.now();
+    final firstDay = _selectedFilter == 'upcoming'
+        ? now
+        : now.subtract(const Duration(days: 365));
+    final lastDay = _selectedFilter == 'past'
+        ? now
+        : now.add(const Duration(days: 365));
+    final startDate = DateTime(firstDay.year, firstDay.month, firstDay.day);
+    final endDate = DateTime(lastDay.year, lastDay.month, lastDay.day);
+    final raw = _calendarFocusedDay ?? now;
+    final focused = raw.isBefore(startDate)
+        ? startDate
+        : raw.isAfter(endDate)
+            ? endDate
+            : raw;
+    final datesWithSessions = <DateTime>{};
+    for (final s in _sessions) {
+      final key = _tutorSessionDateKey(s);
+      if (key != null) datesWithSessions.add(DateTime.parse(key));
+    }
+    return ListView(
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 24),
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey[200]!),
+          ),
+          child: TableCalendar(
+            firstDay: startDate,
+            lastDay: endDate,
+            focusedDay: focused,
+            selectedDayPredicate: (day) => _tutorIsSameDay(focused, day),
+            onDaySelected: (selectedDay, focusedDay) {
+              safeSetState(() => _calendarFocusedDay = focusedDay);
+            },
+            eventLoader: (day) =>
+                datesWithSessions.any((d) => _tutorIsSameDay(d, day)) ? ['session'] : [],
+            calendarFormat: CalendarFormat.month,
+            headerStyle: HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              titleTextStyle: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            calendarStyle: CalendarStyle(
+              selectedDecoration: const BoxDecoration(
+                color: AppTheme.primaryColor,
+                shape: BoxShape.circle,
+              ),
+              todayDecoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.3),
+                shape: BoxShape.circle,
+              ),
+              markerDecoration: BoxDecoration(
+                color: AppTheme.primaryColor.withOpacity(0.6),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Sessions on ${DateFormat('EEEE, MMM d').format(focused)}',
+          style: GoogleFonts.poppins(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.primaryColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ..._tutorSessionsForDay(focused).map(
+          (s) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildSessionCard(s),
+          ),
+        ),
+        if (_tutorSessionsForDay(focused).isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'No sessions on this day',
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget _buildFilterChip(String filter, String label) {
     final isSelected = _selectedFilter == filter;
@@ -926,67 +1152,82 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
     final modeColor =
         location == 'online' ? AppTheme.primaryColor : AppTheme.accentGreen;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isExpired 
-              ? Colors.red.withOpacity(0.2)
-              : modeColor.withOpacity(0.15),
-          width: 1,
-        ),
-      ),
+    // Same card style as student My Sessions: white, shadow, padding 16
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
       child: InkWell(
         onTap: () => _showSessionDetails(session),
         borderRadius: BorderRadius.circular(12),
         child: Container(
           decoration: BoxDecoration(
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            color: isExpired 
-                ? Colors.red.withOpacity(0.02)
-                : modeColor.withOpacity(0.03),
-            border: Border(
-              left: BorderSide(
-                color: modeColor.withOpacity(0.7),
-                width: 3,
-              ),
+            border: Border.all(
+              color: isExpired ? Colors.red.withOpacity(0.2) : Colors.grey[200]!,
+              width: 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row: Trial badge and status
+              // Header row: Session type (Trial/Recurring) and mode (Online/On-site) - same pattern as student sessions
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
-                children: [
-                  // Trial Badge
-                  if (isTrialSession)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: Colors.orange.withOpacity(0.2),
-                          width: 1,
+                    children: [
+                      // Trial or Session badge
+                      if (isTrialSession)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: Colors.orange.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            'TRIAL',
+                            style: GoogleFonts.poppins(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange[700],
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        'TRIAL',
-                        style: GoogleFonts.poppins(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange[700],
-                          letterSpacing: 0.5,
+                      if (!isTrialSession)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(
+                              color: AppTheme.primaryColor.withOpacity(0.2),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            'SESSION',
+                            style: GoogleFonts.poppins(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                      if (isTrialSession) const SizedBox(width: 6),
+                      const SizedBox(width: 6),
                       _buildSessionModeBadge(location),
                     ],
                   ),
@@ -1327,9 +1568,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                     // If parsing fails, don't show button
                     isSessionActive = false;
                   }
-                  
-                  // Only show Join Session button when session is active
-                  if (isSessionActive && location == 'online') {
+                  final isTestUser = LiveSessionTestConfig.isTestUser(_currentUserId);
+                  final allowedToJoin = LiveSessionTestConfig.canUserJoinSession(_currentUserId);
+                  final canShowJoin = allowedToJoin && (isSessionActive || isTestUser) && (status == 'scheduled' || status == 'in_progress') && location == 'online';
+                  if (canShowJoin) {
                     return Column(
                       children: [
                         const SizedBox(height: 10),
@@ -2106,6 +2348,17 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   /// Join Agora video session (independent of meetLink)
   Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
     try {
+      if (!LiveSessionTestConfig.canUserJoinSession(_currentUserId)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       LogService.info('🎥 [Join Agora] Tutor joining Agora video session: $sessionId');
       
       // Verify the session exists in the database before navigating
@@ -3169,6 +3422,18 @@ class _SessionDetailsSheet extends StatelessWidget {
   /// Join Agora video session (independent of meetLink)
   Future<void> _joinAgoraSession(BuildContext context, String sessionId) async {
     try {
+      final currentUserId = SupabaseService.currentUser?.id;
+      if (!LiveSessionTestConfig.canUserJoinSession(currentUserId)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(LiveSessionTestConfig.localTestingRestrictionMessage),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
       LogService.info('🎥 Tutor joining Agora video session from details: $sessionId');
       
       // Verify the session exists (check both individual_sessions and trial_sessions)

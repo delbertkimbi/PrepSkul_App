@@ -314,14 +314,7 @@ class _TutorEarningsScreenState extends State<TutorEarningsScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.85),
-          ],
-        ),
+        gradient: AppTheme.headerGradient,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(

@@ -329,6 +329,18 @@ abstract class AppLocalizations {
   /// **'Learning Information'**
   String get profileLearningInformation;
 
+  /// No description provided for @loadRequestsError.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to load requests. Please try again.'**
+  String get loadRequestsError;
+
+  /// No description provided for @requestAnotherTutor.
+  ///
+  /// In en, this message translates to:
+  /// **'Request Another Tutor'**
+  String get requestAnotherTutor;
+
   /// No description provided for @myRequestsTitle.
   ///
   /// In en, this message translates to:

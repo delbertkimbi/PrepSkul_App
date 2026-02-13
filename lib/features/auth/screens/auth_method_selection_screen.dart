@@ -54,7 +54,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
     final subtitleFontSize = isVerySmallScreen ? 12.0 : 14.0;
     final contentTopSpacing = isVerySmallScreen ? 40.0 : (isSmallScreen ? 60.0 : 90.0);
     
-    return StatusBarUtils.withLightStatusBar(
+    return StatusBarUtils.withDarkStatusBar(
       Scaffold(
         backgroundColor: Colors.white,
         body: Stack(
@@ -68,15 +68,8 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
               clipper: WaveClipper(),
               child: Container(
                 height: headerHeight,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),

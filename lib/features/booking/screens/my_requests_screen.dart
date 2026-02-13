@@ -195,6 +195,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
   }
 
+  /// Main shell route for current user (parent → /parent-nav, student → /student-nav).
+  String _getMainNavRoute() =>
+      _getUserType() == 'parent' ? '/parent-nav' : '/student-nav';
+
   // Cache tutor info for trial sessions
   final Map<String, Map<String, dynamic>> _tutorInfoCache = {};
 
@@ -333,8 +337,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         LogService.debug('Trial ${trial.id}: status=${trial.status}, paymentStatus=${trial.paymentStatus}');
       }
 
-      // Load tutor info for all trials
+      // Load tutor info for trials (and for booking requests so avatars show in all cards)
       await _loadTutorInfoForTrials(trials);
+      final bookingTutorIds = bookingRequests
+          .map((r) => r.tutorId)
+          .toSet()
+          .where((id) => !_tutorInfoCache.containsKey(id))
+          .toList();
+      if (bookingTutorIds.isNotEmpty) {
+        await _loadTutorInfoForTutorIds(bookingTutorIds);
+      }
 
       if (!mounted) return;
 
@@ -614,6 +626,60 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
   }
 
+  /// Load tutor info for a list of tutor IDs (e.g. from booking requests) so avatars show in cards
+  Future<void> _loadTutorInfoForTutorIds(List<String> tutorIds) async {
+    if (tutorIds.isEmpty) return;
+    try {
+      final supabase = Supabase.instance.client;
+      try {
+        final tutorProfiles = await supabase
+            .from('tutor_profiles')
+            .select(
+              'user_id, rating, admin_approved_rating, total_reviews, profile_photo_url, profiles!tutor_profiles_user_id_fkey(full_name, avatar_url)',
+            )
+            .inFilter('user_id', tutorIds);
+
+        for (var tutor in tutorProfiles) {
+          final userId = tutor['user_id'] as String;
+          Map<String, dynamic>? profile;
+          final profilesData = tutor['profiles'];
+          if (profilesData is Map) {
+            profile = Map<String, dynamic>.from(profilesData);
+          } else if (profilesData is List && profilesData.isNotEmpty) {
+            profile = Map<String, dynamic>.from(profilesData[0]);
+          }
+          final profilePhotoUrl = tutor['profile_photo_url'] as String?;
+          final avatarUrl = profile?['avatar_url'] as String?;
+          final effectiveAvatarUrl =
+              (profilePhotoUrl != null && profilePhotoUrl.isNotEmpty)
+                  ? profilePhotoUrl
+                  : (avatarUrl != null && avatarUrl.isNotEmpty)
+                      ? avatarUrl
+                      : null;
+          final totalReviews = (tutor['total_reviews'] ?? 0) as int;
+          final adminApprovedRating = tutor['admin_approved_rating'] as double?;
+          final calculatedRating = (tutor['rating'] ?? 0.0) as double;
+          final effectiveRating =
+              (totalReviews < 3 && adminApprovedRating != null)
+                  ? adminApprovedRating
+                  : (calculatedRating > 0
+                      ? calculatedRating
+                      : (adminApprovedRating ?? 0.0));
+          _tutorInfoCache[userId] = {
+            'full_name': profile?['full_name'] ?? 'Tutor',
+            'avatar_url': effectiveAvatarUrl,
+            'rating': effectiveRating,
+          };
+        }
+      } catch (e) {
+        LogService.warning('Error loading tutor info for booking tutors: $e');
+      }
+      if (mounted) safeSetState(() {});
+    } catch (e) {
+      LogService.warning('Error in _loadTutorInfoForTutorIds: $e');
+    }
+  }
+
   List<BookingRequest> _getPendingBookingRequests() {
     return _bookingRequests.where((req) => req.isPending).toList();
   }
@@ -659,9 +725,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           ),
         ),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
+          preferredSize: const Size.fromHeight(56),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             color: Colors.white,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -713,7 +779,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                 color: Colors.white,
               ),
               label: Text(
-                'Request Another Tutor',
+                t.requestAnotherTutor,
                 style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
@@ -750,8 +816,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       return true;
     }).toList();
     
+    // Exclude cancelled booking requests so they disappear after user cancels
+    final activeBookingRequests = _bookingRequests.where((r) => r.status != 'cancelled').toList();
     final allRequests = [
-      ..._bookingRequests.map((r) => _RequestItem(type: 'booking', booking: r)),
+      ...activeBookingRequests.map((r) => _RequestItem(type: 'booking', booking: r)),
       ..._customRequests.map((r) => _RequestItem(type: 'custom', custom: r)),
       ...activeTrialSessions.map((r) => _RequestItem(type: 'trial', trial: r)),
     ];
@@ -781,7 +849,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         // Search bar (disabled for "all" section)
         if (_selectedFilter != 'all')
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
             child: Column(
               children: [
                 TextField(
@@ -823,7 +891,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         // Results count
         if (_searchQuery.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -871,7 +939,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     )
               : ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
                   itemCount: filteredRequests.length,
       itemBuilder: (ctx, index) {
                     final item = filteredRequests[index];
@@ -914,7 +982,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(10),
       itemCount: allPending.length,
       itemBuilder: (ctx, index) {
         final item = allPending[index];
@@ -945,7 +1013,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(10),
       itemCount: _customRequests.length,
       itemBuilder: (ctx, index) {
         final isHighlighted = _highlightRequestId != null && _customRequests[index].id == _highlightRequestId;
@@ -966,7 +1034,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(10),
       itemCount: _trialSessions.length,
       itemBuilder: (ctx, index) {
         final isHighlighted = _highlightRequestId != null && _trialSessions[index].id == _highlightRequestId;
@@ -977,7 +1045,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildBookingsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    if (_bookingRequests.isEmpty) {
+    final activeBookings = _bookingRequests.where((r) => r.status != 'cancelled').toList();
+    if (activeBookings.isEmpty) {
       return _buildEmptyState(context, 
         icon: Icons.book_outlined,
         title: t.myRequestsNoBookingsTitle,
@@ -986,11 +1055,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: _bookingRequests.length,
+      padding: const EdgeInsets.all(10),
+      itemCount: activeBookings.length,
       itemBuilder: (ctx, index) {
-        final isHighlighted = _highlightRequestId != null && _bookingRequests[index].id == _highlightRequestId;
-        return _buildBookingRequestCard(context, _bookingRequests[index], isHighlighted: isHighlighted);
+        final request = activeBookings[index];
+        final isHighlighted = _highlightRequestId != null && request.id == _highlightRequestId;
+        return _buildBookingRequestCard(context, request, isHighlighted: isHighlighted);
       },
     );
   }
@@ -1010,9 +1080,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -1088,7 +1158,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       ),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                        borderRadius: BorderRadius.circular(17),
                       ),
                     ),
                   ),
@@ -1163,10 +1233,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       displayStatus = 'paid';
     }
     
-    // Card is always clickable to show details
+    // Subtle faded deep blue edge to distinguish cards (not thick, no strong color)
+    final border = isHighlighted
+        ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+        : Border.all(color: AppTheme.primaryColor.withOpacity(0.22), width: 1);
     return _buildNeomorphicCard(
-      margin: const EdgeInsets.only(bottom: 14),
-      border: isHighlighted ? Border.all(color: AppTheme.primaryColor, width: 2) : null,
+      margin: const EdgeInsets.only(bottom: 10),
+      border: border,
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -1179,7 +1252,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             _loadRequests();
           });
         },
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(17),
         child: _buildBookingCardContent(context, request, displayStatus),
       ),
     );
@@ -1188,10 +1261,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   Widget _buildBookingCardContent(BuildContext context, BookingRequest request, String displayStatus) {
     final t = AppLocalizations.of(context)!;
     final subject = request.subject ?? 'Regular Session';
+    // Use tutor cache (profile_photo_url from tutor_profiles) so avatar shows when API only had profiles.avatar_url
+    final tutorAvatarUrl = _tutorInfoCache[request.tutorId]?['avatar_url'] as String? ?? request.tutorAvatarUrl;
     
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(17),
         gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
             ? LinearGradient(
                 colors: [
@@ -1217,10 +1292,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                     CircleAvatar(
                       radius: 22,
                       backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                      backgroundImage: request.tutorAvatarUrl != null && request.tutorAvatarUrl!.isNotEmpty
-                          ? CachedNetworkImageProvider(request.tutorAvatarUrl!)
+                      backgroundImage: tutorAvatarUrl != null && tutorAvatarUrl.isNotEmpty
+                          ? CachedNetworkImageProvider(tutorAvatarUrl)
                           : null,
-                      child: request.tutorAvatarUrl == null || request.tutorAvatarUrl!.isEmpty
+                      child: tutorAvatarUrl == null || tutorAvatarUrl.isEmpty
                           ? Text(
                                     request.tutorName.isNotEmpty
                                         ? request.tutorName[0].toUpperCase()
@@ -1261,7 +1336,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             child: Text(
                               request.tutorName,
                               style: GoogleFonts.poppins(
-                                fontSize: 14,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.textDark,
                               ),
@@ -1283,7 +1358,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             child: Text(
                               _getStatusLabel(displayStatus),
                               style: GoogleFonts.poppins(
-                                fontSize: 8,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w600,
                                 color: _getStatusColor(displayStatus),
                               ),
@@ -1305,7 +1380,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 ? request.tutorRating.toStringAsFixed(1)
                                 : 'New',
                             style: GoogleFonts.poppins(
-                              fontSize: 10,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: Colors.grey[700],
                             ),
@@ -1320,7 +1395,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             child: Text(
                               subject,
                               style: GoogleFonts.poppins(
-                                fontSize: 8,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w500,
                                 color: AppTheme.primaryColor,
                               ),
@@ -1395,7 +1470,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       Text(
                         'Monthly Fee',
                         style: GoogleFonts.poppins(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.w500,
                           color: Colors.grey[600],
                           letterSpacing: 0.5,
@@ -1405,7 +1480,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       Text(
                         '${request.monthlyTotal.toStringAsFixed(0)} XAF',
                         style: GoogleFonts.poppins(
-                          fontSize: 20,
+                          fontSize: 19,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.primaryColor,
                           letterSpacing: -0.5,
@@ -1448,7 +1523,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 safeSetState(() {});
                                 // Navigate to sessions tab to show the newly created sessions
                                 Navigator.of(context).pushNamedAndRemoveUntil(
-                                  '/student-nav',
+                                  _getMainNavRoute(),
                                   (route) => route.isFirst,
                                   arguments: {'initialTab': 2}, // Sessions tab
                                 );
@@ -1457,7 +1532,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -1466,7 +1541,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           child: Text(
                             t.myRequestsPayNow,
                             style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -1485,20 +1560,20 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   request: request.toJson(),
                                 ),
                               ),
-                            );
+                            ).then((_) => _loadRequests());
                           },
-                          icon: const Icon(Icons.info_outline, size: 18),
+                          icon: const Icon(Icons.info_outline, size: 17),
                           label: Text(
                             'View Details',
                             style: GoogleFonts.poppins(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: AppTheme.primaryColor,
                             side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -1533,17 +1608,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               }
                             }
                           },
-                          icon: const Icon(Icons.calendar_today, size: 16),
+                          icon: const Icon(Icons.calendar_today, size: 15),
                           label: Text(
                             'View Session',
                             style: GoogleFonts.poppins(
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryColor,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -1569,26 +1644,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final statusColor = _getStatusColor(request.status);
     
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: isHighlighted 
-            ? Border.all(color: AppTheme.primaryColor, width: 2) 
-            : null,
+        borderRadius: BorderRadius.circular(19),
+        border: isHighlighted
+            ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+            : Border.all(color: AppTheme.primaryColor.withOpacity(0.22), width: 1),
         boxShadow: [
-          // Reduced elevation - lighter shadows
           BoxShadow(
-            color: Colors.white.withOpacity(0.3),
+            color: Colors.white.withOpacity(0.2),
             offset: const Offset(-1, -1),
-            blurRadius: 2,
+            blurRadius: 1,
             spreadRadius: 0,
           ),
-          // Dark shadow (bottom-right) - reduced
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withOpacity(0.02),
             offset: const Offset(1, 1),
-            blurRadius: 2,
+            blurRadius: 1,
             spreadRadius: 0,
           ),
         ],
@@ -1607,7 +1680,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             _loadRequests();
           });
         },
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(19),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -1828,8 +1901,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
          session.paymentStatus.toLowerCase() == 'pending');
     final shouldAllowCardTap = !isApprovedUnpaid;
 
+    // Subtle faded deep blue edge to distinguish cards (not thick, no strong color)
+    final border = isHighlighted
+        ? Border.all(color: AppTheme.primaryColor, width: 1.5)
+        : Border.all(color: AppTheme.primaryColor.withOpacity(0.22), width: 1);
+
     return _buildNeomorphicCard(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 10),
+      border: border,
       child: shouldAllowCardTap
           ? InkWell(
               onTap: () {
@@ -1845,7 +1924,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   _loadRequests();
                 });
               },
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(19),
               child: _buildTrialCardContent(context, session, tutorName, tutorAvatarUrl, tutorRating, displayStatus, rejectionReason),
             )
           : IgnorePointer(
@@ -1854,7 +1933,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               child: Material(
                 // Use Material instead of InkWell when card tap is disabled (for approved unpaid sessions)
                 color: Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(19),
                 child: _buildTrialCardContent(context, session, tutorName, tutorAvatarUrl, tutorRating, displayStatus, rejectionReason),
               ),
             ),
@@ -1874,7 +1953,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(19),
         gradient: displayStatus == 'paid' || displayStatus == 'scheduled'
             ? LinearGradient(
                 colors: [
@@ -1944,7 +2023,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 child: Text(
                           tutorName,
                           style: GoogleFonts.poppins(
-                            fontSize: 16,
+                            fontSize: 18,
                                     fontWeight: FontWeight.w700,
                             color: AppTheme.textDark,
                           ),
@@ -1966,7 +2045,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             child: Text(
                               _getStatusLabel(displayStatus, rejectionReason: rejectionReason),
                               style: GoogleFonts.poppins(
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: _getStatusColor(displayStatus, rejectionReason: rejectionReason),
                               ),
@@ -1988,7 +2067,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   ? tutorRating.toStringAsFixed(1)
                                     : 'New',
                               style: GoogleFonts.poppins(
-                                  fontSize: 12,
+                                  fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.grey[700],
                               ),
@@ -2003,7 +2082,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 child: Text(
                                   session.subject,
                                   style: GoogleFonts.poppins(
-                                    fontSize: 10,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w500,
                                     color: AppTheme.primaryColor,
                                   ),
@@ -2063,7 +2142,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   Text(
                     _cleanTrialGoal(session.trialGoal!),
                     style: GoogleFonts.poppins(
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w500,
                       color: Colors.grey[800],
                       height: 1.4,
@@ -2087,7 +2166,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           Text(
                             'Trial Fee',
                             style: GoogleFonts.poppins(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[600],
                               letterSpacing: 0.5,
@@ -2097,7 +2176,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           Text(
                             '${session.trialFee.toStringAsFixed(0)} XAF',
                             style: GoogleFonts.poppins(
-                              fontSize: 20,
+                              fontSize: 19,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.primaryColor,
                               letterSpacing: -0.5,
@@ -2114,8 +2193,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                       flex: 3,
                       child: Builder(
                         builder: (context) {
-                          // Check if session time has passed
+                          // Check if session is completely over vs currently in progress.
+                          // NOTE: SessionDateUtils.isSessionExpired is based on *end* time,
+                          // not just the start time, so ongoing sessions are not treated
+                          // as expired.
                           final hasPassed = SessionDateUtils.isSessionExpired(session);
+                          final isInProgress = SessionDateUtils.isSessionInProgress(session);
                           
                           // Check if session is cancelled with expiration reason
                           final isCancelledExpired = session.status == 'cancelled' && 
@@ -2123,9 +2206,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                                       session.rejectionReason?.contains('not completed') == true);
                           
                           // Show Reschedule for:
-                          // 1. Sessions that have passed (expired) - includes paid sessions that passed
-                          // 2. Cancelled sessions with expiration reason
-                          if (hasPassed || isCancelledExpired) {
+                          // 1. Sessions that have fully passed (expired and not currently in progress)
+                          //    – this includes paid sessions whose time window is over.
+                          // 2. Cancelled sessions with an explicit expiration / not‑completed reason.
+                          //
+                          // This prevents the bad UX where "Reschedule" appears on an
+                          // active, paid session while the time is still ongoing;
+                          // during the active window, the "View Session" button below
+                          // remains available instead.
+                          if ((hasPassed && !isInProgress) || isCancelledExpired) {
                             return OutlinedButton.icon(
                               onPressed: () async {
                                 LogService.info('📅 Reschedule button clicked for trial session: ${session.id}');
@@ -2146,18 +2235,18 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   });
                                 }
                               },
-                              icon: const Icon(Icons.edit_calendar, size: 18),
+                              icon: const Icon(Icons.edit_calendar, size: 17),
                               label: Text(
                                 'Reschedule',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppTheme.primaryColor,
                                 side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -2179,20 +2268,20 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                       trialSession: session,
                                     ),
                                   ),
-                                );
+                                ).then((_) => _loadRequests());
                               },
-                              icon: const Icon(Icons.info_outline, size: 18),
+                              icon: const Icon(Icons.info_outline, size: 17),
                               label: Text(
                                 'View Details',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 14,
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppTheme.primaryColor,
                                 side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -2224,7 +2313,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                     safeSetState(() {});
                                     // Navigate to sessions tab to show the newly created session
                                     Navigator.of(context).pushNamedAndRemoveUntil(
-                                      '/student-nav',
+                                      _getMainNavRoute(),
                                       (route) => route.isFirst,
                                       arguments: {'initialTab': 2}, // Sessions tab
                                     );
@@ -2278,17 +2367,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                   }
                                 }
                               },
-                              icon: const Icon(Icons.calendar_today, size: 16),
+                              icon: const Icon(Icons.calendar_today, size: 15),
                               label: Text(
                                 'View Session',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 13,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppTheme.primaryColor,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(vertical: 10),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -3150,27 +3239,25 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
 
-  /// Neomorphic card container with soft shadows
+  /// Neomorphic card container with soft shadows and a distinguishable border (no elevation)
   Widget _buildNeomorphicCard({required Widget child, EdgeInsets? margin, Border? border}) {
     return Container(
-      margin: margin ?? const EdgeInsets.only(bottom: 16),
+      margin: margin ?? const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(20),
-        border: border,
+        borderRadius: BorderRadius.circular(19),
+        border: border ?? Border.all(color: AppTheme.primaryColor.withOpacity(0.2), width: 1),
         boxShadow: [
-          // Reduced elevation - lighter shadows
           BoxShadow(
-            color: Colors.white.withOpacity(0.5),
-            offset: const Offset(-2, -2),
-            blurRadius: 4,
+            color: Colors.white.withOpacity(0.25),
+            offset: const Offset(-1, -1),
+            blurRadius: 1,
             spreadRadius: 0,
           ),
-          // Dark shadow (bottom-right) - reduced
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            offset: const Offset(2, 2),
-            blurRadius: 4,
+            color: Colors.black.withOpacity(0.025),
+            offset: const Offset(1, 1),
+            blurRadius: 1,
             spreadRadius: 0,
           ),
         ],
@@ -3218,13 +3305,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: Colors.grey[600]),
+        Icon(icon, size: 15, color: Colors.grey[600]),
         const SizedBox(width: 6),
         Flexible(
           child: Text(
             text,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Colors.grey[700],
             ),
@@ -3273,23 +3360,44 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       String errorDetails = '';
 
       if (isTrial && sessionId != null) {
-        // Check for trial session in individual_sessions
+        // Trial sessions live in trial_sessions table, not individual_sessions.
+        // individual_sessions gets a *different* UUID when created for a trial.
+        // Verify trial exists in trial_sessions with paid status and navigate.
         try {
-          final trialSessions = await supabase
-              .from('individual_sessions')
-              .select('id, status, scheduled_date, scheduled_time')
-              .or('learner_id.eq.$userId,parent_id.eq.$userId')
+          final trialRow = await supabase
+              .from('trial_sessions')
+              .select('id, status, payment_status, learner_id, parent_id')
               .eq('id', sessionId)
-              .limit(1);
-          
-          sessions = (trialSessions as List).cast<Map<String, dynamic>>();
-          LogService.info('✅ Found ${sessions.length} trial session(s)');
-          
-          if (sessions.isEmpty) {
-            errorDetails = 'Trial session not found in individual_sessions table.\n'
+              .maybeSingle();
+
+          if (trialRow != null) {
+            final paymentStatus = (trialRow['payment_status'] as String? ?? '').toLowerCase();
+            final status = (trialRow['status'] as String? ?? '').toLowerCase();
+            final learnerId = trialRow['learner_id'] as String?;
+            final parentId = trialRow['parent_id'] as String?;
+            final isLearner = learnerId == userId;
+            final isParent = parentId == userId;
+
+            if ((isLearner || isParent) && paymentStatus == 'paid' && (status == 'scheduled' || status == 'approved')) {
+              sessions = [{'id': trialRow['id']}];
+              LogService.info('✅ Found paid trial session in trial_sessions');
+            } else {
+              errorDetails = 'Trial session found but not ready to view.\n'
+                  'Status: $status, Payment: $paymentStatus\n'
+                  'Session ID: $sessionId\n'
+                  'Please complete payment or wait for confirmation.';
+            }
+          } else {
+            errorDetails = 'Trial session not found.\n'
                 'Session ID: $sessionId\n'
                 'User ID: $userId\n'
-                'This may indicate the session was not created after payment.';
+                'Please refresh or contact support if this persists.';
+          }
+
+          if (sessions.isEmpty && errorDetails.isEmpty) {
+            errorDetails = 'Trial session not found.\n'
+                'Session ID: $sessionId\n'
+                'User ID: $userId';
           }
         } catch (e) {
           errorDetails = 'Error checking trial session: $e';
@@ -3595,8 +3703,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             (route) {
               final isFirst = route.isFirst;
               LogService.info('🔵 [NAVIGATION] Route predicate check: ${route.settings.name} isFirst=$isFirst');
-              // Keep the first route and /student-nav if it exists
-              return isFirst || route.settings.name == '/student-nav';
+              // Keep the first route and main nav (student or parent) if it exists
+              return isFirst ||
+                  route.settings.name == '/student-nav' ||
+                  route.settings.name == '/parent-nav';
             },
             arguments: {'initialTab': 0}, // Upcoming sessions tab
           );
@@ -3941,7 +4051,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       // Navigate to sessions tab
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
-          '/student-nav',
+          _getMainNavRoute(),
           (route) => route.isFirst,
           arguments: {'initialTab': 2}, // Sessions tab
         );

@@ -65,7 +65,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="prepskul" />
             </intent-filter>
-            <!-- Universal Links for PrepSkul -->
+            <!-- App Links: app.prepskul.com -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -73,6 +73,16 @@
                 <data
                     android:scheme="https"
                     android:host="app.prepskul.com" />
+            </intent-filter>
+            <!-- App Links: www.prepskul.com (tutor share links for rich preview + open in app) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="www.prepskul.com"
+                    android:pathPrefix="/tutor" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

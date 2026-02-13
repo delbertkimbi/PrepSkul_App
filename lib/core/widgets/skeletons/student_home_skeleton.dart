@@ -16,15 +16,8 @@ class StudentHomeSkeleton extends StatelessWidget {
             // Hero Header skeleton
             Container(
               width: double.infinity,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    AppTheme.primaryColor,
-                    AppTheme.primaryColor.withOpacity(0.8),
-                  ],
-                ),
+              decoration: const BoxDecoration(
+                gradient: AppTheme.headerGradient,
               ),
               padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
               child: Shimmer.fromColors(
@@ -183,20 +176,20 @@ class StudentHomeSkeleton extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 28),
 
-                    // Section title skeleton
+                    // Quick Actions section title skeleton
                     Container(
-                      width: 130,
+                      width: 120,
                       height: 20,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
 
-                    // Action cards skeleton (3 cards)
+                    // Action cards skeleton (Sessions + Payment History + optional)
                     ...List.generate(3, (index) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),

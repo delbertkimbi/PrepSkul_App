@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// Initial Loading Screen
-/// 
-/// Shows an animated PrepSkul logo on a white background
-/// during the initial app load. This appears before the splash screen
-/// to provide immediate visual feedback to users.
+///
+/// Shows an animated PrepSkul logo on deep blue during the initial app load.
+/// Uses white logo so it's visible; avoids white flash on cold start.
 class InitialLoadingScreen extends StatefulWidget {
   const InitialLoadingScreen({super.key});
 
@@ -60,11 +59,12 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
     super.dispose();
   }
 
+  static const _splashBlue = Color(0xFF1B2C4F);
+
   @override
   Widget build(BuildContext context) {
-    // White background
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _splashBlue,
       body: Center(
         child: AnimatedBuilder(
           animation: _controller,
@@ -77,16 +77,15 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
                   tag: 'prepskul-logo',
                   transitionOnUserGestures: false,
                   child: Image.asset(
-                    'assets/images/app_logo(blue).png',
+                    'assets/images/app_logo(white).png',
                     width: 120,
                     height: 120,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      // Fallback if image fails to load
                       return const Icon(
                         Icons.school,
                         size: 120,
-                        color: Color(0xFF1B2C4F), // Deep blue color
+                        color: Colors.white,
                       );
                     },
                   ),

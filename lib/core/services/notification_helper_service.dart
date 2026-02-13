@@ -208,7 +208,8 @@ class NotificationHelperService {
 
   /// Notify student/parent when tutor accepts booking request
   /// 
-  /// Includes payment request ID for auto-launching payment screen
+  /// Includes payment request ID for auto-launching payment screen.
+  /// Optional [tutorMessage] is the tutor's approval note; when present it is included so the student receives it.
   static Future<void> notifyBookingRequestAccepted({
     required String studentId,
     required String tutorId,
@@ -217,6 +218,7 @@ class NotificationHelperService {
     required String subject,
     String? paymentRequestId, // Payment request ID (created on approval)
     String? senderAvatarUrl,
+    String? tutorMessage, // Optional message from tutor (approval note)
   }) async {
     // Action URL: Navigate to payment if payment request exists, otherwise to booking details
     final actionUrl = paymentRequestId != null
@@ -227,9 +229,12 @@ class NotificationHelperService {
         ? 'Pay Now'
         : 'View Booking';
 
-    final message = paymentRequestId != null
+    String message = paymentRequestId != null
         ? '$tutorName has accepted your booking request for $subject. Please proceed to payment.'
         : '$tutorName has accepted your booking request for $subject. Your sessions are now confirmed!';
+    if (tutorMessage != null && tutorMessage.trim().isNotEmpty) {
+      message = '$message Tutor says: ${tutorMessage.trim()}';
+    }
 
     await _sendNotificationViaAPI(
       userId: studentId,
@@ -285,6 +290,39 @@ class NotificationHelperService {
       },
       sendEmail: true
           );
+  }
+
+  /// Notify tutor when student/parent cancels a booking request (real-time + email + push)
+  static Future<void> notifyBookingRequestCancelled({
+    required String tutorId,
+    required String studentId,
+    required String requestId,
+    required String studentName,
+    required String subject,
+    String? cancellationReason,
+  }) async {
+    final message = cancellationReason != null && cancellationReason.trim().isNotEmpty
+        ? '$studentName has cancelled their booking request for $subject. Reason: $cancellationReason'
+        : '$studentName has cancelled their booking request for $subject.';
+
+    await _sendNotificationViaAPI(
+      userId: tutorId,
+      type: 'booking_cancelled',
+      title: '🗑️ Booking Request Cancelled',
+      message: message,
+      priority: 'normal',
+      actionUrl: '/bookings/requests',
+      actionText: 'View Requests',
+      icon: '🗑️',
+      metadata: {
+        'request_id': requestId,
+        'student_id': studentId,
+        'student_name': studentName,
+        'subject': subject,
+        if (cancellationReason != null) 'cancellation_reason': cancellationReason,
+      },
+      sendEmail: true,
+    );
   }
 
   /// Notify parent/student about multi-learner booking acceptance (partial or full)
@@ -1356,7 +1394,7 @@ class NotificationHelperService {
       userId: learnerId,
       type: 'trial_payment_completed',
       title: 'Trial Payment Confirmed',
-      message: 'Your trial session payment has been confirmed. ${meetLink != null ? "Meet link is now available." : "Your session is scheduled."}',
+      message: 'Your trial session payment has been confirmed. You can join from My Sessions at session time.',
       priority: 'high',
       actionUrl: '/trials/$trialSessionId',
       actionText: 'View Session',

@@ -39,6 +39,8 @@
   "profileHelpSupportSubtitle": "Obtenir de l'aide et contacter le support",
   "profileLogout": "Déconnexion",
   "profileLearningInformation": "Informations d'apprentissage",
+  "loadRequestsError": "Impossible de charger les demandes. Veuillez réessayer.",
+  "requestAnotherTutor": "Demander un autre tuteur",
   "myRequestsTitle": "Mes demandes",
   "myRequestsFilterAll": "Tout",
   "myRequestsFilterPending": "Demande d'approbation en attente",

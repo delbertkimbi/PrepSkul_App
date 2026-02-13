@@ -11,6 +11,36 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class NotificationService {
   static final _supabase = SupabaseService.client;
 
+  /// Returns true if a notification already exists for this user, type(s), and session in the last [withinMinutes].
+  /// [types] can be a single type or list (e.g. tutor may have 'trial_payment_completed' or 'trial_payment_received').
+  static Future<bool> hasRecentNotificationForSession({
+    required String userId,
+    required dynamic typeOrTypes,
+    required String sessionId,
+    int withinMinutes = 5,
+  }) async {
+    try {
+      final types = typeOrTypes is List ? typeOrTypes as List<String> : [typeOrTypes as String];
+      final cutoff = DateTime.now().subtract(Duration(minutes: withinMinutes)).toIso8601String();
+      final res = await _supabase
+          .from('notifications')
+          .select('id, data, type')
+          .eq('user_id', userId)
+          .inFilter('type', types)
+          .gte('created_at', cutoff)
+          .limit(20);
+      final list = (res as List).cast<Map<String, dynamic>>();
+      for (final n in list) {
+        final data = n['data'];
+        if (data is Map && data['session_id'] == sessionId) return true;
+      }
+      return false;
+    } catch (e) {
+      LogService.warning('Error checking duplicate notification: $e');
+      return false;
+    }
+  }
+
   /// Create a notification for a user
   ///
   /// [priority] can be 'low', 'normal', 'high', or 'urgent'

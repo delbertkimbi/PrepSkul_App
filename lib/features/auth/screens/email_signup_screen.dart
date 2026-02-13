@@ -7,6 +7,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'email_confirmation_screen.dart';
@@ -34,7 +35,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
       body: Stack(
@@ -48,15 +50,8 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
               clipper: WaveClipper(),
               child: Container(
                 height: 180,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppTheme.primaryColor,
-                      AppTheme.primaryColor.withOpacity(0.85),
-                    ],
-                  ),
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
                 ),
               ),
             ),
@@ -517,6 +512,7 @@ class _EmailSignupScreenState extends State<EmailSignupScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 

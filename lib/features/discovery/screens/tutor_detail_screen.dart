@@ -602,13 +602,13 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                       ),
                                     ),
                                     if (totalReviewsVal >= 3)
-                                    Text(
-                                      ' ($totalReviewsVal)',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
+                                      Text(
+                                        ' ($totalReviews)',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          color: Colors.grey[600],
+                                        ),
                                       ),
-                                    ),
                                   ],
                                 ),
                               ],

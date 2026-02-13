@@ -49,12 +49,17 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   bool _hasLevelMismatch = false; // Track if selected learners have different education levels
   
   // Always show "Who is this for?" step for parents (so child selection comes before frequency)
-  int get _totalSteps {
-    if (!_isParent) return 6;
-    return 7; // Always 7 steps for parents: Who is this for? + Frequency + Days + Times + Location + optional Flexible + Review
-  }
-  
   bool get _shouldShowWhoIsThisFor => _isParent; // Show for all parents, not just 2+ learners
+  // Steps: [Who?] + Subjects + Frequency + Days + Times + Location + [Flexible?] + Review
+  int get _totalSteps {
+    final base = 6; // Frequency, Days, Times, Location, (Flexible), Review
+    final withWho = _shouldShowWhoIsThisFor ? 1 : 0;
+    final withSubjects = 1; // Always show subjects step
+    return base + withWho + withSubjects;
+  }
+
+  // Per-learner subjects (learner display name -> list of subject strings). Filled in Subjects step.
+  Map<String, List<String>> _learnerSubjects = {};
 
   // Booking data collected through the flow
   int? _selectedFrequency; // Sessions per week
@@ -266,32 +271,33 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   double _getProgressValue() {
     // Adjust progress to account for skipped flexible step
-    final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
-    final flexibleStep = 4 + stepOffset;
+    final flexibleStep = _shouldShowWhoIsThisFor ? 6 : 5; // Flexible is at index 6 (parent) or 5 (non-parent)
     final effectiveSteps = _selectedLocation == 'hybrid' ? _totalSteps : _totalSteps - 1;
-    final effectiveStep = _currentStep > flexibleStep && _selectedLocation != 'hybrid' 
-        ? _currentStep - 1 
+    final effectiveStep = _currentStep > flexibleStep && _selectedLocation != 'hybrid'
+        ? _currentStep - 1
         : _currentStep;
     return (effectiveStep + 1) / effectiveSteps;
   }
 
   bool _canProceed() {
-    // Adjust step index based on whether "Who is this for?" is shown (step 0 = Who when parent)
+    // Step order: [Who?] + Subjects + Frequency + Days + Times + Location + [Flexible?] + Review
     final stepOffset = _shouldShowWhoIsThisFor ? -1 : 0;
     final effectiveStep = _currentStep + stepOffset;
-    
+
     switch (effectiveStep) {
-      case -1: // Who is this for? (only shown when _shouldShowWhoIsThisFor is true)
-        if (!_shouldShowWhoIsThisFor) return true; // Skip validation if not showing
-        return _selectedLearnerIds.isNotEmpty; // At least one selection required
-      case 0: // Frequency
+      case -1: // Who is this for?
+        if (!_shouldShowWhoIsThisFor) return true;
+        return _selectedLearnerIds.isNotEmpty;
+      case 0: // Subjects (at least one subject per selected learner)
+        return _hasValidLearnerSubjects();
+      case 1: // Frequency
         return _selectedFrequency != null;
-      case 1: // Days
+      case 2: // Days
         return _selectedDays.isNotEmpty &&
             _selectedDays.length == _selectedFrequency;
-      case 2: // Times
+      case 3: // Times
         return _selectedTimes.length == _selectedDays.length;
-      case 3: // Location
+      case 4: // Location
         if (_selectedLocation == null) return false;
         // Only onsite requires address (hybrid/flexible doesn't need address upfront)
         if (_selectedLocation == 'onsite') {
@@ -299,7 +305,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         }
         // For online or hybrid/flexible, no address needed upfront
         return true;
-      case 4: // Flexible Session Location Selector (only for hybrid)
+      case 5: // Flexible Session Location Selector (only for hybrid)
         if (_selectedLocation != 'hybrid') return true; // Skip validation if not hybrid
         if (_sessionLocations.length != _selectedDays.length) return false;
         // If any session is onsite, all onsite sessions must have a non-empty address
@@ -310,7 +316,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           }
         }
         return true;
-      case 5: // Review
+      case 6: // Review
         // Require payment plan selection AND minimum display time (1-2 seconds)
         if (_selectedPaymentPlan == null) return false;
         if (_reviewStepReachedAt == null) return false; // Haven't reached review step yet
@@ -325,12 +331,15 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   List<Widget> _buildPageViewChildren() {
     final children = <Widget>[];
     
-    // Step 0: Who is this for? (only for parents with 2+ learners)
+    // Step 0: Who is this for? (only for parents)
     if (_shouldShowWhoIsThisFor) {
       children.add(_buildWhoIsThisFor());
     }
-    
-    // Step 1 (or 0 if not showing "Who is this for?"): Frequency Selector
+
+    // Step 1 (or 0): Subjects for each learner (before frequency)
+    children.add(_buildSubjectsStep());
+
+    // Step 2 (or 1): Frequency Selector
     children.add(
       FrequencySelector(
         tutor: widget.tutor,
@@ -453,6 +462,112 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     );
     
     return children;
+  }
+
+  List<String> _getSelectedLearnerNames() {
+    if (!_isParent || _selectedLearnerIds.isEmpty) {
+      return ['Me'];
+    }
+    final names = <String>[];
+    for (final id in _selectedLearnerIds) {
+      if (id == 'parent') {
+        names.add('Me (Parent)');
+      } else {
+        final list = _parentLearners.where((l) => (l['id']?.toString() ?? '') == id).toList();
+        names.add(list.isNotEmpty ? (list.first['name']?.toString() ?? 'Learner') : 'Learner');
+      }
+    }
+    return names;
+  }
+
+  bool _hasValidLearnerSubjects() {
+    final names = _getSelectedLearnerNames();
+    for (final name in names) {
+      final list = _learnerSubjects[name];
+      if (list == null || list.isEmpty) return false;
+    }
+    return true;
+  }
+
+  Widget _buildSubjectsStep() {
+    final learnerNames = _getSelectedLearnerNames();
+    final tutorSubjects = _getTutorSubjectList();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Subjects for each learner',
+            style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textDark),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Select the subject(s) each person will be tutored in. The tutor will see this when reviewing your request.',
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 24),
+          if (learnerNames.length == 1) ...[
+            _buildSubjectChipsForLearner(learnerNames[0], tutorSubjects),
+          ] else ...[
+            ...learnerNames.map((name) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.primaryColor),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSubjectChipsForLearner(name, tutorSubjects),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<String> _getTutorSubjectList() {
+    final raw = widget.tutor['subjects'] ?? widget.tutor['specializations'];
+    if (raw is List && raw.isNotEmpty) {
+      return raw.map((e) => e?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+    }
+    return [
+      'Mathematics', 'English', 'Physics', 'Chemistry', 'Biology', 'French',
+      'Computer Science', 'Economics', 'Geography', 'History', 'ICT',
+    ];
+  }
+
+  Widget _buildSubjectChipsForLearner(String learnerName, List<String> availableSubjects) {
+    final selected = _learnerSubjects[learnerName] ?? [];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: availableSubjects.map((subject) {
+        final isSelected = selected.contains(subject);
+        return FilterChip(
+          label: Text(subject, style: GoogleFonts.poppins(fontSize: 13)),
+          selected: isSelected,
+          onSelected: (value) {
+            safeSetState(() {
+              _learnerSubjects[learnerName] ??= [];
+              if (value) {
+                _learnerSubjects[learnerName]!.add(subject);
+              } else {
+                _learnerSubjects[learnerName]!.remove(subject);
+              }
+            });
+          },
+          selectedColor: AppTheme.primaryColor.withOpacity(0.3),
+          checkmarkColor: AppTheme.primaryColor,
+        );
+      }).toList(),
+    );
   }
 
   /// Build "Who is this for?" step for parents
@@ -721,6 +836,11 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         monthlyTotal = perSession * sessionsPerMonth;
       }
 
+      // So tutor can see learner card and tap for subjects, pass learner names when we have subjects
+      if (learnerLabels == null && _learnerSubjects.isNotEmpty) {
+        learnerLabels = _getSelectedLearnerNames();
+      }
+
       // Use pre-calculated transportation cost (calculated when location was selected)
       // If not calculated yet, calculate now
       double? estimatedTransportationCost = _estimatedTransportationCost;
@@ -775,6 +895,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         paymentPlan: _selectedPaymentPlan!,
         monthlyTotal: monthlyTotal,
         learnerLabels: learnerLabels,
+        learnerSubjects: _learnerSubjects.isNotEmpty ? _learnerSubjects : null,
         estimatedTransportationCost: estimatedTransportationCost,
         sessionLocations: _selectedLocation == 'hybrid' ? _sessionLocations : null,
         locationDetails: _selectedLocation == 'hybrid' ? _locationDetails : null,

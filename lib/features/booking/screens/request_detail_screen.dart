@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -53,34 +54,101 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
   bool _isLoadingTutorData = false;
 
   Future<void> _cancelRequest() async {
-    final confirm = await showDialog<bool>(
+    // For approved (unpaid) booking request, ask optional reason for tutor
+    final isApprovedBooking = widget.request != null &&
+        widget.request!['is_trial'] != true &&
+        widget.request!['_sessionType'] != 'trial' &&
+        (widget.request!['status'] as String?) == 'approved';
+    String? cancellationReason;
+
+    final result = await showDialog<dynamic>(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Cancel Request?',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'Are you sure you want to cancel this booking request?',
-          style: GoogleFonts.poppins(fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('No', style: GoogleFonts.poppins()),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: Text(
-              'Yes, Cancel',
-              style: GoogleFonts.poppins(color: Colors.white),
+      builder: (context) {
+        if (isApprovedBooking) {
+          final controller = TextEditingController();
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text(
+              'Cancel Request?',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
             ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Are you sure you want to cancel this booking request?',
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Optional reason for tutor:',
+                    style: GoogleFonts.poppins(fontSize: 13),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: controller,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'e.g. schedule changed',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    ),
+                    onChanged: (_) {},
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('No', style: GoogleFonts.poppins()),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final reason = controller.text.trim().isEmpty ? null : controller.text.trim();
+                  Navigator.pop(context, {'confirm': true, 'reason': reason});
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: Text(
+                  'Yes, Cancel',
+                  style: GoogleFonts.poppins(color: Colors.white),
+                ),
+              ),
+            ],
+          );
+        }
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'Cancel Request?',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
           ),
-        ],
-      ),
+          content: Text(
+            'Are you sure you want to cancel this booking request?',
+            style: GoogleFonts.poppins(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('No', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: Text(
+                'Yes, Cancel',
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
     );
+
+    final confirm = result == true || (result is Map && result['confirm'] == true);
+    if (result is Map && result['reason'] != null) cancellationReason = result['reason'] as String?;
 
     if (confirm == true) {
       safeSetState(() => _isCanceling = true);
@@ -102,17 +170,39 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
           if (isTrial && requestId != null) {
             await TrialSessionService.deleteTrialSession(sessionId: requestId);
           } else if (requestId != null) {
-            // For booking_requests, check if there's a cancel method
-            // For now, mark as cancelled in DB
+            // For booking_requests: only cancel if not paid
+            final paymentStatus = widget.request!['payment_status'] as String?;
+            if (paymentStatus == 'paid' || paymentStatus == 'completed') {
+              throw Exception('Cannot cancel a paid booking. Please contact support to reschedule.');
+            }
             await SupabaseService.client
                 .from('booking_requests')
                 .update({'status': 'cancelled'})
                 .eq('id', requestId);
+            // Notify tutor (real-time + email + push)
+            final tutorId = widget.request!['tutor_id'] as String?;
+            final studentId = widget.request!['student_id'] as String?;
+            final studentName = widget.request!['student_name'] as String? ?? 'Student';
+            final subject = widget.request!['subject'] as String? ?? widget.request!['payment_plan'] as String? ?? 'Booking';
+            if (tutorId != null && studentId != null) {
+              try {
+                await NotificationHelperService.notifyBookingRequestCancelled(
+                  tutorId: tutorId,
+                  studentId: studentId,
+                  requestId: requestId,
+                  studentName: studentName,
+                  subject: subject,
+                  cancellationReason: cancellationReason,
+                );
+              } catch (e) {
+                LogService.warning('Failed to send cancellation notification to tutor: $e');
+              }
+            }
           }
         }
         
         if (!mounted) return;
-        Navigator.pop(context); // Go back to list
+        Navigator.pop(context, true); // Go back so list refreshes and item is removed
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -473,6 +563,12 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
             if (session.trialGoal != null || session.learnerChallenges != null)
               const SizedBox(height: 12),
             
+            // Learners section (single or multi-learner) - tappable to view learner detail
+            if (session.displayLearnerNames.isNotEmpty) ...[
+              _buildTrialLearnersCard(context, session),
+              const SizedBox(height: 12),
+            ],
+            
             // Action buttons at bottom
               _buildTrialActions(context, session),
           ],
@@ -828,6 +924,253 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
     // Pattern: [RESCHEDULE REQUEST: ...]
     final reschedulePattern = RegExp(r'\n?\n?\[RESCHEDULE REQUEST:.*?\]', dotAll: true);
     return goal.replaceAll(reschedulePattern, '').trim();
+  }
+
+  Widget _buildTrialLearnersCard(BuildContext context, TrialSession session) {
+    final names = session.displayLearnerNames;
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.people_outline, size: 20, color: AppTheme.primaryColor),
+                const SizedBox(width: 8),
+                Text(
+                  names.length == 1 ? 'Learner' : 'Learners (${names.length})',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...names.map((name) {
+              return Padding(
+                padding: EdgeInsets.only(bottom: names.indexOf(name) < names.length - 1 ? 8 : 0),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _showTrialLearnerDetailSheet(context, session, name),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 16,
+                            backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
+                            child: Text(
+                              name.isNotEmpty ? name[0].toUpperCase() : '?',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.chevron_right, size: 20, color: AppTheme.primaryColor),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTrialLearnerDetailSheet(BuildContext context, TrialSession session, String learnerName) {
+    final dateStr = '${session.scheduledDate.day}/${session.scheduledDate.month}/${session.scheduledDate.year}';
+    final parentId = session.parentId ?? session.learnerId;
+    final learnerDetailsFuture = SupabaseService.client
+        .from('parent_learners')
+        .select()
+        .eq('parent_id', parentId)
+        .eq('name', learnerName)
+        .maybeSingle();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewPadding.bottom),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: AppTheme.primaryColor.withOpacity(0.15),
+                    child: Text(
+                      learnerName.isNotEmpty ? learnerName[0].toUpperCase() : '?',
+                      style: GoogleFonts.poppins(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          learnerName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Trial session & learner details',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              _buildInfoRow('Subject', session.subject),
+              const SizedBox(height: 8),
+              _buildInfoRow('Date', dateStr),
+              const SizedBox(height: 8),
+              _buildInfoRow('Time', session.scheduledTime),
+              const SizedBox(height: 8),
+              _buildInfoRow('Location', session.location.toUpperCase()),
+              FutureBuilder<dynamic>(
+                future: learnerDetailsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                    );
+                  }
+                  final details = snapshot.data as Map<String, dynamic>?;
+                  if (details == null || details.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
+                      Text(
+                        'Learner profile',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (details['education_level'] != null)
+                        _buildInfoRow('Education level', details['education_level'].toString()),
+                      if (details['education_level'] != null) const SizedBox(height: 8),
+                      if (details['class_level'] != null)
+                        _buildInfoRow('Class', details['class_level'].toString()),
+                      if (details['class_level'] != null) const SizedBox(height: 8),
+                      if (details['subjects'] != null && (details['subjects'] as List).isNotEmpty) ...[
+                        _buildInfoRow('Subjects', (details['subjects'] as List).map((e) => e.toString()).join(', ')),
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                  );
+                },
+              ),
+              if (session.trialGoal != null && session.trialGoal!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Goal',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _cleanTrialGoal(session.trialGoal!),
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+              if (session.learnerChallenges != null && session.learnerChallenges!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Challenges',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  session.learnerChallenges!,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildTrialActions(BuildContext context, TrialSession session) {
@@ -2049,7 +2392,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
 
   Future<void> _editRequest(BuildContext context, TutorRequest request) async {
     // Navigate to edit screen (reuse the request flow screen with prefill data)
-    await Navigator.push(
+    final updated = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (context) => RequestTutorFlowScreen(
@@ -2074,15 +2417,9 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
       ),
     );
 
-    // Refresh the screen after returning
-    if (mounted) {
-      Navigator.pop(context); // Go back to list
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => RequestDetailScreen(tutorRequest: request),
-        ),
-      );
+    // If edit was saved, pop back to list so it refreshes (detail is above list)
+    if (mounted && updated == true) {
+      Navigator.pop(context, true);
     }
   }
 
@@ -2122,7 +2459,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
         
         if (!mounted) return;
         
-        Navigator.pop(context); // Go back to list
+        Navigator.pop(context, true); // Go back so list refreshes
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -2326,7 +2663,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                             color: AppTheme.textDark,
                           ),
                         ),
-                        if (tutor['total_reviews'] != null && (tutor['total_reviews'] as int) > 0) ...[
+                        if (tutor['total_reviews'] != null && (tutor['total_reviews'] as int) >= 3) ...[
                           const SizedBox(width: 4),
                           Text(
                             '(${tutor['total_reviews']} reviews)',
@@ -2629,7 +2966,7 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                         ),
                         const SizedBox(height: 12),
                       ],
-                      // Message Tutor button (always show for approved requests)
+                      // Message Tutor button (white, deep blue border + text)
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -2642,9 +2979,11 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
                             ),
                           ),
                           style: OutlinedButton.styleFrom(
+                            backgroundColor: Colors.white,
                             foregroundColor: AppTheme.primaryColor,
                             side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
                             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -2654,6 +2993,40 @@ class _RequestDetailScreenState extends State<RequestDetailScreen> {
                           ),
                         ),
                       ),
+                      // Cancel Request (allowed when approved but not yet paid)
+                      if (paymentStatus != 'paid' && paymentStatus != 'completed') ...[
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isCanceling ? null : _cancelRequest,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isCanceling
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    'Cancel Request',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
                     ],
                   );
                 },

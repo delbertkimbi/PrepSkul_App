@@ -6,6 +6,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.prepskul.com</string>
+		<string>applinks:www.prepskul.com</string>
 		<string>applinks:prepskul.com</string>
 	</array>
 	<!-- Push Notifications -->

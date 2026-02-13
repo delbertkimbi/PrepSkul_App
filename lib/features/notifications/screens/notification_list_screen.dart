@@ -427,7 +427,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         children: [
           // Filter Chips
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             color: Colors.white,
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -633,16 +633,23 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       NotificationService.markAsRead(notification['id'] as String);
     }
 
-    // Use NotificationNavigationService to handle deep linking
-    final actionUrl = notification['action_url'] as String?;
     final notificationType = notification['type'] as String?;
     final metadata = notification['metadata'] as Map<String, dynamic>?;
+    // Use action_url, or for trial payment notifications go to Sessions tab
+    final actionUrl = notification['action_url'] as String?;
+    final url = actionUrl != null && actionUrl.isNotEmpty
+        ? actionUrl
+        : (notificationType == 'trial_payment_completed' || notificationType == 'trial_payment_received')
+            ? '/sessions'
+            : null;
 
-    await NotificationNavigationService.navigateToAction(
-      context: context,
-      actionUrl: actionUrl,
-      notificationType: notificationType,
-      metadata: metadata,
-    );
+    if (url != null) {
+      await NotificationNavigationService.navigateToAction(
+        context: context,
+        actionUrl: url,
+        notificationType: notificationType,
+        metadata: metadata,
+      );
+    }
   }
 }

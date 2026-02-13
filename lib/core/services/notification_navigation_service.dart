@@ -435,14 +435,16 @@ class NotificationNavigationService {
     final navService = NavigationService();
     
     if (pathSegments.length < 2) {
-      // Navigate to sessions tab
-      if (userType == 'tutor') {
-        await navService.navigateToRoute(
-          '/tutor-nav',
-          arguments: {'initialTab': 2}, // Sessions tab
-          replace: false,
-        );
-      }
+      // Navigate to sessions tab (learner and tutor)
+      final role = userType == 'tutor'
+          ? 'tutor'
+          : (userType == 'parent' ? 'parent' : 'student');
+      final route = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+      await navService.navigateToRoute(
+        route,
+        arguments: {'initialTab': 2}, // Sessions tab
+        replace: false,
+      );
       return;
     }
 
