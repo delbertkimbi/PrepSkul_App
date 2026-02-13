@@ -1131,13 +1131,27 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           }
         }
         // Tutor detail route: /tutor/{tutorId}
-        if (settings.name?.startsWith('/tutor/') == true && 
-            settings.name != '/tutor' && 
-            !settings.name!.startsWith('/tutor/profile') && 
-            !settings.name!.startsWith('/tutor/dashboard') && 
+        if (settings.name?.startsWith('/tutor/') == true &&
+            settings.name != '/tutor' &&
+            !settings.name!.startsWith('/tutor/profile') &&
+            !settings.name!.startsWith('/tutor/dashboard') &&
             !settings.name!.startsWith('/tutor/onboarding')) {
           final tutorId = settings.name!.replaceFirst('/tutor/', '');
           if (tutorId.isNotEmpty) {
+            // Auth-first behaviour for web deep links:
+            // - If user is not authenticated, remember the tutorId and send them to auth.
+            // - After successful signup/login, NavigationService / OTP flows
+            //   will read the pending tutor link and open the correct profile.
+            final isAuthenticated = SupabaseService.isAuthenticated;
+            if (!isAuthenticated) {
+              // Fire-and-forget; we don't need to await inside onGenerateRoute.
+              NavigationService.storePendingTutorLink(tutorId);
+              return MaterialPageRoute(
+                settings: const RouteSettings(name: '/auth-method-selection'),
+                builder: (context) => const AuthMethodSelectionScreen(),
+              );
+            }
+
             final args = settings.arguments as Map<String, dynamic>?;
             return MaterialPageRoute(
               builder: (context) => FutureBuilder<Map<String, dynamic>?>(

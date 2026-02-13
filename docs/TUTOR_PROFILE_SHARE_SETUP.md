@@ -4,7 +4,7 @@
 
 | Item | Status / Action |
 |------|------------------|
-| **Next.js middleware** | `/tutor/*` must skip locale redirect so the request hits `app/tutor/[id]/page.tsx`. Done: middleware skips locale for `pathname.startsWith('/tutor/')`. |
+| **Next.js middleware** | `/tutor/*` must skip locale redirect so the request hits `app/tutor/[id]/page.tsx`. Done: middleware skips locale for `pathname.startsWith('/tutor/')` and redirects `/en/tutor/xxx` and `/fr/tutor/xxx` to `/tutor/xxx`. |
 | **iOS Universal Links** | App must claim `www.prepskul.com` so taps on shared links can open the app. Done: `Runner.entitlements` includes `applinks:www.prepskul.com`. |
 | **Android App Links** | App must claim `https://www.prepskul.com/tutor` so taps open the app. Done: intent-filter for `www.prepskul.com` with `pathPrefix="/tutor"`. |
 | **AASA (iOS)** | Served at `https://www.prepskul.com/.well-known/apple-app-site-association`. Replace `TEAM_ID` with your Apple Team ID. |
@@ -32,6 +32,21 @@ curl -s -A "WhatsApp/2.0" "https://www.prepskul.com/tutor/YOUR_TUTOR_ID" | grep 
 ```
 
 You should see tutor-specific `og:title` and `og:image` (tutor name and avatar URL). If you see the default "Find Trusted Home..." title, the tutor page is still not being served for that URL.
+
+---
+
+## 404 when opening a shared link (prepskul.com vs app.prepskul.com)
+
+If **https://www.prepskul.com/tutor/xxx** (or **/en/tutor/xxx**) shows "Page Not Found":
+
+1. **Same app must be at www**  
+   The app that runs at **app.prepskul.com** (Flutter Web) is separate. The **tutor profile page** (with OG meta and redirect) lives in **PrepSkul_Web** (Next.js). For shared links to work, **https://www.prepskul.com** (and prepskul.com) must serve **the same PrepSkul_Web Next.js app** that contains `app/tutor/[id]/page.tsx`. If www is a different deployment (e.g. marketing-only or static site), add the tutor route there or point www to the same Next.js deployment.
+
+2. **Locale-prefixed URLs**  
+   If the link is **/en/tutor/xxx** or **/fr/tutor/xxx**, the middleware now redirects to **/tutor/xxx** so the tutor page loads. Deploy the latest PrepSkul_Web so this redirect is active.
+
+3. **Quick check**  
+   Open `https://www.prepskul.com/tutor/507fc02b-8c68-44d8-a8e9-4f0158e29cfc` (or any real tutor id). You should either see the tutor preview/redirect, or get redirected to app.prepskul.com/tutor/xxx. If you get a 404, www is not serving the Next.js app that has the tutor route.
 
 ---
 
