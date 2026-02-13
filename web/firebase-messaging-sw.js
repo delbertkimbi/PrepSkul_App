@@ -30,8 +30,8 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification?.title || 'PrepSkul';
   const notificationOptions = {
     body: payload.notification?.body || 'You have a new message',
-    icon: '/app_logo(blue).png',
-    badge: '/app_logo(blue).png',
+    icon: '/app_logo_blue.png',
+    badge: '/app_logo_blue.png',
   };
 
   return self.registration.showNotification(notificationTitle, notificationOptions);

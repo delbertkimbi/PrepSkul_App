@@ -9,7 +9,7 @@
     "prefer_related_applications": false,
     "icons": [
         {
-            "src": "app_logo(blue).png",
+            "src": "app_logo_blue.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any"

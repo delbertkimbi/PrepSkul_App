@@ -2412,6 +2412,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             builder: (context) => AgoraVideoSessionScreen(
               sessionId: sessionId,
               userRole: 'tutor',
+              initialCameraEnabled: true,
+              initialMicEnabled: true,
             ),
           ),
         );
@@ -2567,6 +2569,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               builder: (context) => AgoraVideoSessionScreen(
                 sessionId: sessionId,
                 userRole: 'tutor',
+                initialCameraEnabled: true,
+                initialMicEnabled: true,
               ),
             ),
           );
@@ -3477,6 +3481,8 @@ class _SessionDetailsSheet extends StatelessWidget {
             builder: (context) => AgoraVideoSessionScreen(
               sessionId: sessionId,
               userRole: 'tutor',
+              initialCameraEnabled: true,
+              initialMicEnabled: true,
             ),
           ),
         );

@@ -246,6 +246,8 @@ class SessionDetailScreen extends StatelessWidget {
           builder: (context) => AgoraVideoSessionScreen(
             sessionId: sessionId,
             userRole: userRole,
+            initialCameraEnabled: true,
+            initialMicEnabled: true,
           ),
         ),
       );

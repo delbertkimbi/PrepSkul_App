@@ -57,7 +57,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="logo.jpg"/>
   
   <!-- Preload splash screen logo for instant display -->
-  <link rel="preload" as="image" href="app_logo(blue).png" />
+  <link rel="preload" as="image" href="app_logo_blue.png" />
 
   <title>PrepSkul: Find Trusted Home and Online Tutors in Cameroon</title>
   <link rel="manifest" href="manifest.json">
@@ -222,6 +222,31 @@
       NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
     };
+    // INJECT_ENV_MARKER - build-time env (Fapshi etc.) injected here by scripts/inject-env.js - do not remove
+try {
+    window.env = window.env || {};
+        window.env.SUPABASE_URL_PROD = "https://cpzaxdfxbamdsshdgjyg.supabase.co";
+    window.env.SUPABASE_ANON_KEY_PROD = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
+    window.env.SUPABASE_URL_DEV = "https://cpzaxdfxbamdsshdgjyg.supabase.co";
+    window.env.SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
+    window.env.ENVIRONMENT = "development";
+    window.env.FAPSHI_SANDBOX_API_USER = "4a148e87-e185-437d-a641-b465e2bd8d17";
+    window.env.FAPSHI_SANDBOX_API_KEY = "FAK_TEST_0293bda0f3ef142be85b";
+    window.env.FAPSHI_COLLECTION_API_USER_LIVE = "54652088-94b9-4642-8d04-fdab02beb71d";
+    window.env.FAPSHI_COLLECTION_API_KEY_LIVE = "FAK_9194147b613e1fc4ba03237bb6640241";
+    } catch (e) { console.warn('Env injection failed', e); }
+try {
+    window.env = window.env || {};
+        window.env.SUPABASE_URL_PROD = "https://cpzaxdfxbamdsshdgjyg.supabase.co";
+    window.env.SUPABASE_ANON_KEY_PROD = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
+    window.env.SUPABASE_URL_DEV = "https://cpzaxdfxbamdsshdgjyg.supabase.co";
+    window.env.SUPABASE_ANON_KEY_DEV = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU";
+    window.env.ENVIRONMENT = "development";
+    window.env.FAPSHI_SANDBOX_API_USER = "4a148e87-e185-437d-a641-b465e2bd8d17";
+    window.env.FAPSHI_SANDBOX_API_KEY = "FAK_TEST_0293bda0f3ef142be85b";
+    window.env.FAPSHI_COLLECTION_API_USER_LIVE = "54652088-94b9-4642-8d04-fdab02beb71d";
+    window.env.FAPSHI_COLLECTION_API_KEY_LIVE = "FAK_9194147b613e1fc4ba03237bb6640241";
+    } catch (e) { console.warn('Env injection failed', e); }
     
     /**
      * Robust splash removal helpers
@@ -310,14 +335,14 @@
   <div id="flutter-loading">
     <div class="loader-container">
       <div class="loader-logo">
-        <img src="app_logo(blue).png" alt="PrepSkul Logo" />
+        <img src="app_logo_blue.png" alt="PrepSkul Logo" />
       </div>
     </div>
     <div class="loader-progress" aria-hidden="true"></div>
   </div>
   
-  <!-- Agora Web SDK for video sessions -->
-  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js"></script>
+  <!-- Agora Web SDK: load async so it never blocks Flutter (prevents white screen if CDN is slow) -->
+  <script src="https://download.agora.io/sdk/release/iris-web-rtc_n450_w4220_0.8.6.js" async></script>
   
   <script src="flutter_bootstrap.js" async></script>
 </body>

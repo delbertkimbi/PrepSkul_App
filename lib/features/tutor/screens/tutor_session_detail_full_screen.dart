@@ -1058,6 +1058,8 @@ class _TutorSessionDetailFullScreenState
             builder: (context) => AgoraVideoSessionScreen(
               sessionId: sessionId,
               userRole: 'tutor',
+              initialCameraEnabled: true,
+              initialMicEnabled: true,
             ),
           ),
         ).then((_) => _refreshSessionStatus());

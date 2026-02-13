@@ -28,25 +28,9 @@ class AgoraTokenService {
         throw Exception('User not authenticated');
       }
 
-      // Use AppConfig for API URL (handles dev/prod automatically)
-      // For local testing, use localhost if available
-      String apiBaseUrl = AppConfig.apiBaseUrl; // Already includes /api
-      
-      // If running locally (web in debug mode), try localhost first
-      if (kIsWeb && !AppConfig.isProd) {
-        // Check if API_BASE_URL_DEV is set to localhost in .env
-        // Otherwise, try localhost for local Next.js dev server
-        const localhostUrl = 'http://localhost:3000/api';
-        
-        // If the configured URL is not localhost, and we're in debug mode,
-        // try localhost first (you can override by setting API_BASE_URL_DEV=http://localhost:3000/api in .env)
-        if (!apiBaseUrl.contains('localhost') && !apiBaseUrl.contains('127.0.0.1')) {
-          LogService.info('🎥 Local testing detected. Using localhost for Next.js API.');
-          LogService.info('🎥 To use a different URL, set API_BASE_URL_DEV in .env file');
-          apiBaseUrl = localhostUrl;
-        }
-      }
-      
+      // Use effectiveApiBaseUrl so production (app.prepskul.com) always hits www.prepskul.com/api,
+      // and local dev (localhost) hits localhost:3000. Never force localhost when host is app.prepskul.com.
+      final apiBaseUrl = AppConfig.effectiveApiBaseUrl;
       final url = '$apiBaseUrl/agora/token';
       LogService.info('🎥 Fetching Agora token from: $url');
       LogService.debug('🎥 Session ID: $sessionId');

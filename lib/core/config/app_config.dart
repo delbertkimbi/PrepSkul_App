@@ -433,14 +433,26 @@ class AppConfig {
   // Helper Methods
   // ============================================
   
-  /// Safely read environment variable with fallback
+  /// Safely read environment variable with fallback.
+  /// On web, falls back to window.env (injected at build time) when dotenv is empty,
+  /// so production builds get Fapshi/other keys without committing secrets.
   static String _safeEnv(String key, String fallback) {
     try {
       final value = dotenv.env[key];
-      if (value == null || value.isEmpty) return fallback;
-      return value;
+      if (value != null && value.isNotEmpty) return value;
+      // On web, use window.env (set in index.html / inject-env.js at build time)
+      if (kIsWeb) {
+        final windowValue = WindowEnvHelper.getEnv(key);
+        if (windowValue != null && windowValue.isNotEmpty) return windowValue;
+      }
+      return fallback;
     } catch (_) {
-      // dotenv not initialized
+      if (kIsWeb) {
+        try {
+          final windowValue = WindowEnvHelper.getEnv(key);
+          if (windowValue != null && windowValue.isNotEmpty) return windowValue;
+        } catch (_) {}
+      }
       return fallback;
     }
   }

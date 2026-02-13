@@ -751,6 +751,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             builder: (context) => AgoraVideoSessionScreen(
               sessionId: sessionId,
               userRole: userRole,
+              initialCameraEnabled: true,
+              initialMicEnabled: true,
             ),
           ),
         );

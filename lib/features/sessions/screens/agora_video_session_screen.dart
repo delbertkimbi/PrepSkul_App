@@ -32,8 +32,8 @@ class AgoraVideoSessionScreen extends StatefulWidget {
     Key? key,
     required this.sessionId,
     required this.userRole,
-    this.initialCameraEnabled = false, // Default to OFF
-    this.initialMicEnabled = false, // Default to OFF
+    this.initialCameraEnabled = true, // Default ON so session shows video (not just profile cards)
+    this.initialMicEnabled = true, // Default ON so audio works
   }) : super(key: key);
 
   @override
@@ -152,7 +152,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       _isVideoEnabled = widget.initialCameraEnabled;
       _isAudioEnabled = widget.initialMicEnabled;
 
-      // Join channel with initial camera/mic state
+      // Join channel with initial camera/mic state`  
       await _agoraService.joinChannel(
         sessionId: widget.sessionId,
         userId: user.id,
@@ -720,12 +720,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
             // Profile cards - ONLY show when:
             // 1. Remote user left (show local profile)
-            // 2. No remote user joined yet (show local profile if camera off)
+            // 2. No remote user joined yet (show local profile so user sees themselves until other joins)
             // 3. Remote user camera is off AND no remote video is available (show remote profile)
-            // DO NOT show local profile during active call with remote user
+            // DO NOT show local profile during active call with remote user (they see remote in main, local in PIP)
             if (_sessionState == AgoraSessionState.connected) ...[
-              // Show local profile only if: remote left OR (no remote user AND camera off)
-              if (_remoteUserLeft || (_remoteUID == null && !_isVideoEnabled))
+              // Show local profile when: remote left OR no remote user yet (waiting for other participant)
+              if (_remoteUserLeft || _remoteUID == null)
                 _buildLocalProfileCard(),
               // Show remote profile if: remote user left OR (remote exists, camera off, and they haven't left) OR screen is off
               if (_remoteUserLeft)
