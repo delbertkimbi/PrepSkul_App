@@ -54,9 +54,7 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
       default:
         return _challenges;
     }
-  }
-
-  @override
+  }  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(

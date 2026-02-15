@@ -267,9 +267,7 @@ void main() {
       });      test('should handle invalid conversation access', () async {
         // Test authorization
         expect(ChatService.getMessages, isA<Function>());
-      });
-
-      test('should handle blocked message gracefully', () async {
+      });      test('should handle blocked message gracefully', () async {
         // Test blocked message handling
         expect(ChatService.previewMessage, isA<Function>());
       });

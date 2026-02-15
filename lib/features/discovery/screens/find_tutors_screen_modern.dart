@@ -449,8 +449,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                   color: Colors.black,
                                 ),
                               ),
+                              if (((totalReviews as num?)?.toInt() ?? 0) >= 3)
                               Text(
-                                ' ($totalReviews)',
+                                ' (${(totalReviews as num?)?.toInt() ?? 0})',
                                 style: GoogleFonts.poppins(
                                   fontSize: 13,
                                   color: Colors.grey[600],
