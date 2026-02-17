@@ -28,8 +28,8 @@ class AppConfig {
   /// 
   /// ⚠️ Always verify environment variables are Rset correctly:
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
-  /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAPSHI_SANDBOX_API_KEY
-  static const bool isProduction = false; // ← PRODUCTION MODE ENABLED
+  /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAP.eSHI_SANDBOX_API_KEY
+  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // 🔐 Authentication Feature Flags
@@ -51,8 +51,21 @@ class AppConfig {
   /// 
   /// Set to `true` to enable SkulMate (game generation and library).
   /// Set to `false` to disable SkulMate in production.
-  static const bool enableSkulMate = false; // ← Disabled in production until RLS issues are resolved
-  
+  static const bool enableSkulMate = true; // ← Disabled in production until RLS issues are resolved
+
+  /// Enable/disable PrepSkul VA (session summary, analysis, notifications)
+  ///
+  /// Backend VA uses PREPSKUL_VA_ENABLED env (default true; set to 'false' to disable).
+  /// Use this for app-level feature gating (e.g. show/hide summary UI).
+  static bool get enablePrepSkulVA {
+    try {
+      final v = dotenv.env['PREPSKUL_VA_ENABLED']?.toLowerCase();
+      if (v == 'false' || v == '0' || v == 'no') return false;
+      if (v == 'true' || v == '1' || v == 'yes') return true;
+    } catch (_) {}
+    return true;
+  }
+
   // ============================================
   // Session Configuration
   // ============================================
@@ -63,7 +76,7 @@ class AppConfig {
   /// Change this value to adjust session length across the entire app.
   /// 
   /// Example: Set to 60 for 1-hour sessions, 90 for 1.5-hour sessions, etc.
-  static const int sessionDurationMinutes = 5; // ← Default: 61 minutes per session
+  static const int sessionDurationMinutes = 20; // ← Default: 61 minutes per session
   
   // ============================================
   // Environment Detection
@@ -433,14 +446,23 @@ class AppConfig {
   // Helper Methods
   // ============================================
   
-  /// Safely read environment variable with fallback
+  /// Safely read environment variable with fallback.
+  /// On web, checks window.env (injected at build time) when dotenv is empty.
   static String _safeEnv(String key, String fallback) {
     try {
-      final value = dotenv.env[key];
-      if (value == null || value.isEmpty) return fallback;
-      return value;
+      String? value = dotenv.env[key];
+      if (value != null && value.isNotEmpty) return value;
+      // On web production, dotenv may not be available; use window.env from inject-env.js
+      if (kIsWeb) {
+        value = WindowEnvHelper.getEnv(key);
+        if (value != null && value.isNotEmpty) return value;
+      }
+      return fallback;
     } catch (_) {
-      // dotenv not initialized
+      if (kIsWeb) {
+        final value = WindowEnvHelper.getEnv(key);
+        if (value != null && value.isNotEmpty) return value;
+      }
       return fallback;
     }
   }

@@ -1,11 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/services/camera_mic_permission_service.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/features/sessions/services/session_profile_service.dart';
+import 'package:prepskul/features/sessions/services/connection_quality_service.dart';
+import 'package:prepskul/features/sessions/services/agora_service.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
+import 'package:prepskul/features/sessions/widgets/agora_video_view.dart' as agora_widget;
 import 'package:cached_network_image/cached_network_image.dart';
 
 /// Pre-join screen for Agora video sessions
@@ -24,9 +31,12 @@ class AgoraPreJoinScreen extends StatefulWidget {
   State<AgoraPreJoinScreen> createState() => _AgoraPreJoinScreenState();
 }
 
-class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
+class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
+    with WidgetsBindingObserver {
   final SessionProfileService _profileService = SessionProfileService();
   final _supabase = SupabaseService.client;
+  final CameraMicPermissionService _cameraMicPermissionService =
+      CameraMicPermissionService();
 
   bool _cameraEnabled = true;
   bool _micEnabled = true;
@@ -34,6 +44,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
   bool _isLoading = false;
   bool _showPermissionDialog = false;
   String? _errorMessage;
+  bool _permissionDeniedPermanently = false;
   
   Map<String, dynamic>? _userProfile;
   
@@ -42,17 +53,70 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
   bool _micPermissionRequested = false;
   bool _notificationPermissionRequested = false;
 
+  // Pre-lesson connection test (optional)
+  String? _connectionQuality; // 'good', 'fair', 'poor'
+  bool _connectionTested = false;
+  bool _isTestingConnection = false;
+
+  // Live camera preview (pre-join)
+  final AgoraService _agoraService = AgoraService();
+  bool _previewStarted = false;
+  bool _previewStartScheduled = false; // Prevent multiple concurrent starts
+  String? _previewError; // e.g. CORS or token failure on web
+
+  /// Talking indicator: true when local volume is above threshold (pre-join).
+  bool _localSpeaking = false;
+  StreamSubscription<Set<int>>? _speakingSubscription;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadUserProfile();
-    // Don't auto-request permissions - show custom UI first
     _checkPermissionStatus();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _runConnectionTestIfReady());
+    _speakingSubscription = _agoraService.speakingStream.listen((uids) {
+      if (mounted) setState(() => _localSpeaking = uids.contains(0));
+    });
   }
 
   @override
   void dispose() {
+    _speakingSubscription?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _agoraService.releasePreviewIfNotInChannel();
     super.dispose();
+  }
+
+  /// Start Agora local preview when permissions granted and camera on (so user sees themselves).
+  Future<void> _startPreviewIfNeeded() async {
+    if (!_permissionsGranted || !_cameraEnabled || _previewStarted) return;
+    if (mounted) setState(() => _previewError = null);
+    try {
+      await _agoraService.startLocalPreviewForPreJoin(widget.sessionId);
+      if (mounted) setState(() {
+        _previewStarted = true;
+        _previewStartScheduled = false;
+        _previewError = null;
+      });
+    } catch (e) {
+      LogService.warning('[PREVIEW] Pre-join preview failed: $e');
+      final msg = e.toString().contains('CORS') || e.toString().contains('origin')
+          ? 'Could not connect to the server. If you\'re on localhost, the API may need to allow your origin (CORS). Try again or use the app from the same domain as the API.'
+          : 'Camera could not start. Check your connection and try again.';
+      if (mounted) setState(() {
+        _previewStartScheduled = false;
+        _previewError = msg;
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // If user goes to Settings and comes back, refresh permission status.
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissionStatus();
+    }
   }
 
   /// Load user profile
@@ -72,11 +136,35 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
 
   /// Check current permission status
   Future<void> _checkPermissionStatus() async {
-    // Show permission dialog on first load
-    // On web, permissions will be requested by browser when Agora SDK calls getUserMedia
-    // On mobile, permissions will be requested by platform when needed
+    if (kIsWeb) {
+      // Web: permissions are requested by browser when joining (getUserMedia).
+      setState(() {
+        _showPermissionDialog = true;
+      });
+      return;
+    }
+
+    // Android: check runtime permissions so we can guide user (or deep-link to settings).
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final status = await _cameraMicPermissionService.getStatus();
+      setState(() {
+        _permissionsGranted = status.allGranted;
+        _permissionDeniedPermanently = status.anyDeniedPermanently;
+        _showPermissionDialog = !status.allGranted;
+      });
+      if (status.allGranted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _runConnectionTestIfReady();
+          _startPreviewIfNeeded();
+        });
+      }
+      return;
+    }
+
+    // Other platforms: allow flow and rely on OS prompts.
     setState(() {
-      _showPermissionDialog = true;
+      _permissionsGranted = true;
+      _showPermissionDialog = false;
     });
   }
 
@@ -90,23 +178,47 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     try {
       if (kIsWeb) {
         // On web, permissions are requested when Agora SDK calls getUserMedia
-        // We just mark as granted and let the SDK handle it
         setState(() {
           _permissionsGranted = true;
           _showPermissionDialog = false;
         });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _runConnectionTestIfReady();
+          _startPreviewIfNeeded(); // Start preview on web so user sees camera feed
+        });
         LogService.success('✅ Permissions will be requested by browser when joining');
       } else {
-        // For mobile, permissions will be requested by platform when Agora SDK accesses camera/mic
-        // Mark as granted - actual permissions will be requested by platform
-        setState(() {
-          _cameraPermissionRequested = true;
-          _micPermissionRequested = true;
-          _notificationPermissionRequested = true;
-          _permissionsGranted = true; // Will be requested by platform when needed
-          _showPermissionDialog = false;
-        });
-        LogService.success('✅ Permissions will be requested by platform when joining');
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          final status = await _cameraMicPermissionService.request();
+          setState(() {
+            _cameraPermissionRequested = true;
+            _micPermissionRequested = true;
+            _notificationPermissionRequested = true;
+            _permissionsGranted = status.allGranted;
+            _permissionDeniedPermanently = status.anyDeniedPermanently;
+            _showPermissionDialog = !status.allGranted;
+          });
+
+          if (!status.allGranted) {
+            setState(() {
+              _errorMessage = status.anyDeniedPermanently
+                  ? 'Camera/Microphone permissions are blocked. Please enable them in Settings.'
+                  : 'Please allow camera and microphone permissions to continue.';
+            });
+          } else {
+            WidgetsBinding.instance.addPostFrameCallback((_) => _startPreviewIfNeeded());
+          }
+        } else {
+          // For other platforms, rely on platform prompt when joining.
+          setState(() {
+            _cameraPermissionRequested = true;
+            _micPermissionRequested = true;
+            _notificationPermissionRequested = true;
+            _permissionsGranted = true;
+            _showPermissionDialog = false;
+          });
+          LogService.success('✅ Permissions will be requested by platform when joining');
+        }
       }
     } catch (e) {
       LogService.error('❌ Error requesting permissions: $e');
@@ -121,6 +233,44 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     }
   }
 
+  Future<void> _openAppSettings() async {
+    await _cameraMicPermissionService.openAppSettings();
+  }
+
+  /// Run connection test when permissions are granted (optional pre-lesson check).
+  void _runConnectionTestIfReady() {
+    if (!_permissionsGranted || _connectionTested || _isTestingConnection || !mounted) return;
+    _runConnectionTest();
+  }
+
+  Future<void> _runConnectionTest() async {
+    if (_isTestingConnection || !mounted) return;
+    setState(() {
+      _isTestingConnection = true;
+      _connectionTested = false;
+      _connectionQuality = null;
+    });
+    try {
+      final quality = await ConnectionQualityService.assessConnectionQuality();
+      if (mounted) {
+        setState(() {
+          _connectionQuality = quality;
+          _connectionTested = true;
+          _isTestingConnection = false;
+        });
+      }
+    } catch (e) {
+      LogService.warning('Connection test failed: $e');
+      if (mounted) {
+        setState(() {
+          _connectionQuality = 'fair';
+          _connectionTested = true;
+          _isTestingConnection = false;
+        });
+      }
+    }
+  }
+
   /// Get initials from name
   String _getInitials(String name) {
     if (name.isEmpty) return '?';
@@ -131,7 +281,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     return name[0].toUpperCase();
   }
 
-  /// Join the session
+  /// Join the session: pop with result so caller can push video screen (unified join flow).
   Future<void> _joinSession() async {
     if (!_permissionsGranted) {
       setState(() {
@@ -146,28 +296,21 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     });
 
     try {
-      // Stream will be cleaned up automatically
-
-      // Navigate to video session with initial camera/mic state
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
-              sessionId: widget.sessionId,
-              userRole: widget.userRole,
-              initialCameraEnabled: _cameraEnabled,
-              initialMicEnabled: _micEnabled,
-            ),
-          ),
-        );
+        Navigator.pop(context, <String, dynamic>{
+          'join': true,
+          'camera': _cameraEnabled,
+          'mic': _micEnabled,
+        });
       }
     } catch (e) {
-      LogService.error('Error joining session: $e');
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to join session. Please try again.';
-      });
+      LogService.error('[PREVIEW] Error joining session: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Failed to join session. Please try again.';
+        });
+      }
     }
   }
 
@@ -188,16 +331,23 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     final avatarUrl = _userProfile?['avatar_url'] as String?;
     final isMobile = MediaQuery.of(context).size.width < 768;
 
-    return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      body: Stack(
-        children: [
-          SafeArea(
-            child: isMobile ? _buildMobileLayout(name, avatarUrl) : _buildDesktopLayout(name, avatarUrl),
-          ),
-          // Permission dialog overlay
-          if (_showPermissionDialog) _buildPermissionDialog(),
-        ],
+    // Start live camera preview once when permissions granted and camera on (single schedule)
+    if (_permissionsGranted && _cameraEnabled && !_showPermissionDialog && !_previewStarted && !_previewStartScheduled) {
+      setState(() => _previewStartScheduled = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startPreviewIfNeeded());
+    }
+
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: AppTheme.softBackground,
+        body: Stack(
+          children: [
+            SafeArea(
+              child: isMobile ? _buildMobileLayout(name, avatarUrl) : _buildDesktopLayout(name, avatarUrl),
+            ),
+            if (_showPermissionDialog) _buildPermissionDialog(),
+          ],
+        ),
       ),
     );
   }
@@ -272,7 +422,6 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
                         setState(() {
                           _showPermissionDialog = false;
                         });
-                        Navigator.pop(context);
                       },
                       child: Text(
                         'Cancel',
@@ -287,7 +436,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _requestPermissions,
+                      onPressed: _isLoading
+                          ? null
+                          : (_permissionDeniedPermanently
+                              ? _openAppSettings
+                              : _requestPermissions),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -305,7 +458,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
                               ),
                             )
                           : Text(
-                              'Allow',
+                              _permissionDeniedPermanently
+                                  ? 'Open Settings'
+                                  : 'Allow',
                               style: GoogleFonts.poppins(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -359,17 +514,15 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
   Widget _buildDesktopLayout(String name, String? avatarUrl) {
     return Row(
       children: [
-        // Left panel - Preview
+        // Left panel - Preview (soft neutral, no black)
         Expanded(
           flex: 2,
           child: Container(
-            color: Colors.black,
+            color: AppTheme.softBackground,
             child: Stack(
               children: [
-                // Video preview or profile
-                Center(
-                  child: _buildProfilePreview(name, avatarUrl),
-                ),
+                // Live camera preview when on and engine ready, else profile/avatar
+                _buildPreviewContent(name, avatarUrl),
                 // Bottom controls
                 Positioned(
                   bottom: 0,
@@ -378,14 +531,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.9),
-                          Colors.transparent,
-                        ],
-                      ),
+                      color: Colors.white.withOpacity(0.85),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -407,10 +553,18 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
                           icon: _cameraEnabled ? Icons.videocam : Icons.videocam_off,
                           label: _cameraEnabled ? 'Camera on' : 'Camera off',
                           isActive: _cameraEnabled,
-                          onTap: () {
-                            setState(() {
-                              _cameraEnabled = !_cameraEnabled;
-                            });
+                          onTap: () async {
+                            setState(() => _cameraEnabled = !_cameraEnabled);
+                            if (_cameraEnabled) {
+                              if (_previewStarted) {
+                                await _agoraService.setPreJoinCameraEnabled(true);
+                              } else {
+                                await _startPreviewIfNeeded();
+                              }
+                            } else {
+                              await _agoraService.setPreJoinCameraEnabled(false);
+                            }
+                            if (mounted) setState(() {});
                           },
                         ),
                       ],
@@ -438,33 +592,24 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
   Widget _buildMobileLayout(String name, String? avatarUrl) {
     return Column(
       children: [
-        // Top panel - Preview
+        // Top panel - Preview (larger area so video is clearly visible; ~2/3 of screen)
         Expanded(
-          flex: 3,
+          flex: 2,
           child: Container(
-            color: Colors.black,
+            color: AppTheme.softBackground,
             child: Stack(
               children: [
-                // Video preview or profile
-                Center(
-                  child: _buildProfilePreview(name, avatarUrl, isMobile: true),
-                ),
+                // Live camera preview when on and engine ready, else profile/avatar
+                _buildPreviewContent(name, avatarUrl, isMobile: true),
                 // Bottom controls
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.9),
-                          Colors.transparent,
-                        ],
-                      ),
+                      color: Colors.white.withOpacity(0.92),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -486,10 +631,18 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
                           icon: _cameraEnabled ? Icons.videocam : Icons.videocam_off,
                           label: _cameraEnabled ? 'Camera on' : 'Camera off',
                           isActive: _cameraEnabled,
-                          onTap: () {
-                            setState(() {
-                              _cameraEnabled = !_cameraEnabled;
-                            });
+                          onTap: () async {
+                            setState(() => _cameraEnabled = !_cameraEnabled);
+                            if (_cameraEnabled) {
+                              if (_previewStarted) {
+                                await _agoraService.setPreJoinCameraEnabled(true);
+                              } else {
+                                await _startPreviewIfNeeded();
+                              }
+                            } else {
+                              await _agoraService.setPreJoinCameraEnabled(false);
+                            }
+                            if (mounted) setState(() {});
                           },
                         ),
                       ],
@@ -500,17 +653,22 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
             ),
           ),
         ),
-        // Bottom panel - Join options
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.all(24),
-          child: _buildJoinOptions(),
+        // Bottom panel - Join options (compact, scrollable to avoid overflow and show Join + Cancel)
+        Expanded(
+          flex: 1,
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: SingleChildScrollView(
+              child: _buildJoinOptions(),
+            ),
+          ),
         ),
       ],
     );
   }
 
-  /// Join options section (reusable for both layouts)
+  /// Join options section (compact to avoid overflow; Join and Cancel always visible)
   Widget _buildJoinOptions() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -520,24 +678,27 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
         Text(
           'Ready to join?',
           style: GoogleFonts.poppins(
-            fontSize: 24,
+            fontSize: 20,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         Text(
-          'No one else is here',
+          'Check your camera and mic, then join.',
           style: GoogleFonts.poppins(
-            fontSize: 14,
+            fontSize: 13,
             color: Colors.grey[600],
           ),
         ),
-        const SizedBox(height: 32),
-        // Error message
+        const SizedBox(height: 12),
+        if (_connectionQuality != null) ...[
+          _buildConnectionResult(),
+          const SizedBox(height: 12),
+        ],
         if (_errorMessage != null)
           Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
               color: Colors.orange[50],
               borderRadius: BorderRadius.circular(8),
@@ -545,13 +706,13 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.warning, color: Colors.orange[700], size: 20),
+                Icon(Icons.warning, color: Colors.orange[700], size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _errorMessage!,
                     style: GoogleFonts.poppins(
-                      fontSize: 12,
+                      fontSize: 11,
                       color: Colors.orange[900],
                     ),
                   ),
@@ -559,12 +720,11 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
               ],
             ),
           ),
-        // Join button
         ElevatedButton(
           onPressed: _permissionsGranted && !_isLoading ? _joinSession : null,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             elevation: 2,
             shadowColor: AppTheme.primaryColor.withOpacity(0.3),
             shape: RoundedRectangleBorder(
@@ -573,30 +733,50 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
           ),
           child: _isLoading
               ? const SizedBox(
-                  height: 20,
-                  width: 20,
+                  height: 18,
+                  width: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
               : Text(
-                  'Join now',
+                  'Join',
                   style: GoogleFonts.poppins(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                   ),
                 ),
         ),
+        const SizedBox(height: 6),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            'Cancel',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              color: Colors.grey[700],
+            ),
+          ),
+        ),
         if (!_permissionsGranted) ...[
-          const SizedBox(height: 16),
           TextButton(
             onPressed: _requestPermissions,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: Text(
               'Grant permissions',
               style: GoogleFonts.poppins(
-                fontSize: 14,
+                fontSize: 13,
                 color: AppTheme.primaryColor,
               ),
             ),
@@ -606,8 +786,165 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     );
   }
 
+  Widget _buildConnectionResult() {
+    final q = _connectionQuality!;
+    final label = q == 'good'
+        ? 'Good – you\'re good to go'
+        : q == 'fair'
+            ? 'Fair – you can join'
+            : 'Poor – try moving closer to your router';
+    final color = q == 'good'
+        ? Colors.green[700]
+        : q == 'fair'
+            ? Colors.orange[700]
+            : Colors.red[700];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.signal_cellular_alt, size: 18, color: color),
+            const SizedBox(width: 8),
+            Text(
+              'Connection: ${q[0].toUpperCase()}${q.substring(1)}',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+        if (!_isTestingConnection) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _runConnectionTest,
+            child: Text(
+              'Try again',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ),
+        ] else
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: SizedBox(
+              height: 20,
+              width: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
-  /// Build profile preview
+
+  /// Preview area: live camera when engine ready and preview started; profile when off or not ready.
+  /// Keep the same video view in the tree once preview has started so mute/unmute doesn't lose the view.
+  Widget _buildPreviewContent(String name, String? avatarUrl, {bool isMobile = false}) {
+    final engine = _agoraService.engine;
+    if (engine == null || !_previewStarted) {
+      return Container(
+        color: AppTheme.softBackground,
+        child: Center(
+          child: _previewError != null
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 48),
+                      const SizedBox(height: 16),
+                      Text(
+                        _previewError!,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.poppins(color: Colors.grey[700], fontSize: 14),
+                      ),
+                    ],
+                  ),
+                )
+              : _previewStartScheduled && _cameraEnabled
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: AppTheme.primaryColor),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Starting camera...',
+                          style: GoogleFonts.poppins(color: Colors.grey[600], fontSize: 14),
+                        ),
+                      ],
+                    )
+                  : _buildProfilePreview(name, avatarUrl, isMobile: isMobile),
+        ),
+      );
+    }
+    // Once preview started, keep the video view in the tree so toggling camera off/on doesn't recreate it.
+    // On Android, startPreview() must run after the platform view exists; _PreJoinVideoHost does that.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Container(
+          color: Colors.black,
+          child: SizedBox.expand(
+            child: _PreJoinVideoHost(
+              agoraService: _agoraService,
+              child: agora_widget.AgoraVideoViewWidget(
+                key: const ValueKey<String>('prejoin_local_video'),
+                engine: engine,
+                uid: 0,
+                isLocal: true,
+                connection: null,
+              ),
+            ),
+          ),
+        ),
+        if (!_cameraEnabled)
+          Container(
+            color: AppTheme.softBackground,
+            child: Center(child: _buildProfilePreview(name, avatarUrl, isMobile: isMobile)),
+          ),
+        // Talking indicator: show when local mic volume is above threshold
+        if (_localSpeaking && _micEnabled)
+          Positioned(
+            left: 12,
+            bottom: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4, offset: const Offset(0, 2))],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.mic, color: Colors.white, size: 16),
+                  SizedBox(width: 6),
+                  Text('Speaking', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Build profile preview (avatar + name, used when camera off or preview not ready)
   Widget _buildProfilePreview(String name, String? avatarUrl, {bool isMobile = false}) {
     final size = isMobile ? 120.0 : 150.0;
     final fontSize = isMobile ? 36.0 : 48.0;
@@ -669,7 +1006,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
             style: GoogleFonts.poppins(
               fontSize: nameFontSize,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: Colors.grey[800],
             ),
           ),
         ),
@@ -677,13 +1014,14 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
     );
   }
 
-  /// Build pre-join control button
+  /// Build pre-join control button (neutral when on, red when off; deep blue border when on)
   Widget _buildPreJoinControl({
     required IconData icon,
     required String label,
     required bool isActive,
     required VoidCallback onTap,
   }) {
+    const deepBlue = AppTheme.primaryColor;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -691,29 +1029,19 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: isActive 
-                ? AppTheme.primaryColor.withOpacity(0.2) 
-                : Colors.white.withOpacity(0.1),
+            color: isActive
+                ? deepBlue.withOpacity(0.08)
+                : Colors.red.withOpacity(0.12),
             shape: BoxShape.circle,
-            border: !isActive 
-                ? Border.all(color: AppTheme.accentOrange, width: 2) 
-                : null,
-            boxShadow: isActive
-                ? [
-                    BoxShadow(
-                      color: AppTheme.primaryColor.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
+            border: Border.all(
+              color: isActive ? deepBlue : Colors.red,
+              width: 2,
+            ),
           ),
           child: IconButton(
             icon: Icon(
               icon,
-              color: !isActive 
-                  ? AppTheme.accentOrange 
-                  : AppTheme.primaryColor,
+              color: isActive ? deepBlue : Colors.red,
               size: 24,
             ),
             onPressed: onTap,
@@ -723,7 +1051,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
         Text(
           label,
           style: GoogleFonts.poppins(
-            color: Colors.white,
+            color: Colors.grey[800],
             fontSize: 12,
           ),
         ),
@@ -732,3 +1060,40 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen> {
   }
 }
 
+/// On Android, the native video view must exist before startPreview() or the preview stays black.
+/// This widget calls [AgoraService.startPreJoinPreviewCapture] after the first frame so the view is in the tree.
+class _PreJoinVideoHost extends StatefulWidget {
+  final AgoraService agoraService;
+  final Widget child;
+
+  const _PreJoinVideoHost({required this.agoraService, required this.child});
+
+  @override
+  State<_PreJoinVideoHost> createState() => _PreJoinVideoHostState();
+}
+
+class _PreJoinVideoHostState extends State<_PreJoinVideoHost> {
+  bool _captureStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // On mobile (Android/iOS), the native view must exist before startPreview() or preview stays black.
+    if (!kIsWeb) {
+      // Delay so the platform view is in the tree and has a surface (Android especially needs this).
+      final delayMs = defaultTargetPlatform == TargetPlatform.android ? 150 : 50;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!_captureStarted && mounted) {
+          await Future.delayed(Duration(milliseconds: delayMs));
+          if (!_captureStarted && mounted) {
+            _captureStarted = true;
+            widget.agoraService.startPreJoinPreviewCapture();
+          }
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}

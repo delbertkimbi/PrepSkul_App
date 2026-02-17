@@ -28,18 +28,21 @@ import 'challenges_screen.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/utils/debouncer.dart';
+import '../widgets/session_summaries_tab.dart';
 
-/// Screen showing all generated games
+/// Screen showing all generated games with tabs: Sessions, My Games, Upload
 class GameLibraryScreen extends StatefulWidget {
   final String? childId; // For parents viewing child's games
+  final int initialTab; // 0 = Sessions, 1 = My Games, 2 = Upload
 
-  const GameLibraryScreen({Key? key, this.childId}) : super(key: key);
+  const GameLibraryScreen({Key? key, this.childId, this.initialTab = 1}) : super(key: key);
 
   @override
   State<GameLibraryScreen> createState() => _GameLibraryScreenState();
 }
 
-class _GameLibraryScreenState extends State<GameLibraryScreen> {
+class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   List<GameModel> _games = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
@@ -57,12 +60,18 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 2),
+    );
     _loadGames();
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _searchController.dispose();
     _searchDebouncer.dispose();
     _scrollController.dispose();
@@ -654,12 +663,31 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
         elevation: 0,
         centerTitle: true,
         title: Text(
-          'My Games',
+          'skulMate',
           style: GoogleFonts.poppins(
             fontSize: 20,
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: AppTheme.primaryColor,
+          unselectedLabelColor: AppTheme.textMedium,
+          indicatorColor: AppTheme.primaryColor,
+          labelStyle: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+          tabs: const [
+            Tab(text: 'Sessions'),
+            Tab(text: 'My Games'),
+            Tab(text: 'Upload'),
+          ],
         ),
         actions: [
           IconButton(
@@ -723,199 +751,15 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
           const SizedBox(width: 8), // Spacing from edge
         ],
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          // Search and filter
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: Colors.white,
-            child: Column(
-              children: [
-                // Search bar - more compact
-                TextField(
-                  controller: _searchController,
-                  onChanged: (value) {
-                    // Debounced search - will execute after user stops typing
-                    _searchDebouncer.run(() {
-                      if (mounted) {
-                        setState(() {}); // Trigger rebuild to show filtered results
-                      }
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search games...',
-                    hintStyle: GoogleFonts.poppins(fontSize: 13),
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: Colors.grey[300]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey[50],
-                  ),
-                  style: GoogleFonts.poppins(fontSize: 14),
-                ),
-                const SizedBox(height: 10),
-                // Filter chips
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildFilterChip('All', null),
-                      const SizedBox(width: 8),
-                      _buildFavoriteChip(),
-                      const SizedBox(width: 8),
-                      _buildFilterChip('Quiz', 'quiz'),
-                      const SizedBox(width: 8),
-                      _buildFilterChip('Flashcards', 'flashcards'),
-                      const SizedBox(width: 8),
-                      _buildFilterChip('Matching', 'matching'),
-                      const SizedBox(width: 8),
-                      _buildFilterChip('Fill Blank', 'fill_blank'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Games list
-          Expanded(
-            child: _isLoading
-                ? ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: 5,
-                    itemBuilder: (context, index) => ShimmerLoading.gameCard(),
-                  )
-                : FutureBuilder<List<GameModel>>(
-                    future: _getFilteredGames(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: 5,
-                          itemBuilder: (context, index) => ShimmerLoading.gameCard(),
-                        );
-                      }
-                      final filteredGames = snapshot.data ?? [];
-                      
-                      if (filteredGames.isEmpty) {
-                        return _buildEmptyState();
-                      }
-
-                      // Show "Recently Played" section if applicable
-                      return FutureBuilder<List<GameModel>>(
-                        future: _getRecentlyPlayedGames(),
-                        builder: (context, recentlyPlayedSnapshot) {
-                          final recentlyPlayed = recentlyPlayedSnapshot.data ?? [];
-                          final showRecentlyPlayed = recentlyPlayed.isNotEmpty && 
-                                                     _sortBy != 'recently_played' &&
-                                                     !_showFavoritesOnly &&
-                                                     _selectedFilter == null &&
-                                                     _searchController.text.isEmpty;
-
-                          return RefreshIndicator(
-                            onRefresh: () async {
-                              _gameLastPlayedDates.clear();
-                              await _loadGames(refresh: true);
-                            },
-                            child: ListView.builder(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.all(16),
-                              itemCount: filteredGames.length + 
-                                        (showRecentlyPlayed ? recentlyPlayed.length + 2 : 0) +
-                                        (_isLoadingMore ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                // Recently Played section header
-                                if (showRecentlyPlayed && index == 0) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.history, color: AppTheme.primaryColor, size: 20),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Recently Played',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppTheme.textDark,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                }
-
-                                // Recently Played games
-                                if (showRecentlyPlayed && index > 0 && index <= recentlyPlayed.length) {
-                                  final game = recentlyPlayed[index - 1];
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 12),
-                                    child: GameCard(
-                                      game: game,
-                                      onTap: () => _navigateToGame(game),
-                                      onDelete: () => _deleteGame(game),
-                                      onPreview: () => _showGamePreview(game),
-                                      onShare: () => _shareGame(game),
-                                    ),
-                                  );
-                                }
-
-                                // Divider between sections
-                                if (showRecentlyPlayed && index == recentlyPlayed.length + 1) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    child: Divider(color: Colors.grey[300]),
-                                  );
-                                }
-
-                                // All games section
-                                final gameIndex = showRecentlyPlayed 
-                                    ? index - recentlyPlayed.length - 2
-                                    : index;
-                                
-                                // Loading indicator at bottom
-                                if (gameIndex >= filteredGames.length) {
-                                  if (_isLoadingMore) {
-                                    return const Padding(
-                                      padding: EdgeInsets.all(16.0),
-                                      child: Center(
-                                        child: CircularProgressIndicator(),
-                                      ),
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                }
-                                
-                                if (gameIndex < 0) {
-                                  return const SizedBox.shrink();
-                                }
-                                
-                                final game = filteredGames[gameIndex];
-                                return GameCard(
-                                  game: game,
-                                  onTap: () => _navigateToGame(game),
-                                  onDelete: () => _deleteGame(game),
-                                  onPreview: () => _showGamePreview(game),
-                                  onShare: () => _shareGame(game),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-          ),
+          // Tab 0: Sessions
+          SessionSummariesTab(childId: widget.childId),
+          // Tab 1: My Games
+          _buildMyGamesTab(),
+          // Tab 2: Upload
+          _buildUploadTab(),
         ],
       ),
     );
@@ -980,6 +824,252 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+  }
+
+  Widget _buildMyGamesTab() {
+    return Column(
+      children: [
+        // Search and filter
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: Colors.white,
+          child: Column(
+            children: [
+              // Search bar
+              TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  _searchDebouncer.run(() {
+                    if (mounted) {
+                      setState(() {});
+                    }
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search games...',
+                  hintStyle: GoogleFonts.poppins(fontSize: 13),
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: Colors.grey[300]!),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                style: GoogleFonts.poppins(fontSize: 14),
+              ),
+              const SizedBox(height: 10),
+              // Filter chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildFilterChip('All', null),
+                    const SizedBox(width: 8),
+                    _buildFavoriteChip(),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Quiz', 'quiz'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Flashcards', 'flashcards'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Matching', 'matching'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('Fill Blank', 'fill_blank'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Games list
+        Expanded(
+          child: _isLoading
+              ? ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: 5,
+                  itemBuilder: (context, index) => ShimmerLoading.gameCard(),
+                )
+              : FutureBuilder<List<GameModel>>(
+                  future: _getFilteredGames(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: 5,
+                        itemBuilder: (context, index) => ShimmerLoading.gameCard(),
+                      );
+                    }
+                    final filteredGames = snapshot.data ?? [];
+                    
+                    if (filteredGames.isEmpty) {
+                      return _buildEmptyState();
+                    }
+
+                    return FutureBuilder<List<GameModel>>(
+                      future: _getRecentlyPlayedGames(),
+                      builder: (context, recentlyPlayedSnapshot) {
+                        final recentlyPlayed = recentlyPlayedSnapshot.data ?? [];
+                        final showRecentlyPlayed = recentlyPlayed.isNotEmpty && 
+                                                   _sortBy != 'recently_played' &&
+                                                   !_showFavoritesOnly &&
+                                                   _selectedFilter == null &&
+                                                   _searchController.text.isEmpty;
+
+                        return RefreshIndicator(
+                          onRefresh: () async {
+                            _gameLastPlayedDates.clear();
+                            await _loadGames(refresh: true);
+                          },
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: filteredGames.length + 
+                                      (showRecentlyPlayed ? recentlyPlayed.length + 2 : 0) +
+                                      (_isLoadingMore ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (showRecentlyPlayed && index == 0) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.history, color: AppTheme.primaryColor, size: 20),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Recently Played',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppTheme.textDark,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
+
+                              if (showRecentlyPlayed && index > 0 && index <= recentlyPlayed.length) {
+                                final game = recentlyPlayed[index - 1];
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: GameCard(
+                                    game: game,
+                                    onTap: () => _navigateToGame(game),
+                                    onDelete: () => _deleteGame(game),
+                                    onPreview: () => _showGamePreview(game),
+                                    onShare: () => _shareGame(game),
+                                  ),
+                                );
+                              }
+
+                              if (showRecentlyPlayed && index == recentlyPlayed.length + 1) {
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: Divider(color: Colors.grey[300]),
+                                );
+                              }
+
+                              final gameIndex = showRecentlyPlayed 
+                                  ? index - recentlyPlayed.length - 2
+                                  : index;
+                              
+                              if (gameIndex >= filteredGames.length) {
+                                if (_isLoadingMore) {
+                                  return const Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: Center(child: CircularProgressIndicator()),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              }
+                              
+                              if (gameIndex < 0) return const SizedBox.shrink();
+                              
+                              final game = filteredGames[gameIndex];
+                              return GameCard(
+                                game: game,
+                                onTap: () => _navigateToGame(game),
+                                onDelete: () => _deleteGame(game),
+                                onPreview: () => _showGamePreview(game),
+                                onShare: () => _shareGame(game),
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUploadTab() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.upload_file_rounded,
+              size: 80,
+              color: AppTheme.primaryColor.withOpacity(0.3),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Create New Game',
+              style: GoogleFonts.poppins(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Upload your notes, documents, or photos to generate interactive revision games.',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.textMedium,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SkulMateUploadScreen(
+                      childId: widget.childId,
+                    ),
+                  ),
+                ).then((_) => _loadGames(refresh: true));
+              },
+              icon: const Icon(Icons.add_circle_outline),
+              label: const Text('Upload Content'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

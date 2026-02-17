@@ -34,6 +34,7 @@ import 'package:prepskul/core/navigation/main_navigation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/push_notification_service.dart';
+import 'package:prepskul/core/services/notification_navigation_service.dart';
 import 'package:prepskul/core/config/app_config.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -54,9 +55,14 @@ import 'dart:async';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Prevent google_fonts from crashing the app when offline.
+  // When disabled, TextStyles fall back gracefully without runtime downloads.
+  GoogleFonts.config.allowRuntimeFetching = false;
 
   try {
     // CRITICAL: Initialize Firebase BEFORE runApp() on web
@@ -208,17 +214,54 @@ Future<void> _initializePushNotifications() async {
   try {
     await PushNotificationService().initialize(
       onNotificationTap: (message) {
-        // Handle notification tap navigation
-        // This will be handled by the navigation system
-        final data = message?.data;
-        if (data != null) {
-          LogService.debug('📱 Notification tapped: ${data.toString()}');
-        } else {
-          LogService.debug('📱 Notification tapped (no data)');
+        // Handle notification tap navigation (deep links).
+        // This is critical for message notifications: user expects to land in the DM.
+        try {
+          Map<String, dynamic>? data;
+          if (message == null) {
+            data = null;
+          } else if (message is Map) {
+            // Local-notification tap payload may be parsed into a Map.
+            final raw = message['data'] ?? message;
+            if (raw is Map) data = Map<String, dynamic>.from(raw);
+          } else {
+            // RemoteMessage-style object
+            final raw = (message as dynamic).data;
+            if (raw is Map) data = Map<String, dynamic>.from(raw);
+          }
+
+          if (data != null) {
+            LogService.debug('📱 Notification tapped: ${data.toString()}');
+            final actionUrl = data['actionUrl']?.toString() ?? data['action_url']?.toString();
+            final type = data['type']?.toString();
+            // Use the same navigation logic as in-app notifications.
+            NotificationNavigationService.navigateToAction(
+              context: NavigationService().context,
+              actionUrl: actionUrl,
+              notificationType: type,
+              metadata: data,
+            );
+          } else {
+            LogService.debug('📱 Notification tapped (no data)');
+          }
+        } catch (e) {
+          LogService.warning('Error handling notification tap: $e');
         }
       },
     );
     LogService.success('Push notifications initialized');
+
+    // DEBUG ONLY: proactively request permission so we can verify token + delivery
+    // without waiting on onboarding flags / specific login paths.
+    if (!kIsWeb && kDebugMode) {
+      Future.delayed(const Duration(seconds: 2), () async {
+        try {
+          await PushNotificationService().requestPermission();
+        } catch (e) {
+          LogService.debug('⚠️ Debug push permission request failed: $e');
+        }
+      });
+    }
   } catch (e) {
     LogService.error('Error initializing push notifications: $e');
   }
@@ -465,6 +508,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     // Initialize NavigationService with navigator key
     NavigationService().initialize(_navigatorKey);
     _initDeepLinks();
+    // Track app opens for notification prompt eligibility.
+    NotificationPermissionNudgeService.recordAppOpen();
   }
 
   @override
@@ -480,6 +525,19 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       final initialLink = await _appLinks.getInitialLink();
       if (initialLink != null) {
         _handleDeepLink(initialLink);
+      } else if (kIsWeb) {
+        // On web, getInitialLink() often returns null when opening a URL directly.
+        // Use Uri.base so tutor (and other) deep links work when landing on web.
+        final baseUri = Uri.base;
+        String path = baseUri.path;
+        if (path == '/' && baseUri.fragment.isNotEmpty) {
+          final f = baseUri.fragment;
+          path = f.startsWith('/') ? f : '/$f';
+        }
+        if (path.isNotEmpty && (path != '/' || baseUri.queryParameters['tutor'] != null)) {
+          final uri = Uri(path: path, queryParameters: baseUri.queryParameters, fragment: baseUri.fragment);
+          _handleDeepLink(uri);
+        }
       }
     } catch (e) {
       LogService.warning('Error getting initial link: $e');
@@ -512,17 +570,30 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     }
 
     // Allow path "/" or empty when query has code+type (e.g. email reset opens app: ?code=...&type=recovery)
+    // or when query has tutor= (e.g. web landing ?tutor=xxx) so we store and navigate after auth.
     final code = uri.queryParameters['code'];
     final type = uri.queryParameters['type'];
+    final tutorFromQuery = uri.queryParameters['tutor'];
     if (path.isEmpty || path == '/') {
       if (code != null && type != null) path = '/reset-password';
-      else return;
+      else if (tutorFromQuery == null || tutorFromQuery.trim().isEmpty) return;
+    }
+
+    // If a tutor id is present in query params, store it so post-auth can navigate
+    // to the tutor detail screen (Preply-style).
+    if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
+      try {
+        await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
+        LogService.debug('🔗 [DEEP_LINK] Stored pending tutor from query param: ${tutorFromQuery.trim()}');
+      } catch (e) {
+        LogService.debug('🔗 [DEEP_LINK] Failed storing tutor query param (non-blocking): $e');
+      }
     }
 
     // Handle tutor detail deep links: /tutor/{tutorId}
     // These are public routes (like Preply) - anyone can view tutor profiles
     if (path.startsWith('/tutor/') && path != '/tutor' && !path.startsWith('/tutor/profile') && !path.startsWith('/tutor/dashboard') && !path.startsWith('/tutor/onboarding')) {
-      final tutorId = path.replaceFirst('/tutor/', '');
+      final tutorId = path.replaceFirst('/tutor/', '').trim().split('/').first;
       if (tutorId.isNotEmpty) {
         LogService.debug('🔗 [DEEP_LINK] Tutor detail link detected: $tutorId');
         
@@ -546,6 +617,28 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         // User is authenticated - navigate directly to tutor profile
         final navService = NavigationService();
         if (navService.isReady) {
+          // If the signed-in user is a tutor account, don't drop them into a tutor-detail booking flow.
+          // Take them to tutor dashboard instead (requested behavior).
+          try {
+            final me = SupabaseService.currentUser;
+            if (me != null) {
+              final myProfile = await SupabaseService.client
+                  .from('profiles')
+                  .select('user_type')
+                  .eq('id', me.id)
+                  .maybeSingle();
+              final myUserType = myProfile?['user_type'] as String?;
+              if (myUserType == 'tutor') {
+                LogService.debug('🔗 [DEEP_LINK] Auth user is tutor; routing to dashboard instead of tutor detail');
+                navService.navigateToRoute('/tutor/dashboard');
+                return;
+              }
+            }
+          } catch (e) {
+            // Non-blocking; fall back to tutor detail navigation below.
+            LogService.debug('🔗 [DEEP_LINK] Could not resolve user_type (non-blocking): $e');
+          }
+
           // Fetch tutor data and navigate to tutor detail screen
           try {
             final tutor = await TutorService.fetchTutorById(tutorId);
@@ -1258,7 +1351,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             try {
               final result = await navService.determineInitialRoute();
               if (mounted) {
-                _navigateInstant(result.route, result.arguments);
+                await _navigateInstant(result.route, result.arguments);
                 // Splash removal is now handled inside _navigateInstant for web
                 setState(() {
                   _navigationComplete = true;
@@ -1268,7 +1361,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               LogService.warning('[INIT_LOAD] Error in timeout fallback for authenticated user: $e');
               // If we can't determine route, try dashboard as last resort
               if (mounted) {
-                _navigateInstant('/dashboard', null);
+                await _navigateInstant('/dashboard', null);
                 // Splash removal is now handled inside _navigateInstant for web
                 setState(() {
                   _navigationComplete = true;
@@ -1277,7 +1370,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             }
           } else {
             // User is not authenticated - redirect to auth screen
-            _navigateInstant('/auth-method-selection', null);
+            await _navigateInstant('/auth-method-selection', null);
             // Splash removal is now handled inside _navigateInstant for web
             setState(() {
               _navigationComplete = true;
@@ -1291,6 +1384,60 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
   Future<void> _initializeAndNavigate() async {
     if (_isNavigating || _navigationComplete) return;
     _isNavigating = true;
+
+    // Preply-style: If app was opened via tutor link, store pending tutor BEFORE determining route
+    // so we land on tutor detail after auth with no transitional UI.
+    try {
+      // On web, getInitialLink() often returns null when user opens the URL directly (no link event).
+      // Always read Uri.base on web so tutor links work when landing on e.g. /tutor/xyz or #/tutor/xyz.
+      if (kIsWeb) {
+        final baseUri = Uri.base;
+        String path = baseUri.path;
+        if (path == '/' && baseUri.fragment.isNotEmpty) {
+          final f = baseUri.fragment;
+          path = f.startsWith('/') ? f : '/$f';
+        }
+        if (path.startsWith('/tutor/') &&
+            path != '/tutor' &&
+            !path.startsWith('/tutor/profile') &&
+            !path.startsWith('/tutor/dashboard') &&
+            !path.startsWith('/tutor/onboarding')) {
+          final tutorId = path.replaceFirst('/tutor/', '').trim().split('/').first;
+          if (tutorId.isNotEmpty) {
+            await NavigationService.storePendingTutorLink(tutorId);
+            LogService.debug('[INIT_LOAD] [WEB] Stored pending tutor from Uri.base: $tutorId');
+          }
+        }
+        final tutorFromQuery = baseUri.queryParameters['tutor'];
+        if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
+          await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
+          LogService.debug('[INIT_LOAD] [WEB] Stored pending tutor from query: ${tutorFromQuery.trim()}');
+        }
+      }
+      final appLinks = AppLinks();
+      final initialUri = await appLinks.getInitialLink();
+      if (initialUri != null) {
+        final path = initialUri.path;
+        if (path.startsWith('/tutor/') &&
+            path != '/tutor' &&
+            !path.startsWith('/tutor/profile') &&
+            !path.startsWith('/tutor/dashboard') &&
+            !path.startsWith('/tutor/onboarding')) {
+          final tutorId = path.replaceFirst('/tutor/', '').trim();
+          if (tutorId.isNotEmpty) {
+            await NavigationService.storePendingTutorLink(tutorId);
+            LogService.debug('[INIT_LOAD] Stored pending tutor from initial link: $tutorId');
+          }
+        }
+        final tutorFromQuery = initialUri.queryParameters['tutor'];
+        if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
+          await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
+          LogService.debug('[INIT_LOAD] Stored pending tutor from query: ${tutorFromQuery.trim()}');
+        }
+      }
+    } catch (e) {
+      LogService.debug('[INIT_LOAD] Could not parse initial link (non-blocking): $e');
+    }
 
     // Check connectivity FIRST - if offline, use cached data immediately
     bool isOffline = false;
@@ -1315,7 +1462,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           // No cached session - can't proceed offline, show auth immediately
           LogService.info('[INIT_LOAD] No cached session - showing auth screen immediately');
           if (mounted) {
-            _navigateInstant('/auth-method-selection', null);
+            await _navigateInstant('/auth-method-selection', null);
             setState(() {
               _navigationComplete = true;
             });
@@ -1358,7 +1505,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             LogService.success('[INIT_LOAD] Determined route: ${result.route}');
             // Navigate to determined route (could be onboarding, survey, or dashboard)
             if (mounted) {
-              _navigateInstant(result.route, result.arguments);
+              await _navigateInstant(result.route, result.arguments);
               // Splash removal is now handled inside _navigateInstant for web
               // No need to remove here - it will be removed after screen renders
             }
@@ -1379,7 +1526,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               if (mounted) {
                 final navService = NavigationService();
                 if (navService.isReady) {
-                  _navigateInstant('/onboarding', null);
+                  await _navigateInstant('/onboarding', null);
                   // Splash removal is now handled inside _navigateInstant for web
                   return;
                 }
@@ -1392,7 +1539,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
               try {
                 final result = await navService.determineInitialRoute();
                 if (mounted) {
-                  _navigateInstant(result.route, result.arguments);
+                  await _navigateInstant(result.route, result.arguments);
                   // Splash removal is now handled inside _navigateInstant for web
                 }
                 return;
@@ -1440,7 +1587,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           // Navigate instantly without animation to prevent white flash
           // This ensures the loading screen persists until the new screen is fully rendered
           if (mounted) {
-            _navigateInstant(result.route, result.arguments);
+            await _navigateInstant(result.route, result.arguments);
             // Splash removal is now handled inside _navigateInstant for web
             // No need to remove here - it will be removed after screen renders
           }
@@ -1456,7 +1603,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           if (mounted && navService.isReady) {
             final result = await navService.determineInitialRoute();
             if (mounted) {
-              _navigateInstant(result.route, result.arguments);
+              await _navigateInstant(result.route, result.arguments);
               // Splash removal is now handled inside _navigateInstant for web
               // No need to remove here - it will be removed after screen renders
             }
@@ -1468,7 +1615,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         if (mounted && !SupabaseService.isAuthenticated) {
           final navService = NavigationService();
           if (navService.isReady) {
-            _navigateInstant('/auth-method-selection', null);
+            await _navigateInstant('/auth-method-selection', null);
             // Splash removal is now handled inside _navigateInstant for web
             // No need to remove here - it will be removed after screen renders
           }
@@ -1478,10 +1625,68 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
   }
 
   /// Navigate instantly to route without animation
-  /// This prevents the "white flash" issue during the initial transition
-  void _navigateInstant(String routeName, Object? arguments) {
+  /// This prevents the "white flash" issue during the initial transition.
+  /// For /tutor/xxx we preload tutor in background (Preply-style) and show detail in one shot.
+  Future<void> _navigateInstant(String routeName, Object? arguments) async {
     if (!mounted) return;
-    
+
+    // Preply-style: /tutor/xxx — keep loading screen, preload tutor, then show detail (no "Loading Tutor…" step)
+    final isTutorDetailRoute = routeName.startsWith('/tutor/') &&
+        routeName != '/tutor' &&
+        !routeName.startsWith('/tutor/profile') &&
+        !routeName.startsWith('/tutor/dashboard') &&
+        !routeName.startsWith('/tutor/onboarding');
+    if (isTutorDetailRoute) {
+      final rawId = arguments is Map ? (arguments as Map)['tutorId'] : null;
+      final tutorId = (rawId?.toString() ?? routeName.replaceFirst('/tutor/', '').trim()).trim();
+      if (tutorId.isNotEmpty) {
+        try {
+          final tutor = await TutorService.fetchTutorById(tutorId);
+          if (!mounted) return;
+          if (tutor != null) {
+            final page = TutorDetailScreen(tutor: tutor);
+            Navigator.of(context).pushReplacement(
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => page,
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            );
+            if (mounted) {
+              setState(() => _navigationComplete = true);
+              if (kIsWeb) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Future.delayed(const Duration(milliseconds: 300), () {
+                    if (mounted) WebSplashService.removeSplash();
+                  });
+                });
+              }
+            }
+            return;
+          }
+        } catch (e) {
+          LogService.warning('[NAV] Tutor preload failed for $tutorId: $e');
+        }
+        if (!mounted) return;
+        // Fallback: tutor not found or error — go to student nav
+        final navService = NavigationService();
+        if (navService.isReady) {
+          navService.navigateToRoute('/student-nav', arguments: null, replace: true);
+          if (mounted) {
+            setState(() => _navigationComplete = true);
+            if (kIsWeb) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                Future.delayed(const Duration(milliseconds: 300), () {
+                  if (mounted) WebSplashService.removeSplash();
+                });
+              });
+            }
+          }
+        }
+        return;
+      }
+    }
+
     try {
       Widget? page;
       
@@ -1655,10 +1860,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (_navigationComplete) {
       return const SizedBox.shrink();
     }
-    // Use deep blue so first frame is never white (avoids white flash before logo shows).
-    // On hot restart the loading screen may be skipped (state preserved); only cold start shows animated logo.
+    // Match HTML splash (white bg) - no switch to deep blue, consistent loading experience.
     return Material(
-      color: const Color(0xFF1B2C4F), // PrepSkul primary / splash blue
+      color: Colors.white,
       child: const InitialLoadingScreen(),
     );
   }

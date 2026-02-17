@@ -174,6 +174,27 @@ class NavigationService {
             // If user_type exists and is valid (student, parent, or tutor), continue with normal flow
             // Don't redirect to role selection for email signups who already selected their role
 
+            // Preply-style: if user came from a shared tutor link, ALWAYS take them to that tutor
+            // after auth (even if survey/profile setup isn't completed yet).
+            final pendingTutorId = await getAndClearPendingTutorLink();
+            if (pendingTutorId != null) {
+              if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
+                LogService.debug('[NAV_SERVICE] Navigating to pending tutor profile (pre-survey): $pendingTutorId');
+                return NavigationResult(
+                  '/tutor/$pendingTutorId',
+                  arguments: {'tutorId': pendingTutorId},
+                );
+              } else {
+                LogService.debug('[NAV_SERVICE] Pending tutor link present but user is tutor; navigating to dashboard');
+                final result = _getDashboardRoute(userRole);
+                _analytics.trackRouteDetermined(
+                  result.route,
+                  metadata: {'user_role': userRole, 'source': 'supabase', 'pending_tutor_skipped': true},
+                );
+                return result;
+              }
+            }
+
             if (!hasCompletedSurvey) {
               // For authenticated users, we prioritize survey/profile completion over onboarding screens
               // Note: Our previous check profile['user_type'] ?? 'student' defaults to student
@@ -183,29 +204,6 @@ class NavigationService {
                 arguments: {'userRole': userRole},
               );
             } else {
-              // Check for pending tutor deep link
-              final pendingTutorId = await getAndClearPendingTutorLink();
-              if (pendingTutorId != null) {
-                // Navigate to tutor profile if user is student/parent
-                // Navigate to dashboard if user is tutor (can't book themselves)
-                if (userRole == 'student' || userRole == 'learner' || userRole == 'parent') {
-                  LogService.debug('[NAV_SERVICE] Navigating to pending tutor profile: $pendingTutorId');
-                  return NavigationResult(
-                    '/tutor/$pendingTutorId',
-                    arguments: {'tutorId': pendingTutorId},
-                  );
-                } else {
-                  // Tutor viewing another tutor - go to dashboard
-                  LogService.debug('[NAV_SERVICE] User is tutor, navigating to dashboard instead of tutor profile');
-                  final result = _getDashboardRoute(userRole);
-                  _analytics.trackRouteDetermined(
-                    result.route,
-                    metadata: {'user_role': userRole, 'source': 'supabase', 'pending_tutor_skipped': true},
-                  );
-                  return result;
-                }
-              }
-              
               final result = _getDashboardRoute(userRole);
               _analytics.trackRouteDetermined(
                 result.route,

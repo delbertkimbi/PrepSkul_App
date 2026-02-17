@@ -27,6 +27,7 @@ import 'package:prepskul/core/widgets/shimmer_loading.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/utils/debouncer.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 
 class FindTutorsScreen extends StatefulWidget {
   const FindTutorsScreen({Key? key}) : super(key: key);
@@ -105,6 +106,18 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     _initializeConnectivity();
     _loadUserSubjects(); // Load user's preferred subjects first
     _loadTutors();
+
+    // LinkedIn-style nudge: show on Find Tutors (common first screen for new installs).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        NotificationPermissionNudgeService.maybeShow(
+          context,
+          trigger: 'discovery',
+        );
+      });
+    });
     
     // Listen to search text changes with debouncing
     _searchController.addListener(() {
@@ -1904,14 +1917,28 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         // Show letter placeholder immediately, then image when loaded (no loading indicator)
         return CachedNetworkImage(
           imageUrl: avatarUrl,
-          fit: BoxFit.cover,
-          width: isLarge ? double.infinity : null, // Fill width when large
-          height: isLarge ? double.infinity : null, // Fill height when large
+          // Always fill parent constraints (ClipOval / ClipRRect) to avoid odd sizing on mobile.
+          // Use `contain` for the large popup to avoid over-cropping faces.
+          fit: isLarge ? BoxFit.contain : BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
           cacheKey: 'tutor_avatar_${avatarUrl.hashCode}',
           memCacheWidth: isLarge ? 600 : 140, // Optimize memory usage
           memCacheHeight: isLarge ? 600 : 140,
           maxWidthDiskCache: isLarge ? 1200 : 280, // Cache at reasonable size
           maxHeightDiskCache: isLarge ? 1200 : 280,
+          imageBuilder: (context, provider) {
+            return Container(
+              color: isLarge ? Colors.black : Colors.transparent,
+              alignment: Alignment.center,
+              child: Image(
+                image: provider,
+                fit: isLarge ? BoxFit.contain : BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+              ),
+            );
+          },
           placeholder: (context, url) => _buildAvatarPlaceholder(name, isLarge: isLarge), // Show letter immediately instead of loading indicator
           errorWidget: (context, url, error) {
             // Log error for debugging (but don't crash on cache errors)
@@ -1921,9 +1948,9 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
               LogService.debug('Cache database permission issue, falling back to network image');
               return Image.network(
                 url,
-                fit: BoxFit.cover,
-                width: isLarge ? double.infinity : null, // Fill width when large
-                height: isLarge ? double.infinity : null, // Fill height when large
+                fit: isLarge ? BoxFit.contain : BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
                 errorBuilder: (context, error, stackTrace) {
                   return _buildAvatarPlaceholder(name, isLarge: isLarge);
                 },
@@ -1942,7 +1969,7 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
         // Use Image.asset for local asset paths
         return Image.asset(
           avatarUrl,
-          fit: BoxFit.cover,
+          fit: isLarge ? BoxFit.contain : BoxFit.cover,
           errorBuilder: (context, error, stackTrace) {
             return _buildAvatarPlaceholder(name, isLarge: isLarge);
           },

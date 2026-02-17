@@ -20,12 +20,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import '../../../features/skulmate/screens/game_library_screen.dart';
 import '../../../features/skulmate/screens/skulmate_upload_screen.dart';
+import '../../../features/skulmate/screens/skulmate_onboarding_screen.dart';
 import '../../../features/skulmate/services/skulmate_service.dart';
+import '../../../features/skulmate/services/skulmate_onboarding_service.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../features/booking/services/individual_session_service.dart';
 import '../../../features/booking/services/trial_session_service.dart';
 import '../../../features/booking/utils/session_date_utils.dart';
+import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 // TODO: Fix import path
 // import 'package:prepskul/features/parent/screens/parent_progress_dashboard.dart';
 
@@ -258,6 +261,21 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         });
       }
 
+      // LinkedIn-style nudge: ask after user has value context (home loaded).
+      if (mounted && !_isFirstVisit) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          // Small delay so it doesn't feel "instant" on screen load.
+          Future.delayed(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            NotificationPermissionNudgeService.maybeShow(
+              context,
+              trigger: 'home',
+            );
+          });
+        });
+      }
+
       // First-time user? Auto-navigate to Find Tutors
       if (_isFirstVisit && mounted) {
         await prefs.setBool('has_visited_home', true);
@@ -311,8 +329,22 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         // SkulMate controlled by AppConfig feature flag
         floatingActionButton: AppConfig.enableSkulMate ? FloatingActionButton.extended(
         onPressed: () async {
-          // Check if user has any games
           try {
+            // Check onboarding status first
+            final shouldShowOnboarding = await SkulMateOnboardingService.shouldShowOnboarding();
+            
+            if (shouldShowOnboarding) {
+              // First time - show onboarding
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SkulMateOnboardingScreen(),
+                ),
+              );
+              return;
+            }
+
+            // Check if user has any games
             final result = await SkulMateService.getGamesPaginated(limit: 1);
             final games = result['games'] as List;
             
@@ -325,22 +357,32 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 ),
               );
             } else {
-              // Has games, navigate to game library
+              // Has games, navigate to game library (defaults to Sessions tab)
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const GameLibraryScreen(),
+                  builder: (context) => const GameLibraryScreen(initialTab: 0),
                 ),
               );
             }
           } catch (e) {
-            // On error, default to create game screen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-                builder: (context) => const SkulMateUploadScreen(),
-            ),
-          );
+            // On error, check onboarding first, then default to upload screen
+            final hasCompletedOnboarding = await SkulMateOnboardingService.hasCompletedOnboarding();
+            if (!hasCompletedOnboarding) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SkulMateOnboardingScreen(),
+                ),
+              );
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SkulMateUploadScreen(),
+                ),
+              );
+            }
           }
         },
         backgroundColor: AppTheme.primaryColor,

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
 import '../../../core/services/supabase_service.dart';
@@ -721,6 +723,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               },
                             ),
                             const SizedBox(height: 12),
+                            _buildMyLinkItem(),
+                            const SizedBox(height: 12),
                           ],
                           _buildNeumorphicSettingsItem(
                             icon: PhosphorIcons.bell(),
@@ -942,6 +946,64 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String? subtitle,
     required VoidCallback onTap,
   }) {
+    return _buildSettingsCard(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      onTap: onTap,
+      trailing: Icon(PhosphorIcons.caretRight(), color: AppTheme.textLight, size: 18),
+    );
+  }
+
+  /// My link card for tutors: copy on tap, copy icon at end, no details page.
+  Widget _buildMyLinkItem() {
+    final link = _getTutorShareLink();
+    if (link == null) return const SizedBox.shrink();
+
+    return _buildSettingsCard(
+      icon: PhosphorIcons.link(),
+      title: 'My link',
+      subtitle: 'Copy to share with others to book you.',
+      onTap: () => _copyTutorLink(link),
+      trailing: IconButton(
+        tooltip: 'Copy',
+        onPressed: () => _copyTutorLink(link),
+        style: IconButton.styleFrom(
+          padding: const EdgeInsets.all(4),
+          minimumSize: const Size(32, 32),
+        ),
+        icon: Icon(PhosphorIcons.copy(), size: 18, color: AppTheme.textDark),
+      ),
+    );
+  }
+
+  String? _getTutorShareLink() {
+    if (widget.userType != 'tutor') return null;
+    final userId = _userInfo?['userId']?.toString();
+    if (userId == null || userId.isEmpty) return null;
+    return 'https://www.prepskul.com/tutor/$userId';
+  }
+
+  Future<void> _copyTutorLink(String link) async {
+    await Clipboard.setData(ClipboardData(text: link));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Link copied', style: GoogleFonts.poppins(fontSize: 12)),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Widget _buildSettingsCard({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+    required Widget trailing,
+  }) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1002,7 +1064,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              Icon(PhosphorIcons.caretRight(), color: AppTheme.textLight, size: 18),
+              trailing,
             ],
           ),
         ),

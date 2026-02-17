@@ -24,6 +24,7 @@ import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
+import '../../../core/services/notification_permission_nudge_service.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -309,6 +310,20 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         _sessionCount = sessionCount;
         _isLoading = false;
       });
+
+      // LinkedIn-style nudge: ask on home once user lands (avoid onboarding screens).
+      if (mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Future.delayed(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            NotificationPermissionNudgeService.maybeShow(
+              context,
+              trigger: 'home',
+            );
+          });
+        });
+      }
       
       // Send notification if onboarding is incomplete (only once per day)
       if (onboardingSkipped || !onboardingComplete) {

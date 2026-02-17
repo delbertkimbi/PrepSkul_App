@@ -41,6 +41,11 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   final PageController _pageController = PageController();
   int _currentStep = 0;
   
+  // Survey context (for better subject UX)
+  Map<String, dynamic>? _surveyData;
+  List<String> _userSubjects = [];
+  final Map<String, TextEditingController> _otherSubjectControllers = {};
+
   // Parent context for multi-learner bookings
   bool _isParent = false;
   List<Map<String, dynamic>> _parentLearners = [];
@@ -79,6 +84,25 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     super.initState();
     _prefillFromSurvey();
     _loadParentContext();
+  }
+
+  List<String> _extractUserSubjectsFromSurvey(Map<String, dynamic> survey) {
+    try {
+      final learningPath = survey['learning_path']?.toString();
+      if (learningPath == 'Skill Development') {
+        return List<String>.from(survey['skills'] ?? const []);
+      }
+      if (learningPath == 'Exam Preparation') {
+        return List<String>.from(survey['exam_subjects'] ?? const []);
+      }
+      // Default: Academic Tutoring or unknown
+      final subjects = List<String>.from(survey['subjects'] ?? const []);
+      if (subjects.isNotEmpty) return subjects;
+      // Fallback: some surveys store skills only
+      return List<String>.from(survey['skills'] ?? const []);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Load user type and parent learners for "Who is this for?" step
@@ -137,6 +161,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
       if (surveyData != null && mounted) {
         safeSetState(() {
+          _surveyData = surveyData;
+          _userSubjects = _extractUserSubjectsFromSurvey(surveyData!);
           _applyPrefillData(surveyData!);
         });
       }
@@ -185,7 +211,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     if (!_canProceed()) {
       // Show error message for location step if address is missing
       final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
-      final locationStep = 3 + stepOffset;
+      final locationStep = 4 + stepOffset; // Location at index 4 (non-parent) or 5 (parent)
       if (_currentStep == locationStep && 
           _selectedLocation == 'onsite' &&
           (_onsiteAddress == null || _onsiteAddress!.trim().isEmpty)) {
@@ -207,8 +233,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     // Calculate next step - skip flexible session selector if location is not hybrid
     int nextStep = _currentStep + 1;
     final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
-    final flexibleStep = 4 + stepOffset;
-    final reviewStep = 5 + stepOffset;
+    final flexibleStep = 5 + stepOffset; // Flexible at index 5 (non-parent) or 6 (parent)
+    final reviewStep = 6 + stepOffset;   // Review at index 6 (non-parent) or 7 (parent)
     final wasSkipping = nextStep == flexibleStep && _selectedLocation != 'hybrid';
     if (wasSkipping) {
       // Skip flexible step if not hybrid, go directly to review
@@ -243,8 +269,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       // Calculate previous step - skip flexible step if not hybrid
       int prevStep = _currentStep - 1;
       final stepOffset = _shouldShowWhoIsThisFor ? 1 : 0;
-      final flexibleStep = 4 + stepOffset;
-      final locationStep = 3 + stepOffset;
+      final flexibleStep = 5 + stepOffset;
+      final locationStep = 4 + stepOffset; // Location is at index 4 (non-parent) or 5 (parent)
       final wasSkipping = prevStep == flexibleStep && _selectedLocation != 'hybrid';
       if (wasSkipping) {
         // Skip flexible step if not hybrid, go back to location
@@ -271,7 +297,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   double _getProgressValue() {
     // Adjust progress to account for skipped flexible step
-    final flexibleStep = _shouldShowWhoIsThisFor ? 6 : 5; // Flexible is at index 6 (parent) or 5 (non-parent)
+    final flexibleStep = _shouldShowWhoIsThisFor ? 6 : 5; // Flexible at index 5 (non-parent) or 6 (parent)
     final effectiveSteps = _selectedLocation == 'hybrid' ? _totalSteps : _totalSteps - 1;
     final effectiveStep = _currentStep > flexibleStep && _selectedLocation != 'hybrid'
         ? _currentStep - 1
@@ -492,6 +518,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   Widget _buildSubjectsStep() {
     final learnerNames = _getSelectedLearnerNames();
     final tutorSubjects = _getTutorSubjectList();
+    final recommended = _userSubjects.isEmpty
+        ? const <String>[]
+        : tutorSubjects.where((s) => _userSubjects.contains(s)).toList();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -508,7 +537,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           ),
           const SizedBox(height: 24),
           if (learnerNames.length == 1) ...[
-            _buildSubjectChipsForLearner(learnerNames[0], tutorSubjects),
+            _buildSubjectChipsForLearner(learnerNames[0], tutorSubjects, recommended),
           ] else ...[
             ...learnerNames.map((name) {
               return Padding(
@@ -521,7 +550,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
                       style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.primaryColor),
                     ),
                     const SizedBox(height: 12),
-                    _buildSubjectChipsForLearner(name, tutorSubjects),
+                    _buildSubjectChipsForLearner(name, tutorSubjects, recommended),
                   ],
                 ),
               );
@@ -543,30 +572,144 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
     ];
   }
 
-  Widget _buildSubjectChipsForLearner(String learnerName, List<String> availableSubjects) {
+  Widget _buildSubjectChipsForLearner(
+    String learnerName,
+    List<String> tutorSubjects,
+    List<String> recommendedSubjects,
+  ) {
     final selected = _learnerSubjects[learnerName] ?? [];
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: availableSubjects.map((subject) {
-        final isSelected = selected.contains(subject);
-        return FilterChip(
-          label: Text(subject, style: GoogleFonts.poppins(fontSize: 13)),
-          selected: isSelected,
-          onSelected: (value) {
+    final controller =
+        _otherSubjectControllers.putIfAbsent(learnerName, () => TextEditingController());
+
+    final recommendedSet = recommendedSubjects.toSet();
+    final orderedTutorSubjects = [
+      ...recommendedSubjects,
+      ...tutorSubjects.where((s) => !recommendedSet.contains(s)),
+    ];
+
+    // Ensure any custom selected subject still renders as a chip (so user can unselect it).
+    final allSubjects = [
+      ...orderedTutorSubjects,
+      ...selected.where((s) => !orderedTutorSubjects.contains(s)),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (recommendedSubjects.isNotEmpty) ...[
+          Text(
+            'Recommended (from your onboarding subjects)',
+            style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[700]),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: allSubjects.map((subject) {
+            final isSelected = selected.contains(subject);
+            final isRecommended = recommendedSet.contains(subject);
+            return FilterChip(
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isRecommended) ...[
+                    Icon(
+                      Icons.star_rounded,
+                      size: 16,
+                      color: isSelected ? Colors.white : Colors.amber[700],
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  Flexible(
+                    child: Text(
+                      subject,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              selected: isSelected,
+              onSelected: (value) {
+                safeSetState(() {
+                  _learnerSubjects[learnerName] ??= [];
+                  if (value) {
+                    if (!_learnerSubjects[learnerName]!.contains(subject)) {
+                      _learnerSubjects[learnerName]!.add(subject);
+                    }
+                  } else {
+                    _learnerSubjects[learnerName]!.remove(subject);
+                  }
+                });
+              },
+              backgroundColor: Colors.grey.withOpacity(0.08),
+              selectedColor: AppTheme.primaryColor,
+              checkmarkColor: Colors.white,
+              side: BorderSide(
+                color: isSelected ? AppTheme.primaryColor : Colors.grey.withOpacity(0.25),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Other subject',
+          style: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[700]),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          textInputAction: TextInputAction.done,
+          decoration: InputDecoration(
+            hintText: 'Add a subject not listed…',
+            hintStyle: GoogleFonts.poppins(fontSize: 12, color: Colors.grey[500]),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.withOpacity(0.25)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.withOpacity(0.25)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.primaryColor.withOpacity(0.6)),
+            ),
+            suffixIcon: IconButton(
+              tooltip: 'Add',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: () {
+                final subject = controller.text.trim();
+                if (subject.isEmpty) return;
+                safeSetState(() {
+                  _learnerSubjects[learnerName] ??= [];
+                  if (!_learnerSubjects[learnerName]!.contains(subject)) {
+                    _learnerSubjects[learnerName]!.add(subject);
+                  }
+                });
+                controller.clear();
+              },
+            ),
+          ),
+          onSubmitted: (_) {
+            final subject = controller.text.trim();
+            if (subject.isEmpty) return;
             safeSetState(() {
               _learnerSubjects[learnerName] ??= [];
-              if (value) {
+              if (!_learnerSubjects[learnerName]!.contains(subject)) {
                 _learnerSubjects[learnerName]!.add(subject);
-              } else {
-                _learnerSubjects[learnerName]!.remove(subject);
               }
             });
+            controller.clear();
           },
-          selectedColor: AppTheme.primaryColor.withOpacity(0.3),
-          checkmarkColor: AppTheme.primaryColor,
-        );
-      }).toList(),
+        ),
+      ],
     );
   }
 
@@ -1249,6 +1392,9 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
   @override
   void dispose() {
+    for (final c in _otherSubjectControllers.values) {
+      c.dispose();
+    }
     _pageController.dispose();
     super.dispose();
   }

@@ -216,12 +216,12 @@
     })();
   </script>
   
-  <script>
-    // Environment Variables
-    window.env = {
-      NEXT_PUBLIC_SUPABASE_URL: 'https://cpzaxdfxbamdsshdgjyg.supabase.co',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNwemF4ZGZ4YmFtZHNzaGRnanlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MDUwMDYsImV4cCI6MjA3NzA4MTAwNn0.FWBFrseEeYqFaJ7FGRUAYtm10sz0JqPyerJ0BfoYnCU'
-    };
+  <script>    // Environment Variables
+    // Injected at build time by scripts/inject-env.js (run before flutter build web)
+    window.env = window.env || {};
+    window.env.ENVIRONMENT = "production";
+    window.env.NEXT_PUBLIC_SUPABASE_URL = window.env.NEXT_PUBLIC_SUPABASE_URL || window.env.SUPABASE_URL_PROD || '';
+    window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.env.SUPABASE_ANON_KEY_PROD || '';
     
     /**
      * Robust splash removal helpers
@@ -263,6 +263,18 @@
         console.warn('hideAndRemoveSplash failed:', e);
       }
     }
+
+    // Injected at build time by scripts/inject-env.js (run before flutter build web)
+    window.env = window.env || {};
+    window.env.ENVIRONMENT = "production";
+    window.env.NEXT_PUBLIC_SUPABASE_URL = window.env.NEXT_PUBLIC_SUPABASE_URL || window.env.SUPABASE_URL_PROD || '';
+    window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.env.SUPABASE_ANON_KEY_PROD || '';
+
+    // Injected at build time by scripts/inject-env.js (run before flutter build web)
+    window.env = window.env || {};
+    window.env.ENVIRONMENT = "production";
+    window.env.NEXT_PUBLIC_SUPABASE_URL = window.env.NEXT_PUBLIC_SUPABASE_URL || window.env.SUPABASE_URL_PROD || '';
+    window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.env.SUPABASE_ANON_KEY_PROD || '';
 
     // Called by Flutter (via WebSplashService.removeSplash) once the first
     // real frame is rendered.

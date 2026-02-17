@@ -107,20 +107,24 @@ void registerLeafletMapIframe(String viewType, String address, {String? coordina
   });
 }
 
+/// Default map center when coordinates are missing (e.g. Yaoundé, Cameroon)
+const String _defaultLat = '4.0511';
+const String _defaultLon = '9.7679';
+
 /// Register a Leaflet map with routing (Leaflet Routing Machine) iframe
 /// SECURITY: Input sanitized, iframe sandboxed, privacy-friendly tiles
 void registerLeafletRoutingIframe(String viewType, String address, {String? coordinates, String? currentLocation}) {
   ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-    // SECURITY: Validate and sanitize coordinates
-    String lat = '';
-    String lon = '';
+    // SECURITY: Validate and sanitize coordinates; fallback to default so map never breaks
+    String lat = _defaultLat;
+    String lon = _defaultLon;
     if (coordinates != null) {
       final parts = coordinates.split(',');
       if (parts.length == 2) {
         final latVal = double.tryParse(parts[0].trim());
         final lonVal = double.tryParse(parts[1].trim());
-        if (latVal != null && lonVal != null && 
-            latVal >= -90 && latVal <= 90 && 
+        if (latVal != null && lonVal != null &&
+            latVal >= -90 && latVal <= 90 &&
             lonVal >= -180 && lonVal <= 180) {
           lat = latVal.toString();
           lon = lonVal.toString();

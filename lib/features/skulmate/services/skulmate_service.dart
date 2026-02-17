@@ -29,6 +29,7 @@ class SkulMateService {
 
   // Endpoint is relative to apiBaseUrl (which already includes /api)
   static const String _generateEndpoint = '/skulmate/generate';
+  static const String _challengeFromSessionEndpoint = '/skulmate/challenge/from-session';
 
   /// Make HTTP POST request (web-aware)
   /// On web, uses dart:html for proper CORS handling with credentials
@@ -49,6 +50,76 @@ class SkulMateService {
         headers: headers,
         body: body,
       );
+    }
+  }
+
+  /// Generate revision challenge from session (session_summary + transcript)
+  /// For normal recurring sessions only. Returns quiz game.
+  static Future<GameModel> generateChallengeFromSession(String sessionId) async {
+    try {
+      LogService.info('🎮 [skulMate] Generating challenge from session: $sessionId');
+
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final requestBody = {'sessionId': sessionId};
+      final session = SupabaseService.client.auth.currentSession;
+      final token = session?.accessToken;
+
+      final url = '$_apiBaseUrl$_challengeFromSessionEndpoint';
+      final httpResponse = await _makePostRequest(
+        url,
+        {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        jsonEncode(requestBody),
+      ).timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw Exception('Request timeout. Please try again.');
+        },
+      );
+
+      if (httpResponse.statusCode != 200) {
+        final responseBody = httpResponse.body.trim();
+        final jsonBody = jsonDecode(responseBody) as Map<String, dynamic>?;
+        final errorMsg = jsonBody?['error'] as String? ?? 'Failed to generate challenge';
+        throw Exception(errorMsg);
+      }
+
+      final data = jsonDecode(httpResponse.body) as Map<String, dynamic>;
+      final gameData = data['game'] as Map<String, dynamic>? ?? data;
+
+      final gameId = gameData['id'] as String? ?? '';
+      final items = (gameData['items'] as List<dynamic>?)
+              ?.map((item) => GameItem.fromJson(item as Map<String, dynamic>))
+              .toList() ??
+          [];
+
+      final game = GameModel(
+        id: gameId,
+        userId: userId,
+        childId: null,
+        title: gameData['title'] as String? ?? 'Session Challenge',
+        gameType: GameType.quiz,
+        documentUrl: null,
+        sourceType: 'session',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        items: items,
+        metadata: GameMetadata.fromJson(
+          gameData['metadata'] as Map<String, dynamic>? ?? {},
+        ),
+      );
+
+      LogService.success('🎮 [skulMate] Challenge generated: ${game.title}');
+      return game;
+    } catch (e) {
+      LogService.error('🎮 [skulMate] Error generating challenge from session: $e');
+      rethrow;
     }
   }
 
@@ -268,13 +339,21 @@ class SkulMateService {
           LogService.error('🎮 [skulMate] Exception message: ${e.toString()}');
         }
         
-        // Provide helpful error message based on error type
-        String errorMessage = e.toString();
+        // Preserve API error messages (e.g. "Text must be at least 50 characters long")
+        final errorMessage = e.toString();
         final errorStr = errorMessage.toLowerCase();
+        if (errorStr.contains('invalid request:') ||
+            errorStr.contains('text must be') ||
+            errorStr.contains('50 characters') ||
+            errorStr.contains('authentication error') ||
+            errorStr.contains('server error:')) {
+          rethrow;
+        }
         
-        // Classify error for user-friendly message
+        // Provide helpful error message based on error type
+        String mappedMessage = errorMessage;
         if (errorStr.contains('[cors]') || errorStr.contains('cors blocked')) {
-          errorMessage = 
+          mappedMessage = 
             'Unable to connect to the game generation service.\n\n'
             'This may be a browser security restriction. Please try:\n'
             '• Refreshing the page\n'
@@ -284,7 +363,7 @@ class SkulMateService {
                    errorStr.contains('failed to fetch') ||
                    errorStr.contains('connection refused') ||
                    errorStr.contains('network is unreachable')) {
-          errorMessage = 
+          mappedMessage = 
             'Unable to generate game at this time.\n\n'
             'Please check your internet connection and try again. '
             'If the problem persists, please contact support.';
@@ -294,7 +373,7 @@ class SkulMateService {
                    errorStr.contains('connect timeout') ||
                    errorStr.contains('took too long') ||
                    errorStr.contains('timeout after')) {
-          errorMessage = 
+          mappedMessage = 
             'The request took too long to complete.\n\n'
             'This can happen with large files or slow connections. '
             'Please check your internet connection and try again. '
@@ -302,7 +381,7 @@ class SkulMateService {
         } else if (errorStr.contains('[server]') || 
                    errorStr.contains('http 5') ||
                    errorStr.contains('internal server error')) {
-          errorMessage = 
+          mappedMessage = 
             'The game generation service is temporarily unavailable.\n\n'
             'Please try again in a few moments. '
             'If this continues, contact support.';
@@ -310,38 +389,38 @@ class SkulMateService {
                    errorStr.contains('http 4') ||
                    errorStr.contains('bad request') ||
                    errorStr.contains('unauthorized')) {
-          errorMessage = 
+          mappedMessage = 
             'There was an issue with your request.\n\n'
             'Please check your input and try again. '
             'If this continues, contact support.';
         } else if (errorStr.contains('invalid fileurl format') ||
                    errorStr.contains('failed to download file') ||
                    errorStr.contains('connection timeout')) {
-          errorMessage = 
+          mappedMessage = 
             'There was an issue processing your file.\n\n'
             'The file may be too large, corrupted, or the connection timed out. '
             'Please try uploading a smaller file or contact support if the problem continues.';
         } else if (errorStr.contains('failed to generate game')) {
           // Extract the actual error from the API response
-          final apiError = errorMessage.replaceAll('Exception: Failed to generate game: ', '');
+          final apiError = mappedMessage.replaceAll('Exception: Failed to generate game: ', '');
           // Hide technical details
           if (apiError.contains('localhost') || apiError.contains('cors') || apiError.contains('next.js')) {
-            errorMessage = 
+            mappedMessage = 
               'We couldn\'t create your game right now.\n\n'
               'Please try again or contact support if this continues.';
           } else {
-            errorMessage = 
+            mappedMessage = 
               'We couldn\'t create your game right now.\n\n'
               '${apiError.isNotEmpty && apiError.length < 100 ? apiError : "Please try again or contact support if this continues."}';
           }
         } else {
           // Generic fallback
-          errorMessage = 
+          mappedMessage = 
             'Unable to generate game at this time.\n\n'
             'Please check your internet connection and try again. '
             'If the problem persists, please contact support.';
         }
-        throw Exception(errorMessage);
+        throw Exception(mappedMessage);
       }
   }
 

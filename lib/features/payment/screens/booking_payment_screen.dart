@@ -279,7 +279,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     } else if (transId == null) {
       // Only show error if we couldn't create a transaction ID at all
       final friendlyMessage = ErrorHandler.getUserFriendlyMessage(
-        Exception('Payment service is not configured. Please contact support.')
+        Exception('Payments are temporarily unavailable. Please try again later.')
       );
       safeSetState(() {
         _errorMessage = friendlyMessage;

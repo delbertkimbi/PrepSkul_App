@@ -59,7 +59,9 @@ class FapshiService {
       // Validate API credentials
       if (_apiUser.isEmpty || _apiKey.isEmpty) {
         LogService.error('Fapshi API credentials are missing. Check your .env file.');
-        throw Exception('Payment service is not configured. Please contact support.');
+        // Don't expose configuration details to the user.
+        // (This can happen on older builds, missing envs, or if keys aren't deployed yet.)
+        throw Exception('Payments are temporarily unavailable. Please try again later.');
       }
 
       // Validate amount
@@ -252,7 +254,11 @@ class FapshiService {
     if (digitsOnly.startsWith('237')) {
       // International format: 23767XXXXXXX -> 67XXXXXXX
       normalized = digitsOnly.substring(3);
-    } else if (digitsOnly.startsWith('67') || digitsOnly.startsWith('69') || digitsOnly.startsWith('65') || digitsOnly.startsWith('66')) {
+    } else if (digitsOnly.startsWith('67') ||
+        digitsOnly.startsWith('69') ||
+        digitsOnly.startsWith('65') ||
+        digitsOnly.startsWith('66') ||
+        digitsOnly.startsWith('68')) {
       // Already in correct format: 67XXXXXXX or 69XXXXXXX
       normalized = digitsOnly;
     } else {

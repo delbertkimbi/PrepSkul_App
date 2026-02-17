@@ -12,6 +12,8 @@ class LocalVideoPIP extends StatefulWidget {
   final int? localUid;
   final bool isVideoEnabled;
   final bool isAudioEnabled;
+  /// When true, show speaking indicator (green border + badge).
+  final bool isSpeaking;
   final VoidCallback? onTap;
 
   const LocalVideoPIP({
@@ -20,6 +22,7 @@ class LocalVideoPIP extends StatefulWidget {
     required this.localUid,
     required this.isVideoEnabled,
     required this.isAudioEnabled,
+    this.isSpeaking = false,
     this.onTap,
   }) : super(key: key);
 
@@ -91,12 +94,16 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final pipSize = Size(160, 120); // Small PIP size
-    
+    // Slightly larger PIP on web/large screens for better visibility; keep compact on mobile
+    final isWide = screenSize.width > 400;
+    final pipSize = isWide ? const Size(200, 150) : const Size(160, 120);
+    const padding = 16.0;
+    const controlBarHeight = 100.0;
+
     // Default position: bottom-right with padding
     final defaultPosition = Offset(
-      screenSize.width - pipSize.width - 16,
-      screenSize.height - pipSize.height - 100, // Above control bar
+      screenSize.width - pipSize.width - padding,
+      screenSize.height - pipSize.height - controlBarHeight,
     );
 
     final currentPosition = _position.dx == 0 && _position.dy == 0
@@ -110,7 +117,7 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
     );
     final constrainedY = currentPosition.dy.clamp(
       0.0,
-      screenSize.height - pipSize.height - 80, // Leave space for controls
+      screenSize.height - pipSize.height - 80,
     );
 
     return Positioned(
@@ -144,7 +151,11 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: _isDragging ? Colors.blue : Colors.white.withOpacity(0.3),
+                color: _isDragging
+                    ? Colors.blue
+                    : widget.isSpeaking
+                        ? Colors.white54
+                        : Colors.white.withOpacity(0.3),
                 width: _isDragging ? 3 : 2,
               ),
               boxShadow: [
@@ -235,7 +246,7 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
                           size: 12,
                           color: widget.isVideoEnabled
                               ? Colors.white
-                              : Colors.red,
+                              : Colors.white54,
                         ),
                       ),
                     ],
@@ -266,6 +277,26 @@ class _LocalVideoPIPState extends State<LocalVideoPIP>
                     ),
                   ),
                 ),
+                if (widget.isSpeaking)
+                  Positioned(
+                    left: 4,
+                    bottom: 20,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: List.generate(3, (i) {
+                        return Container(
+                          width: 1.5,
+                          height: 3 + (i % 2) * 2.0,
+                          margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                          decoration: BoxDecoration(
+                            color: Colors.white70,
+                            borderRadius: BorderRadius.circular(0.5),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
               ],
             ),
           ),

@@ -1,75 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/status_bar_utils.dart';
 
 class StudentHomeSkeleton extends StatelessWidget {
   const StudentHomeSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Hero Header skeleton
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                gradient: AppTheme.headerGradient,
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
-              child: Shimmer.fromColors(
-                baseColor: Colors.white.withOpacity(0.2),
-                highlightColor: Colors.white.withOpacity(0.5),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Greeting skeleton
-                              Container(
-                                width: 120,
-                                height: 16,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
+    return StatusBarUtils.withDarkStatusBar(
+      Scaffold(
+        backgroundColor: Colors.white,
+        body: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Hero Header skeleton
+              Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  gradient: AppTheme.headerGradient,
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 50, 20, 32),
+                child: Shimmer.fromColors(
+                  baseColor: Colors.white.withOpacity(0.2),
+                  highlightColor: Colors.white.withOpacity(0.5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Greeting skeleton
+                                Container(
+                                  width: 120,
+                                  height: 16,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              // Name skeleton
-                              Container(
-                                width: 180,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
+                                const SizedBox(height: 8),
+                                // Name skeleton
+                                Container(
+                                  width: 180,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        // Notification bell skeleton
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
+                          // Notification bell skeleton
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
             Padding(
               padding: const EdgeInsets.all(20),
@@ -261,7 +263,8 @@ class StudentHomeSkeleton extends StatelessWidget {
                 ),
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -23,6 +23,8 @@ class SessionLocationMap extends StatefulWidget {
   final bool showCheckIn; // Whether to show check-in button
   final DateTime? scheduledDateTime; // For punctuality calculation
   final String? locationType; // 'online' or 'onsite' (hybrid is a preference only)
+  /// Optional: when tutor is checked in but has no photo, tap triggers this (opens camera)
+  final VoidCallback? onAddPhotoPressed;
 
   const SessionLocationMap({
     Key? key,
@@ -35,6 +37,7 @@ class SessionLocationMap extends StatefulWidget {
     this.showCheckIn = false,
     this.scheduledDateTime,
     this.locationType,
+    this.onAddPhotoPressed,
   }) : super(key: key);
 
   @override
@@ -527,6 +530,34 @@ class _SessionLocationMapState extends State<SessionLocationMap> {
                           ),
                         ),
                       ],
+                    ],
+                    // Optional: Add photo hint when checked in, no photo yet (Uber-style, one line)
+                    if (widget.onAddPhotoPressed != null &&
+                        _attendanceRecord?['check_out_time'] == null &&
+                        (_attendanceRecord?['check_in_photo_url'] == null ||
+                            (_attendanceRecord!['check_in_photo_url'] as String?).toString().trim().isEmpty)) ...[
+                      const SizedBox(height: 10),
+                      InkWell(
+                        onTap: widget.onAddPhotoPressed,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Icon(Icons.camera_alt_outlined, size: 14, color: AppTheme.primaryColor),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Add a photo of you and the learner(s) for your records',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: AppTheme.primaryColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ],
                   ],
                 ),

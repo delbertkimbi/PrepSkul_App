@@ -9,6 +9,7 @@ class GameSoundService {
   GameSoundService._internal();
 
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final Map<SoundType, AudioPlayer> _preloadedPlayers = {};
   bool _soundsEnabled = true;
   bool _isInitialized = false;
 
@@ -20,10 +21,72 @@ class GameSoundService {
       final prefs = await SharedPreferences.getInstance();
       _soundsEnabled = prefs.getBool('game_sounds_enabled') ?? true;
       _isInitialized = true;
+      
+      // Preload common sounds for smoother playback
+      if (_soundsEnabled) {
+        await _preloadSounds();
+      }
+      
       LogService.info('🎵 [GameSound] Initialized - Sounds ${_soundsEnabled ? "enabled" : "disabled"}');
     } catch (e) {
       LogService.error('🎵 [GameSound] Error initializing: $e');
       _soundsEnabled = false; // Disable on error
+    }
+  }
+
+  /// Preload common sounds for faster playback
+  Future<void> _preloadSounds() async {
+    try {
+      // Preload most commonly used sounds
+      final commonSounds = [
+        SoundType.correct,
+        SoundType.incorrect,
+        SoundType.flip,
+        SoundType.match,
+        SoundType.complete,
+      ];
+      
+      for (final soundType in commonSounds) {
+        try {
+          final player = AudioPlayer();
+          final soundPath = _getSoundPath(soundType);
+          if (soundPath != null) {
+            await player.setSource(AssetSource(soundPath));
+            _preloadedPlayers[soundType] = player;
+          }
+        } catch (e) {
+          // Skip preloading if sound file doesn't exist
+        }
+      }
+    } catch (e) {
+      // Preloading is optional, continue without it
+    }
+  }
+
+  String? _getSoundPath(SoundType type) {
+    switch (type) {
+      case SoundType.correct:
+        return 'sounds/correct.mp3';
+      case SoundType.incorrect:
+        return 'sounds/incorrect.mp3';
+      case SoundType.flip:
+        return 'sounds/flip.mp3';
+      case SoundType.match:
+        return 'sounds/match.mp3';
+      case SoundType.complete:
+        return 'sounds/complete.mp3';
+      case SoundType.click:
+        return 'sounds/click.mp3';
+      case SoundType.pop:
+        return 'sounds/pop.mp3';
+      case SoundType.wordFound:
+        return 'sounds/wordFound.mp3';
+      case SoundType.piecePlace:
+        return 'sounds/piecePlace.mp3';
+      case SoundType.cardFlip:
+        return 'sounds/flip.mp3';
+      case SoundType.levelComplete:
+        return 'sounds/complete.mp3';
     }
   }
 
@@ -48,40 +111,16 @@ class GameSoundService {
     if (!_soundsEnabled || !_isInitialized) return;
 
     try {
-      // Try to play system notification sounds
-      // These work on most platforms without requiring asset files
-      String? soundPath;
-      switch (type) {
-        case SoundType.correct:
-          // Try system success sound first, fallback to asset
-          soundPath = 'sounds/correct.mp3';
-          break;
-        case SoundType.incorrect:
-          soundPath = 'sounds/incorrect.mp3';
-          break;
-        case SoundType.flip:
-          soundPath = 'sounds/flip.mp3';
-          break;
-        case SoundType.match:
-          soundPath = 'sounds/match.mp3';
-          break;
-        case SoundType.complete:
-          soundPath = 'sounds/complete.mp3';
-          break;
-        case SoundType.click:
-          soundPath = 'sounds/click.mp3';
-          break;
-        case SoundType.pop:
-          soundPath = 'sounds/pop.mp3';
-          break;
-        case SoundType.wordFound:
-          soundPath = 'sounds/wordFound.mp3';
-          break;
-        case SoundType.piecePlace:
-          soundPath = 'sounds/piecePlace.mp3';
-          break;
+      // Use preloaded player if available
+      if (_preloadedPlayers.containsKey(type)) {
+        final player = _preloadedPlayers[type]!;
+        await player.seek(Duration.zero); // Reset to start
+        await player.resume();
+        return;
       }
-      
+
+      // Otherwise use main player
+      final soundPath = _getSoundPath(type);
       if (soundPath != null) {
         await _audioPlayer.play(AssetSource(soundPath));
       }
@@ -118,9 +157,19 @@ class GameSoundService {
   /// Play piece placement sound
   Future<void> playPiecePlace() => _playSound(SoundType.piecePlace);
 
+  /// Play card flip sound (alias for flip)
+  Future<void> playCardFlip() => _playSound(SoundType.cardFlip);
+
+  /// Play level complete sound (alias for complete)
+  Future<void> playLevelComplete() => _playSound(SoundType.levelComplete);
+
   /// Dispose resources
   void dispose() {
     _audioPlayer.dispose();
+    for (final player in _preloadedPlayers.values) {
+      player.dispose();
+    }
+    _preloadedPlayers.clear();
   }
 }
 
@@ -135,4 +184,6 @@ enum SoundType {
   pop,
   wordFound,
   piecePlace,
+  cardFlip,
+  levelComplete,
 }

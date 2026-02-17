@@ -10,6 +10,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Supports real-time updates, preferences, and scheduled notifications
 class NotificationService {
   static final _supabase = SupabaseService.client;
+  static bool? _notificationPreferencesSupportedInBackend;
+  static bool _loggedNotificationPreferencesBackendUnsupported = false;
+
+  static bool _isSchemaCacheMissingTableOrColumn(Object e) {
+    final s = e.toString();
+    // Common Supabase/PostgREST signals for "table/column doesn't exist".
+    return s.contains('PGRST205') || // table not found in schema cache
+        s.contains("Could not find the table 'public.user_profiles'") ||
+        s.contains('schema cache') ||
+        s.contains("column 'notification_preferences'") ||
+        s.contains('notification_preferences');
+  }
 
   /// Returns true if a notification already exists for this user, type(s), and session in the last [withinMinutes].
   /// [types] can be a single type or list (e.g. tutor may have 'trial_payment_completed' or 'trial_payment_received').
@@ -607,6 +619,15 @@ class NotificationService {
         throw Exception('User not authenticated');
       }
 
+      // If we already know the backend doesn't support this yet, skip DB reads.
+      if (_notificationPreferencesSupportedInBackend == false) {
+        return {
+          'email_enabled': true,
+          'in_app_enabled': true,
+          'push_enabled': true,
+        };
+      }
+
       // Try to get preferences from user_profiles or a preferences table
       // For now, we'll use user_profiles and add a preferences JSON column
       // If that doesn't exist, we'll return default preferences
@@ -621,7 +642,17 @@ class NotificationService {
           return Map<String, dynamic>.from(response['notification_preferences'] as Map);
         }
       } catch (e) {
-        LogService.debug('Notification preferences not found in user_profiles: $e');
+        if (_isSchemaCacheMissingTableOrColumn(e)) {
+          _notificationPreferencesSupportedInBackend = false;
+          if (!_loggedNotificationPreferencesBackendUnsupported) {
+            _loggedNotificationPreferencesBackendUnsupported = true;
+            LogService.warning(
+              'Notification preferences backend not available yet (missing table/column). Using defaults.',
+            );
+          }
+        } else {
+          LogService.debug('Notification preferences read failed: $e');
+        }
       }
 
       // Return default preferences if none found
@@ -642,7 +673,7 @@ class NotificationService {
   }
 
   /// Update notification preferences for current user
-  static Future<void> updatePreferences({
+  static Future<bool> updatePreferences({
     required bool emailEnabled,
     required bool inAppEnabled,
     required bool pushEnabled,
@@ -653,15 +684,20 @@ class NotificationService {
         throw Exception('User not authenticated');
       }
 
+      // If we already know the backend doesn't support this yet, don't retry.
+      if (_notificationPreferencesSupportedInBackend == false) {
+        return false;
+      }
+
       final preferences = {
         'email_enabled': emailEnabled,
         'in_app_enabled': inAppEnabled,
         'push_enabled': pushEnabled,
       };
 
-      // Try to update in user_profiles
       try {
-      await _supabase
+        // Try to update in user_profiles
+        await _supabase
             .from('user_profiles')
             .update({
               'notification_preferences': preferences,
@@ -670,16 +706,26 @@ class NotificationService {
             .eq('id', userId);
         
         LogService.success('Notification preferences updated for user: $userId');
+        _notificationPreferencesSupportedInBackend = true;
+        return true;
       } catch (e) {
-        // If user_profiles doesn't have notification_preferences column,
-        // we'll need to create a separate preferences table or handle it differently
-        LogService.warning('Could not update preferences in user_profiles: $e');
-        // For now, we'll just log - in production, you'd want to create a preferences table
-        throw Exception('Notification preferences update not supported yet. Please create a notification_preferences table or add notification_preferences column to user_profiles.');
+        if (_isSchemaCacheMissingTableOrColumn(e)) {
+          _notificationPreferencesSupportedInBackend = false;
+          if (!_loggedNotificationPreferencesBackendUnsupported) {
+            _loggedNotificationPreferencesBackendUnsupported = true;
+            LogService.warning(
+              'Notification preferences backend not available yet (missing table/column). Skipping save.',
+            );
+          }
+          return false;
+        }
+
+        LogService.warning('Could not update notification preferences: $e');
+        return false;
       }
     } catch (e) {
       LogService.error('Error updating notification preferences: $e');
-      rethrow;
+      return false;
     }
   }
 }

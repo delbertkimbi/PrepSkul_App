@@ -9,6 +9,7 @@ import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
 import 'package:prepskul/features/sessions/widgets/location_tracking_widget.dart';
 import 'package:prepskul/features/sessions/widgets/session_mode_statistics_widget.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
+import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
@@ -239,16 +240,29 @@ class SessionDetailScreen extends StatelessWidget {
       final userProfile = await AuthService.getUserProfile();
       final userType = userProfile?['user_type'] as String?;
       final userRole = (userType == 'tutor') ? 'tutor' : 'learner';
-      
-      await Navigator.push(
+
+      final preJoinResult = await Navigator.push<Map<String, dynamic>>(
         context,
         MaterialPageRoute(
-          builder: (context) => AgoraVideoSessionScreen(
+          builder: (context) => AgoraPreJoinScreen(
             sessionId: sessionId,
             userRole: userRole,
           ),
         ),
       );
+      if (context.mounted && preJoinResult != null && preJoinResult['join'] == true) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AgoraVideoSessionScreen(
+              sessionId: sessionId,
+              userRole: userRole,
+              initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+              initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+            ),
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

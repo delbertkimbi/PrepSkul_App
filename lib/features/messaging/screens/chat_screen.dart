@@ -12,6 +12,7 @@ import '../services/chat_service.dart';
 import '../services/conversation_lifecycle_service.dart';
 import '../services/chat_suggestion_service.dart';
 import '../services/typing_service.dart';
+import '../services/message_cache_service.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 import '../widgets/action_suggestion_banner.dart';
@@ -75,6 +76,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _primeFromCache();
     _loadMessages();
     _subscribeToMessages();
     _loadSuggestions();
@@ -242,10 +244,43 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  Future<void> _primeFromCache() async {
+    try {
+      final userId = SupabaseService.currentUser?.id;
+      final cached = await MessageCacheService.getCachedMessages(
+        widget.conversation.id,
+        currentUserId: userId,
+      );
+      if (!mounted) return;
+      if (cached == null || cached.isEmpty) return;
+
+      safeSetState(() {
+        _messages = cached;
+        _isLoading = false;
+        _currentOffset = cached.length;
+        _hasMoreMessages = cached.length >= _messagesPerPage;
+        _loadedMessageIds = cached.map((m) => m.id).toSet();
+      });
+
+      // Scroll to bottom when showing cached messages initially.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_scrollController.hasClients) {
+          _scrollToBottom(animated: false);
+        }
+      });
+    } catch (e) {
+      // Cache is best-effort; ignore failures.
+      LogService.debug('ChatScreen: Could not prime from cache: $e');
+    }
+  }
+
   Future<void> _loadMessages() async {
     try {
+      final hasAnyMessages = _messages.isNotEmpty;
       safeSetState(() {
-        _isLoading = true;
+        // If we already have messages (e.g., from cache), keep them visible and refresh quietly.
+        _isLoading = !hasAnyMessages;
         _errorMessage = null;
         _currentOffset = 0;
         _hasMoreMessages = true;

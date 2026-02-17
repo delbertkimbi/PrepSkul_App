@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Used to tint the Android status bar notification icon (FCM + local notifications). -->
+    <color name="notification_icon_color">#0B5ED7</color>
+
+    <!-- Adaptive launcher icon background (keeps icon consistent on Pixel, etc). -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>
