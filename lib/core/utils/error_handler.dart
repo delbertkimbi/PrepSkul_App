@@ -10,6 +10,14 @@ class ErrorHandler {
     
     final errorString = error.toString();
     final lowerError = errorString.toLowerCase();
+
+    // Network errors (handle before preserving raw Exception text like "Failed to fetch")
+    if (lowerError.contains('network') ||
+        lowerError.contains('connection') ||
+        lowerError.contains('failed to fetch') ||
+        lowerError.contains('timeout')) {
+      return 'Network error. Please check your internet connection and try again.';
+    }
     
     // If error already contains user-friendly guidance (from FapshiService, etc.),
     // preserve it by extracting the message after "Exception: "
@@ -28,14 +36,6 @@ class ErrorHandler {
       if (isUserFriendly && message.length < 300) {
         return message;
       }
-    }
-    
-    // Network errors
-    if (lowerError.contains('network') ||
-        lowerError.contains('connection') ||
-        lowerError.contains('failed to fetch') ||
-        lowerError.contains('timeout')) {
-      return 'Connection issue detected. Please check your internet connection and try again.';
     }
     
     // Authentication errors

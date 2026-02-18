@@ -81,20 +81,19 @@ class ConnectionQualityService {
       bool isWifi = connectivityResult == ConnectivityResult.wifi ||
           connectivityResult == ConnectivityResult.ethernet;
       
+      // More lenient thresholds so typical home/office connections are not marked "Poor"
       if (isWifi) {
-        // WiFi connection
-        if (latency < 100) {
+        if (latency < 200) {
           return 'good';
-        } else if (latency < 300) {
+        } else if (latency < 500) {
           return 'fair';
         } else {
           return 'poor';
         }
       } else {
-        // Mobile data connection
-        if (latency < 200) {
+        if (latency < 350) {
           return 'good';
-        } else if (latency < 500) {
+        } else if (latency < 700) {
           return 'fair';
         } else {
           return 'poor';

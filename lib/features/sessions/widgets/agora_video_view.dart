@@ -63,43 +63,31 @@ class AgoraVideoViewWidget extends StatelessWidget {
     );
 
     // CRITICAL: Set up video source with correct sourceType
-    // For local video, we need to call setupLocalVideo
-    // For remote video, VideoViewController.remote handles setup automatically via the canvas
+    // For local video: on web we call setupLocalVideo so the SDK binds to the plugin's element.
+    // On Android/iOS we must NOT call setupLocalVideo here — the plugin's AgoraVideoView
+    // creates the native view and binds it; our calling setupLocalVideo(canvas without view)
+    // would clear that binding and cause a black preview.
     if (isLocal) {
-      // For local video (both camera and screen)
-      // CRITICAL: On web, ensure setupLocalVideo is called with explicit source type
-      try {
-        engine.setupLocalVideo(canvas);
-        if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
-          if (kIsWeb) {
+      if (kIsWeb) {
+        try {
+          engine.setupLocalVideo(canvas);
+          if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen) {
             LogService.info('✅ [AgoraVideoView] Set up LOCAL video with SCREEN source (web)');
           } else {
-            debugPrint('✅ [AgoraVideoView] Set up LOCAL video with SCREEN source');
-          }
-        } else {
-          if (kIsWeb) {
             LogService.info('✅ [AgoraVideoView] Set up LOCAL video with CAMERA source (web)');
-          } else {
-            debugPrint('✅ [AgoraVideoView] Set up LOCAL video with CAMERA source');
           }
-        }
-        
-        // CRITICAL: On web, ensure video stream is unmuted after setup
-        if (kIsWeb && actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceCamera) {
-          // Use a post-frame callback to ensure unmute happens after setup
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            engine.muteLocalVideoStream(false).catchError((e) {
-              LogService.warning('Could not unmute local video after setup: $e');
+          if (actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceCamera) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              engine.muteLocalVideoStream(false).catchError((e) {
+                LogService.warning('Could not unmute local video after setup: $e');
+              });
             });
-          });
-        }
-      } catch (e) {
-        if (kIsWeb) {
+          }
+        } catch (e) {
           LogService.warning('⚠️ [AgoraVideoView] Failed to set up local video on web: $e');
-        } else {
-          debugPrint('⚠️ [AgoraVideoView] Failed to set up local video: $e');
         }
       }
+      // On mobile, do not call setupLocalVideo — AgoraVideoView binds the view internally.
     } else {
       // For remote video, the VideoViewController.remote will handle setup
       // The canvas with sourceType is passed to the controller

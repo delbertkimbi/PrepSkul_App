@@ -25,6 +25,21 @@ import 'message_queue_service.dart';
 /// User input is never directly concatenated into SQL queries.
 class ChatService {
   static final SupabaseClient _supabase = SupabaseService.client;
+
+  // In-memory cache (fast, survives navigation within app session)
+  static List<Conversation> _cachedActiveConversations = [];
+  static DateTime? _cachedActiveConversationsAt;
+  static List<Conversation> _cachedArchivedConversations = [];
+  static DateTime? _cachedArchivedConversationsAt;
+
+  static List<Conversation> getCachedActiveConversations() =>
+      List<Conversation>.from(_cachedActiveConversations);
+
+  static List<Conversation> getCachedArchivedConversations() =>
+      List<Conversation>.from(_cachedArchivedConversations);
+
+  static DateTime? get cachedActiveConversationsAt => _cachedActiveConversationsAt;
+  static DateTime? get cachedArchivedConversationsAt => _cachedArchivedConversationsAt;
   
   /// Get API base URL with safety checks
   /// 
@@ -423,6 +438,9 @@ class ChatService {
           ));
         }
 
+        // Update in-memory cache for fast revisits.
+        _cachedActiveConversations = List<Conversation>.from(conversations);
+        _cachedActiveConversationsAt = DateTime.now();
         return conversations;
       }
       
@@ -505,6 +523,9 @@ class ChatService {
         ));
       }
 
+      // Update in-memory cache for fast revisits.
+      _cachedActiveConversations = List<Conversation>.from(conversations);
+      _cachedActiveConversationsAt = DateTime.now();
       return conversations;
     } catch (e) {
       LogService.error('Error getting conversations: $e');
@@ -1219,6 +1240,9 @@ class ChatService {
         ));
       }
 
+      // Update in-memory cache for fast revisits.
+      _cachedArchivedConversations = List<Conversation>.from(conversations);
+      _cachedArchivedConversationsAt = DateTime.now();
       return conversations;
     } catch (e) {
       LogService.error('Error getting archived conversations: $e');

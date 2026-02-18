@@ -187,10 +187,18 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
   
   void _checkMatch() {
-    if (_firstFlipped == null || _secondFlipped == null) return;
+    // Capture indices locally to avoid null issues inside delayed callbacks
+    final firstIndex = _firstFlipped;
+    final secondIndex = _secondFlipped;
+    if (firstIndex == null || secondIndex == null) {
+      safeSetState(() {
+        _isProcessing = false;
+      });
+      return;
+    }
     
-    final card1 = _cards[_firstFlipped!];
-    final card2 = _cards[_secondFlipped!];
+    final card1 = _cards[firstIndex];
+    final card2 = _cards[secondIndex];
     
     final isMatch = card1.pairId == card2.pairId && card1.isLeft != card2.isLeft;
     
@@ -201,13 +209,13 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _ttsService.speak('Match! ${card1.text} and ${card2.text}');
       }
       safeSetState(() {
-        _matchedPairs[_firstFlipped!] = card1.pairId;
-        _matchedPairs[_secondFlipped!] = card2.pairId;
+        _matchedPairs[firstIndex] = card1.pairId;
+        _matchedPairs[secondIndex] = card2.pairId;
         _score++;
         _currentStreak++;
         _xpEarned += 15; // 15 XP per match
-        _flippedCards.remove(_firstFlipped);
-        _flippedCards.remove(_secondFlipped);
+        _flippedCards.remove(firstIndex);
+        _flippedCards.remove(secondIndex);
       });
       
       _soundService.playMatch();
@@ -233,11 +241,12 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     } else {
       // Wrong match - flip back
       Future.delayed(const Duration(milliseconds: 1000), () {
-        _flipControllers[_firstFlipped!]?.reverse();
-        _flipControllers[_secondFlipped!]?.reverse();
+        if (!mounted) return;
+        _flipControllers[firstIndex]?.reverse();
+        _flipControllers[secondIndex]?.reverse();
         safeSetState(() {
-          _flippedCards.remove(_firstFlipped);
-          _flippedCards.remove(_secondFlipped);
+          _flippedCards.remove(firstIndex);
+          _flippedCards.remove(secondIndex);
           _currentStreak = 0;
         });
       });
@@ -249,6 +258,81 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       _secondFlipped = null;
       _isProcessing = false;
     });
+  }
+
+  void _showHowToPlay() {
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'How to play',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This is a matching game. Each pair links two ideas from your notes (left and right cards).',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildHowToBullet('Tap any card to flip it and hear it read aloud.'),
+                _buildHowToBullet('Tap a second card to try to find its matching idea.'),
+                _buildHowToBullet('If they match, they stay green and you earn XP.'),
+                _buildHowToBullet('If they don’t match, they flip back—try to remember their positions.'),
+                _buildHowToBullet('Finish the game by matching all pairs with as few moves as possible.'),
+                const SizedBox(height: 16),
+                Text(
+                  'Tip: Matching helps your brain connect concepts so you remember them longer.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHowToBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('• ', style: TextStyle(fontSize: 14)),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: AppTheme.textMedium,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _finishGame() async {
@@ -327,6 +411,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
             fontWeight: FontWeight.w600,
             color: AppTheme.textDark,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(
@@ -340,6 +426,13 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 _ttsService.setEnabled(_isTTSEnabled);
               });
             },
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.help_outline,
+              color: AppTheme.textDark,
+            ),
+            onPressed: _showHowToPlay,
           ),
           if (_currentStreak > 0)
             Padding(
@@ -367,40 +460,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Matches: ${_matchedPairs.length ~/ 2}/${widget.game.items.length}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                Text(
-                  'Moves: $_moves',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-                if (_xpEarned > 0)
-                  Text(
-                    '$_xpEarned XP',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.textMedium,
-                    ),
-                  ),
-              ],
-            ),
-          ),
         ],
       ),
       body: Stack(
@@ -559,7 +618,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
               ..rotateY(angle),
             child: isFront || (!isFlipped && !isMatched)
                 ? _buildCardBack(isMatched, isSelected)
-                : _buildCardFront(card, isMatched),
+                : _buildCardFront(card, isMatched, angle),
           );
         },
       ),
@@ -599,7 +658,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     );
   }
   
-  Widget _buildCardFront(CardData card, bool isMatched) {
+  Widget _buildCardFront(CardData card, bool isMatched, double rotationAngle) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -618,16 +677,22 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         ],
       ),
       child: Center(
-        child: Text(
-          card.text,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..rotateY(-rotationAngle), // Counter-rotate text to keep it upright
+          child: Text(
+            card.text,
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
           ),
-          textAlign: TextAlign.center,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
         ),
       ),
     );

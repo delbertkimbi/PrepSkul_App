@@ -14,29 +14,67 @@ import '../services/chat_service.dart';
 import '../models/conversation_model.dart';
 import '../widgets/empty_conversations_state.dart';
 import 'chat_screen.dart';
+import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 
 /// Conversations List Screen
 /// 
 /// Displays all conversations for the current user
 /// Shows last message preview, unread badges, and search
 class ConversationsListScreen extends StatefulWidget {
-  const ConversationsListScreen({super.key});
+  final String? initialConversationId;
+
+  const ConversationsListScreen({
+    super.key,
+    this.initialConversationId,
+  });
 
   @override
   State<ConversationsListScreen> createState() => _ConversationsListScreenState();
 }
 
-class _ConversationsListScreenState extends State<ConversationsListScreen> {
+class _ConversationsListScreenState extends State<ConversationsListScreen>
+    with AutomaticKeepAliveClientMixin {
   List<Conversation> _conversations = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
+  bool _hasLoadedOnce = false;
   String _selectedTab = 'all'; // 'all' or 'archived'
   StreamSubscription? _conversationStream;
+  final Map<String, List<Conversation>> _tabCache = {};
+  bool _didAutoOpenInitialConversation = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+
+    // Prime UI from in-memory cache so revisiting feels instant.
+    // Then we refresh in background to stay realtime.
+    final cachedActive = ChatService.getCachedActiveConversations();
+    if (cachedActive.isNotEmpty) {
+      _conversations = cachedActive;
+      _tabCache['all'] = cachedActive;
+      _isLoading = false;
+      _hasLoadedOnce = true;
+    }
+    final cachedArchived = ChatService.getCachedArchivedConversations();
+    if (cachedArchived.isNotEmpty) {
+      _tabCache['archived'] = cachedArchived;
+    }
+
     _loadConversations();
     _subscribeToConversations();
+
+    // High-intent moment: user is in messaging, so prompt (with cooldown guards).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      NotificationPermissionNudgeService.maybeShow(
+        context,
+        trigger: 'messaging',
+      );
+    });
   }
 
   @override
@@ -48,14 +86,23 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
 
   Future<void> _loadConversations({bool refresh = false}) async {
     try {
-      if (refresh) {
-        safeSetState(() {
-          _conversations = [];
-          _isLoading = true;
-        });
-      } else {
-        safeSetState(() => _isLoading = true);
+      final cachedForTab = _tabCache[_selectedTab];
+      if (cachedForTab != null && cachedForTab.isNotEmpty) {
+        _conversations = cachedForTab;
       }
+
+      // If we already have content, keep it and refresh quietly.
+      // Only show full skeleton when we truly have nothing yet.
+      final shouldShowFullLoading = !_hasLoadedOnce && _conversations.isEmpty;
+      safeSetState(() {
+        if (shouldShowFullLoading) {
+          _isLoading = true;
+          _isRefreshing = false;
+        } else {
+          _isLoading = false;
+          _isRefreshing = true;
+        }
+      });
 
       final conversations = _selectedTab == 'archived'
           ? await ChatService.getArchivedConversations()
@@ -64,13 +111,23 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
       if (mounted) {
         safeSetState(() {
           _conversations = conversations;
+          _tabCache[_selectedTab] = conversations;
           _isLoading = false;
+          _isRefreshing = false;
+          _hasLoadedOnce = true;
         });
       }
+
+      // Auto-open the conversation that triggered the notification.
+      _maybeAutoOpenInitialConversation();
     } catch (e) {
       LogService.error('Error loading conversations: $e');
       if (mounted) {
-        safeSetState(() => _isLoading = false);
+        safeSetState(() {
+          _isLoading = false;
+          _isRefreshing = false;
+          _hasLoadedOnce = true; // Prevent repeated full skeleton flashes on transient errors
+        });
         ErrorHandlerService.showErrorSnackbar(
           context,
           e,
@@ -81,11 +138,38 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
     }
   }
 
+  void _maybeAutoOpenInitialConversation() {
+    if (!mounted) return;
+    if (_didAutoOpenInitialConversation) return;
+    final targetId = widget.initialConversationId;
+    if (targetId == null || targetId.isEmpty) return;
+    if (_isLoading || _isRefreshing) return;
+    if (_conversations.isEmpty) return;
+
+    final match = _conversations.where((c) => c.id == targetId).toList();
+    if (match.isEmpty) {
+      LogService.warning('Conversation not found for deep link: $targetId');
+      return;
+    }
+
+    _didAutoOpenInitialConversation = true;
+    // Defer push until after current frame (prevents setState during build).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(conversation: match.first),
+        ),
+      );
+    });
+  }
+
   void _subscribeToConversations() {
     _conversationStream = ChatService.watchConversations().listen((conversations) async {
       if (mounted) {
         // Reload conversations based on current tab
-        await _loadConversations(refresh: true);
+        await _loadConversations(refresh: false);
       }
     });
   }
@@ -169,6 +253,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
@@ -196,25 +281,37 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           ),
         ),
       ),
-      body: _isLoading
-          ? ListView.builder(
+      body: Stack(
+        children: [
+          if (_isLoading)
+            ListView.builder(
               padding: const EdgeInsets.all(12),
-              itemCount: 5,
-              itemBuilder: (context, index) => ShimmerLoading.sessionCard(),
+              itemCount: 8,
+              itemBuilder: (context, index) => ShimmerLoading.conversationTile(),
             )
-          : _filteredConversations.isEmpty
-              ? _buildEmptyState()
-              : RefreshIndicator(
-                  onRefresh: () => _loadConversations(refresh: true),
-                  color: AppTheme.primaryColor,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    itemCount: _filteredConversations.length,
-                    itemBuilder: (context, index) {
-                      return _buildConversationCard(_filteredConversations[index]);
-                    },
-                  ),
-                ),
+          else if (_filteredConversations.isEmpty)
+            _buildEmptyState()
+          else
+            RefreshIndicator(
+              onRefresh: () => _loadConversations(refresh: true),
+              color: AppTheme.primaryColor,
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                itemCount: _filteredConversations.length,
+                itemBuilder: (context, index) {
+                  return _buildConversationCard(_filteredConversations[index]);
+                },
+              ),
+            ),
+          if (!_isLoading && _isRefreshing)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+        ],
+      ),
     );
   }
 
@@ -222,10 +319,9 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
     final isSelected = _selectedTab == value;
     return GestureDetector(
       onTap: () {
-        setState(() {
-          _selectedTab = value;
-        });
-        _loadConversations(refresh: true);
+        if (_selectedTab == value) return;
+        setState(() => _selectedTab = value);
+        _loadConversations(refresh: false);
       },
       child: Column(
         children: [

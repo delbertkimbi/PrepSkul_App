@@ -702,13 +702,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     final totalPending =
         pendingBookingCount + pendingCustomCount + pendingTrialCount;
 
-    // FAB shows in Custom Request tab only if:
-    // 1. Selected filter is 'custom'
-    // 2. At least one custom request exists
-    // 3. User is not a student (students have button on card already)
-    final showFAB = _selectedFilter == 'custom' && 
-                    _customRequests.isNotEmpty &&
-                    _getUserType() != 'student';
+    // FAB shows in Custom Request tab when user can create requests.
+    // Previously it was hidden unless at least one custom request existed, which
+    // made "first request" creation impossible for some users.
+    // Allow creating a custom request even for students.
+    // Some users don't see the "create" entry point inside the tab, so keep FAB visible.
+    final showFAB = _selectedFilter == 'custom';
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,

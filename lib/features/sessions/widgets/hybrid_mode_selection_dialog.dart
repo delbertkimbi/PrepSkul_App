@@ -37,106 +37,109 @@ class HybridModeSelectionDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.8;
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 500),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+        constraints: BoxConstraints(maxWidth: 500, maxHeight: maxHeight),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.shuffle, color: AppTheme.primaryColor, size: 28),
                   ),
-                  child: Icon(Icons.shuffle, color: AppTheme.primaryColor, size: 28),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Choose Session Mode',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Choose Session Mode',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'This is a hybrid session',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: Colors.grey[600],
+                        const SizedBox(height: 4),
+                        Text(
+                          'This is a hybrid session',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: Colors.grey[600],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            
-            // Online Mode Option
-            _buildModeOption(
-              context: context,
-              title: 'Online',
-              subtitle: 'Video call via Google Meet',
-              icon: Icons.videocam,
-              color: Colors.blue,
-              isReady: meetingLink != null && meetingLink!.isNotEmpty,
-              features: [
-                'Video call with screen sharing',
-                'Automatic recording (if enabled)',
-                'Connection quality monitoring',
-                'Chat and whiteboard features',
-              ],
-              onTap: () => Navigator.pop(context, true),
-            ),
-            const SizedBox(height: 16),
-            
-            // Onsite Mode Option
-            _buildModeOption(
-              context: context,
-              title: 'Onsite',
-              subtitle: 'In-person at location',
-              icon: Icons.location_on,
-              color: Colors.green,
-              address: sessionAddress,
-              locationDescription: locationDescription,
-              features: [
-                'Face-to-face interaction',
-                'Location check-in required',
-                'Location sharing for safety',
-                'Physical materials support',
-              ],
-              onTap: () => Navigator.pop(context, false),
-            ),
-            const SizedBox(height: 24),
-            
-            // Cancel Button
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () => Navigator.pop(context, null),
-                child: Text(
-                  'Cancel',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Online Mode Option
+              _buildModeOption(
+                context: context,
+                title: 'Online',
+                subtitle: 'Video call via Google Meet',
+                icon: Icons.videocam,
+                color: Colors.blue,
+                isReady: meetingLink != null && meetingLink!.isNotEmpty,
+                features: [
+                  'Video call with screen sharing',
+                  'Automatic recording (if enabled)',
+                  'Connection quality monitoring',
+                  'Chat and whiteboard features',
+                ],
+                onTap: () => Navigator.pop(context, true),
+              ),
+              const SizedBox(height: 16),
+
+              // Onsite Mode Option
+              _buildModeOption(
+                context: context,
+                title: 'Onsite',
+                subtitle: 'In-person at location',
+                icon: Icons.location_on,
+                color: Colors.green,
+                address: sessionAddress,
+                locationDescription: locationDescription,
+                features: [
+                  'Face-to-face interaction',
+                  'Location check-in required',
+                  'Location sharing for safety',
+                  'Physical materials support',
+                ],
+                onTap: () => Navigator.pop(context, false),
+              ),
+              const SizedBox(height: 24),
+
+              // Cancel Button
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[700],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

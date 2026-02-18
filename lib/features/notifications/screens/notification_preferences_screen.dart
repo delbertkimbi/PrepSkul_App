@@ -67,19 +67,26 @@ class _NotificationPreferencesScreenState
     });
 
     try {
-      await NotificationService.updatePreferences(
+      final saved = await NotificationService.updatePreferences(
         emailEnabled: _emailEnabled,
         inAppEnabled: _inAppEnabled,
         pushEnabled: _pushEnabled,
       );
 
       if (mounted) {
-        BrandedSnackBar.showSuccess(context, 'Preferences saved successfully');
+        if (saved) {
+          BrandedSnackBar.showSuccess(context, 'Preferences saved successfully');
+        } else {
+          BrandedSnackBar.showError(
+            context,
+            'Saving notification preferences isn’t available yet.',
+          );
+        }
       }
     } catch (e) {
       LogService.debug('Error saving preferences: $e');
       if (mounted) {
-        BrandedSnackBar.showError(context, 'Failed to save preferences: $e');
+        BrandedSnackBar.showError(context, 'Failed to save preferences. Please try again.');
       }
     } finally {
       if (mounted) {

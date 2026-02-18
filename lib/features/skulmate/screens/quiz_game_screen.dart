@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -14,6 +15,8 @@ import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/game_roadmap_widget.dart';
+import '../widgets/game_rules_overlay.dart';
 import 'game_results_screen.dart';
 
 /// Quiz game screen with multiple choice questions
@@ -38,6 +41,9 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
   dynamic _character;
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
+  int? _lastCorrectXp; // +10 or +15 for boss – show pop-up briefly
+
+  bool _hasShownRules = false;
 
   @override
   void initState() {
@@ -48,12 +54,33 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
     _loadCharacter();
     _loadStats();
-    // Speak first question
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted && _isTTSEnabled) {
-        _speakCurrentQuestion();
-      }
-    });
+    // Show rules overlay if first time
+    _showRulesIfNeeded();
+  }
+
+  Future<void> _showRulesIfNeeded() async {
+    if (!_hasShownRules) {
+      await GameRulesOverlay.showIfNeeded(
+        context,
+        widget.game.gameType,
+        () {
+          _hasShownRules = true;
+          // Speak first question after rules
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && _isTTSEnabled) {
+              _speakCurrentQuestion();
+            }
+          });
+        },
+      );
+    } else {
+      // Speak first question
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && _isTTSEnabled) {
+          _speakCurrentQuestion();
+        }
+      });
+    }
   }
 
   @override
@@ -96,11 +123,18 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       _selectedAnswerIndex = answerIndex;
       if (isCorrect) {
         _score++;
-        _xpEarned += 10;
+        final xpPerCorrect = question.isBoss ? 15 : 10;
+        _xpEarned += xpPerCorrect;
+        _lastCorrectXp = xpPerCorrect;
         _soundService.playCorrect();
+        _confettiController.play();
         if (_isTTSEnabled) {
           _ttsService.speak('Correct!');
         }
+        // Clear XP pop-up after 1.2s
+        Future.delayed(const Duration(milliseconds: 1200), () {
+          if (mounted) safeSetState(() => _lastCorrectXp = null);
+        });
       } else {
         _soundService.playIncorrect();
         if (_isTTSEnabled) {
@@ -138,10 +172,13 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
     final totalQuestions = widget.game.items.length;
     final isPerfectScore = _score == totalQuestions;
 
+    _xpEarned += 50; // Completion bonus per PRD
+
     if (isPerfectScore) {
       _confettiController.play();
       _soundService.playComplete();
-    }    final stats = await GameStatsService.addGameResult(
+    }
+    final stats = await GameStatsService.addGameResult(
       correctAnswers: _score,
       totalQuestions: totalQuestions,
       timeTakenSeconds: timeTaken,
@@ -175,10 +212,18 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
     final question = widget.game.items[_currentQuestionIndex];
     final progress = (_currentQuestionIndex + 1) / widget.game.items.length;
+    final isBossQuestion = question.isBoss;
 
-    return Scaffold(
+    return Stack(
+      children: [
+        Scaffold(
       appBar: AppBar(
-        title: Text('Quiz Game', style: GoogleFonts.poppins()),
+        title: Text(
+          widget.game.title,
+          style: GoogleFonts.poppins(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: AppTheme.primaryColor,
         actions: [
           IconButton(
@@ -197,13 +242,83 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       ),
       body: Column(
         children: [
-          LinearProgressIndicator(value: progress),
+          // Enhanced progress indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: Colors.white,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Question ${_currentQuestionIndex + 1} of ${widget.game.items.length}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Icon(Icons.star, color: Colors.amber, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$_xpEarned XP',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.amber.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 8,
+                    backgroundColor: AppTheme.softBorder,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                  ),
+                ),
+              ],
+            ),
+          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (isBossQuestion)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade700.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade700, width: 2),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('⚔️', style: GoogleFonts.poppins(fontSize: 18)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Boss Question',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.amber.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   Text(
                     'Question ${_currentQuestionIndex + 1} of ${widget.game.items.length}',
                     style: GoogleFonts.poppins(fontSize: 16, color: AppTheme.textMedium),
@@ -255,6 +370,55 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
           ),
         ],
       ),
+    ),
+        // XP pop-up on correct answer
+        if (_lastCorrectXp != null)
+          Positioned(
+            top: MediaQuery.of(context).size.height * 0.35,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedOpacity(
+                opacity: 1,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentGreen,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.accentGreen.withOpacity(0.5),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    '+$_lastCorrectXp XP',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Align(
+          alignment: Alignment.topCenter,
+          child: ConfettiWidget(
+            confettiController: _confettiController,
+            blastDirection: pi / 2,
+            maxBlastForce: 5,
+            minBlastForce: 2,
+            emissionFrequency: 0.05,
+            numberOfParticles: 30,
+            gravity: 0.1,
+          ),
+        ),
+      ],
     );
   }
 }

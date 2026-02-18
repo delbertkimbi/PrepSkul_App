@@ -19,7 +19,6 @@ import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
-import 'dart:convert';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
@@ -601,7 +600,8 @@ class _TutorDetailScreenState extends State<TutorDetailScreen> {
                                         color: Colors.black,
                                       ),
                                     ),
-                                    if (totalReviewsVal >= 3)
+                                    // Only show review count when at least 3 ratings exist
+                                    if (rating > 0 && totalReviews >= 3)
                                       Text(
                                         ' ($totalReviews)',
                                         style: GoogleFonts.poppins(

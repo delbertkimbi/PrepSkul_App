@@ -39,12 +39,16 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   bool? _learningObjectivesMet;
   int? _studentProgressRating;
   bool? _wouldContinueLessons;
+  int? _wouldContinueLessonsChoice; // 0=No, 1=Yes, 2=Not sure (trial learner)
+  int? _learningGoalsChoice; // 0=No, 1=Yes, 2=Partly (normal learner)
+  int? _parentWouldBookChoice; // 0=No, 1=Yes, 2=Not sure (trial parent)
   int? _studentEngagement; // For tutors
   bool _isSubmitting = false;
   bool _canSubmit = false;
   bool _isTutor = false;
   bool _isParent = false;
   bool _isLoadingRole = true;
+  bool _isTrial = true; // Default true until we fetch recurring_session_id
   
   // Parent-specific fields
   final _childResponseController = TextEditingController();
@@ -98,15 +102,17 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
 
       final session = await SupabaseService.client
           .from('individual_sessions')
-          .select('tutor_id, learner_id, parent_id, location, scheduled_date, scheduled_time')
+          .select('tutor_id, learner_id, parent_id, location, scheduled_date, scheduled_time, recurring_session_id')
           .eq('id', widget.sessionId)
           .maybeSingle();
 
       if (session != null) {
+        final isNormal = session['recurring_session_id'] != null;
         safeSetState(() {
           _isTutor = session['tutor_id'] == userId;
           _isParent = session['parent_id'] == userId;
           _sessionData = session;
+          _isTrial = !isNormal;
           _isLoadingRole = false;
         });
       } else {
@@ -168,7 +174,12 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           if (_nextSessionFocusController.text.trim().isNotEmpty)
             'Next session focus: ${_nextSessionFocusController.text.trim()}',
         ].join('\n\n');
-        
+        // Trial parent: wouldContinueLessons from _parentWouldBookChoice (1=Yes, 0=No, 2=Not sure->null)
+        final wouldBook = _parentWouldBookChoice != null
+            ? (_parentWouldBookChoice == 1
+                ? true
+                : (_parentWouldBookChoice == 0 ? false : null))
+            : null;
         await SessionFeedbackService.submitStudentFeedback(
           sessionId: widget.sessionId,
           rating: _selectedRating!,
@@ -180,6 +191,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               ? null
               : _tutorCommunicationNotesController.text.trim(),
           wouldRecommend: _tutorCommunicatedWell,
+          wouldContinueLessons: wouldBook,
           studentProgressRating: _childEngagementRating,
           studentEngagement: _comfortLevelWithSetup, // Reuse field for comfort level
         );
@@ -188,7 +200,18 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         final learnerReview = _whatLearnedController.text.trim().isEmpty
             ? _reviewController.text.trim()
             : _whatLearnedController.text.trim();
-            
+        // Trial: wouldContinueLessons from choice (1=Yes, 0=No, 2=Not sure->null)
+        final wouldContinue = _wouldContinueLessonsChoice != null
+            ? (_wouldContinueLessonsChoice == 1
+                ? true
+                : (_wouldContinueLessonsChoice == 0 ? false : null))
+            : null;
+        // Normal: learningObjectivesMet from choice (1=Yes, 0=No, 2=Partly->null)
+        final learningMet = _learningGoalsChoice != null
+            ? (_learningGoalsChoice == 1
+                ? true
+                : (_learningGoalsChoice == 0 ? false : null))
+            : null;
         await SessionFeedbackService.submitStudentFeedback(
           sessionId: widget.sessionId,
           rating: _selectedRating!,
@@ -200,26 +223,21 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               ? null
               : _whatCouldImproveController.text.trim(),
           wouldRecommend: _wouldRecommend,
-          learningObjectivesMet: _learningObjectivesMet,
+          learningObjectivesMet: learningMet ?? _learningObjectivesMet,
           studentProgressRating: _confidenceLevel ?? _studentProgressRating,
-          wouldContinueLessons: _wouldContinueLessons,
+          wouldContinueLessons: wouldContinue ?? _wouldContinueLessons,
         );
       }
 
       if (mounted) {
-        Navigator.of(context).pop(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(PhosphorIcons.checkCircle(), color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Thank you for your feedback!')),
-              ],
-            ),
-            backgroundColor: AppTheme.accentGreen,
-            duration: const Duration(seconds: 3),
-          ),
+        // Conversion CTA per PRD: pop with result so parent can show "Book now" action
+        final wouldContinue = _isParent
+            ? (_parentWouldBookChoice == 1)
+            : (!_isTutor && _wouldContinueLessonsChoice == 1);
+        Navigator.of(context).pop(
+          _isTrial && !_isTutor
+              ? {'submitted': true, 'wouldContinue': wouldContinue}
+              : true,
         );
       }
     } catch (e) {
@@ -337,7 +355,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
             ),
             const SizedBox(width: 12),
             Text(
-              'Session Feedback',
+              _isTrial && !_isTutor ? 'How was your trial?' : 'Session Feedback',
               style: GoogleFonts.poppins(
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
@@ -538,11 +556,24 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   }
 
   Widget _buildRatingStep() {
+    // Trial: conversion-focused; Normal: experience-focused
+    final String ratingTitle;
+    final String ratingSubtitle;
+    if (_isTutor) {
+      ratingTitle = 'Rate this session';
+      ratingSubtitle = 'Help us track session quality and learner progress.';
+    } else if (_isTrial) {
+      ratingTitle = 'How was your trial session?';
+      ratingSubtitle = 'Your feedback helps us match you with the right tutor.';
+    } else {
+      ratingTitle = 'How was your session?';
+      ratingSubtitle = 'Your feedback helps us improve and helps your tutor grow.';
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _isTutor ? 'Rate this session' : 'How was your session?',
+          ratingTitle,
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -551,9 +582,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          _isTutor 
-              ? 'Help us track session quality and learner progress.'
-              : 'Your feedback helps us improve and helps your tutor grow.',
+          ratingSubtitle,
           style: GoogleFonts.poppins(
             fontSize: 13,
             color: AppTheme.textMedium,
@@ -744,12 +773,119 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       );
     }
 
-    // Learner feedback
+    // Learner feedback – trial: conversion prompts; normal: experience prompts
+    if (_isTrial) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Would you continue lessons with this tutor?',
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Your feedback helps us match you with the right tutor.',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: AppTheme.textMedium,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: _buildThreeOptionButton(
+                  'Yes',
+                  _wouldContinueLessonsChoice == 1,
+                  () => safeSetState(() => _wouldContinueLessonsChoice = 1),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildThreeOptionButton(
+                  'No',
+                  _wouldContinueLessonsChoice == 0,
+                  () => safeSetState(() => _wouldContinueLessonsChoice = 0),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildThreeOptionButton(
+                  'Not sure',
+                  _wouldContinueLessonsChoice == 2,
+                  () => safeSetState(() => _wouldContinueLessonsChoice = 2),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'What did you like most? (optional)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _whatWentWellController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Example: Clear explanations, patient teaching style...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.softBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'Anything we could improve? (optional)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _whatCouldImproveController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Example: More practice problems, slower pace...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.softBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Normal learner: experience-focused prompts per PRD
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'What did you learn today?',
+          'Did you achieve your learning goals?',
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -758,81 +894,43 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Share what you learned or found helpful in this session.',
+          'Help us understand your session experience.',
           style: GoogleFonts.poppins(
             fontSize: 13,
             color: AppTheme.textMedium,
           ),
         ),
         const SizedBox(height: 24),
-        TextField(
-          controller: _whatLearnedController,
-          maxLines: 4,
-          decoration: InputDecoration(
-            hintText: 'Example: I learned how to solve quadratic equations using factoring. The tutor explained it step by step...',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.softBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Which teaching methods helped you most?',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+        Row(
           children: [
-            'Visual examples',
-            'Practice problems',
-            'Clear explanations',
-            'Interactive activities',
-          ].map((method) {
-            final isSelected = _helpfulTeachingMethod == method;
-            return GestureDetector(
-              onTap: () => safeSetState(() {
-                _helpfulTeachingMethod = isSelected ? null : method;
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? AppTheme.primaryColor.withOpacity(0.1)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-                    width: isSelected ? 2 : 1,
-                  ),
-                ),
-                child: Text(
-                  method,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    color: isSelected ? AppTheme.primaryColor : AppTheme.textDark,
-                  ),
-                ),
+            Expanded(
+              child: _buildThreeOptionButton(
+                'Yes',
+                _learningGoalsChoice == 1,
+                () => safeSetState(() => _learningGoalsChoice = 1),
               ),
-            );
-          }).toList(),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildThreeOptionButton(
+                'Partly',
+                _learningGoalsChoice == 2,
+                () => safeSetState(() => _learningGoalsChoice = 2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildThreeOptionButton(
+                'No',
+                _learningGoalsChoice == 0,
+                () => safeSetState(() => _learningGoalsChoice = 0),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         Text(
-          'How confident do you feel with the material covered? (1-5)',
+          'Would you recommend this tutor?',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -841,42 +939,11 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         ),
         const SizedBox(height: 8),
         Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(5, (index) {
-            final confidence = index + 1;
-            return GestureDetector(
-              onTap: () => safeSetState(() => _confidenceLevel = confidence),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _confidenceLevel == confidence
-                      ? AppTheme.primaryColor
-                      : Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _confidenceLevel == confidence
-                        ? AppTheme.primaryColor
-                        : AppTheme.softBorder,
-                    width: 2,
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    '$confidence',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: _confidenceLevel == confidence
-                          ? Colors.white
-                          : AppTheme.textMedium,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
+          children: [
+            Expanded(child: _buildYesNoButton(true, _wouldRecommend, (v) => safeSetState(() => _wouldRecommend = v))),
+            const SizedBox(width: 12),
+            Expanded(child: _buildYesNoButton(false, _wouldRecommend, (v) => safeSetState(() => _wouldRecommend = v))),
+          ],
         ),
       ],
     );
@@ -1071,6 +1138,59 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     if (_isParent) {
       final isOnsite = _sessionData != null && 
           (_sessionData!['location'] as String? ?? '').toLowerCase() == 'onsite';
+
+      // Trial parent: conversion prompts – "Would you book regular sessions?"
+      if (_isTrial) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Would you book regular sessions with this tutor?',
+              style: GoogleFonts.poppins(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your feedback helps us match your child with the right tutor.',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: AppTheme.textMedium,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildThreeOptionButton(
+                    'Yes',
+                    _parentWouldBookChoice == 1,
+                    () => safeSetState(() => _parentWouldBookChoice = 1),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildThreeOptionButton(
+                    'No',
+                    _parentWouldBookChoice == 0,
+                    () => safeSetState(() => _parentWouldBookChoice = 0),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildThreeOptionButton(
+                    'Not sure',
+                    _parentWouldBookChoice == 2,
+                    () => safeSetState(() => _parentWouldBookChoice = 2),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      }
       
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1237,11 +1357,112 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       );
     }
 
+    // Learner Details – trial: optional learn/confidence; normal: experience prompts
+    if (_isTrial) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Additional details (optional)',
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Share more about your trial experience.',
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              color: AppTheme.textMedium,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'What did you learn? (optional)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _whatLearnedController,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: 'Example: Basic algebra concepts, problem-solving strategies...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.softBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'How confident do you feel about the topic? (1-5)',
+            style: GoogleFonts.poppins(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              final confidence = index + 1;
+              return GestureDetector(
+                onTap: () => safeSetState(() => _confidenceLevel = confidence),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _confidenceLevel == confidence
+                        ? AppTheme.primaryColor
+                        : Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _confidenceLevel == confidence
+                          ? AppTheme.primaryColor
+                          : AppTheme.softBorder,
+                      width: 2,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$confidence',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: _confidenceLevel == confidence
+                            ? Colors.white
+                            : AppTheme.textMedium,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      );
+    }
+
+    // Normal learner: optional experience details per PRD
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Additional details (optional)',
+          'Additional feedback (optional)',
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -1250,16 +1471,15 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Help us understand what worked and what could be improved.',
+          'Share what worked and what could be improved.',
           style: GoogleFonts.poppins(
             fontSize: 13,
             color: AppTheme.textMedium,
           ),
         ),
         const SizedBox(height: 24),
-        // What Went Well
         Text(
-          'What did you find most helpful?',
+          'What went well? (optional)',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -1287,7 +1507,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         const SizedBox(height: 20),
         // What Could Improve
         Text(
-          'What could be improved?',
+          'What could improve? (optional)',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -1312,25 +1532,32 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
             fillColor: Colors.white,
           ),
         ),
-        const SizedBox(height: 20),
-        // Would Recommend
-        Text(
-          'Would you recommend this tutor?',
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: _buildYesNoButton(true, _wouldRecommend, (v) => _wouldRecommend = v)),
-            const SizedBox(width: 12),
-            Expanded(child: _buildYesNoButton(false, _wouldRecommend, (v) => _wouldRecommend = v)),
-          ],
-        ),
       ],
+    );
+  }
+
+  Widget _buildThreeOptionButton(String label, bool isSelected, VoidCallback onTap) {
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(
+          color: isSelected ? AppTheme.primaryColor : Colors.grey[300]!,
+          width: isSelected ? 2 : 1,
+        ),
+        backgroundColor: isSelected
+            ? AppTheme.primaryColor.withOpacity(0.1)
+            : Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 13,
+          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+          color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+        ),
+      ),
     );
   }
 

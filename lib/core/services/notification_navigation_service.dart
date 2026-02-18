@@ -26,6 +26,7 @@ import 'package:prepskul/features/admin/screens/admin_user_detail_screen.dart';
 import 'package:prepskul/features/admin/screens/admin_tutor_request_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/features/messaging/screens/conversations_list_screen.dart';
 
 class NotificationNavigationService {
   /// Navigate to the appropriate screen based on notification action URL
@@ -109,6 +110,8 @@ class NotificationNavigationService {
         }
       } else if (pathSegments[0] == 'payments') {
         await _navigateToPayment(pathSegments, userType);
+      } else if (pathSegments[0] == 'messages') {
+        await _navigateToMessages(pathSegments, userType);
       } else {
         // Unknown path, try to navigate based on notification type
         await _navigateByNotificationType(notificationType, metadata, userType);
@@ -117,6 +120,37 @@ class NotificationNavigationService {
       LogService.error('[NOTIF_NAV] Error navigating to notification action: $e');
       // Don't throw - navigation failure shouldn't break the app
     }
+  }
+
+  /// Navigate to messages / a specific conversation (e.g. /messages/{conversationId})
+  static Future<void> _navigateToMessages(
+    List<String> pathSegments,
+    String? userType,
+  ) async {
+    final navService = NavigationService();
+    final context = navService.context;
+    if (context == null) {
+      LogService.warning('[NOTIF_NAV] No context for messages navigation, queuing link');
+      if (pathSegments.length >= 2) {
+        navService.queueDeepLink(Uri(path: '/messages/${pathSegments[1]}'));
+      } else {
+        navService.queueDeepLink(Uri(path: '/messages'));
+      }
+      return;
+    }
+
+    // Ensure we're on the right root navigation (student/parent/tutor) before pushing messages.
+    final role = userType == 'tutor' ? 'tutor' : (userType == 'parent' ? 'parent' : 'student');
+    final rootRoute = role == 'tutor' ? '/tutor-nav' : (role == 'parent' ? '/parent-nav' : '/student-nav');
+    await navService.navigateToRoute(rootRoute, replace: true);
+
+    // Push conversations list. If we have a conversation ID, auto-open it.
+    final conversationId = pathSegments.length >= 2 ? pathSegments[1] : null;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ConversationsListScreen(initialConversationId: conversationId),
+      ),
+    );
   }
 
   /// Navigate to booking details

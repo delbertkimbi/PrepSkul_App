@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 
 /// Initial Loading Screen
 ///
-/// Shows an animated PrepSkul logo on deep blue during the initial app load.
-/// Uses white logo so it's visible; avoids white flash on cold start.
+/// Shows an animated PrepSkul logo. Matches HTML splash (white bg, blue logo)
+/// to avoid the double splash (white → deep blue) and stay consistent.
 class InitialLoadingScreen extends StatefulWidget {
   const InitialLoadingScreen({super.key});
 
@@ -59,40 +60,40 @@ class _InitialLoadingScreenState extends State<InitialLoadingScreen>
     super.dispose();
   }
 
-  static const _splashBlue = Color(0xFF1B2C4F);
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _splashBlue,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Opacity(
-              opacity: _rotationAnimation.value,
-              child: Transform.scale(
-                scale: _scaleAnimation.value,
-                child: Hero(
-                  tag: 'prepskul-logo',
-                  transitionOnUserGestures: false,
-                  child: Image.asset(
-                    'assets/images/app_logo(white).png',
-                    width: 120,
-                    height: 120,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(
-                        Icons.school,
-                        size: 120,
-                        color: Colors.white,
-                      );
-                    },
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              return Opacity(
+                opacity: _rotationAnimation.value,
+                child: Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: Hero(
+                    tag: 'prepskul-logo',
+                    transitionOnUserGestures: false,
+                    child: Image.asset(
+                      'assets/images/app_logo(blue).png',
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          Icons.school,
+                          size: 120,
+                          color: const Color(0xFF1B2C4F),
+                        );
+                      },
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );

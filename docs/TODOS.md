@@ -314,6 +314,30 @@ All 7 priority tasks have been implemented and verified:
 
 ---
 
+### **Onsite sessions (Uber-style)** — precise, clear, minimal UI
+
+**Design:** Tutor-centric verification; background-only monitoring; no popups during class. Matches PrepSkul UI/simplicity (Poppins, AppTheme, one-line copy).
+
+#### **Phase 1: Continuous location monitoring** 🔴
+- [ ] **Database:** Add to `session_attendance`: `location_history` (JSONB), `location_deviations` (JSONB), `last_location_check` (TIMESTAMPTZ), `location_check_count` (INT). Ensure `check_in_photo_url` (TEXT) exists.
+- [ ] **Service:** `ContinuousLocationMonitoringService`: start/stop per session; periodic location check every **5 minutes** (battery-friendly); **50 m** deviation threshold from session location; append to `location_history`, log deviations to `location_deviations`; **no in-app prompts** during session.
+- [ ] **Lifecycle:** Start continuous monitoring when tutor **starts** onsite session (after location sharing). Stop when session **ends** or tutor checks out. If app is killed, no updates; check-in + check-out still count; no penalty.
+- [ ] **UI:** One-line banner when onsite session is **in progress** (tutor view): *"Keep app in background — it helps document your session and support smooth payment."* Single line, dismissible or auto-hide; no dialogs.
+
+#### **Phase 2: Check-in selfie (already partially done)** 🟡
+- [x] **Selfie upload:** `LocationCheckInService.uploadPresenceSelfie` + "Upload Selfie" in tutor session detail — already implemented.
+- [ ] **DB:** Ensure `session_attendance.check_in_photo_url` exists (migration if missing).
+- [ ] **Optional:** After check-in, show short hint: "Add a photo of you and the learner(s) for your records" (one line; optional tap to open camera).
+
+#### **Acceptance (Uber-style)**
+- [ ] Tutor starts onsite session → continuous monitoring starts silently; no popup.
+- [x] Every ~5 min (while app in foreground or background): location stored; if >50 m from venue, deviation logged (no alert to tutor during session).
+- [x] Tutor ends session or checks out → monitoring stops; session completes normally.
+- [x] One-line banner visible once when session in progress; no repeated nagging.
+- [x] Check-in + optional selfie; check-out; duration and history available for admin/post-session review.
+
+---
+
 ## 📅 **PENDING**
 
 ### **WEEK 1: Admin & Verification**

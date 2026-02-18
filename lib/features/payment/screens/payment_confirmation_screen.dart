@@ -630,74 +630,56 @@ class _PaymentConfirmationScreenState extends State<PaymentConfirmationScreen> {
             ],
           ),
           if (isPaymentFailed) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      // Just close the screen - user can try again later
-                      Navigator.pop(context, false);
-                    },
-                    icon: const Icon(Icons.schedule, size: 18),
-                    label: Text(
-                      'Try Again Later',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.textMedium,
-                      side: BorderSide(color: Colors.grey[300]!),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                TextButton(
+                  onPressed: () {
+                    // Close screen and allow user to retry from previous step.
+                    Navigator.pop(context, false);
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.textMedium,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    textStyle: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
+                  child: const Text('Try again later'),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      try {
-                        await WhatsAppSupportService.contactSupportForPaymentFailure(
-                          paymentId: widget.transactionId,
-                          amount: PricingService.formatPrice(widget.amount),
-                          paymentType: 'Booking Payment',
-                        );
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'WhatsApp is not installed. Please install WhatsApp to contact support.',
-                                style: GoogleFonts.poppins(),
-                              ),
-                              backgroundColor: Colors.red,
+                const Spacer(),
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await WhatsAppSupportService.contactSupportForPaymentFailure(
+                        paymentId: widget.transactionId,
+                        amount: PricingService.formatPrice(widget.amount),
+                        paymentType: 'Booking Payment',
+                      );
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'WhatsApp is not installed. Please install WhatsApp to contact support.',
+                              style: GoogleFonts.poppins(fontSize: 12),
                             ),
-                          );
-                        }
+                            backgroundColor: Colors.red,
+                          ),
+                        );
                       }
-                    },
-                    icon: const Icon(Icons.chat, size: 18),
-                    label: Text(
-                      'Contact Support',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.primaryColor,
-                      side: BorderSide(color: AppTheme.primaryColor),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
+                    }
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    textStyle: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
+                  child: const Text('Contact support'),
                 ),
               ],
             ),

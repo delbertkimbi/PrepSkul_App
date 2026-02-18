@@ -5,9 +5,11 @@ import 'package:prepskul/core/services/notification_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/booking/services/individual_session_service.dart';
 import 'package:prepskul/features/booking/services/session_payment_service.dart';
+import 'package:prepskul/features/booking/services/trial_session_service.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/sessions/services/connection_quality_service.dart';
 import 'package:prepskul/features/sessions/services/location_sharing_service.dart';
+import 'package:prepskul/features/sessions/services/continuous_location_monitoring_service.dart';
 import 'package:prepskul/features/sessions/services/agora_recording_service.dart';
 
 /// Session Lifecycle Service
@@ -130,7 +132,19 @@ class SessionLifecycleService {
           LogService.warning('Failed to start location sharing: $e');
           // Don't fail session start if location sharing fails
         }
-        
+        // Start continuous location monitoring (Uber-style: 5 min, 50m, no popups)
+        try {
+          final sessionAddress = (session['address'] as String? ?? '').trim();
+          if (sessionAddress.isNotEmpty) {
+            await ContinuousLocationMonitoringService.startMonitoring(
+              sessionId: sessionId,
+              userId: userId,
+              sessionAddress: sessionAddress,
+            );
+          }
+        } catch (e) {
+          LogService.warning('Failed to start continuous location monitoring: $e');
+        }
         // Also start location sharing for learner if they join
         // This will be triggered when learner joins the session
         // For now, tutor location is the primary tracking point
@@ -224,7 +238,8 @@ class SessionLifecycleService {
   /// End a session
   ///
   /// Records end time, calculates duration, updates status,
-  /// triggers earnings calculation, sends notifications
+  /// triggers earnings calculation, sends notifications.
+  /// Trial-aware: if sessionId is a trial, runs trial end flow (completion + feedback notifications).
   static Future<void> endSession(
     String sessionId, {
     String? tutorNotes,
@@ -241,7 +256,23 @@ class SessionLifecycleService {
 
       final now = DateTime.now();
 
-      // Get session details
+      // Trial-aware dispatch: check trial_sessions first
+      final trial = await _supabase
+          .from('trial_sessions')
+          .select('id, tutor_id, learner_id, parent_id, status, location')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+      if (trial != null && (trial['status'] == 'in_progress' || trial['status'] == 'scheduled')) {
+        await _endTrialSession(
+          sessionId: sessionId,
+          userId: userId,
+          now: now,
+        );
+        return;
+      }
+
+      // Recurring/individual session flow
       final session = await _supabase
           .from('individual_sessions')
           .select('''
@@ -306,9 +337,10 @@ class SessionLifecycleService {
       // Stop connection quality monitoring
       ConnectionQualityService.stopMonitoring();
       
-      // Stop location sharing for onsite sessions (including hybrid)
+      // Stop location sharing and continuous monitoring for onsite sessions (including hybrid)
       if (session['location'] == 'onsite' || session['location'] == 'hybrid') {
         await LocationSharingService.stopLocationSharing(sessionId);
+        ContinuousLocationMonitoringService.stopMonitoring(sessionId);
       }
       await _updateAttendanceRecord(
         sessionId: sessionId,
@@ -1012,6 +1044,117 @@ class SessionLifecycleService {
     } catch (e) {
       LogService.warning('Error sending session completed notification: $e');
     }
+  }
+
+  /// End a trial session: mark completed, stop recording, send notifications, schedule feedback.
+  static Future<void> _endTrialSession({
+    required String sessionId,
+    required String userId,
+    required DateTime now,
+  }) async {
+    final trial = await _supabase
+        .from('trial_sessions')
+        .select('tutor_id, learner_id, parent_id, status, session_started_at, duration_minutes, location')
+        .eq('id', sessionId)
+        .maybeSingle();
+
+    if (trial == null) {
+      throw Exception('Trial session not found: $sessionId');
+    }
+    if (trial['tutor_id'] != userId) {
+      throw Exception('Unauthorized: Only the tutor can end the trial');
+    }
+    if (trial['status'] != 'in_progress' && trial['status'] != 'scheduled') {
+      throw Exception('Trial cannot be ended. Current status: ${trial['status']}');
+    }
+
+    final learnerId = trial['learner_id'] as String?;
+    final parentId = trial['parent_id'] as String?;
+
+    int? actualDurationMinutes;
+    if (trial['session_started_at'] != null) {
+      final startTime = DateTime.parse(trial['session_started_at'] as String);
+      actualDurationMinutes = now.difference(startTime).inMinutes;
+    } else {
+      actualDurationMinutes = trial['duration_minutes'] as int?;
+    }
+
+    await TrialSessionService.completeTrialSession(sessionId);
+
+    if ((trial['location'] as String?) == 'online') {
+      try {
+        LogService.info('Stopping Agora recording for trial: $sessionId');
+        await AgoraRecordingService.stopRecording(sessionId);
+      } catch (e) {
+        LogService.warning('Failed to stop Agora recording for trial: $e');
+      }
+    }
+
+    ConnectionQualityService.stopMonitoring();
+
+    try {
+      await _supabase
+          .from('individual_sessions')
+          .update({
+            'session_ended_at': now.toIso8601String(),
+            'status': 'completed',
+            'actual_duration_minutes': actualDurationMinutes,
+            'updated_at': now.toIso8601String(),
+          })
+          .eq('id', sessionId);
+    } catch (e) {
+      LogService.warning('Could not update individual_sessions for trial: $e');
+    }
+
+    final trialMessage = 'Your trial session has been completed. How did it go? Leave feedback to help us match you with the right tutor.';
+
+    if (learnerId != null) {
+      await NotificationService.createNotification(
+        userId: learnerId,
+        type: 'session_completed',
+        title: 'Trial Session Completed',
+        message: trialMessage,
+        priority: 'normal',
+        actionUrl: '/sessions/$sessionId/feedback',
+        actionText: 'Provide Feedback',
+        icon: '✅',
+        metadata: {'session_id': sessionId, 'session_type': 'trial'},
+      );
+      try {
+        await _scheduleFeedbackReminder(
+          sessionId: sessionId,
+          studentId: learnerId,
+          sessionEndTime: now,
+        );
+      } catch (e) {
+        LogService.warning('Error scheduling feedback reminder for trial learner: $e');
+      }
+    }
+
+    if (parentId != null && parentId != learnerId) {
+      await NotificationService.createNotification(
+        userId: parentId,
+        type: 'session_completed',
+        title: "Your Child's Trial Completed",
+        message: "Your child's trial session has been completed. Please leave feedback to help us improve.",
+        priority: 'normal',
+        actionUrl: '/sessions/$sessionId/feedback',
+        actionText: 'Provide Feedback',
+        icon: '✅',
+        metadata: {'session_id': sessionId, 'session_type': 'trial'},
+      );
+      try {
+        await _scheduleFeedbackReminder(
+          sessionId: sessionId,
+          studentId: parentId,
+          sessionEndTime: now,
+        );
+      } catch (e) {
+        LogService.warning('Error scheduling feedback reminder for trial parent: $e');
+      }
+    }
+
+    LogService.success('Trial session ended: $sessionId');
   }
 
   /// Schedule feedback reminder for 24 hours after session end

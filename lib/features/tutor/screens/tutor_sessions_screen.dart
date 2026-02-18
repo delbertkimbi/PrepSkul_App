@@ -22,8 +22,11 @@ import '../../../core/widgets/empty_state_widget.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../core/services/error_handler_service.dart';
 import '../../../features/sessions/services/meet_service.dart';
+import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
+import '../../../features/sessions/services/location_sharing_service.dart';
+import '../../../features/sessions/services/continuous_location_monitoring_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -36,7 +39,8 @@ class TutorSessionsScreen extends StatefulWidget {
   State<TutorSessionsScreen> createState() => _TutorSessionsScreenState();
 }
 
-class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
+class _TutorSessionsScreenState extends State<TutorSessionsScreen>
+    with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _sessions = [];
   List<Map<String, dynamic>> _allSessions = []; // Store all sessions for count calculation
   bool _isLoading = true;
@@ -49,6 +53,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   Timer? _countdownTimer;
   String? _currentUserId;
   final Map<String, String> _sessionSelfieUrls = {};
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -92,7 +99,8 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
   }
 
   Future<void> _loadSessions() async {
-    safeSetState(() => _isLoading = true);
+    // If we already have sessions visible, keep them and refresh quietly.
+    safeSetState(() => _isLoading = _sessions.isEmpty);
     try {
       final now = DateTime.now();
       List<Map<String, dynamic>> allSessions = [];
@@ -357,9 +365,10 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               // Keep existing (better one)
               continue;
             } else {
-              // Both have same quality, prefer the newer one (trial over individual if same ID)
-              if (session['_sessionType'] == 'trial' && existing['_sessionType'] != 'trial') {
-                uniqueSessions[sessionId] = session;
+              // Both have same quality. For paid trials: individual_session and trial share same ID.
+              // Prefer individual (SESSION badge) over trial (TRIAL badge) - single card for paid trial.
+              if (session['_sessionType'] == 'individual' && existing['_sessionType'] == 'trial') {
+                uniqueSessions[sessionId] = session; // Prefer individual for paid trial
               }
             }
           }
@@ -2404,12 +2413,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
         // Continue anyway - let the API handle the error
       }
       
-      // Navigate to Agora video session screen
+      // Unified join flow: pre-join first, then video
       if (context.mounted) {
-        Navigator.push(
+        final preJoinResult = await Navigator.push<Map<String, dynamic>>(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
+            builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: 'tutor',
               initialCameraEnabled: true,
@@ -2417,6 +2426,19 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             ),
           ),
         );
+        if (context.mounted && preJoinResult != null && preJoinResult['join'] == true) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: 'tutor',
+                initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+                initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       LogService.error('Error joining Agora session: $e');
@@ -2561,12 +2583,12 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
           ),
         );
         
-        // For online sessions, navigate to Agora video screen
+        // For online sessions, unified join flow: pre-join first, then video
         if (isOnline) {
-          Navigator.push(
+          final preJoinResult = await Navigator.push<Map<String, dynamic>>(
             context,
             MaterialPageRoute(
-              builder: (context) => AgoraVideoSessionScreen(
+              builder: (context) => AgoraPreJoinScreen(
                 sessionId: sessionId,
                 userRole: 'tutor',
                 initialCameraEnabled: true,
@@ -2574,6 +2596,19 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
               ),
             ),
           );
+          if (mounted && preJoinResult != null && preJoinResult['join'] == true) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => AgoraVideoSessionScreen(
+                  sessionId: sessionId,
+                  userRole: 'tutor',
+                  initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+                  initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+                ),
+              ),
+            );
+          }
         }
       }
       _loadSessions(); // Refresh
@@ -2612,6 +2647,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             parent_id,
             status,
             location,
+            onsite_address,
             meet_link,
             scheduled_date,
             scheduled_time,
@@ -2735,7 +2771,9 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
             .maybeSingle();
         
         if (existingIndividual == null) {
-          // Create individual_sessions record
+          final sessionLocation = trial['location'] as String;
+          final isOnsite = sessionLocation == 'onsite' || (sessionLocation == 'hybrid' && !isOnline);
+          final address = trial['onsite_address'] as String?;
           await SupabaseService.client
               .from('individual_sessions')
               .insert({
@@ -2751,13 +2789,35 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                 'duration_minutes': trial['duration_minutes'],
                 'location': trial['location'],
                 'meeting_link': meetLink,
-                'address': null,
+                'address': isOnsite ? (address ?? '') : null,
                 'location_description': null,
                 'tutor_joined_at': now,
                 'session_started_at': now,
               });
+          // Start location sharing and continuous monitoring for onsite trial
+          if (isOnsite && address != null && address.trim().isNotEmpty) {
+            try {
+              await LocationSharingService.startLocationSharing(
+                sessionId: trialSessionId,
+                userId: userId,
+                userType: 'tutor',
+                updateInterval: const Duration(seconds: 30),
+              );
+              await ContinuousLocationMonitoringService.startMonitoring(
+                sessionId: trialSessionId,
+                userId: userId,
+                sessionAddress: address!,
+              );
+              LogService.success('Location sharing and monitoring started for onsite trial');
+            } catch (e) {
+              LogService.warning('Failed to start location sharing for trial: $e');
+            }
+          }
         } else {
           // Update existing individual_sessions record
+          final sessionLocation = trial['location'] as String;
+          final isOnsite = sessionLocation == 'onsite' || (sessionLocation == 'hybrid' && !isOnline);
+          final address = trial['onsite_address'] as String?;
           await SupabaseService.client
               .from('individual_sessions')
               .update({
@@ -2765,8 +2825,28 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen> {
                 'tutor_joined_at': now,
                 'session_started_at': now,
                 'meeting_link': meetLink,
+                if (isOnsite && address != null) 'address': address,
               })
               .eq('id', trialSessionId);
+          // Start location sharing and continuous monitoring for onsite trial
+          if (isOnsite && address != null && address.trim().isNotEmpty) {
+            try {
+              await LocationSharingService.startLocationSharing(
+                sessionId: trialSessionId,
+                userId: userId,
+                userType: 'tutor',
+                updateInterval: const Duration(seconds: 30),
+              );
+              await ContinuousLocationMonitoringService.startMonitoring(
+                sessionId: trialSessionId,
+                userId: userId,
+                sessionAddress: address,
+              );
+              LogService.success('Location sharing and monitoring started for onsite trial');
+            } catch (e) {
+              LogService.warning('Failed to start location sharing for trial: $e');
+            }
+          }
         }
       } catch (e) {
         LogService.warning('Could not create/update individual_sessions record: $e');
@@ -3472,13 +3552,13 @@ class _SessionDetailsSheet extends StatelessWidget {
         LogService.warning('Error verifying session (continuing anyway): $e');
       }
       
-      // Navigate to Agora video session screen
+      // Unified join flow: close dialog then pre-join, then video
       if (context.mounted) {
         Navigator.pop(context); // Close dialog first
-        Navigator.push(
+        final preJoinResult = await Navigator.push<Map<String, dynamic>>(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
+            builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: 'tutor',
               initialCameraEnabled: true,
@@ -3486,6 +3566,19 @@ class _SessionDetailsSheet extends StatelessWidget {
             ),
           ),
         );
+        if (context.mounted && preJoinResult != null && preJoinResult['join'] == true) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: 'tutor',
+                initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+                initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       LogService.error('Error joining Agora session: $e');

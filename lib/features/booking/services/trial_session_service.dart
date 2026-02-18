@@ -1790,11 +1790,13 @@ class TrialSessionService {
       }
 
       // Create an individual session instance so trial appears in upcoming sessions
+      // Use trial session ID so it deduplicates with the trial in Sessions list (one card, not two)
       try {
         LogService.info('📅 Creating individual session for trial: $sessionId');
         LogService.info('📅 Session details: tutor=${trial.tutorId}, learner=${trial.learnerId}, date=$scheduledDate, time=$scheduledTime');
         
         final sessionData = {
+          'id': sessionId, // Same ID as trial - prevents duplicate cards in Sessions list
           'recurring_session_id': null,
           'tutor_id': trial.tutorId,
           'learner_id': trial.learnerId,

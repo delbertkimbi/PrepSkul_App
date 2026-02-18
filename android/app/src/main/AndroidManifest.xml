@@ -2,6 +2,9 @@
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Permissions for file access, camera, and storage -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Android 13+ notification runtime permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
     <!-- Storage permissions for Android 12 and below only -->
     <!-- Android 13+ will use Photo Picker automatically (no permission needed) -->
@@ -24,6 +27,11 @@
     
     <!-- Camera permission: Required for tutors to take profile photos and upload verification documents (ID cards, certificates) during onboarding -->
     <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- Microphone permission: Required for live video sessions (Agora) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Optional but helps some devices/SDKs manage audio routing -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     
     <!-- Location permissions: Required to show session locations on maps and help users navigate to onsite tutoring sessions -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -37,6 +45,16 @@
         android:label="PrepSkul"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Default notification appearance for FCM (Android) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/notification_icon_color" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="prepskul_notifications" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

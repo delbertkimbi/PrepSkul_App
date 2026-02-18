@@ -13,6 +13,7 @@ import '../../../features/booking/services/session_lifecycle_service.dart';
 import '../../../features/booking/models/trial_session_model.dart';
 import '../../../features/booking/services/session_reschedule_service.dart';
 import '../../../features/sessions/services/meet_service.dart';
+import '../../../features/sessions/screens/agora_prejoin_screen.dart';
 import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import '../../../features/sessions/widgets/session_location_map.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
@@ -38,6 +39,8 @@ class _TutorSessionDetailFullScreenState
   bool _isLoading = false;
   Map<String, dynamic>? _sessionData;
   int _countdownTick = 0; // Force rebuild for countdown
+  bool _onsiteBannerDismissed = false;
+  int _attendanceRefreshKey = 0;
 
   @override
   void initState() {
@@ -174,6 +177,14 @@ class _TutorSessionDetailFullScreenState
                   _buildSectionTitle('Location'),
                   const SizedBox(height: 16),
                   _buildLocationCard(),
+
+                  // Onsite in progress: one-line reminder (Uber-style, minimal)
+                  if (_getStatus() == 'in_progress' &&
+                      _getLocation() != 'online' &&
+                      !_onsiteBannerDismissed) ...[
+                    const SizedBox(height: 16),
+                    _buildOnsiteBackgroundBanner(),
+                  ],
 
                   const SizedBox(height: 24),
 
@@ -601,6 +612,40 @@ class _TutorSessionDetailFullScreenState
     );
   }
 
+  /// One-line onsite reminder (Uber-style): no nagging, benefit-focused, dismissible.
+  Widget _buildOnsiteBackgroundBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: AppTheme.primaryColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Keep app in background — it helps document your session and support smooth payment.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppTheme.textDark,
+                height: 1.35,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, size: 18, color: AppTheme.textMedium),
+            onPressed: () => setState(() => _onsiteBannerDismissed = true),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildLocationCard() {
     final location = _getLocation();
     final address = _getAddress();
@@ -633,6 +678,7 @@ class _TutorSessionDetailFullScreenState
             if (!isOnline && _shouldShowActions()) ...[
               const SizedBox(height: 16),
               SessionLocationMap(
+                key: ValueKey(_attendanceRefreshKey),
                 address: address,
                 coordinates: null,
                 sessionId: _getSessionId(),
@@ -641,6 +687,7 @@ class _TutorSessionDetailFullScreenState
                 showCheckIn: true,
                 scheduledDateTime: _getScheduledDateTime(),
                 locationType: 'onsite',
+                onAddPhotoPressed: () => _handleUploadSelfie(_getSessionId()),
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
@@ -1052,17 +1099,30 @@ class _TutorSessionDetailFullScreenState
         }
       }
       if (mounted) {
-        Navigator.push(
+        final preJoinResult = await Navigator.push<Map<String, dynamic>>(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
+            builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: 'tutor',
               initialCameraEnabled: true,
               initialMicEnabled: true,
             ),
           ),
-        ).then((_) => _refreshSessionStatus());
+        );
+        if (mounted && preJoinResult != null && preJoinResult['join'] == true) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: 'tutor',
+                initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+                initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+              ),
+            ),
+          ).then((_) => _refreshSessionStatus());
+        }
       }
     } catch (e) {
       LogService.error('Error joining session: $e');

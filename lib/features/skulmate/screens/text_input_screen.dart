@@ -30,12 +30,25 @@ class _TextInputScreenState extends State<TextInputScreen> {
     super.dispose();
   }
 
+  static const int _minTextLength = 50;
+
   Future<void> _generateGame() async {
-    if (_notesController.text.trim().isEmpty) {
+    final text = _notesController.text.trim();
+    if (text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text('Please enter your notes'),
           backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (text.length < _minTextLength) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please enter at least $_minTextLength characters (you have ${text.length}). Add more detail for better games!'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
         ),
       );
       return;
@@ -44,7 +57,6 @@ class _TextInputScreenState extends State<TextInputScreen> {
     safeSetState(() => _isGenerating = true);
 
     try {
-      final text = _notesController.text.trim();
       final gameTitle = _titleController.text.trim().isNotEmpty
           ? _titleController.text.trim()
           : null;
@@ -153,6 +165,14 @@ class _TextInputScreenState extends State<TextInputScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            Text(
+              'At least 50 characters needed for better games.',
+              style: GoogleFonts.poppins(
+                fontSize: 11,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 4),
             TextField(
               controller: _notesController,
               maxLines: 15,
@@ -180,6 +200,22 @@ class _TextInputScreenState extends State<TextInputScreen> {
                 ),
                 contentPadding: const EdgeInsets.all(16),
               ),
+            ),
+            const SizedBox(height: 4),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _notesController,
+              builder: (context, value, _) {
+                final len = value.text.trim().length;
+                final ok = len >= _minTextLength;
+                return Text(
+                  '$len / $_minTextLength characters${ok ? ' ✓' : ''}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: ok ? Colors.green[700] : Colors.grey[600],
+                    fontWeight: ok ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                );
+              },
             ),
 
             const SizedBox(height: 24),

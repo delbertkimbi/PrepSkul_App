@@ -154,6 +154,7 @@ flutter:
     - assets/data/
     - assets/sounds/
     - assets/characters/
+    - assets/fonts/
     - .env  # Root .env file (bundled for web, used for all platforms)
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -181,6 +182,22 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins/Poppins-ExtraBold.ttf
+          weight: 800
+        - asset: assets/fonts/Poppins/Poppins-Black.ttf
+          weight: 900
 
 l10n:
   arb-dir: lib/l10n

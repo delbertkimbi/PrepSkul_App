@@ -12,6 +12,7 @@ class ProfileCardOverlay extends StatelessWidget {
   final bool isLocal; // true for local user, false for remote
   final bool userLeft; // true if user left the call (for remote users)
   final bool screenOff; // true if user's screen is off (for remote users)
+  final bool isSpeaking; // true when this user's audio is above threshold (talking indicator)
 
   const ProfileCardOverlay({
     Key? key,
@@ -21,6 +22,7 @@ class ProfileCardOverlay extends StatelessWidget {
     this.isLocal = false,
     this.userLeft = false,
     this.screenOff = false,
+    this.isSpeaking = false,
   }) : super(key: key);
 
   /// Get initials from name

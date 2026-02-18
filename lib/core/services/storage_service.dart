@@ -437,7 +437,7 @@ class StorageService {
           LogService.error('[DEBUG] This error indicates the storage bucket RLS policies are not configured correctly.');
           LogService.error('[DEBUG] Please ensure migration 046_storage_bucket_rls_policies.sql has been run.');
           throw Exception(
-            'Upload failed due to permissions. Please ensure you are logged in and try again. If the issue persists, contact support.',
+            'Upload failed due to permissions. Try "Enter Text Manually" below if you have notes to type.',
           );
         }
         // Re-throw other errors

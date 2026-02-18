@@ -35,6 +35,7 @@ import 'package:prepskul/features/payment/widgets/credits_balance_widget.dart';
 import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/features/payment/screens/credits_balance_screen.dart';
 import 'package:prepskul/features/sessions/screens/attendance_history_screen.dart';
+import 'package:prepskul/features/sessions/screens/agora_prejoin_screen.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
@@ -44,7 +45,22 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'session_detail_screen.dart';
+import 'my_requests_screen.dart';
 import '../../../core/widgets/shimmer_loading.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_service.dart';
+import 'package:prepskul/features/skulmate/screens/quiz_game_screen.dart';
+
+// Simple in-memory cache container for `MySessionsScreen`.
+class _MySessionsMemoryCache {
+  final List<Map<String, dynamic>> upcoming;
+  final List<Map<String, dynamic>> past;
+  final DateTime at;
+  const _MySessionsMemoryCache({
+    required this.upcoming,
+    required this.past,
+    required this.at,
+  });
+}
 
 /// My Sessions Screen
 ///
@@ -65,13 +81,18 @@ class MySessionsScreen extends StatefulWidget {
 }
 
 class _MySessionsScreenState extends State<MySessionsScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // In-memory cache so revisiting this route is instant (no full skeleton).
+  // Keyed by userId; refreshed whenever we fetch from network.
+  static final Map<String, _MySessionsMemoryCache> _memoryCacheByUserId = {};
+
   late TabController _tabController;
   final ScrollController _upcomingScrollController = ScrollController();
   final ScrollController _pastScrollController = ScrollController();
   List<Map<String, dynamic>> _upcomingSessions = [];
   List<Map<String, dynamic>> _pastSessions = [];
   bool _isLoading = true;
+  bool _didAutoRefreshAfterDependencies = false;
   final Map<String, bool> _feedbackSubmitted = {}; // Cache feedback status
   final Map<String, bool> _hasTranscript = {}; // Cache transcript availability
   bool? _isCalendarConnected; // Cache calendar connection status (null = not checked yet)
@@ -88,6 +109,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   DateTime? _calendarFocusedDay;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void initState() {
     super.initState();
     _calendarFocusedDay = DateTime.now();
@@ -98,6 +122,19 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       vsync: this,
       initialIndex: initialTabIndex.clamp(0, 1), // Ensure valid index
     );
+
+    // Prime UI from memory cache for instant revisit.
+    final userId = SupabaseService.currentUser?.id;
+    if (userId != null) {
+      final cached = _memoryCacheByUserId[userId];
+      if (cached != null) {
+        _upcomingSessions = List<Map<String, dynamic>>.from(cached.upcoming);
+        _pastSessions = List<Map<String, dynamic>>.from(cached.past);
+        _cacheTimestamp = cached.at;
+        _isLoading = false;
+      }
+    }
+
     _initializeConnectivity();
     _loadSessions();
     _checkCalendarConnection();
@@ -109,10 +146,10 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     super.didChangeDependencies();
     // Reload sessions when screen becomes visible (e.g., after payment)
     // This ensures newly created sessions appear immediately
+    if (_didAutoRefreshAfterDependencies) return;
+    _didAutoRefreshAfterDependencies = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _loadSessions();
-      }
+      if (mounted) _loadSessions();
     });
   }
 
@@ -237,7 +274,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
   }
 
   Future<void> _loadSessions() async {
-    safeSetState(() => _isLoading = true);
+    // If we already have sessions on screen, keep them visible and refresh in background.
+    final hasAnySessions = _upcomingSessions.isNotEmpty || _pastSessions.isNotEmpty;
+    safeSetState(() => _isLoading = !hasAnySessions);
     try {
       // Check connectivity first
       final isOnline = await _connectivity.checkConnectivity();
@@ -324,6 +363,13 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         await _loadTutorInfoForTrials(trialSessions);
 
         for (final trial in trialSessions) {
+          // Deduplicate: if individual_session already exists for this trial (same id),
+          // skip trial to avoid duplicate cards (e.g. SESSION + TRIAL for same session)
+          final trialId = trial.id;
+          final alreadyInUpcoming = upcoming.any((s) => (s['id'] as String?) == trialId);
+          final alreadyInPast = past.any((s) => (s['id'] as String?) == trialId);
+          if (alreadyInUpcoming || alreadyInPast) continue;
+
           // Filter out pending/unpaid trial sessions from upcoming sessions
           // Only show approved and paid trial sessions in upcoming
           final status = trial.status;
@@ -426,7 +472,17 @@ class _MySessionsScreenState extends State<MySessionsScreen>
         _upcomingSessions = upcoming;
         _pastSessions = past;
         _isLoading = false;
+        _cacheTimestamp = DateTime.now();
       });
+
+      // Update memory cache for fast revisits.
+      if (userId != null) {
+        _memoryCacheByUserId[userId] = _MySessionsMemoryCache(
+          upcoming: List<Map<String, dynamic>>.from(_upcomingSessions),
+          past: List<Map<String, dynamic>>.from(_pastSessions),
+          at: _cacheTimestamp!,
+        );
+      }
       
       // Scroll to session if sessionId was provided
       if (widget.sessionId != null) {
@@ -695,8 +751,129 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     );
 
     // Reload sessions if feedback was submitted
-    if (result == true) {
+    final submitted = result == true || (result is Map && result['submitted'] == true);
+    if (submitted) {
       _loadSessions();
+    }
+
+    // Conversion CTA per PRD: when trial learner/parent said Yes, show "Book now" action
+    if (mounted && result is Map && result['wouldContinue'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(PhosphorIcons.checkCircle(), color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Thanks! Ready to book? See your tutor\'s availability.'),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.accentGreen,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Book now',
+            textColor: Colors.white,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MyRequestsScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } else if (mounted && submitted && result != true) {
+      // Trial feedback, wouldContinue = No/Not sure
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(PhosphorIcons.checkCircle(), color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Thanks! We\'ll use this to improve your experience.')),
+            ],
+          ),
+          backgroundColor: AppTheme.accentGreen,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } else if (mounted && result == true) {
+      // Normal session or tutor feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(PhosphorIcons.checkCircle(), color: Colors.white),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Thank you for your feedback!')),
+            ],
+          ),
+          backgroundColor: AppTheme.accentGreen,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openSkulMateChallenge(Map<String, dynamic> session) async {
+    final sessionId = session['id'] as String?;
+    if (sessionId == null) return;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Generating your 5-Minute Revision Challenge...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final game = await SkulMateService.generateChallengeFromSession(sessionId);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Dismiss loading dialog
+
+      if (game.items.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No questions could be generated for this session.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => QuizGameScreen(game: game),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Dismiss loading dialog
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -742,13 +919,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
       final userRole = (userType == 'tutor') ? 'tutor' : 'learner';
       
       LogService.info('🎥 Joining Agora video session: $sessionId as $userRole');
-      
-      // Navigate to Agora video session screen
+
       if (mounted) {
-        Navigator.push(
+        final preJoinResult = await Navigator.push<Map<String, dynamic>>(
           context,
           MaterialPageRoute(
-            builder: (context) => AgoraVideoSessionScreen(
+            builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: userRole,
               initialCameraEnabled: true,
@@ -756,6 +932,19 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             ),
           ),
         );
+        if (mounted && preJoinResult != null && preJoinResult['join'] == true) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AgoraVideoSessionScreen(
+                sessionId: sessionId,
+                userRole: userRole,
+                initialCameraEnabled: preJoinResult['camera'] as bool? ?? false,
+                initialMicEnabled: preJoinResult['mic'] as bool? ?? false,
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       LogService.error('Error joining Agora session: $e');
@@ -2133,6 +2322,35 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                         foregroundColor: AppTheme.primaryColor,
                         side: BorderSide(color: AppTheme.primaryColor),
                         padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
+                // Start Challenge button: normal sessions only (recurring), when session_summary exists
+                if (isCompleted &&
+                    !isTrial &&
+                    session['recurring_session_id'] != null &&
+                    (session['session_summary'] as String? ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isOffline
+                          ? () => OfflineDialog.show(
+                                context,
+                                message: 'Starting a challenge requires an internet connection.',
+                              )
+                          : () => _openSkulMateChallenge(session),
+                      icon: Icon(PhosphorIcons.gameController(), size: 18),
+                      label: const Text('Start Challenge'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
                       ),
                     ),
                   ),

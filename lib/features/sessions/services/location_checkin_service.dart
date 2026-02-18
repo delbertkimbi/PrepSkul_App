@@ -446,6 +446,7 @@ class LocationCheckInService {
             check_out_time,
             check_in_location,
             check_in_verified,
+            check_in_photo_url,
             punctuality_status,
             arrival_time_minutes,
             duration_minutes,

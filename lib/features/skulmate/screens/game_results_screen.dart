@@ -10,6 +10,7 @@ import '../models/game_stats_model.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import 'game_library_screen.dart';
+import 'quiz_game_screen.dart';
 
 /// Screen showing game results and performance summary
 class GameResultsScreen extends StatefulWidget {
@@ -81,15 +82,14 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (widget.isPerfectScore)
-                  Text(
-                    '🎉 Perfect Score! 🎉',
-                    style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.accentGreen,
-                    ),
+                Text(
+                  widget.isPerfectScore ? '🎉 Perfect Score! 🎉' : 'Challenge complete!',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: widget.isPerfectScore ? AppTheme.accentGreen : AppTheme.primaryColor,
                   ),
+                ),
                 const SizedBox(height: 24),
                 Text(
                   '$percentage%',
@@ -109,10 +109,46 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
                 const SizedBox(height: 32),
                 _buildStatCard('Time', timeText, Icons.timer),
                 if (widget.xpEarned != null)
-                  _buildStatCard('XP Earned', '${widget.xpEarned}', Icons.star),
-                if (_currentStats != null)
+                  _buildStatCard('XP Earned', '+${widget.xpEarned}', Icons.star),
+                if (_currentStats != null) ...[
                   _buildStatCard('Total XP', '${_currentStats!.totalXP}', Icons.emoji_events),
+                  _buildStatCard('Level', '${_currentStats!.level}', Icons.military_tech),
+                  _buildStatCard('Current Streak', '${_currentStats!.currentStreak} day${_currentStats!.currentStreak == 1 ? '' : 's'}', Icons.local_fire_department),
+                ],
                 const SizedBox(height: 32),
+                if (widget.game.gameType == GameType.quiz && !widget.isPerfectScore) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => QuizGameScreen(game: widget.game),
+                              ),
+                            );
+                          },
+                          icon: Icon(Icons.refresh),
+                          label: Text('Try Again'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.accentBlue,
+                            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Try again to improve your score',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -166,9 +202,7 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
         ],
       ),
     );
-  }
-
-  Widget _buildStatCard(String label, String value, IconData icon) {
+  }  Widget _buildStatCard(String label, String value, IconData icon) {
     return Card(
       margin: EdgeInsets.only(bottom: 12),
       child: Padding(

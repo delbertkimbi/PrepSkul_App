@@ -79,7 +79,10 @@ class _NotificationBellState extends State<NotificationBell> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: widget.iconColor != null 
+              // Match MessageIconBadge behavior:
+              // - On dark headers (iconColor provided): subtle white tint background
+              // - On white pages (iconColor null): transparent background
+              color: widget.iconColor != null
                   ? Colors.white.withOpacity(0.2)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
@@ -97,7 +100,8 @@ class _NotificationBellState extends State<NotificationBell> {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.red,
+                  // Keep badge consistent with message badge (brand primary).
+                  color: AppTheme.primaryColor,
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: Colors.white,

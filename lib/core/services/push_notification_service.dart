@@ -17,6 +17,12 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:prepskul/core/config/app_config.dart';
 
 /// Top-level function for handling background messages
 @pragma('vm:entry-point')
@@ -31,6 +37,9 @@ class PushNotificationService {
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
+  static const MethodChannel _platform =
+      MethodChannel('com.prepskul.prepskul/notifications');
+
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   
@@ -38,12 +47,42 @@ class PushNotificationService {
   String? _currentToken;
   Function(dynamic)? _onNotificationTap;
 
+  static const String _pendingTokenKey = 'pending_fcm_token';
+  static String get _apiBaseUrl {
+    final configured = AppConfig.effectiveApiBaseUrl;
+    // Safety: never point to app.prepskul.com/api (no API routes)
+    if (configured.contains('app.prepskul.com')) {
+      return 'https://www.prepskul.com/api';
+    }
+    // Expect www.prepskul.com/api or localhost
+    if (!configured.contains('www.prepskul.com/api') &&
+        !configured.contains('localhost') &&
+        !configured.contains('127.0.0.1')) {
+      return 'https://www.prepskul.com/api';
+    }
+    return configured;
+  }
+
   /// Initialize push notifications
   Future<void> initialize({
     Function(dynamic)? onNotificationTap,
   }) async {
     if (_initialized) {
-      LogService.warning('PushNotificationService already initialized');
+      // IMPORTANT: users can switch accounts in-app.
+      // Even if the service is already initialized, we still need to:
+      // - update the tap callback
+      // - ensure the *current* signed-in user has an active FCM token stored in DB
+      _onNotificationTap = onNotificationTap ?? _onNotificationTap;
+      _flushPendingToken().catchError((e) {
+        LogService.debug('Could not flush pending FCM token (non-blocking): $e');
+      });
+      if (!kIsWeb) {
+        _getToken().catchError((error) {
+          LogService.warning('Error refreshing FCM token after re-initialize (non-blocking): $error');
+          return null;
+        });
+      }
+      LogService.info('PushNotificationService already initialized (refreshed token sync)');
       return;
     }
 
@@ -91,9 +130,29 @@ class PushNotificationService {
         LogService.warning('Error setting up message handlers: $error');
       });
 
+      // Android: FCM token generation does not require notification permission.
+      // Even if the user disables notifications, we still want a token so we can
+      // validate delivery during development and support data-only messaging.
+      if (!kIsWeb && Platform.isAndroid) {
+        _getToken().catchError((error) {
+          LogService.warning('Error getting FCM token on Android (non-blocking): $error');
+          return null;
+        });
+        _firebaseMessaging.onTokenRefresh.listen((newToken) {
+          LogService.info('FCM token refreshed: $newToken');
+          _updateTokenInDatabase(newToken);
+        });
+      }
+
       // Check if permission was already granted and complete initialization if so
       // This handles cases where user previously granted permission
       _checkAndCompleteInitialization();
+
+      // Best-effort: if we previously failed to store a token (e.g., network/DNS),
+      // retry now so backend keeps targeting the latest token.
+      _flushPendingToken().catchError((e) {
+        LogService.debug('Could not flush pending FCM token (non-blocking): $e');
+      });
 
       // Mark as initialized immediately so app doesn't block
       // The splash screen should transition without waiting for push notifications
@@ -108,6 +167,18 @@ class PushNotificationService {
     }
   }
 
+  Future<void> _flushPendingToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pending = prefs.getString(_pendingTokenKey);
+      if (pending == null || pending.isEmpty) return;
+      LogService.info('Retrying pending FCM token store...');
+      await _storeTokenInDatabase(pending);
+    } catch (e) {
+      // ignore - best effort
+    }
+  }
+
   /// Check current notification permission status
   Future<AuthorizationStatus> getPermissionStatus() async {
     try {
@@ -116,7 +187,24 @@ class PushNotificationService {
         // For now, return authorized if available
         return AuthorizationStatus.authorized;
       }
-      
+
+      // Android 13+ uses POST_NOTIFICATIONS runtime permission. FirebaseMessaging
+      // permission APIs are primarily iOS-focused, so we also query the local
+      // notifications plugin when available.
+      if (Platform.isAndroid) {
+        final androidImpl = _localNotifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        try {
+          final enabled = await androidImpl?.areNotificationsEnabled();
+          if (enabled != null) {
+            LogService.info('Current notification permission (Android): $enabled');
+            return enabled ? AuthorizationStatus.authorized : AuthorizationStatus.denied;
+          }
+        } catch (e) {
+          LogService.debug('Could not query Android notification enablement: $e');
+        }
+      }
+
       final settings = await _firebaseMessaging.getNotificationSettings();
       LogService.info('Current notification permission: ${settings.authorizationStatus}');
       return settings.authorizationStatus;
@@ -150,6 +238,23 @@ class PushNotificationService {
 
       // Only request if status is notDetermined
       LogService.info('Requesting notification permission...');
+
+      // Android: request POST_NOTIFICATIONS via flutter_local_notifications plugin.
+      if (!kIsWeb && Platform.isAndroid) {
+        final androidImpl = _localNotifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        final granted = await androidImpl?.requestNotificationsPermission() ?? true;
+        LogService.info('Android notification permission result: $granted');
+        if (granted) {
+          LogService.success('Push notification permission granted (Android)');
+          await _completeMobileInitialization();
+          return AuthorizationStatus.authorized;
+        }
+        LogService.warning('Push notification permission denied (Android)');
+        return AuthorizationStatus.denied;
+      }
+
+      // iOS: request via FirebaseMessaging
       final settings = await _firebaseMessaging.requestPermission(
         alert: true,
         announcement: false,
@@ -161,20 +266,42 @@ class PushNotificationService {
       );
 
       LogService.info('Notification permission result: ${settings.authorizationStatus}');
-      
+
       // Complete initialization if permission was granted
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
         LogService.success('Push notification permission granted');
         await _completeMobileInitialization();
       } else {
-        LogService.warning('Push notification permission not granted (status: ${settings.authorizationStatus})');
+        LogService.warning(
+          'Push notification permission not granted (status: ${settings.authorizationStatus})',
+        );
       }
-      
+
       return settings.authorizationStatus;
     } catch (e) {
       LogService.error('Error requesting permission: $e');
       return AuthorizationStatus.notDetermined;
+    }
+  }
+
+  /// Open the OS notification settings screen for this app.
+  /// Use this when permission was denied and the system dialog won't show again.
+  Future<void> openSystemNotificationSettings() async {
+    if (kIsWeb) return;
+    try {
+      if (Platform.isIOS) {
+        final uri = Uri.parse('app-settings:');
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+
+      if (Platform.isAndroid) {
+        await _platform.invokeMethod('openNotificationSettings');
+        return;
+      }
+    } catch (e) {
+      LogService.debug('Failed to open notification settings: $e');
     }
   }
 
@@ -186,6 +313,11 @@ class PushNotificationService {
           status == AuthorizationStatus.provisional) {
         LogService.success('Notification permission already granted, completing initialization');
         await _completeMobileInitialization();
+      } else {
+        // Android: still attempt to fetch token even if notifications are disabled/denied.
+        if (!kIsWeb && Platform.isAndroid) {
+          _getToken().catchError((_) => null);
+        }
       }
     } catch (e) {
       LogService.warning('Error checking permission for initialization: $e');
@@ -201,6 +333,8 @@ class PushNotificationService {
     }
 
     // Android initialization
+    // Use app launcher icon as the notification small icon so the status bar icon
+    // matches the PrepSkul mark (Android will render it as a monochrome silhouette).
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     
     // iOS initialization - DO NOT request permission here
@@ -331,7 +465,7 @@ class PushNotificationService {
 
     // Determine if we should play sound
     final shouldPlaySound = data != null && data['sound'] != 'false';
-    final sound = data?['sound'] ?? 'default';
+    final sound = data?['sound'];
 
     // Show local notification
     await _localNotifications.show(
@@ -346,18 +480,25 @@ class PushNotificationService {
           importance: Importance.high,
           priority: Priority.high,
           playSound: shouldPlaySound,
-          sound: RawResourceAndroidNotificationSound(sound),
+          // If you pass "default" here, Android treats it as a raw resource name and will
+          // crash unless you have `android/app/src/main/res/raw/default.*`.
+          // Omitting `sound` uses the system default when `playSound` is true.
+          sound: (shouldPlaySound && sound != null && sound != 'default')
+              ? RawResourceAndroidNotificationSound(sound)
+              : null,
           enableVibration: data?['vibrate'] != 'false',
-          icon: android?.smallIcon ?? '@mipmap/ic_launcher',
+          // `icon` expects a resource name; Android will use it as the status bar small icon.
+          icon: android?.smallIcon ?? 'ic_launcher',
         ) : null,
-        iOS: Platform.isIOS ? const DarwinNotificationDetails(
+        iOS: Platform.isIOS ? DarwinNotificationDetails(
           presentAlert: true,
           presentBadge: true,
-          presentSound: true,
-          sound: 'default',
+          presentSound: shouldPlaySound,
+          sound: shouldPlaySound ? 'default' : null,
         ) : null,
       ),
-      payload: message.data?.toString(), // Pass data as payload
+      // Use JSON so we can reliably parse on tap (instead of Map.toString()).
+      payload: jsonEncode(message.data ?? const <String, dynamic>{}),
     );
   }
 
@@ -372,9 +513,18 @@ class PushNotificationService {
 
   /// Handle notification tap from local notification
   void _handleNotificationTap(String payload) {
-    // Parse payload and navigate
-    // You can decode the data and navigate accordingly
     LogService.info('Local notification tapped: $payload');
+    if (_onNotificationTap == null) return;
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map) {
+        _onNotificationTap!({'data': Map<String, dynamic>.from(decoded)});
+      } else {
+        _onNotificationTap!({'data': <String, dynamic>{}});
+      }
+    } catch (_) {
+      _onNotificationTap!({'data': <String, dynamic>{}});
+    }
   }
 
   /// Get FCM token
@@ -439,6 +589,45 @@ class PushNotificationService {
       // Get device info
       final deviceInfo = await _getDeviceInfo();
       final platform = _getPlatform();
+
+      // Preferred: register token via backend (service-role) so account switching on same device works.
+      // This avoids RLS/unique-constraint edge cases where a token previously belonged to another user.
+      try {
+        final accessToken = SupabaseService.client.auth.currentSession?.accessToken;
+        if (accessToken != null && accessToken.isNotEmpty) {
+          final res = await http
+              .post(
+                Uri.parse('$_apiBaseUrl/push/register-token'),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $accessToken',
+                },
+                body: jsonEncode({
+                  'token': token,
+                  'platform': platform,
+                  'device_id': deviceInfo['device_id'],
+                  'device_name': deviceInfo['device_name'],
+                  'app_version': deviceInfo['app_version'],
+                }),
+              )
+              .timeout(const Duration(seconds: 12));
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            LogService.success('FCM token registered via backend');
+            // Clear any pending token once storage succeeds.
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove(_pendingTokenKey);
+            } catch (_) {}
+            return;
+          } else {
+            LogService.warning(
+              'FCM token register endpoint returned ${res.statusCode}: ${res.body}',
+            );
+          }
+        }
+      } catch (e) {
+        LogService.debug('FCM token backend registration failed (fallback to direct DB): $e');
+      }
       
       // Try to insert the token first
       // If it's a duplicate, update the existing token instead
@@ -455,6 +644,11 @@ class PushNotificationService {
               'is_active': true,
             });
         LogService.success('FCM token stored in database');
+        // Clear any pending token once storage succeeds.
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_pendingTokenKey);
+        } catch (_) {}
       } catch (insertError) {
         // If insert fails due to duplicate token, update the existing token
         if (insertError.toString().contains('duplicate') || 
@@ -475,6 +669,11 @@ class PushNotificationService {
                 })
                 .eq('token', token);
             LogService.success('FCM token updated in database (duplicate handled)');
+            // Clear any pending token once storage succeeds.
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove(_pendingTokenKey);
+            } catch (_) {}
           } catch (updateError) {
             // If update also fails, log but don't throw (token might be in use by another user)
             LogService.info('FCM token exists but update failed (may belong to different user): $updateError');
@@ -488,6 +687,20 @@ class PushNotificationService {
       // Only log error if it's not a duplicate key error (which we handle gracefully)
       if (!e.toString().contains('duplicate') && !e.toString().contains('23505')) {
         LogService.error('Error storing FCM token: $e');
+        // Persist for retry if this looks like a transient network/DNS issue.
+        final es = e.toString();
+        final looksTransient = es.contains('SocketException') ||
+            es.contains('Failed host lookup') ||
+            es.contains('ClientException') ||
+            es.contains('connection abort') ||
+            es.contains('No address associated with hostname');
+        if (looksTransient) {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_pendingTokenKey, token);
+            LogService.info('Saved pending FCM token for retry when network returns');
+          } catch (_) {}
+        }
       } else {
         LogService.info('FCM token duplicate detected and handled gracefully');
       }

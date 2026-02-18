@@ -194,6 +194,7 @@ class GameItem {
   final List<Map<String, dynamic>>? mysteryClues; // For mystery games
   final String? solution; // For mystery games
   final List<Map<String, dynamic>>? rooms; // For escape room games
+  final bool isBoss; // Boss question (harder, bonus XP)
 
   GameItem({
     this.question,
@@ -221,6 +222,7 @@ class GameItem {
     this.mysteryClues,
     this.solution,
     this.rooms,
+    this.isBoss = false,
   });
 
   factory GameItem.fromJson(Map<String, dynamic> json) {
@@ -290,6 +292,7 @@ class GameItem {
       rooms: json['rooms'] != null
           ? List<Map<String, dynamic>>.from(json['rooms'] as List)
           : null,
+      isBoss: json['isBoss'] as bool? ?? false,
     );
   }
 
@@ -320,6 +323,7 @@ class GameItem {
       if (mysteryClues != null) 'mysteryClues': mysteryClues,
       if (solution != null) 'solution': solution,
       if (rooms != null) 'rooms': rooms,
+      if (isBoss) 'isBoss': isBoss,
     };
   }
 }
