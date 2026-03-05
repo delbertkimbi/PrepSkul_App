@@ -927,8 +927,6 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             builder: (context) => AgoraPreJoinScreen(
               sessionId: sessionId,
               userRole: userRole,
-              initialCameraEnabled: true,
-              initialMicEnabled: true,
             ),
           ),
         );

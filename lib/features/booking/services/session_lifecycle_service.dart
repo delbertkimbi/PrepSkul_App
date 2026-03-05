@@ -30,6 +30,7 @@ class SessionLifecycleService {
   static Future<void> startSession(
     String sessionId, {
     bool isOnline = false,
+    bool skipCloudRecording = false,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -149,31 +150,27 @@ class SessionLifecycleService {
         // This will be triggered when learner joins the session
         // For now, tutor location is the primary tracking point
       }
-      // For online sessions: ensure Meet link exists
+      // For online sessions we use Agora (in-app video). Meet link is not used for join.
+      // Only use meeting_link from DB if already set (e.g. legacy); do not generate.
       if (isSessionOnline) {
-        String? meetLink = session['meeting_link'] as String?;
-        
-        if (meetLink == null || meetLink.isEmpty) {
-          // Generate Meet link if it doesn't exist
-          meetLink = await IndividualSessionService.getOrGenerateMeetLink(sessionId);
-          
-          if (meetLink != null) {
-            await _supabase
-                .from('individual_sessions')
-                .update({'meeting_link': meetLink})
-                .eq('id', sessionId);
+        // Start Agora Cloud Recording for online sessions (skipped on mobile web)
+        if (!skipCloudRecording) {
+          LogService.info('🎙️🎙️🎙️ [Recording] TRIGGERING recording start for session: $sessionId');
+          LogService.info('🎙️ [Recording] isSessionOnline=$isSessionOnline, location=${session['location']}');
+          try {
+            final result = await AgoraRecordingService.startRecording(sessionId);
+            if (result != null) {
+              LogService.success('🎙️ [Recording] Started successfully: resourceId=${result['resourceId']}');
+            } else {
+              LogService.warning('🎙️ [Recording] startRecording returned null (check logs above for error)');
+            }
+          } catch (e, stackTrace) {
+            LogService.error('🎙️ [Recording] EXCEPTION during recording start: $e');
+            LogService.error('🎙️ [Recording] Stack: $stackTrace');
+            // Don't fail session start if recording fails
           }
-        }
-
-        // Start Agora Cloud Recording for online sessions
-        // This replaces Fathom recording for Agora video sessions
-        try {
-          LogService.info('🎙️ [Recording] Starting for session: $sessionId');
-          await AgoraRecordingService.startRecording(sessionId);
-          LogService.success('Agora recording started for session: $sessionId');
-        } catch (e) {
-          LogService.warning('Failed to start Agora recording: $e');
-          // Don't fail session start if recording fails
+        } else {
+          LogService.info('🎙️ [Recording] Skipped (mobile web) for session: $sessionId');
         }
 
         // Legacy: Fathom recording (if using Google Meet instead of Agora)
@@ -191,20 +188,8 @@ class SessionLifecycleService {
       final learnerId = session['learner_id'] as String?;
       final parentId = session['parent_id'] as String?;
       
-      // Get the final Meet link (either existing or newly generated)
-      String? finalMeetLink;
-      if (isSessionOnline) {
-        finalMeetLink = session['meeting_link'] as String?;
-        // If Meet link was just generated, fetch it from the updated session
-        if (finalMeetLink == null || finalMeetLink.isEmpty) {
-          final updatedSession = await _supabase
-              .from('individual_sessions')
-              .select('meeting_link')
-              .eq('id', sessionId)
-              .maybeSingle();
-          finalMeetLink = updatedSession?['meeting_link'] as String?;
-        }
-      }
+      // For online (Agora) sessions we do not set meeting_link; use existing if any (e.g. legacy)
+      final String? finalMeetLink = isSessionOnline ? (session['meeting_link'] as String?) : null;
       
       // Send notification to learner (if exists)
       if (learnerId != null) {
@@ -1054,7 +1039,7 @@ class SessionLifecycleService {
   }) async {
     final trial = await _supabase
         .from('trial_sessions')
-        .select('tutor_id, learner_id, parent_id, status, session_started_at, duration_minutes, location')
+        .select('tutor_id, learner_id, parent_id, status, duration_minutes, location')
         .eq('id', sessionId)
         .maybeSingle();
 
@@ -1068,12 +1053,20 @@ class SessionLifecycleService {
       throw Exception('Trial cannot be ended. Current status: ${trial['status']}');
     }
 
+    final tutorId = trial['tutor_id'] as String;
     final learnerId = trial['learner_id'] as String?;
     final parentId = trial['parent_id'] as String?;
 
+    // Get session_started_at from individual_sessions (trial sessions create a row there)
     int? actualDurationMinutes;
-    if (trial['session_started_at'] != null) {
-      final startTime = DateTime.parse(trial['session_started_at'] as String);
+    final individualSession = await _supabase
+        .from('individual_sessions')
+        .select('session_started_at')
+        .eq('id', sessionId)
+        .maybeSingle();
+    
+    if (individualSession != null && individualSession['session_started_at'] != null) {
+      final startTime = DateTime.parse(individualSession['session_started_at'] as String);
       actualDurationMinutes = now.difference(startTime).inMinutes;
     } else {
       actualDurationMinutes = trial['duration_minutes'] as int?;
@@ -1152,6 +1145,23 @@ class SessionLifecycleService {
       } catch (e) {
         LogService.warning('Error scheduling feedback reminder for trial parent: $e');
       }
+    }
+
+    // Notify tutor once that the trial session has been completed and feedback was requested.
+    try {
+      await NotificationService.createNotification(
+        userId: tutorId,
+        type: 'session_completed',
+        title: 'Trial session completed',
+        message: 'Your trial session has been completed. Parent/student has been asked for feedback.',
+        priority: 'normal',
+        actionUrl: '/sessions/$sessionId',
+        actionText: 'View session',
+        icon: '✅',
+        metadata: {'session_id': sessionId, 'session_type': 'trial', 'role': 'tutor'},
+      );
+    } catch (e) {
+      LogService.warning('Error sending tutor trial completion notification: $e');
     }
 
     LogService.success('Trial session ended: $sessionId');

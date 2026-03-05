@@ -122,10 +122,11 @@ class _TutorRequestDetailFullScreenState
                       ),
                     ),
                   ],
-                  // Learners Section (show whenever we have learner names: trial or recurring)
-                  if (request.learnerLabels != null && request.learnerLabels!.isNotEmpty) ...[
+                  // Learners Section (only when parent booked for 2+ children – hide for single-learner)
+                  if (request.learnerLabels != null &&
+                      request.learnerLabels!.length > 1) ...[
                     const SizedBox(height: 24),
-                    _buildSectionTitle(request.learnerLabels!.length == 1 ? 'Learner' : 'Learners'),
+                    _buildSectionTitle('Learners'),
                     const SizedBox(height: 16),
                     _buildLearnersSection(request),
                   ],
@@ -644,7 +645,8 @@ class _TutorRequestDetailFullScreenState
                           ),
                         ],
                       ),
-                      if (isPendingStatus && request.isPending)
+                      // Per-learner Accept/Decline only for parent with 2+ children.
+                      if (isPendingStatus && request.isPending && _showPerLearnerActions(request))
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -901,8 +903,20 @@ class _TutorRequestDetailFullScreenState
     }
   }
 
+  /// True only when parent booked for 2+ children – show per-learner Accept/Decline.
+  bool _showPerLearnerActions(BookingRequest request) {
+    return request.studentType == 'parent' &&
+        request.learnerLabels != null &&
+        request.learnerLabels!.length > 1;
+  }
+
   Widget _buildActionButtons(BookingRequest request) {
-    final isMultiLearnerPending = request.isPending && request.isMultiLearner;
+    // "Accept all learners" only for parent bookings with 2+ children.
+    // Single-learner (learner's own or parent with 1 child) gets "Accept Session" – immediate approval.
+    final showAcceptAllLearners = request.isPending &&
+        request.studentType == 'parent' &&
+        request.learnerLabels != null &&
+        request.learnerLabels!.length > 1;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -915,7 +929,7 @@ class _TutorRequestDetailFullScreenState
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isMultiLearnerPending) ...[
+            if (showAcceptAllLearners) ...[
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -954,7 +968,7 @@ class _TutorRequestDetailFullScreenState
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
                         )
-                      : Text('Approve', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
+                      : Text('Accept Session', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -972,7 +986,7 @@ class _TutorRequestDetailFullScreenState
                     child: Text('Reject', style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textMedium)),
                   ),
                 ),
-                if (request.isTrial && !isMultiLearnerPending) ...[
+                if (request.isTrial && !showAcceptAllLearners) ...[
                   const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton(

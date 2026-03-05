@@ -29,7 +29,7 @@ class AppConfig {
   /// ⚠️ Always verify environment variables are Rset correctly:
   /// - Production: FAPSHI_COLLECTION_API_USER_LIVE, FAPSHI_COLLECTION_API_KEY_LIVE
   /// - Sandbox: FAPSHI_SANDBOX_API_USER, FAP.eSHI_SANDBOX_API_KEY
-  static const bool isProduction = true; // ← PRODUCTION MODE ENABLED
+  static const bool isProduction = false; // ← PRODUCTION MODE ENABLED
   
   // ============================================
   // 🔐 Authentication Feature Flags
@@ -72,11 +72,13 @@ class AppConfig {
   
   /// Session duration in minutes
   /// 
-  /// Default duration for all video sessions.
-  /// Change this value to adjust session length across the entire app.
+  /// Default duration for all video sessions EXCEPT 30-minute trial sessions.
+  /// - 30-minute trial sessions always use 30 minutes (constant, handled separately)
+  /// - 1-hour trial sessions and all regular sessions use this value
   /// 
-  /// Example: Set to 60 for 1-hour sessions, 90 for 1.5-hour sessions, etc.
-  static const int sessionDurationMinutes = 20; // ← Default: 61 minutes per session
+  /// Change this value to adjust session length across the entire app.
+  /// Example: Set to 60 for 1-hour sessions, 20 for testing, etc.
+  static const int sessionDurationMinutes = 10; // ← Total time for regular sessions
   
   // ============================================
   // Environment Detection

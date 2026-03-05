@@ -20,6 +20,37 @@ const fs = require('fs');
 const path = require('path');
 
 const indexPath = path.join(__dirname, '../web/index.html');
+const dotenvPath = path.join(__dirname, '../.env');
+
+// Lightweight .env loader so we don't need extra npm deps.
+// This makes sure values from .env are available in process.env
+// when running this script locally or in CI.
+if (fs.existsSync(dotenvPath)) {
+  const envContent = fs.readFileSync(dotenvPath, 'utf8');
+  envContent.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex === -1) return;
+
+    const key = trimmed.slice(0, eqIndex).trim();
+    let value = trimmed.slice(eqIndex + 1).trim();
+
+    // Strip surrounding quotes if present
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    // Don't overwrite values already set in the environment
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  });
+}
 
 const envVars = {
   SUPABASE_URL_PROD: process.env.SUPABASE_URL_PROD || process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -46,20 +77,26 @@ ${lines.join('\n')}
     window.env.NEXT_PUBLIC_SUPABASE_URL = window.env.NEXT_PUBLIC_SUPABASE_URL || window.env.SUPABASE_URL_PROD || '';
     window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = window.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || window.env.SUPABASE_ANON_KEY_PROD || '';`;
 
-// Replace the existing window.env block (current index.html has a short object)
-const existingEnvRegex = /(\s*\/\/ Environment Variables\s*\n\s*window\.env\s*=\s*\{[\s\S]*?\}\s*;)/;
-if (existingEnvRegex.test(indexContent)) {
+// Remove ALL duplicate window.env blocks
+// Match: "// Environment Variables" or "// Injected at build time" followed by window.env lines
+// until we hit a blank line or another comment/function
+const duplicateEnvPattern = /(\s*\/\/\s*(?:Environment Variables|Injected at build time)[\s\S]*?window\.env[\s\S]*?)(?=\n\s*\n|\s*\/\/\s*(?:Called by Flutter|Robust splash|\*\*)|window\.removeSplash|function hideAndRemoveSplash)/g;
+indexContent = indexContent.replace(duplicateEnvPattern, '');
+
+// Insert the new env block before removeSplash function (unique anchor)
+const anchor = '    // Called by Flutter (via WebSplashService.removeSplash)';
+if (indexContent.includes(anchor)) {
   indexContent = indexContent.replace(
-    existingEnvRegex,
-    `    // Environment Variables\n${envBlock}`
+    anchor,
+    envBlock + '\n\n' + anchor
   );
 } else {
-  // Fallback: insert before removeSplash
-  const anchor = '    // Called by Flutter (via WebSplashService.removeSplash)';
-  if (indexContent.includes(anchor)) {
+  // Fallback: insert before splash removal helpers
+  const fallbackAnchor = '    /**\n     * Robust splash removal helpers';
+  if (indexContent.includes(fallbackAnchor)) {
     indexContent = indexContent.replace(
-      anchor,
-      envBlock + '\n\n' + anchor
+      fallbackAnchor,
+      envBlock + '\n\n' + fallbackAnchor
     );
   }
 }

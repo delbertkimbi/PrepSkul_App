@@ -148,16 +148,36 @@ class FapshiService {
       } else {
         // Try to parse error response
         String errorMessage = 'Payment request failed';
+        String? actualFapshiError;
         try {
         final errorResponse = jsonDecode(response.body) as Map<String, dynamic>;
-          errorMessage = errorResponse['message'] as String? ?? 
+          actualFapshiError = errorResponse['message'] as String? ?? 
                         errorResponse['error'] as String? ?? 
-                        'Payment request failed';
-          LogService.error('Fapshi API error: $errorMessage (Status: ${response.statusCode})');
+                        null;
+          errorMessage = actualFapshiError ?? 'Payment request failed';
+          
+          // Log the actual Fapshi error for debugging (even in production)
+          LogService.error('❌ Fapshi API error: $errorMessage (Status: ${response.statusCode})');
+          LogService.error('📋 Full Fapshi response: ${response.body}');
+          
+          // In production, also log to console for easier debugging
+          if (isProduction) {
+            print('🔴 PRODUCTION PAYMENT ERROR:');
+            print('   Status Code: ${response.statusCode}');
+            print('   Error Message: $errorMessage');
+            print('   Full Response: ${response.body}');
+          }
         } on FormatException {
           // Response is not valid JSON
           LogService.error('Fapshi API returned non-JSON error response (Status: ${response.statusCode})');
           LogService.error('Response body: ${response.body}');
+          
+          // In production, also log to console
+          if (isProduction) {
+            print('🔴 PRODUCTION PAYMENT ERROR (Non-JSON):');
+            print('   Status Code: ${response.statusCode}');
+            print('   Response Body: ${response.body}');
+          }
           
           // Try to extract meaningful error from HTML or plain text
           if (response.body.toLowerCase().contains('unauthorized') || 
@@ -175,7 +195,14 @@ class FapshiService {
         }
         
         // Convert Fapshi error messages to user-friendly messages
+        // But preserve the actual error in logs for debugging
         final userFriendlyMessage = _convertToUserFriendlyError(errorMessage, response.statusCode);
+        
+        // If we have the actual Fapshi error, include it in the exception for better debugging
+        if (actualFapshiError != null && isProduction) {
+          LogService.error('💡 Actual Fapshi error (for support): $actualFapshiError');
+        }
+        
         throw Exception(userFriendlyMessage);
       }
     } on http.ClientException catch (e) {
