@@ -36,7 +36,6 @@ class SessionPaymentService {
             parent_id,
             recurring_session_id,
             location,
-            onsite_address,
             transportation_cost,
             recurring_sessions!inner(
               monthly_total,

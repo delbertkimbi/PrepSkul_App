@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -5,6 +6,7 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -30,6 +32,12 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
   void initState() {
     super.initState();
     _isLogin = widget.isLogin;
+    // On web: remove HTML splash only after this screen has painted (prevents blank auth screen)
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WebSplashService.removeSplash();
+      });
+    }
   }
 
   Future<void> _launchURL(String url) async {

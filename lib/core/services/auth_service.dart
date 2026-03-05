@@ -8,6 +8,10 @@ import 'package:prepskul/core/config/app_config.dart';
 import 'push_notification_service.dart';
 import 'email_rate_limit_service.dart';
 import 'notification_helper_service.dart';
+// #region agent log
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+// #endregion agent log
 
 /// Comprehensive authentication service for PrepSkul
 class AuthService {
@@ -67,10 +71,62 @@ class AuthService {
     if (isLogged && !hasSupabaseSession) {
       LogService.warning('⚠️ Local session exists but Supabase session not found - clearing local session');
       await logout();
+      // #region agent log
+      try {
+        http
+            .post(
+              Uri.parse(
+                  'http://127.0.0.1:7242/ingest/e6cc2b0e-750a-413c-b251-261549698526'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'id':
+                    'log_${DateTime.now().millisecondsSinceEpoch}_auth_logged_out',
+                'timestamp': DateTime.now().millisecondsSinceEpoch,
+                'location': 'auth_service.dart:isLoggedIn',
+                'message':
+                    'Local session cleared because Supabase session missing',
+                'runId': 'pre-fix',
+                'hypothesisId': 'LOGIN_REDIRECT',
+                'data': {
+                  'wasLoggedFlag': isLogged,
+                  'hadSupabaseSession': hasSupabaseSession,
+                },
+              }),
+            )
+            .catchError((_) {});
+      } catch (_) {}
+      // #endregion agent log
       return false;
     }
 
-    return isLogged && hasSupabaseSession;
+    final result = isLogged && hasSupabaseSession;
+    // #region agent log
+    try {
+      http
+          .post(
+            Uri.parse(
+                'http://127.0.0.1:7242/ingest/e6cc2b0e-750a-413c-b251-261549698526'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'id':
+                  'log_${DateTime.now().millisecondsSinceEpoch}_auth_is_logged_in',
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+              'location': 'auth_service.dart:isLoggedIn',
+              'message': 'Computed isLoggedIn result',
+              'runId': 'pre-fix',
+              'hypothesisId': 'LOGIN_REDIRECT',
+              'data': {
+                'flagIsLogged': isLogged,
+                'hasSupabaseSession': hasSupabaseSession,
+                'result': result,
+              },
+            }),
+          )
+          .catchError((_) {});
+    } catch (_) {}
+    // #endregion agent log
+
+    return result;
   }
 
   /// Get current user's role

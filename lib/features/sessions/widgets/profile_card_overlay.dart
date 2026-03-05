@@ -13,6 +13,7 @@ class ProfileCardOverlay extends StatelessWidget {
   final bool userLeft; // true if user left the call (for remote users)
   final bool screenOff; // true if user's screen is off (for remote users)
   final bool isSpeaking; // true when this user's audio is above threshold (talking indicator)
+  final bool reconnecting; // true when connection unstable - show "Reconnecting" instead of "Camera is off"
 
   const ProfileCardOverlay({
     Key? key,
@@ -23,6 +24,7 @@ class ProfileCardOverlay extends StatelessWidget {
     this.userLeft = false,
     this.screenOff = false,
     this.isSpeaking = false,
+    this.reconnecting = false,
   }) : super(key: key);
 
   /// Get initials from name
@@ -155,17 +157,16 @@ class ProfileCardOverlay extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      screenOff ? Icons.phone_android : Icons.videocam_off,
-                      color: screenOff ? Colors.blue.withOpacity(0.8) : Colors.orange.withOpacity(0.8),
+                      reconnecting ? Icons.sync : (screenOff ? Icons.phone_android : Icons.videocam_off),
+                      color: reconnecting ? Colors.orange : (screenOff ? Colors.blue.withOpacity(0.8) : Colors.orange.withOpacity(0.8)),
                       size: 16,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      screenOff ? 'Screen is off' : 'Camera is off',
+                      reconnecting ? 'Reconnecting...' : (screenOff ? 'Screen is off' : 'Camera is off'),
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Colors.white70,
-                        fontStyle: FontStyle.italic,
                       ),
                     ),
                   ],

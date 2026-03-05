@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -43,6 +45,11 @@ class _SimpleOnboardingScreenState extends State<SimpleOnboardingScreen> {
   void initState() {
     super.initState();
     _pageController = PageController();
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WebSplashService.removeSplash();
+      });
+    }
 
     // Auto-advance slides every 4 seconds
     _startAutoSlide();
