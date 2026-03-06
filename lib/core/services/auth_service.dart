@@ -11,6 +11,9 @@ import 'notification_helper_service.dart';
 
 /// Comprehensive authentication service for PrepSkul
 class AuthService {
+  /// Global flag so UI can show a blocking loader while Google OAuth completes
+  /// (including during deep-link callback back into the app).
+  static bool isGoogleSignInInProgress = false;
   // Session Management Keys
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyUserRole = 'user_role';
@@ -721,6 +724,7 @@ class AuthService {
   /// Sign in with Google (Web & Mobile)
   static Future<bool> signInWithGoogle() async {
     try {
+      isGoogleSignInInProgress = true;
       // Get redirect URL for Google Auth
       // For web, we want to come back to the current page (or specific callback)
       // For mobile, we want the deep link
@@ -739,6 +743,7 @@ class AuthService {
       LogService.success('Google Sign In initiated: $response');
       return true;
     } catch (e) {
+      isGoogleSignInInProgress = false;
       LogService.error('Error signing in with Google: $e');
       throw Exception(parseAuthError(e));
     }

@@ -31,6 +31,9 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
   void initState() {
     super.initState();
     _isLogin = widget.isLogin;
+    // If we are returning from a Google OAuth deep link, keep showing
+    // the blocking loader so users don't tap other auth methods.
+    _isGoogleSigningIn = AuthService.isGoogleSignInInProgress;
   }
 
   Future<void> _launchURL(String url) async {
@@ -143,6 +146,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                               safeSetState(() {
                                 _isGoogleSigningIn = true;
                               });
+                              AuthService.isGoogleSignInInProgress = true;
                               try {
                                 await AuthService.signInWithGoogle();
                               } catch (e) {
@@ -158,6 +162,7 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                 if (mounted) {
                                   safeSetState(() {
                                     _isGoogleSigningIn = false;
+                                    AuthService.isGoogleSignInInProgress = false;
                                   });
                                 }
                               }
@@ -397,28 +402,22 @@ class _AuthMethodButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (label.contains('Google'))
-              // Prefer a local Google \"G\" asset for instant, consistent rendering.
-              // Add a 24x24 asset at: assets/images/google_g_logo.png
-              Container(
+              // Use local Google logo asset with transparent background.
+              // The button itself stays white, matching Google's brand guidelines.
+              SizedBox(
                 width: 24,
                 height: 24,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/images/google_g_logo.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      // Fallback to simple icon if asset missing
-                      return Icon(
-                        Icons.g_mobiledata,
-                        size: 22,
-                        color: AppTheme.textDark,
-                      );
-                    },
-                  ),
+                child: Image.asset(
+                  'assets/images/google.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    // Fallback to simple icon if asset missing
+                    return Icon(
+                      Icons.g_mobiledata,
+                      size: 22,
+                      color: AppTheme.textDark,
+                    );
+                  },
                 ),
               )
             else

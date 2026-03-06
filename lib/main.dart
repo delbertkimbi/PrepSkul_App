@@ -809,6 +809,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             } else {
               navService.queueDeepLink(Uri.parse('/role-selection'));
             }
+            // Google sign-in flow is complete once we leave auth.
+            AuthService.isGoogleSignInInProgress = false;
             return;
           } else {
             // Returning Google user with role set - use normal navigation flow
@@ -822,12 +824,14 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
                 replace: true,
               );
             }
+            AuthService.isGoogleSignInInProgress = false;
             return;
           }
         }
       } catch (e) {
         LogService.error('❌ [DEEP_LINK] Error handling Google OAuth callback: $e');
         // On error, redirect to auth method selection
+        AuthService.isGoogleSignInInProgress = false;
         final navService = NavigationService();
         if (navService.isReady) {
           await navService.navigateToRoute('/auth-method-selection', replace: true);
