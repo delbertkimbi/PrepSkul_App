@@ -303,6 +303,12 @@ class RouteGuard {
 
       // If user is authenticated and tries to access auth routes, check onboarding/survey first
       if (userIsAuthenticated && authRoutes.contains(route)) {
+        // Password reset (email recovery): user MUST be authenticated - they have a recovery
+        // session from the reset link. Allow this route so they can enter their new password.
+        if (route == '/reset-password') {
+          LogService.debug('✅ [GUARD] Allowing /reset-password - password recovery flow requires session');
+          return RouteGuardResult.allowed();
+        }
         LogService.debug('🚫 [GUARD] Authenticated user tried to access auth route, checking onboarding/survey status');
         try {
           // For authenticated users with Supabase session, check if they have a profile.

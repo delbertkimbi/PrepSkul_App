@@ -52,6 +52,38 @@ class GameModel {
     );
   }
 
+  /// Returns false if game content is invalid/unplayable (e.g. diagramLabel with placeholder image, quiz with no options).
+  bool get isPlayable {
+    if (items.isEmpty) return false;
+    switch (gameType) {
+      case GameType.diagramLabel:
+        for (final item in items) {
+          final url = (item.imageUrl ?? '').trim().toLowerCase();
+          if (url.isEmpty || url.contains('url_to_') || url.contains('placeholder')) return false;
+        }
+        return items.any((i) => (i.diagramLabels ?? []).isNotEmpty);
+      case GameType.quiz:
+        return items.any((i) => (i.options ?? []).isNotEmpty);
+      case GameType.flashcards:
+        return items.any((i) => ((i.term ?? '').isNotEmpty) && ((i.definition ?? '').isNotEmpty));
+      case GameType.matching:
+        return items.any((i) => ((i.leftItem ?? '').isNotEmpty) && ((i.rightItem ?? '').isNotEmpty));
+      case GameType.fillBlank:
+        return items.any((i) => (i.blankText ?? '').isNotEmpty);
+      case GameType.dragDrop:
+        // Drag & Drop screen shows "Implementation coming soon" - treat as not playable
+        return false;
+      case GameType.match3:
+      case GameType.bubblePop:
+      case GameType.wordSearch:
+      case GameType.crossword:
+      case GameType.puzzlePieces:
+        return false;
+      default:
+        return items.any((i) => (i.options ?? []).isNotEmpty || ((i.question ?? '').trim().isNotEmpty));
+    }
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -226,10 +258,13 @@ class GameItem {
   });
 
   factory GameItem.fromJson(Map<String, dynamic> json) {
+    // Support multiple API key formats for flashcards
+    final term = json['term'] as String? ?? json['front'] as String? ?? json['word'] as String? ?? json['prompt'] as String?;
+    final definition = json['definition'] as String? ?? json['back'] as String? ?? json['meaning'] as String? ?? json['answer'] as String?;
     return GameItem(
       question: json['question'] as String?,
-      term: json['term'] as String?,
-      definition: json['definition'] as String?,
+      term: term,
+      definition: definition,
       options: json['options'] != null
           ? List<String>.from(json['options'] as List)
           : null,
@@ -422,4 +457,15 @@ class GameSession {
       'created_at': createdAt.toIso8601String(),
     };
   }
+}
+
+/// Per-question performance used for end-of-game summaries
+class QuestionPerformance {
+  final String question;
+  final bool isCorrect;
+
+  const QuestionPerformance({
+    required this.question,
+    required this.isCorrect,
+  });
 }

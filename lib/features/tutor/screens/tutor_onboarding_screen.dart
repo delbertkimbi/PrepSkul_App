@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -20,6 +21,7 @@ import '../../../core/services/profile_completion_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/tutor_onboarding_progress_service.dart';
 import '../../../core/widgets/confetti_celebration.dart';
+import '../../../core/utils/status_bar_utils.dart';
 import 'instruction_screen.dart';
 
 class TutorOnboardingScreen extends StatefulWidget {
@@ -958,6 +960,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               (k, v) => MapEntry(k.toString(), v == true || v == 'true'),
             ),
           );
+          _finalAgreements.putIfAbsent('code_of_conduct_safeguarding', () => false);
+          _finalAgreements.putIfAbsent('onsite_safeguarding_training', () => false);
         }
         break;
     }
@@ -1424,6 +1428,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
                     MapEntry(key.toString(), value == true || value == 'true'),
               ),
             );
+            _finalAgreements.putIfAbsent('code_of_conduct_safeguarding', () => false);
+            _finalAgreements.putIfAbsent('onsite_safeguarding_training', () => false);
           }
         } else {
           // If no agreements stored, set defaults to true (they've agreed before)
@@ -1532,6 +1538,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     'payment_understanding': false,
     'no_external_payments': false,
     'truthful_information': false,
+    'code_of_conduct_safeguarding': false,
+    'onsite_safeguarding_training': false,
   };
 
   // File uploads
@@ -1632,10 +1640,11 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.backgroundColor,
-      resizeToAvoidBottomInset: true,
-      appBar: AppBar(
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: AppTheme.backgroundColor,
+        resizeToAvoidBottomInset: true,
+        appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: true, // Enable back button
@@ -1744,8 +1753,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
             ],
           ),
         ),
-      ),
-      body: PageView(
+        ),
+        body: PageView(
         controller: _pageController,
         onPageChanged: (index) {
           safeSetState(() {
@@ -1768,8 +1777,8 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           _buildMediaLinksStep(),
           _buildPersonalStatementStep(),
         ],
-      ),
-      bottomNavigationBar: Container(
+        ),
+        bottomNavigationBar: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1844,6 +1853,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -4862,6 +4872,12 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
           title: 'I confirm that all information provided is true and accurate',
         ),
 
+        _buildCodeOfConductSafeguardingAffirmation(),
+
+        const SizedBox(height: 12),
+
+        _buildOnsiteSafeguardingTrainingBlock(),
+
         if (!allAccepted) ...[
           const SizedBox(height: 12),
           Container(
@@ -5318,6 +5334,269 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
     );
   }
 
+  Widget _buildOnsiteSafeguardingTrainingBlock() {
+    const key = 'onsite_safeguarding_training';
+    final isChecked = _finalAgreements[key] ?? false;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.02),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isChecked
+              ? AppTheme.primaryColor.withOpacity(0.5)
+              : AppTheme.primaryColor.withOpacity(0.25),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.shield_outlined,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Onsite safeguarding (short summary)',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'When you teach in someone’s home (especially with minors), these are the minimum safety rules:',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: AppTheme.textMedium,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSafeguardingBullet(
+                'An adult (parent/guardian) is present at home and reachable during the session.',
+              ),
+              _buildSafeguardingBullet(
+                'Lessons take place in a visible area of the house (e.g. living room, dining table) – not behind closed doors with a minor.',
+              ),
+              _buildSafeguardingBullet(
+                'No physical contact beyond normal professional gestures (handshake, passing materials).',
+              ),
+              _buildSafeguardingBullet(
+                'If you ever feel unsafe or harassed, end the session and use “Report issue / Felt unsafe” in the app – we support tutors leaving unsafe homes.',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: () async {
+              const url = 'https://prepskul.com/en/safeguarding';
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: Text(
+              'View full Safeguarding Policy',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppTheme.primaryColor,
+                decoration: TextDecoration.underline,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: isChecked,
+                onChanged: (value) {
+                  safeSetState(() {
+                    _finalAgreements[key] = value ?? false;
+                  });
+                  _saveData();
+                },
+                activeColor: AppTheme.primaryColor,
+                checkColor: Colors.white,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'I have read and understood these onsite safeguarding rules and will follow them in all in-person sessions.',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textDark,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSafeguardingBullet(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '• ',
+            style: TextStyle(fontSize: 12),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: AppTheme.textMedium,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Widget _buildCodeOfConductSafeguardingAffirmation() {
+    const codeOfConductUrl = 'https://prepskul.com/en/code-of-conduct';
+    const safeguardingUrl = 'https://prepskul.com/en/safeguarding';
+    final key = 'code_of_conduct_safeguarding';
+    final isChecked = _finalAgreements[key] ?? false;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isChecked
+            ? AppTheme.primaryColor.withOpacity(0.05)
+            : AppTheme.softCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isChecked
+              ? AppTheme.primaryColor.withOpacity(0.5)
+              : AppTheme.softBorder,
+          width: isChecked ? 2 : 1,
+        ),
+        boxShadow: isChecked
+            ? [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isChecked ? AppTheme.primaryColor : AppTheme.softBorder,
+                width: 2,
+              ),
+              color: isChecked ? AppTheme.primaryColor : Colors.transparent,
+            ),
+            child: Checkbox(
+              value: isChecked,
+              onChanged: (value) {
+                safeSetState(() {
+                  _finalAgreements[key] = value ?? false;
+                });
+                _saveData();
+              },
+              activeColor: AppTheme.primaryColor,
+              checkColor: Colors.white,
+              shape: const CircleBorder(),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: isChecked ? FontWeight.w600 : FontWeight.w500,
+                  color: AppTheme.textDark,
+                  height: 1.5,
+                ),
+                children: [
+                  const TextSpan(text: 'I have read and agree to the '),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: GestureDetector(
+                      onTap: () => _openUrl(codeOfConductUrl),
+                      child: Text(
+                        'Code of Conduct',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: isChecked ? FontWeight.w600 : FontWeight.w500,
+                          color: AppTheme.primaryColor,
+                          decoration: TextDecoration.underline,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const TextSpan(text: ' and '),
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: GestureDetector(
+                      onTap: () => _openUrl(safeguardingUrl),
+                      child: Text(
+                        'Safeguarding Policy',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: isChecked ? FontWeight.w600 : FontWeight.w500,
+                          color: AppTheme.primaryColor,
+                          decoration: TextDecoration.underline,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const TextSpan(text: '.'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _nextStep() {
     if (_currentStep < _totalSteps - 1) {
       // Validate current step before proceeding
@@ -5637,6 +5916,23 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
       _saveData(immediate: true);
     } catch (e) {
       if (!mounted) return;
+      // Derive a user‑friendly message instead of exposing raw backend errors
+      final raw = e.toString().replaceAll('Exception: ', '');
+      String userMessage = 'Upload failed. Please try again.';
+
+      if (raw.contains('Maximum size is')) {
+        userMessage = raw;
+      } else if (raw.contains('Invalid file type')) {
+        userMessage = raw;
+      } else if (raw.contains('Only images and PDF files are allowed')) {
+        userMessage = raw;
+      } else if (raw.contains('permissions') ||
+          raw.contains('row-level security') ||
+          raw.contains('violates row-level security policy')) {
+        userMessage =
+            'Upload failed due to permissions. Please contact support if this continues.';
+      }
+
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -5646,7 +5942,7 @@ class _TutorOnboardingScreenState extends State<TutorOnboardingScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Upload failed: ${e.toString().replaceAll('Exception: ', '')}',
+                  userMessage,
                   style: GoogleFonts.poppins(),
                 ),
               ),

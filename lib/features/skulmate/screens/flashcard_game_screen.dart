@@ -13,6 +13,8 @@ import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/flashcard_help_sheet.dart';
 import 'game_results_screen.dart';
 
 /// Flashcard game screen with flip animation
@@ -199,9 +201,9 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       // Speak definition when flipped
       if (_isTTSEnabled) {
         final card = widget.game.items[_currentCardIndex];
-        final definition = card.definition ?? '';
-        if (definition.isNotEmpty) {
-          _ttsService.speak(definition);
+        final resolved = _resolveTermDefinition(card);
+        if (resolved.definition.isNotEmpty) {
+          _ttsService.speak(resolved.definition);
         }
       }
     }
@@ -213,10 +215,20 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   void _speakCurrentCard() {
     if (!_isTTSEnabled) return;
     final card = widget.game.items[_currentCardIndex];
-    final term = card.term ?? '';
-    if (term.isNotEmpty) {
-      _ttsService.speak(term);
+    final resolved = _resolveTermDefinition(card);
+    if (resolved.term.isNotEmpty) {
+      _ttsService.speak(resolved.term);
     }
+  }
+
+  void _openLearnMoreSheet() {
+    final card = widget.game.items[_currentCardIndex];
+    final resolved = _resolveTermDefinition(card);
+    FlashcardHelpSheet.show(
+      context,
+      term: resolved.term,
+      definition: resolved.definition,
+    );
   }
 
   void _markAsKnown(bool isKnown) {
@@ -414,22 +426,13 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
           IconButton(
             icon: Icon(
               _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
-              color: AppTheme.textDark,
+              color: Colors.white,
             ),
             onPressed: () {
               safeSetState(() {
@@ -440,54 +443,66 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
           ),
           if (_currentStreak > 0)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.orange, width: 1.5),
-                ),
-                child: Row(
-                  children: [
-                    const Text('🔥', style: TextStyle(fontSize: 16)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$_currentStreak',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.orange[800],
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🔥', style: TextStyle(fontSize: 12)),
+                      const SizedBox(width: 2),
+                      Text(
+                        '$_currentStreak',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Known: $_score/${widget.game.items.length}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: SizedBox(
+                height: 24,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '$_score/${widget.game.items.length}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (_xpEarned > 0) ...[
+                        const SizedBox(width: 4),
+                        Text(
+                          '$_xpEarned XP',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (_xpEarned > 0)
-                  Text(
-                    '$_xpEarned XP',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppTheme.textMedium,
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
         ],
@@ -545,6 +560,8 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                                     }
                                     final stackCard = widget.game.items[cardIndex];
                                     return Positioned(
+                                      left: 0,
+                                      right: 0,
                                       top: (index + 1) * 8.0,
                                       child: Transform.scale(
                                         scale: 1.0 - (index + 1) * 0.05,
@@ -610,14 +627,20 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                                                   
                                                   return Stack(
                                                     children: [
-                                                      Transform(
-                                                        alignment: Alignment.center,
+                                                      Positioned.fill(
+                                                        child: Transform(
+                                                          alignment: Alignment.center,
                                                         transform: Matrix4.identity()
                                                           ..setEntry(3, 2, 0.001)
                                                           ..rotateY(angle),
                                                         child: isFront
                                                             ? _buildCardFront(card)
-                                                            : _buildCardBack(card),
+                                                            : Transform(
+                                                                alignment: Alignment.center,
+                                                                transform: Matrix4.identity()..scale(-1.0, 1.0, 1.0),
+                                                                child: _buildCardBack(card),
+                                                              ),
+                                                        ),
                                                       ),
                                                       // Swipe indicator overlay
                                                       if (swipeColor != null && swipeIcon != null)
@@ -662,7 +685,19 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                               fontStyle: FontStyle.italic,
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: _openLearnMoreSheet,
+                            icon: Icon(Icons.menu_book_outlined, size: 18, color: AppTheme.primaryColor),
+                            label: Text(
+                              'Learn more',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -746,12 +781,12 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
               gravity: 0.1,
               shouldLoop: false,
               colors: const [
-                Colors.green,
-                Colors.blue,
-                Colors.pink,
-                Colors.orange,
-                Colors.purple,
-                Colors.yellow,
+                AppTheme.primaryColor,
+                AppTheme.skyBlue,
+                AppTheme.softYellow,
+                AppTheme.accentGreen,
+                AppTheme.accentOrange,
+                AppTheme.primaryLight,
               ],
             ),
           ),
@@ -760,18 +795,31 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     );
   }
 
+  /// Resolves term/definition - some APIs return them swapped (definition in term, term in definition).
+  /// Heuristic: if "term" is longer than "definition", they're likely swapped (terms are usually shorter).
+  ({String term, String definition}) _resolveTermDefinition(GameItem card) {
+    final t = card.term ?? '';
+    final d = card.definition ?? '';
+    if (t.isEmpty && d.isEmpty) return (term: '', definition: '');
+    if (t.isEmpty) return (term: d, definition: ''); // Only definition present
+    if (d.isEmpty) return (term: t, definition: ''); // Only term present
+    if (d.length < t.length) return (term: d, definition: t); // Likely swapped
+    return (term: t, definition: d);
+  }
+
   Widget _buildCardFront(GameItem card) {
+    final resolved = _resolveTermDefinition(card);
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 400),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
             AppTheme.primaryColor,
-            AppTheme.primaryColor.withOpacity(0.8),
+            AppTheme.skyBlue,
           ],
         ),
         borderRadius: BorderRadius.circular(20),
@@ -785,7 +833,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       ),
       child: Center(
         child: Text(
-          card.term ?? '',
+          resolved.term,
           style: GoogleFonts.poppins(
             fontSize: 28,
             fontWeight: FontWeight.w700,
@@ -798,6 +846,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   }
 
   Widget _buildCardBack(GameItem card) {
+    final resolved = _resolveTermDefinition(card);
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 400),
@@ -805,24 +854,32 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.skyBlue.withOpacity(0.4), width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Center(
         child: SingleChildScrollView(
-          child: Text(
-            card.definition ?? '',
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              color: AppTheme.textDark,
-              height: 1.5,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
             ),
-            textAlign: TextAlign.center,
+            child: Text(
+              resolved.definition,
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                color: AppTheme.textDark,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       ),
@@ -830,22 +887,23 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   }
   
   Widget _buildCardStackItem(GameItem card, int index) {
+    final resolved = _resolveTermDefinition(card);
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxHeight: 400),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.grey[200],
+        color: AppTheme.skyBlueLight,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey[300]!, width: 1),
+        border: Border.all(color: AppTheme.skyBlue.withOpacity(0.3), width: 1),
       ),
       child: Center(
-        child: Text(
-          card.term ?? '',
+          child: Text(
+          resolved.term,
           style: GoogleFonts.poppins(
             fontSize: 24,
             fontWeight: FontWeight.w600,
-            color: Colors.grey[600],
+            color: AppTheme.primaryColor,
           ),
           textAlign: TextAlign.center,
         ),

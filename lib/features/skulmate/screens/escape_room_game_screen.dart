@@ -13,6 +13,7 @@ import '../services/character_selection_service.dart';
 import '../services/game_stats_service.dart';
 import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_game_app_bar.dart';
 import 'game_results_screen.dart';
 
 /// Escape Room game screen - Concept-based puzzle games
@@ -286,17 +287,8 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
           if (_character != null)
             Padding(

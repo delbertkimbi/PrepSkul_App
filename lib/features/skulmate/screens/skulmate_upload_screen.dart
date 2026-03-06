@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -11,10 +12,13 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:io' show File;
 import 'dart:typed_data';
 import '../services/skulmate_service.dart';
+import '../services/game_stats_service.dart';
+import '../models/game_stats_model.dart';
 import 'game_generation_screen.dart';
 import 'game_library_screen.dart';
 import 'text_input_screen.dart';
 import '../widgets/photo_upload_bottom_sheet.dart';
+import '../widgets/generation_context_sheet.dart';
 
 /// Screen for uploading notes/documents to create games
 class SkulMateUploadScreen extends StatefulWidget {
@@ -32,8 +36,18 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   List<XFile> _selectedImages = [];
   Map<int, Uint8List> _imageBytesCache = {}; // Cache image bytes for web display
   List<String> _selectedFileNames = [];
-  bool _isUploading = false;
-  double _uploadProgress = 0.0;
+  GameStats? _gameStats;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGameStats();
+  }
+
+  Future<void> _loadGameStats() async {
+    final stats = await GameStatsService.getStats();
+    if (mounted) safeSetState(() => _gameStats = stats);
+  }
 
   @override
   void dispose() {
@@ -50,31 +64,31 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       if (result != null && result.files.isNotEmpty) {
         safeSetState(() {
           if (kIsWeb) {
-            // On web, store PlatformFile objects (they have bytes)
             _selectedFilesWeb = result.files
                 .where((file) => file.bytes != null || file.name.isNotEmpty)
                 .toList();
-            _selectedFiles = []; // Clear mobile files
+            _selectedFiles = [];
+            _selectedFileNames = _selectedFilesWeb
+                .map((f) => f.name.trim().isEmpty || f.name == '_' ? '' : f.name)
+                .toList();
           } else {
-            // On mobile, store File objects (they have paths)
-          _selectedFiles = result.files
-              .where((file) => file.path != null)
-              .map((file) => File(file.path!))
-              .toList();
-            _selectedFilesWeb = []; // Clear web files
+            final mobileFiles = result.files
+                .where((file) => file.path != null)
+                .toList();
+            _selectedFiles = mobileFiles
+                .map((file) => File(file.path!))
+                .toList();
+            _selectedFilesWeb = [];
+            _selectedFileNames = mobileFiles
+                .map((f) => (f.name.trim().isEmpty || f.name == '_') ? '' : f.name)
+                .toList();
           }
-          _selectedFileNames = result.files
-              .where((file) => file.name.isNotEmpty)
-              .map((file) => file.name)
-              .toList();
-          _selectedImages = []; // Clear images when documents are selected
+          _selectedImages = [];
         });
       }
     } catch (e) {
       LogService.error('Error picking document: $e');
-      if (mounted) {
-        _showFriendlyError('file_selection', e.toString());
-      }
+      if (mounted) _showFriendlySnackBar('file_selection');
     }
   }
 
@@ -97,8 +111,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
           if (images.isNotEmpty) {
             safeSetState(() {
               _selectedImages.addAll(images);
-              _selectedFiles = []; // Clear documents when images are selected
-              _selectedFilesWeb = []; // Clear web documents
+              _selectedFiles = [];
+              _selectedFilesWeb = [];
+              _selectedFileNames = [];
               // Pre-load image bytes for web display
               if (kIsWeb) {
                 _loadImageBytesForWeb(images);
@@ -111,9 +126,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         }
       } catch (e) {
         LogService.error('Error picking photo: $e');
-        if (mounted) {
-          _showFriendlyError('photo_selection', e.toString());
-        }
+        if (mounted) _showFriendlySnackBar('photo_selection');
       }
     }
   }
@@ -187,11 +200,75 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     }
   }
 
+  String _getDisplayFileName(String rawName, int index) {
+    final cleaned = rawName.trim();
+    if (cleaned.isEmpty || cleaned == '_' || cleaned == '_.pdf' || cleaned == '.pdf') {
+      return 'Document ${index + 1}';
+    }
+    if (cleaned.endsWith('.pdf')) return cleaned;
+    if (cleaned.contains('.')) return cleaned;
+    return cleaned;
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
   Future<void> _navigateToTextInput() async {
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TextInputScreen(childId: widget.childId),
+      ),
+    );
+  }
+
+  void _showFriendlySnackBar(String errorType) {
+    String message;
+    switch (errorType) {
+      case 'upload_permission':
+        message = 'Couldn\'t upload your file. Try "Enter Text Manually" instead.';
+        break;
+      case 'file_too_large':
+        message = 'File too large. Try a smaller file or text input.';
+        break;
+      case 'unsupported_format':
+        message = 'Unsupported format. Try PDF, DOCX, or images.';
+        break;
+      case 'network_error':
+        message = 'Connection issue. Check your internet or try text input.';
+        break;
+      case 'no_selection':
+        message = 'Please select files, photos, or use text input first.';
+        break;
+      case 'file_selection':
+      case 'photo_selection':
+        message = 'Couldn\'t select that file. Try again or use text input.';
+        break;
+      default:
+        message = 'Something went wrong. Try again or use text input.';
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: GoogleFonts.poppins(fontSize: 14),
+        ),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: Colors.red.shade700,
+        action: errorType != 'no_selection'
+            ? SnackBarAction(
+                label: 'Text Input',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  _navigateToTextInput();
+                },
+              )
+            : null,
       ),
     );
   }
@@ -227,9 +304,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         break;
       case 'network_error':
         title = 'Connection Issue';
-        message = 'Check your internet connection and try again.';
+        message = 'Upload failed. Check your internet connection and try again, or use text input instead.';
         icon = Icons.wifi_off_rounded;
-        iconColor = Colors.red;
+        iconColor = Colors.orange;
+        showTextInputButton = true;
         break;
       case 'no_selection':
         title = 'No Content Selected';
@@ -256,186 +334,142 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      barrierDismissible: false,
+      builder: (context) => Dialog(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
         ),
-        title: Row(
-          children: [
-            Icon(icon, color: iconColor, size: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 340),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: iconColor.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: iconColor, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
                 style: GoogleFonts.poppins(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
+                  fontSize: 14,
+                  color: AppTheme.textMedium,
+                  height: 1.5,
                 ),
               ),
-            ),
-          ],
-        ),
-        content: Text(
-          message,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            color: AppTheme.textMedium,
-            height: 1.5,
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (showTextInputButton) ...[
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _navigateToTextInput();
+                      },
+                      child: Text(
+                        'Try Text Input',
+                        style: GoogleFonts.poppins(
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text(
+                      'OK',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        actions: [
-          if (showTextInputButton) ...[
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _navigateToTextInput();
-              },
-              child: Text(
-                'Try Text Input',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-          ],
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: Text(
-              'OK',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
 
   Future<void> _uploadAndGenerate() async {
     if (_selectedFiles.isEmpty && _selectedFilesWeb.isEmpty && _selectedImages.isEmpty) {
-      _showFriendlyError('no_selection', null);
+      _showFriendlySnackBar('no_selection');
       return;
     }
 
-    try {
-      safeSetState(() {
-        _isUploading = true;
-        _uploadProgress = 0.0;
-      });
+    if (!mounted) return;
 
-      List<String> fileUrls = [];
-      List<String> imageUrls = [];
+    // Show optional context questionnaire first
+    final contextResult = await GenerationContextSheet.show(context);
+    if (!mounted) return;
 
-      final user = await SupabaseService.client.auth.currentUser;
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
+    final document = kIsWeb && _selectedFilesWeb.isNotEmpty
+        ? _selectedFilesWeb.first
+        : (!kIsWeb && _selectedFiles.isNotEmpty ? _selectedFiles.first : null);
+    final images = _selectedImages.isNotEmpty ? List<XFile>.from(_selectedImages) : null;
 
-      final totalItems = (kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length) + _selectedImages.length;
-      int uploadedItems = 0;
-
-      // Upload all files
-      if (kIsWeb) {
-        // On web, use PlatformFile objects
-        for (final file in _selectedFilesWeb) {
-          final url = await StorageService.uploadDocument(
-            userId: user.id,
-            documentFile: file,
-            documentType: 'skulmate_notes',
-          );
-          fileUrls.add(url);
-          uploadedItems++;
-          safeSetState(() {
-            _uploadProgress = uploadedItems / totalItems;
-          });
-        }
-      } else {
-        // On mobile, use File objects
-        for (final file in _selectedFiles) {
-          final url = await StorageService.uploadDocument(
-            userId: user.id,
-            documentFile: file,
-            documentType: 'skulmate_notes',
-          );
-          fileUrls.add(url);
-          uploadedItems++;
-          safeSetState(() {
-            _uploadProgress = uploadedItems / totalItems;
-          });
-        }
-      }
-
-      // Upload all images (XFile works on both web and mobile)
-      for (final image in _selectedImages) {
-        final url = await StorageService.uploadDocument(
-          userId: user.id,
-          documentFile: image, // Pass XFile directly - StorageService handles it
-          documentType: 'skulmate_notes',
-        );
-        imageUrls.add(url);
-        uploadedItems++;
-        safeSetState(() {
-          _uploadProgress = uploadedItems / totalItems;
-        });
-      }
-
-      safeSetState(() {
-        _uploadProgress = 1.0;
-      });
-
-      // Navigate to game generation screen
-      // For now, send first file/image URL (API may need update to handle multiple)
-      safeSetState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
-      
-      if (mounted) {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => GameGenerationScreen(
-              fileUrl: fileUrls.isNotEmpty ? fileUrls.first : null,
-              imageUrl: imageUrls.isNotEmpty ? imageUrls.first : null,
-              childId: widget.childId,
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      safeSetState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
-      LogService.error('Error uploading/generating: $e');
-      if (mounted) {
-        final errStr = e.toString().toLowerCase();
-        if (errStr.contains('permissions') ||
-            errStr.contains('upload failed') ||
-            errStr.contains('rls') ||
-            errStr.contains('row-level security')) {
-          _showFriendlyError('upload_permission', e.toString());
-        } else if (errStr.contains('too large') || errStr.contains('size')) {
-          _showFriendlyError('file_too_large', e.toString());
-        } else if (errStr.contains('format') || errStr.contains('type') || errStr.contains('unsupported')) {
-          _showFriendlyError('unsupported_format', e.toString());
-        } else if (errStr.contains('network') || errStr.contains('connection') || errStr.contains('timeout')) {
-          _showFriendlyError('network_error', e.toString());
-        } else {
-          _showFriendlyError('generic', e.toString());
-        }
-      }
-    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GameGenerationScreen(
+          documentToUpload: document,
+          imageToUpload: images != null && images.length == 1 ? images.first : null,
+          imagesToUpload: images != null && images.length > 1 ? images : null,
+          childId: widget.childId,
+          topic: contextResult?.topic,
+          difficulty: contextResult?.difficulty,
+          gameType: contextResult?.gameType,
+        ),
+      ),
+    );
   }
 
   @override
@@ -454,12 +488,8 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.sports_esports_rounded,
-              size: 18,
-              color: AppTheme.textDark,
-            ),
-            const SizedBox(width: 6),
+            PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AppTheme.textDark, size: 20),
+            const SizedBox(width: 8),
             Text(
               'skulMate',
               style: GoogleFonts.poppins(
@@ -491,64 +521,63 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Banner with helpful hints
+            // Simple hero banner
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: AppTheme.primaryColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.lightbulb_outline, color: Colors.white, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Turn Your Notes Into Games!',
-                        style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Upload your notes, documents, or photos and skulMate will create interactive games to help you learn',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.white.withOpacity(0.9),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.white, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Supported: PDF, DOCX, Images • Tip: Upload session notes for best results',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: Colors.white.withOpacity(0.95),
+                  if (_gameStats != null && _gameStats!.currentStreak > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.orange.shade200, width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text('🔥', style: TextStyle(fontSize: 16)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${_gameStats!.currentStreak} day streak',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                  Text(
+                    'Turn Your Notes Into Games',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Upload notes, documents, or photos — skulMate creates interactive games to help you learn.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.92),
+                      height: 1.4,
                     ),
                   ),
                 ],
@@ -556,6 +585,262 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             ),
 
             const SizedBox(height: 24),
+
+            // Selected files/images - shown first when user has made a selection
+            if (hasSelection) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 20),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Your selected files',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textDark,
+                                ),
+                              ),
+                              Text(
+                                'Tap Generate Game below',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  color: AppTheme.textMedium,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: List.generate(kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length, (index) {
+                          final rawName = index < _selectedFileNames.length ? _selectedFileNames[index] : '';
+                          final displayName = _getDisplayFileName(rawName, index);
+                          final ext = displayName.contains('.') ? '' : '.pdf';
+                          int sizeBytes = 0;
+                          if (kIsWeb && index < _selectedFilesWeb.length) {
+                            sizeBytes = _selectedFilesWeb[index].size;
+                          } else if (!kIsWeb && index < _selectedFiles.length) {
+                            sizeBytes = _selectedFiles[index].lengthSync();
+                          }
+                          final sizeStr = sizeBytes > 0 ? ' (${_formatFileSize(sizeBytes)})' : '';
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.picture_as_pdf_rounded, color: AppTheme.primaryColor, size: 20),
+                                const SizedBox(width: 8),
+                                ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 220),
+                                  child: Text(
+                                    displayName + ext + sizeStr,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppTheme.textDark,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                InkWell(
+                                  onTap: () {
+                                    safeSetState(() {
+                                      if (kIsWeb) {
+                                        _selectedFilesWeb.removeAt(index);
+                                      } else {
+                                        _selectedFiles.removeAt(index);
+                                      }
+                                      if (index < _selectedFileNames.length) {
+                                        _selectedFileNames.removeAt(index);
+                                      }
+                                    });
+                                  },
+                                  child: Icon(Icons.close, size: 16, color: AppTheme.textMedium),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_selectedImages.isNotEmpty) ...[
+                      Text(
+                        'Photos (${_selectedImages.length})',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final count = _selectedImages.length;
+                          final width = constraints.maxWidth;
+                          int crossAxisCount;
+                          double cellExtent;
+                          if (count == 1) {
+                            crossAxisCount = 1;
+                            cellExtent = (width - 8).clamp(120.0, 200.0);
+                          } else if (count == 2) {
+                            crossAxisCount = 2;
+                            cellExtent = (width - 8) / 2;
+                          } else if (count <= 4) {
+                            crossAxisCount = 2;
+                            cellExtent = (width - 8) / 2;
+                          } else if (count <= 9) {
+                            crossAxisCount = 3;
+                            cellExtent = (width - 16) / 3;
+                          } else {
+                            crossAxisCount = 4;
+                            cellExtent = (width - 24) / 4;
+                          }
+                          cellExtent = cellExtent.clamp(56.0, 200.0);
+                          final rows = (count / crossAxisCount).ceil();
+                          final maxVisibleRows = 3;
+                          final maxHeight = rows <= maxVisibleRows
+                              ? (cellExtent * rows) + (8 * (rows - 1))
+                              : (cellExtent * maxVisibleRows) + (8 * (maxVisibleRows - 1));
+                          return ConstrainedBox(
+                            constraints: BoxConstraints(maxHeight: maxHeight),
+                            child: SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              child: GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                  childAspectRatio: 1,
+                                  mainAxisExtent: cellExtent,
+                                ),
+                                itemCount: count,
+                                itemBuilder: (context, index) {
+                                  final image = _selectedImages[index];
+                                  return Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: kIsWeb
+                                            ? FutureBuilder<Uint8List?>(
+                                                future: _imageBytesCache.containsKey(index)
+                                                    ? Future.value(_imageBytesCache[index])
+                                                    : image.readAsBytes().then((bytes) {
+                                                        _imageBytesCache[index] = bytes;
+                                                        return bytes;
+                                                      }),
+                                                builder: (context, snapshot) {
+                                                  if (snapshot.hasData && snapshot.data != null) {
+                                                    return Image.memory(
+                                                      snapshot.data!,
+                                                      fit: BoxFit.cover,
+                                                      width: double.infinity,
+                                                      height: double.infinity,
+                                                    );
+                                                  }
+                                                  return Container(
+                                                    color: Colors.grey[200],
+                                                    child: const Center(
+                                                      child: SizedBox(
+                                                        width: 24,
+                                                        height: 24,
+                                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                              )
+                                            : Image.file(
+                                                File(image.path),
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                height: double.infinity,
+                                              ),
+                                      ),
+                                      Positioned(
+                                        top: 4,
+                                        right: 4,
+                                        child: InkWell(
+                                          onTap: () {
+                                            safeSetState(() {
+                                              _imageBytesCache.remove(index);
+                                              _selectedImages.removeAt(index);
+                                              final newCache = <int, Uint8List>{};
+                                              for (int i = 0; i < _selectedImages.length; i++) {
+                                                final oldIndex = i < index ? i : i + 1;
+                                                if (_imageBytesCache.containsKey(oldIndex)) {
+                                                  newCache[i] = _imageBytesCache[oldIndex]!;
+                                                }
+                                              }
+                                              _imageBytesCache = newCache;
+                                            });
+                                          },
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: Icon(
+                                              Icons.close,
+                                              size: cellExtent > 80 ? 14 : 12,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
 
             // Choose Upload Method
             Text(
@@ -581,7 +866,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             _buildUploadCard(
               icon: Icons.photo_library_rounded,
               title: 'Upload Photo/Image',
-              subtitle: 'Take photos or select from gallery',
+              subtitle: 'Select multiple from gallery or take photos',
               onTap: _showPhotoOptions,
               isSelected: _selectedImages.isNotEmpty,
             ),
@@ -594,176 +879,12 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
               isSelected: false,
             ),
 
-            // Show selected files/images info
-            if (hasSelection) ...[
-              const SizedBox(height: 16),
-              // Selected files grid
-              if (_selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty) ...[
-                Text(
-                  'Selected Documents (${kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length})',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: List.generate(kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length, (index) {
-                    return Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppTheme.primaryColor.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.picture_as_pdf_rounded,
-                            color: AppTheme.primaryColor,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _selectedFileNames[index],
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppTheme.textDark,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(width: 4),
-                          InkWell(
-                            onTap: () {
-                              safeSetState(() {
-                                if (kIsWeb) {
-                                  _selectedFilesWeb.removeAt(index);
-                                } else {
-                                _selectedFiles.removeAt(index);
-                                }
-                                _selectedFileNames.removeAt(index);
-                              });
-                            },
-                            child: Icon(Icons.close, size: 14, color: AppTheme.textMedium),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 12),
-              ],
-              // Selected images grid
-              if (_selectedImages.isNotEmpty) ...[
-                Text(
-                  'Selected Photos (${_selectedImages.length})',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 1,
-                  ),
-                  itemCount: _selectedImages.length,
-                  itemBuilder: (context, index) {
-                    final image = _selectedImages[index];
-                    return Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: kIsWeb
-                              ? FutureBuilder<Uint8List?>(
-                                  future: _imageBytesCache.containsKey(index)
-                                      ? Future.value(_imageBytesCache[index])
-                                      : image.readAsBytes().then((bytes) {
-                                          _imageBytesCache[index] = bytes;
-                                          return bytes;
-                                        }),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.hasData && snapshot.data != null) {
-                                      return Image.memory(
-                                        snapshot.data!,
-                                        fit: BoxFit.cover,
-                                        width: double.infinity,
-                                        height: double.infinity,
-                                      );
-                                    }
-                                    return Container(
-                                      color: Colors.grey[200],
-                                      child: const Center(
-                                        child: CircularProgressIndicator(),
-                                      ),
-                                    );
-                                  },
-                                )
-                              : Image.file(
-                                  File(image.path),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                          ),
-                        ),
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: InkWell(
-                            onTap: () {
-                              safeSetState(() {
-                                _imageBytesCache.remove(index);
-                                _selectedImages.removeAt(index);
-                                // Re-index the cache after removal
-                                final newCache = <int, Uint8List>{};
-                                for (int i = 0; i < _selectedImages.length; i++) {
-                                  final oldIndex = i < index ? i : i + 1;
-                                  if (_imageBytesCache.containsKey(oldIndex)) {
-                                    newCache[i] = _imageBytesCache[oldIndex]!;
-                                  }
-                                }
-                                _imageBytesCache = newCache;
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                size: 12,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                  ),
-                  const SizedBox(height: 12),
-              ],
-              const SizedBox(height: 16),
-              // Generate Game Button (only for file/photo uploads)
+            const SizedBox(height: 16),
+            // Generate Game Button (only for file/photo uploads)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isUploading ? null : _uploadAndGenerate,
+                  onPressed: _uploadAndGenerate,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.primaryColor,
                     foregroundColor: Colors.white,
@@ -773,52 +894,27 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: _isUploading
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            LinearProgressIndicator(
-                              value: _uploadProgress,
-                              backgroundColor: Colors.white.withOpacity(0.3),
-                              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Uploading... ${(_uploadProgress * 100).toInt()}%',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.white.withOpacity(0.9),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.auto_awesome_rounded, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Generate Game',
-                              style: GoogleFonts.poppins(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      PhosphorIcon(
+                        PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Generate Game',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
-          ],
         ),
       ),
     );
@@ -893,10 +989,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 Icons.check_circle_rounded,
                 color: AppTheme.primaryColor,
                 size: 20,
-                  ),
-                ],
               ),
-            ),
+          ],
+        ),
+      ),
     );
   }
 }

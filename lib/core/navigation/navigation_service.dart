@@ -139,6 +139,7 @@ class NavigationService {
               await prefs.remove('signup_email');
               await prefs.remove('signup_full_name');
               await prefs.remove('pending_deep_link');
+              await prefs.remove('skulmate_onboarding_completed');
             }
             
             final localIsLoggedIn = prefs.getBool('is_logged_in') ?? false;

@@ -237,12 +237,12 @@ class AgoraService {
       // For now, initialize with empty - will be updated when we get token
       await _engine!
           .initialize(
-            RtcEngineContext(
-              appId: '', // Will be set from token response
-              channelProfile: ChannelProfileType.channelProfileCommunication,
-              // Add area code for better connection (optional)
-              // areaCode: AreaCode.areaCodeGlob,
-            ),
+        RtcEngineContext(
+          appId: '', // Will be set from token response
+          channelProfile: ChannelProfileType.channelProfileCommunication,
+          // Add area code for better connection (optional)
+          // areaCode: AreaCode.areaCodeGlob,
+        ),
           )
           // In unit/widget tests (and some bad device states) engine init can hang.
           // Keep a hard timeout so the app can recover gracefully.
@@ -277,7 +277,7 @@ class AgoraService {
       try {
         await _engine!
             .setAudioProfile(
-              profile: AudioProfileType.audioProfileDefault,
+          profile: AudioProfileType.audioProfileDefault,
               scenario: AudioScenarioType
                   .audioScenarioGameStreaming, // High quality for education
             )
@@ -1507,7 +1507,7 @@ class AgoraService {
   Future<void> tryRecoverCamera() async {
     await _recoverCamera();
   }
-
+  
   /// Recover local camera after interruption
   Future<void> _recoverCamera() async {
     if (_engine == null || !_isInChannel || !_isVideoEnabled) return;
@@ -2177,8 +2177,8 @@ class AgoraService {
               return;
             }
             final reasonStr = reason.toString().toLowerCase();
-            if (reasonStr.contains('permission') ||
-                reasonStr.contains('denied') ||
+            if (reasonStr.contains('permission') || 
+                reasonStr.contains('denied') || 
                 reasonStr.contains('notallowed')) {
               LogService.error('❌ Camera permission denied or not granted');
               _errorController.add(kIsWeb
@@ -2187,7 +2187,7 @@ class AgoraService {
               _updateState(AgoraSessionState.error);
             } else {
               if (!_isRecoveringCamera && _isVideoEnabled && !_isPublishingScreen) {
-                LogService.warning('⚠️ Camera failed (reason: $reason) - attempting recovery');
+              LogService.warning('⚠️ Camera failed (reason: $reason) - attempting recovery');
                 _recoverCamera();
               }
             }
@@ -2229,18 +2229,18 @@ class AgoraService {
               return;
             }
             if (!isScreenSource) {
-              LogService.warning('⚠️ Local video stopped - not publishing to remote users');
+            LogService.warning('⚠️ Local video stopped - not publishing to remote users');
               if (_isVideoEnabled && !_isPublishingScreen && _engine != null && _isInChannel) {
-                Future.delayed(const Duration(milliseconds: 500), () async {
+              Future.delayed(const Duration(milliseconds: 500), () async {
                   if (_engine != null && _isInChannel && _isVideoEnabled && !_isPublishingScreen) {
-                    try {
-                      await _engine!.muteLocalVideoStream(false);
-                      LogService.info('✅ Attempted to unmute video after it stopped');
-                    } catch (e) {
-                      LogService.warning('Could not unmute video after stop: $e');
-                    }
+                  try {
+                    await _engine!.muteLocalVideoStream(false);
+                    LogService.info('✅ Attempted to unmute video after it stopped');
+                  } catch (e) {
+                    LogService.warning('Could not unmute video after stop: $e');
                   }
-                });
+                }
+              });
               }
             }
           } else {
@@ -2293,7 +2293,7 @@ class AgoraService {
               _updateState(AgoraSessionState.disconnected);
               // Do NOT reconnect when user intentionally left - fixes audio continuing after leave
               if (reason != ConnectionChangedReasonType.connectionChangedLeaveChannel) {
-                _attemptReconnection();
+              _attemptReconnection();
               } else {
                 LogService.info('[VIDEO] User left channel - skipping reconnection');
               }

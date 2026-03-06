@@ -23,6 +23,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:prepskul/core/config/app_config.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tz_data;
 
 /// Top-level function for handling background messages
 @pragma('vm:entry-point')
@@ -783,4 +785,54 @@ class PushNotificationService {
 
   /// Check if initialized
   bool get isInitialized => _initialized;
+
+  /// Schedule daily skulMate streak reminder at given hour:minute (local time)
+  static const int _streakReminderId = 9999;
+
+  Future<void> scheduleSkulMateStreakReminder({
+    required int hour,
+    required int minute,
+    int streakCount = 0,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      try {
+        tz_data.initializeTimeZones();
+      } catch (_) {}
+      final local = tz.local;
+      var scheduled = tz.TZDateTime(tz.local, DateTime.now().year, DateTime.now().month, DateTime.now().day, hour, minute);
+      if (scheduled.isBefore(tz.TZDateTime.now(local))) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      }
+      const androidDetails = AndroidNotificationDetails(
+        'prepskul_notifications',
+        'PrepSkul Notifications',
+        channelDescription: 'PrepSkul notifications',
+        importance: Importance.defaultImportance,
+      );
+      const iosDetails = DarwinNotificationDetails();
+      await _localNotifications.zonedSchedule(
+        _streakReminderId,
+        'Don\'t lose your streak!',
+        streakCount > 0
+            ? 'You\'ve got a $streakCount day streak. Play one game to keep it going!'
+            : 'Play a game to keep your streak going!',
+        scheduled,
+        const NotificationDetails(android: androidDetails, iOS: iosDetails),
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      LogService.info('Scheduled skulMate streak reminder at $hour:${minute.toString().padLeft(2, '0')}');
+    } catch (e) {
+      LogService.warning('Could not schedule streak reminder: $e');
+    }
+  }
+
+  Future<void> cancelSkulMateStreakReminder() async {
+    if (kIsWeb) return;
+    try {
+      await _localNotifications.cancel(_streakReminderId);
+    } catch (_) {}
+  }
 }

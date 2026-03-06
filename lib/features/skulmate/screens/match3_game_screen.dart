@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_model.dart';
+import '../widgets/skulmate_game_app_bar.dart';
 import 'game_results_screen.dart';
 
 /// Match-3 game screen (like Candy Crush)
@@ -20,10 +21,7 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Match-3 Game', style: GoogleFonts.poppins()),
-        backgroundColor: AppTheme.primaryColor,
-      ),
+      appBar: SkulMateGameAppBar(title: widget.game.title.isNotEmpty ? widget.game.title : 'Match-3'),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

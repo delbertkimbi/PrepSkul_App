@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/pricing_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -27,8 +28,11 @@ class BookingReview extends StatefulWidget {
   final Map<String, Map<String, String?>>? locationDetails; // For flexible bookings
   final String? initialPaymentPlan;
   final Function(String paymentPlan) onPaymentPlanSelected;
-  final double? estimatedTransportationCost; // Estimated transportation cost per session
-  final int? learnerCount; // Number of learners selected (for adapting pricing display)
+  final double? estimatedTransportationCost;
+  final int? learnerCount;
+  final bool initialAgreedToTerms;
+  final bool initialAgreedToSafeguarding;
+  final void Function({required bool agreedToTerms, required bool agreedToSafeguarding})? onAgreementsChanged;
 
   const BookingReview({
     Key? key,
@@ -45,6 +49,9 @@ class BookingReview extends StatefulWidget {
     required this.onPaymentPlanSelected,
     this.estimatedTransportationCost,
     this.learnerCount,
+    this.initialAgreedToTerms = false,
+    this.initialAgreedToSafeguarding = false,
+    this.onAgreementsChanged,
   }) : super(key: key);
 
   @override
@@ -53,16 +60,19 @@ class BookingReview extends StatefulWidget {
 
 class _BookingReviewState extends State<BookingReview> {
   String? _selectedPaymentPlan;
-  DateTime? _reviewScreenShownAt; // Track when review screen was shown for timing check
-  // Cache the multi-learner totals future to prevent re-running on every rebuild
+  DateTime? _reviewScreenShownAt;
   Future<({double baseTotal, double discountedTotal})?>? _cachedMultiLearnerTotals;
+  late bool _agreedToTerms;
+  late bool _agreedToSafeguarding;
 
   @override
   void initState() {
     super.initState();
-    _selectedPaymentPlan =
-        widget.initialPaymentPlan; // Don't default to monthly
-    _reviewScreenShownAt = DateTime.now(); // Record when screen was shown
+    _selectedPaymentPlan = widget.initialPaymentPlan;
+    _reviewScreenShownAt = DateTime.now();
+    _agreedToTerms = widget.initialAgreedToTerms;
+    _agreedToSafeguarding = widget.initialAgreedToSafeguarding;
+    widget.onAgreementsChanged?.call(agreedToTerms: _agreedToTerms, agreedToSafeguarding: _agreedToSafeguarding);
     // Pre-calculate multi-learner totals if needed (only once)
     final useMultiLearnerDiscount = widget.learnerCount != null && widget.learnerCount! > 1;
     if (useMultiLearnerDiscount) {
@@ -127,6 +137,23 @@ class _BookingReviewState extends State<BookingReview> {
   void _selectPaymentPlan(String plan) {
     setState(() => _selectedPaymentPlan = plan);
     widget.onPaymentPlanSelected(plan);
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  void _setAgreedToTerms(bool value) {
+    setState(() => _agreedToTerms = value);
+    widget.onAgreementsChanged?.call(agreedToTerms: value, agreedToSafeguarding: _agreedToSafeguarding);
+  }
+
+  void _setAgreedToSafeguarding(bool value) {
+    setState(() => _agreedToSafeguarding = value);
+    widget.onAgreementsChanged?.call(agreedToTerms: _agreedToTerms, agreedToSafeguarding: value);
   }
 
   /// Calculate the discounted amount for a payment plan
@@ -392,6 +419,10 @@ class _BookingReviewState extends State<BookingReview> {
               ],
             ],
           ),
+          const SizedBox(height: 24),
+
+          // Agreements (Terms + Safeguarding)
+          _buildAgreementsBlock(),
           const SizedBox(height: 24),
 
           // Pricing Breakdown (and Payment Plan when multi-learner: use FutureBuilder for discounted totals)
@@ -818,6 +849,108 @@ class _BookingReviewState extends State<BookingReview> {
           ),
           const SizedBox(height: 16),
           ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAgreementsBlock() {
+    const termsUrl = 'https://prepskul.com/en/terms';
+    const safeguardingUrl = 'https://prepskul.com/en/safeguarding';
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Agreements',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: _agreedToTerms,
+                onChanged: (v) => _setAgreedToTerms(v ?? false),
+                activeColor: AppTheme.primaryColor,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _openUrl(termsUrl),
+                  child: RichText(
+                    text: TextSpan(
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: Colors.black87,
+                        height: 1.4,
+                      ),
+                      children: [
+                        const TextSpan(text: 'I have read and agree to the '),
+                        TextSpan(
+                          text: 'Terms of Service',
+                          style: TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        const TextSpan(text: '.'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: _agreedToSafeguarding,
+                onChanged: (v) => _setAgreedToSafeguarding(v ?? false),
+                activeColor: AppTheme.primaryColor,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => _openUrl(safeguardingUrl),
+                  child: RichText(
+                    text: TextSpan(
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: Colors.black87,
+                        height: 1.4,
+                      ),
+                      children: [
+                        const TextSpan(text: 'I have read and agree to the '),
+                        TextSpan(
+                          text: 'Safeguarding Policy',
+                          style: TextStyle(
+                            color: AppTheme.primaryColor,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                        const TextSpan(text: '.'),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

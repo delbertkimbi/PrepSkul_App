@@ -1,0 +1,39 @@
+# skulMate Character Image Prompts
+# Copy each prompt below to your image generator (DALL·E, Midjourney, etc.)
+# Output: PNG, 512×512, transparent or simple background
+
+---
+
+## Mbiya (elementary_male.png) - Elementary Male, 5–10
+
+Friendly Cameroonian boy, 5–10 years old, cartoon style, warm brown skin, short dark hair, bright curious eyes, soft smile. Casual school-ready clothes (light blue or white shirt). Transparent or simple background. Accents: deep blue (#1B2C4F), sky blue (#0EA5E9). Happy, eager to learn. No text. Square 512×512.
+
+---
+
+## Nchia (elementary_female.png) - Elementary Female, 5–10
+
+Friendly Cameroonian girl, 5–10 years old, cartoon style, warm brown skin, natural hair (twists or braids), cheerful expression. Casual school-ready clothes (light purple or cream top). Transparent or simple background. Accents: deep blue (#1B2C4F), soft yellow (#EAB308). Curious, ready to explore. No text. Square 512×512.
+
+---
+
+## Etonge (middle_male.png) - Middle School Male, 11–14
+
+Confident Cameroonian teen boy, 11–14 years old, cartoon style, warm brown skin, neat short hair, determined look. Casual modern clothes (navy or deep blue shirt). Transparent or simple background. Accents: deep blue (#1B2C4F), sky blue (#0EA5E9). Motivated, ready for challenges. No text. Square 512×512.
+
+---
+
+## Aseh (middle_female.png) - Middle School Female, 11–14
+
+Determined Cameroonian teen girl, 11–14 years old, cartoon style, warm brown skin, styled natural hair. Casual modern clothes (white or soft blue top). Transparent or simple background. Accents: deep blue (#1B2C4F), accent purple (#6366F1). Resilient, never-give-up energy. No text. Square 512×512.
+
+---
+
+## Achu (high_male.png) - High School Male, 15–18
+
+Focused Cameroonian young man, 15–18 years old, cartoon style, warm brown skin, short neat hair, composed expression. Smart-casual (collared shirt in deep blue or white). Transparent or simple background. Accents: deep blue (#1B2C4F), sky blue (#0EA5E9). Mature, preparing for success. No text. Square 512×512.
+
+---
+
+## Nde (high_female.png) - High School Female, 15–18
+
+Ambitious Cameroonian young woman, 15–18 years old, cartoon style, warm brown skin, natural or styled hair. Smart-casual (blouse or blazer in deep blue or cream). Transparent or simple background. Accents: deep blue (#1B2C4F), accent purple (#6366F1). Confident, reaching for excellence. No text. Square 512×512.

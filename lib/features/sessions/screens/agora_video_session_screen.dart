@@ -154,7 +154,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         LogService.warning('Dispose safety net leave/release: $e');
       }
     });
-
+    
     _stateSubscription?.cancel();
     _userJoinedSubscription?.cancel();
     _errorSubscription?.cancel();
@@ -1065,7 +1065,27 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       
       // CRITICAL: Step 7 - Navigate back only after all cleanup is complete
       if (mounted) {
-        Navigator.pop(context); // Navigate back from video session
+        // On web, ensure we navigate to a proper screen instead of just popping
+        // This prevents dark screen issues when the previous screen is not available
+        if (kIsWeb) {
+          // Navigate to the appropriate sessions screen based on user role
+          if (widget.userRole == 'tutor') {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/tutor-sessions',
+              (route) => route.isFirst,
+            );
+          } else {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/my-sessions',
+              (route) => route.isFirst,
+            );
+          }
+        } else {
+          // On mobile, pop back to previous screen
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       LogService.error('Error ending call: $e');
@@ -1077,7 +1097,25 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       
       // Even if there's an error, try to navigate back
       if (mounted) {
-        Navigator.pop(context); // Navigate back from video session
+        // On web, navigate to proper screen; on mobile, just pop
+        if (kIsWeb) {
+          if (widget.userRole == 'tutor') {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/tutor-nav',
+              (route) => route.isFirst,
+              arguments: {'initialTab': 2}, // Sessions tab
+            );
+          } else {
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/my-sessions',
+              (route) => route.isFirst,
+            );
+          }
+        } else {
+          Navigator.pop(context);
+        }
       }
     } finally {
       _isEndingCall = false;
@@ -1117,10 +1155,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           _sessionState == AgoraSessionState.connected &&
                           _remoteUID != null &&
                           !_remoteUserLeft)
-                        _buildLocalVideoPIP(),
+              _buildLocalVideoPIP(),
                       if (_layout == VideoLayout.spotlight && _sessionState == AgoraSessionState.connected) ...[
                         if (_remoteUserLeft) ...[
-                          _buildLocalProfileCard(),
+                _buildLocalProfileCard(),
                           _buildRemoteProfileCard(),
                         ],
                       ],
@@ -1166,8 +1204,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                     ],
                   ),
                 ),
-              ),
         ),
+      ),
     );
   }
 
@@ -1414,7 +1452,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     }
 
     // Waiting state (joining uses overlay for single "Connecting..."; no duplicate here)
-    return Container(
+      return Container(
       color: _kSoftDark,
       child: _buildWaitingPlaceholder(),
     );
@@ -1791,9 +1829,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             ),
             // Right side: Layout toggle only when there is a remote user (no split when alone)
             if (_sessionState.isActive && _remoteUID != null)
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
                   onTap: () {
                     setState(() {
                       _layout = _layout == VideoLayout.spotlight
@@ -1801,19 +1839,19 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           : VideoLayout.spotlight;
                     });
                   },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    child: Icon(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
                       _layout == VideoLayout.spotlight
                           ? Icons.grid_view
                           : Icons.crop_free,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+                    color: Colors.white,
+                    size: 24,
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -2114,7 +2152,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                   ? Colors.red
                   : showMutedIndicator
                       ? Colors.white.withOpacity(0.06)
-                      : (isActive
+                  : (isActive 
                           ? Colors.white.withOpacity(0.18)
                           : Colors.white.withOpacity(0.08)),
               shape: BoxShape.circle,

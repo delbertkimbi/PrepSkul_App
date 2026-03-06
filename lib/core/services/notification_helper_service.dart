@@ -202,7 +202,8 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': studentName.isNotEmpty ? studentName[0].toUpperCase() : null,
       },
-      sendEmail: true
+      sendEmail: true,
+      sendPush: true, // Explicitly enable push notifications for booking requests
           );
   }
 
@@ -1737,6 +1738,56 @@ class NotificationHelperService {
     } catch (e) {
       LogService.warning('Error notifying admins about survey completion: $e');
       // Don't throw - notification failure shouldn't block survey completion
+    }
+  }
+
+  /// Notify all admins about a session safety event (incident, session didn't take place, etc.).
+  /// Use for: new safety incident (warning/critical), session_took_place no/partially, no-show, late check-in.
+  /// [sendPush] true for warning/critical so admins get push; info can be dashboard-only.
+  static Future<void> notifyAdminsAboutSessionSafetyAlert({
+    required String sessionId,
+    required String title,
+    required String message,
+    String severity = 'warning',
+    String? type,
+    Map<String, dynamic>? metadata,
+    bool sendPush = true,
+  }) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final adminResponse = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('is_admin', true);
+
+      if (adminResponse.isEmpty) return;
+
+      final priority = severity == 'critical' ? 'urgent' : (severity == 'warning' ? 'high' : 'normal');
+      final actionUrl = '/admin/sessions/$sessionId';
+
+      for (final admin in adminResponse as List) {
+        final adminId = admin['id'] as String;
+        await _sendNotificationViaAPI(
+          userId: adminId,
+          type: type ?? 'session_safety_alert',
+          title: title,
+          message: message,
+          priority: priority,
+          actionUrl: actionUrl,
+          actionText: 'View Session',
+          icon: severity == 'critical' ? '🚨' : '⚠️',
+          metadata: {
+            'session_id': sessionId,
+            'severity': severity,
+            if (metadata != null) ...metadata,
+          },
+          sendEmail: severity != 'info',
+          sendPush: sendPush && severity != 'info',
+        );
+      }
+      LogService.success('Notified ${adminResponse.length} admin(s) about session safety: $sessionId');
+    } catch (e) {
+      LogService.warning('Error notifying admins about session safety: $e');
     }
   }
 

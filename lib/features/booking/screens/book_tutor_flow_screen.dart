@@ -78,6 +78,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
   Map<String, Map<String, String?>> _locationDetails = {}; // {"Monday-3:00 PM": {"address": "...", "coordinates": "..."}}
   String? _selectedPaymentPlan; // monthly, biweekly, weekly
   double? _estimatedTransportationCost; // Estimated transportation cost for onsite sessions
+  bool _agreedToTerms = false;
+  bool _agreedToSafeguarding = false;
 
   @override
   void initState() {
@@ -343,11 +345,11 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         }
         return true;
       case 6: // Review
-        // Require payment plan selection AND minimum display time (1-2 seconds)
         if (_selectedPaymentPlan == null) return false;
-        if (_reviewStepReachedAt == null) return false; // Haven't reached review step yet
+        if (_reviewStepReachedAt == null) return false;
+        if (!_agreedToTerms || !_agreedToSafeguarding) return false;
         final timeSinceReview = DateTime.now().difference(_reviewStepReachedAt!);
-        return timeSinceReview.inSeconds >= 1; // Require at least 1 second before allowing continue
+        return timeSinceReview.inSeconds >= 1;
       default:
         return false;
     }
@@ -413,25 +415,56 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
       ),
     );
 
-    // Step 4 (or 3 if not showing "Who is this for?"): Location Selector
+    // Step 4 (or 3 if not showing "Who is this for?"): Location Selector + KYC notice when onsite/hybrid
     children.add(
-      LocationSelector(
-        tutor: widget.tutor,
-        initialLocation: _selectedLocation,
-        initialAddress: _onsiteAddress,
-        initialLocationDescription: _locationDescription,
-        onLocationSelected: (location, address, locationDescription) {
-          safeSetState(() {
-            _selectedLocation = location;
-            _onsiteAddress = address;
-            _locationDescription = locationDescription;
-            // If not hybrid, clear session locations
-            if (location != 'hybrid') {
-              _sessionLocations.clear();
-              _locationDetails.clear();
-            }
-          });
-        },
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LocationSelector(
+            tutor: widget.tutor,
+            initialLocation: _selectedLocation,
+            initialAddress: _onsiteAddress,
+            initialLocationDescription: _locationDescription,
+            onLocationSelected: (location, address, locationDescription) {
+              safeSetState(() {
+                _selectedLocation = location;
+                _onsiteAddress = address;
+                _locationDescription = locationDescription;
+                if (location != 'hybrid') {
+                  _sessionLocations.clear();
+                  _locationDetails.clear();
+                }
+              });
+            },
+          ),
+          if (_selectedLocation == 'onsite' || _selectedLocation == 'hybrid') ...[
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 20, color: AppTheme.primaryColor),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'If you book a tutor for onsite sessions, you\'ll be required to complete identity verification (KYC) when booking your first onsite session—after the tutor accepts your request and before payment.',
+                        style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textDark, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
 
@@ -483,7 +516,18 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
           safeSetState(() => _selectedPaymentPlan = plan);
         },
         estimatedTransportationCost: _estimatedTransportationCost,
-        learnerCount: _isParent ? _selectedLearnerIds.length : null, // Pass learner count for pricing display
+        learnerCount: _isParent ? _selectedLearnerIds.length : null,
+        initialAgreedToTerms: _agreedToTerms,
+        initialAgreedToSafeguarding: _agreedToSafeguarding,
+        onAgreementsChanged: ({
+          required bool agreedToTerms,
+          required bool agreedToSafeguarding,
+        }) {
+          safeSetState(() {
+            _agreedToTerms = agreedToTerms;
+            _agreedToSafeguarding = agreedToSafeguarding;
+          });
+        },
       ),
     );
     
@@ -1027,6 +1071,7 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
 
       // Create booking request in database
       final tutorId = widget.tutor['user_id'] ?? widget.tutor['id'];
+      final nowUtc = DateTime.now().toUtc();
       await BookingService.createBookingRequest(
         tutorId: tutorId,
         frequency: _selectedFrequency!,
@@ -1042,6 +1087,8 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         estimatedTransportationCost: estimatedTransportationCost,
         sessionLocations: _selectedLocation == 'hybrid' ? _sessionLocations : null,
         locationDetails: _selectedLocation == 'hybrid' ? _locationDetails : null,
+        agreedToTermsAt: _agreedToTerms ? nowUtc : null,
+        agreedToSafeguardingAt: _agreedToSafeguarding ? nowUtc : null,
       );
 
       // Mark abandoned booking as completed

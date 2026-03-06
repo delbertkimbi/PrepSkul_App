@@ -258,6 +258,7 @@ class _MainNavigationState extends State<MainNavigation> {
         }
       },
       child: Scaffold(
+      backgroundColor: AppTheme.softBackground,
       body: IndexedStack(index: _selectedIndex, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,

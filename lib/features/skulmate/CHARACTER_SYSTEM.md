@@ -7,7 +7,7 @@ A comprehensive character system for skulMate games, similar to Duo from Duoling
 The character system provides:
 - **3 Age Groups**: Elementary (5-10), Middle School (11-14), High School (15-18)
 - **2 Gender Options**: Male and Female for each age group
-- **6 Total Characters**: Skully, Skylar, Max, Maya, Alex, Aria
+- **6 Total Characters**: Mbiya, Nchia, Etonge, Aseh, Achu, Nde (Cameroonian names)
 - **Cross-Device Sync**: Character selection stored in database and local preferences
 - **Game Integration**: Characters appear in all game screens with motivational messages
 
@@ -82,16 +82,16 @@ await CharacterSelectionService.selectCharacter(newCharacter);
 ## Character Details
 
 ### Elementary (5-10 years)
-- **Kemi** (Male) - Friendly young learner
-- **Nkem** (Female) - Cheerful explorer
+- **Mbiya** (Male) - Friendly Cameroonian young learner
+- **Nchia** (Female) - Cheerful explorer
 
 ### Middle School (11-14 years)
-- **Amara** (Male) - Confident challenger
-- **Zara** (Female) - Determined learner
+- **Etonge** (Male) - Confident challenger
+- **Aseh** (Female) - Determined learner
 
 ### High School (15-18 years)
-- **Kofi** (Male) - Focused achiever
-- **Ada** (Female) - Ambitious learner
+- **Achu** (Male) - Focused achiever
+- **Nde** (Female) - Ambitious learner
 
 ## Database Schema
 
@@ -153,7 +153,7 @@ A comprehensive character system for skulMate games, similar to Duo from Duoling
 The character system provides:
 - **3 Age Groups**: Elementary (5-10), Middle School (11-14), High School (15-18)
 - **2 Gender Options**: Male and Female for each age group
-- **6 Total Characters**: Skully, Skylar, Max, Maya, Alex, Aria
+- **6 Total Characters**: Mbiya, Nchia, Etonge, Aseh, Achu, Nde (Cameroonian names)
 - **Cross-Device Sync**: Character selection stored in database and local preferences
 - **Game Integration**: Characters appear in all game screens with motivational messages
 
@@ -228,16 +228,16 @@ await CharacterSelectionService.selectCharacter(newCharacter);
 ## Character Details
 
 ### Elementary (5-10 years)
-- **Kemi** (Male) - Friendly young learner
-- **Nkem** (Female) - Cheerful explorer
+- **Mbiya** (Male) - Friendly Cameroonian young learner
+- **Nchia** (Female) - Cheerful explorer
 
 ### Middle School (11-14 years)
-- **Amara** (Male) - Confident challenger
-- **Zara** (Female) - Determined learner
+- **Etonge** (Male) - Confident challenger
+- **Aseh** (Female) - Determined learner
 
 ### High School (15-18 years)
-- **Kofi** (Male) - Focused achiever
-- **Ada** (Female) - Ambitious learner
+- **Achu** (Male) - Focused achiever
+- **Nde** (Female) - Ambitious learner
 
 ## Database Schema
 

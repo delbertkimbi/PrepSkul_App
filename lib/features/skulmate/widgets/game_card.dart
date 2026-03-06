@@ -9,7 +9,6 @@ class GameCard extends StatefulWidget {
   final GameModel game;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
-  final VoidCallback? onPreview;
   final VoidCallback? onShare;
 
   const GameCard({
@@ -17,7 +16,6 @@ class GameCard extends StatefulWidget {
     required this.game,
     required this.onTap,
     this.onDelete,
-    this.onPreview,
     this.onShare,
   }) : super(key: key);
 
@@ -145,13 +143,23 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(
+      decoration: BoxDecoration(
+        color: AppTheme.softCard,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.softBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: InkWell(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -179,33 +187,21 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            widget.game.title,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textDark,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (_isFavorite)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: Icon(
-                              Icons.favorite,
-                              size: 18,
-                              color: Colors.red[400],
-                            ),
-                          ),
-                      ],
+                    Text(
+                      widget.game.title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
-                    Row(
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -225,7 +221,6 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         // Difficulty indicator
                         if (widget.game.metadata.difficulty != null)
                           Container(
@@ -246,7 +241,6 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                               ),
                             ),
                           ),
-                        if (widget.game.metadata.difficulty != null) const SizedBox(width: 8),
                         Text(
                           '${widget.game.items.length} items',
                           style: GoogleFonts.poppins(
@@ -258,57 +252,41 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                     ),
                     if (_stats != null && _stats!['timesPlayed'] > 0) ...[
                       const SizedBox(height: 6),
-                      Row(
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Icon(
-                            Icons.star,
-                            size: 14,
-                            color: Colors.amber[700],
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Best: ${_stats!['bestScore']}/${widget.game.items.length}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.amber[700],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Icon(
-                            Icons.replay,
-                            size: 14,
-                            color: AppTheme.textMedium,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${_stats!['timesPlayed']}x',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          _formatDate(widget.game.createdAt),
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            color: AppTheme.textMedium,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (_stats != null && _stats!['timesPlayed'] > 0)
                           Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(
-                                Icons.play_circle_fill,
+                              Icon(
+                                Icons.star,
                                 size: 14,
-                                color: Colors.grey,
+                                color: Colors.amber[700],
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Best: ${_stats!['bestScore']}/${widget.game.items.length}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.amber[700],
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.replay,
+                                size: 14,
+                                color: AppTheme.textMedium,
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -320,65 +298,66 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                               ),
                             ],
                           ),
-                      ],
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDate(widget.game.createdAt),
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        color: AppTheme.textMedium,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
                   ],
                 ),
               ),
-              // Actions
+              // Actions — favorite (single state, no duplicate) + share/delete
               Column(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _isFavorite ? Icons.favorite : Icons.favorite_border,
-                          color: _isFavorite ? Colors.red[400] : AppTheme.textMedium,
-                        ),
-                        onPressed: _toggleFavorite,
-                        tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
+                  InkWell(
+                    onTap: _toggleFavorite,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        _isFavorite ? Icons.favorite : Icons.favorite_border,
+                        size: 22,
+                        color: _isFavorite ? AppTheme.primaryColor : AppTheme.textMedium,
                       ),
-                      if (widget.onShare != null)
-                        IconButton(
-                          icon: Icon(
-                            Icons.share,
-                            color: AppTheme.textMedium,
-                          ),
-                          onPressed: widget.onShare,
-                          tooltip: 'Share game',
-                        ),
-                    ],
-                  ),
-                  if (widget.onPreview != null || widget.onDelete != null)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.onPreview != null)
-                          IconButton(
-                            icon: Icon(
-                              Icons.remove_red_eye_outlined,
-                              color: AppTheme.textMedium,
-                            ),
-                            onPressed: widget.onPreview,
-                            tooltip: 'Preview game',
-                          ),
-                        if (widget.onDelete != null)
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.redAccent,
-                            ),
-                            onPressed: widget.onDelete,
-                            tooltip: 'Delete game',
-                          ),
-                      ],
                     ),
+                  ),
+                  if (widget.onShare != null) ...[
+                    const SizedBox(height: 4),
+                    InkWell(
+                      onTap: widget.onShare,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(Icons.share_outlined, size: 20, color: AppTheme.textMedium),
+                      ),
+                    ),
+                  ],
+                  if (widget.onDelete != null) ...[
+                    const SizedBox(height: 4),
+                    InkWell(
+                      onTap: widget.onDelete,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ],
           ),
+        ),
         ),
       ),
     );

@@ -144,6 +144,13 @@ class QualityAssuranceService {
               issues: issues,
             );
           } else {
+            // Payment rules (A)-(C): only release if session eligible (tutor checked in, no dispute or 7 days passed)
+            final eligible = await _isSessionEligibleForPayment(sessionId);
+            if (!eligible) {
+              LogService.warning('Skipping earning ${earning['id']}: session $sessionId not eligible for payment (dispute or missing check-in)');
+              skipped++;
+              continue;
+            }
             // No issues - move to active balance
             await _moveToActiveBalance(
               tutorId: tutorId,
@@ -162,6 +169,17 @@ class QualityAssuranceService {
     } catch (e) {
       LogService.error('Error processing pending earnings: $e');
       rethrow;
+    }
+  }
+
+  /// Returns true if session is eligible for payment release (tutor checked in, no dispute or 7 days passed).
+  static Future<bool> _isSessionEligibleForPayment(String sessionId) async {
+    try {
+      final res = await _supabase.rpc('is_session_eligible_for_payment', params: {'p_session_id': sessionId});
+      return res == true;
+    } catch (e) {
+      LogService.warning('is_session_eligible_for_payment check failed: $e');
+      return false;
     }
   }
 

@@ -401,9 +401,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirm == true && mounted) {
       await AuthService.logout();
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil('/email-login', (route) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/auth-method-selection',
+        (route) => false,
+      );
     }
   }
 

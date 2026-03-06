@@ -101,11 +101,11 @@ class SkulMateCharacters {
   // Elementary Age Group (5-10 years)
   static const SkulMateCharacter elementaryMale = SkulMateCharacter(
     id: 'elementary_male',
-    name: 'Kemi',
+    name: 'Mbiya',
     ageGroup: AgeGroup.elementary,
     gender: Gender.male,
     assetPath: 'assets/characters/elementary_male.png',
-    description: 'A friendly young learner ready for adventures!',
+    description: 'A friendly Cameroonian boy ready to learn and explore!',
     motivationalPhrases: [
       'Great job! 🎉',
       'You\'re doing amazing!',
@@ -116,11 +116,11 @@ class SkulMateCharacters {
 
   static const SkulMateCharacter elementaryFemale = SkulMateCharacter(
     id: 'elementary_female',
-    name: 'Nkem',
+    name: 'Nchia',
     ageGroup: AgeGroup.elementary,
     gender: Gender.female,
     assetPath: 'assets/characters/elementary_female.png',
-    description: 'A cheerful young learner who loves to explore!',
+    description: 'A cheerful Cameroonian girl who loves to explore!',
     motivationalPhrases: [
       'Awesome work! 🌟',
       'You\'re so clever!',
@@ -132,11 +132,11 @@ class SkulMateCharacters {
   // Middle School Age Group (11-14 years)
   static const SkulMateCharacter middleMale = SkulMateCharacter(
     id: 'middle_male',
-    name: 'Amara',
+    name: 'Etonge',
     ageGroup: AgeGroup.middle,
     gender: Gender.male,
     assetPath: 'assets/characters/middle_male.png',
-    description: 'A confident learner ready to tackle challenges!',
+    description: 'A confident Cameroonian teen ready to tackle challenges!',
     motivationalPhrases: [
       'Excellent! 🚀',
       'You\'ve got this!',
@@ -147,11 +147,11 @@ class SkulMateCharacters {
 
   static const SkulMateCharacter middleFemale = SkulMateCharacter(
     id: 'middle_female',
-    name: 'Zara',
+    name: 'Aseh',
     ageGroup: AgeGroup.middle,
     gender: Gender.female,
     assetPath: 'assets/characters/middle_female.png',
-    description: 'A determined learner who never gives up!',
+    description: 'A determined Cameroonian teen who never gives up!',
     motivationalPhrases: [
       'Brilliant! 💪',
       'You\'re crushing it!',
@@ -163,11 +163,11 @@ class SkulMateCharacters {
   // High School Age Group (15-18 years)
   static const SkulMateCharacter highMale = SkulMateCharacter(
     id: 'high_male',
-    name: 'Kofi',
+    name: 'Achu',
     ageGroup: AgeGroup.high,
     gender: Gender.male,
     assetPath: 'assets/characters/high_male.png',
-    description: 'A focused learner preparing for success!',
+    description: 'A focused Cameroonian young man preparing for success!',
     motivationalPhrases: [
       'Outstanding work! 🎯',
       'You\'re on fire!',
@@ -178,11 +178,11 @@ class SkulMateCharacters {
 
   static const SkulMateCharacter highFemale = SkulMateCharacter(
     id: 'high_female',
-    name: 'Ada',
+    name: 'Nde',
     ageGroup: AgeGroup.high,
     gender: Gender.female,
     assetPath: 'assets/characters/high_female.png',
-    description: 'An ambitious learner reaching for excellence!',
+    description: 'An ambitious Cameroonian young woman reaching for excellence!',
     motivationalPhrases: [
       'Exceptional! 🌟',
       'You\'re excelling!',

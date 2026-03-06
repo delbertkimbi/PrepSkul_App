@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/storage_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import '../services/skulmate_service.dart';
 import '../models/game_model.dart';
 import 'quiz_game_screen.dart';
@@ -10,9 +14,15 @@ import 'flashcard_game_screen.dart';
 import 'matching_game_screen.dart';
 import 'fill_blank_game_screen.dart';
 import 'word_guessing_game_screen.dart';
+import 'drag_drop_game_screen.dart';
+import 'simulation_game_screen.dart';
+import 'mystery_game_screen.dart';
+import 'escape_room_game_screen.dart';
 import 'game_library_screen.dart';
+import 'text_input_screen.dart';
 
 /// Screen showing game generation progress
+/// Accepts either pre-uploaded URLs or files to upload (navigates here first, then uploads)
 class GameGenerationScreen extends StatefulWidget {
   final String? fileUrl;
   final String? imageUrl;
@@ -21,6 +31,14 @@ class GameGenerationScreen extends StatefulWidget {
   final String? difficulty;
   final String? topic;
   final int? numQuestions;
+  /// Preferred game type from context questionnaire (e.g. quiz, flashcards, matching, auto)
+  final String? gameType;
+  /// Document to upload (PlatformFile on web, File on mobile)
+  final dynamic documentToUpload;
+  /// Image to upload (XFile from image picker) - single image
+  final dynamic imageToUpload;
+  /// Multiple images to upload (used when user selects several photos)
+  final List<dynamic>? imagesToUpload;
 
   const GameGenerationScreen({
     Key? key,
@@ -31,6 +49,10 @@ class GameGenerationScreen extends StatefulWidget {
     this.difficulty,
     this.topic,
     this.numQuestions,
+    this.gameType,
+    this.documentToUpload,
+    this.imageToUpload,
+    this.imagesToUpload,
   }) : super(key: key);
 
   @override
@@ -118,26 +140,107 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
 
   Future<void> _generateGame() async {
     try {
-      safeSetState(() {
-        _isGenerating = true;
-        _status = 'Analyzing content...';
-      });
+      String? fileUrl = widget.fileUrl;
+      String? imageUrl = widget.imageUrl;
 
-      final game = await SkulMateService.generateGame(
-        fileUrl: widget.fileUrl,
-        imageUrl: widget.imageUrl,
+      // Upload files if passed (user navigated here with files)
+      final hasImages = widget.imagesToUpload != null && widget.imagesToUpload!.isNotEmpty;
+      final hasSingleImage = widget.imageToUpload != null;
+      final hasDocs = widget.documentToUpload != null;
+
+      if (hasDocs || hasSingleImage || hasImages) {
+        safeSetState(() {
+          _isGenerating = true;
+          _status = 'Uploading your file${hasImages && widget.imagesToUpload!.length > 1 ? 's' : ''}...';
+        });
+
+        final user = await SupabaseService.client.auth.currentUser;
+        if (user == null) throw Exception('User not authenticated');
+
+        if (widget.documentToUpload != null) {
+          fileUrl = await StorageService.uploadDocument(
+            userId: user.id,
+            documentFile: widget.documentToUpload,
+            documentType: 'skulmate_notes',
+          );
+        }
+        // Prefer imagesToUpload when multiple; otherwise single imageToUpload
+        if (hasImages) {
+          final urls = <String>[];
+          for (int i = 0; i < widget.imagesToUpload!.length; i++) {
+            if (i > 0) {
+              safeSetState(() => _status = 'Uploading image ${i + 1} of ${widget.imagesToUpload!.length}...');
+            }
+            final url = await StorageService.uploadDocument(
+              userId: user.id,
+              documentFile: widget.imagesToUpload![i],
+              documentType: 'skulmate_notes',
+            );
+            urls.add(url);
+          }
+          imageUrl = urls.first;
+          // TODO: API could accept multiple image URLs for richer content
+        } else if (hasSingleImage) {
+          imageUrl = await StorageService.uploadDocument(
+            userId: user.id,
+            documentFile: widget.imageToUpload,
+            documentType: 'skulmate_notes',
+          );
+        }
+
+        safeSetState(() => _status = 'Analyzing content...');
+      } else {
+        safeSetState(() {
+          _isGenerating = true;
+          _status = 'Analyzing content...';
+        });
+      }
+
+      // Try auto first; if not playable (e.g. diagramLabel with placeholder, dragDrop not implemented),
+      // retry with specific playable types: matching, quiz, flashcards
+      const fallbackTypes = ['matching', 'quiz', 'flashcards'];
+      GameModel game = await SkulMateService.generateGame(
+        fileUrl: fileUrl ?? widget.fileUrl,
+        imageUrl: imageUrl ?? widget.imageUrl,
         text: widget.text,
         childId: widget.childId,
+        gameType: widget.gameType ?? 'auto',
         difficulty: widget.difficulty,
         topic: widget.topic,
         numQuestions: widget.numQuestions,
       );
 
+      int attempt = 0;
+      while (!game.isPlayable && attempt < fallbackTypes.length && mounted) {
+        safeSetState(() => _status = 'Trying ${fallbackTypes[attempt]}...');
+        game = await SkulMateService.generateGame(
+          fileUrl: fileUrl ?? widget.fileUrl,
+          imageUrl: imageUrl ?? widget.imageUrl,
+          text: widget.text,
+          childId: widget.childId,
+          difficulty: widget.difficulty,
+          topic: widget.topic,
+          numQuestions: widget.numQuestions,
+          gameType: fallbackTypes[attempt],
+        );
+        attempt++;
+      }
+
       safeSetState(() {
         _generatedGame = game;
-        _isGenerating = false;
         _status = 'Game ready!';
       });
+
+      // Validate game is playable before routing (avoid showing broken "No answer options" etc.)
+      if (!game.isPlayable && mounted) {
+        safeSetState(() {
+          _isGenerating = false;
+          _errorTitle = 'We couldn\'t create a playable game';
+          _errorDetails = 'This content doesn\'t work well for games yet. Try "Enter Text Manually" with clear notes (terms and definitions, or question-answer pairs), or upload different content.';
+          _error = '$_errorTitle\n\n$_errorDetails';
+        });
+        return;
+      }
 
       // Navigate to appropriate game screen
       if (mounted) {
@@ -153,8 +256,19 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             gameScreen = MatchingGameScreen(game: game);
             break;
           case GameType.fillBlank:
-            // Use word guessing game for fill_blank games
             gameScreen = WordGuessingGameScreen(game: game);
+            break;
+          case GameType.dragDrop:
+            gameScreen = DragDropGameScreen(game: game);
+            break;
+          case GameType.simulation:
+            gameScreen = SimulationGameScreen(game: game);
+            break;
+          case GameType.mystery:
+            gameScreen = MysteryGameScreen(game: game);
+            break;
+          case GameType.escapeRoom:
+            gameScreen = EscapeRoomGameScreen(game: game);
             break;
           default:
             gameScreen = QuizGameScreen(game: game);
@@ -186,6 +300,11 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         if (lowerError.contains('fileurl') || lowerError.contains('text is required')) {
           errorTitle = 'Please provide content to generate a game.';
           errorDetails = 'Upload a document, image, or enter text to continue.';
+        } else if (lowerError.contains('permissions') || lowerError.contains('rls') ||
+            lowerError.contains('row-level security') || lowerError.contains('upload failed') ||
+            lowerError.contains('clientexception') || lowerError.contains('failed to fetch')) {
+          errorTitle = 'Upload issue';
+          errorDetails = 'We couldn\'t upload your file. Try using "Enter Text Manually" on the upload screen instead.';
         } else if (lowerError.contains('api endpoint not found') || lowerError.contains('404')) {
           errorTitle = 'Service unavailable';
           errorDetails = 'The game generation service may not be available. Please check your connection and try again.';
@@ -428,7 +547,26 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                             textAlign: TextAlign.center,
                           ),
                         ],
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TextInputScreen(childId: widget.childId),
+                              ),
+                            );
+                          },
+                          child: Text(
+                            'Try Text Input Instead',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Expanded(
