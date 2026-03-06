@@ -143,18 +143,19 @@
     }
 
     /**
-     * Flutter Web + Agora (platform views) layering fix (especially iOS Safari/Chrome):
+     * Flutter Web + Agora (platform views) layering fix (especially iOS Safari/Chrome/mobile web):
      * The Agora video view is rendered as a DOM element (platform view) which can end up
      * above the Flutter canvas, hiding in-call controls after camera/mute toggles.
      *
      * Make platform views sit below the Flutter glass pane and ignore pointer events
-     * so the control bar remains visible/clickable.
+     * so the control bar remains visible/clickable. Use high z-index for glass pane
+     * to ensure Flutter overlay (status bar, control bar, VA banner) stays on top.
      *
      * NOTE: These elements are rendered as CSS classes (.flt-glass-pane, .flt-platform-view),
      * not HTML tags, so we must target them with class selectors.
      */
     .flt-glass-pane {
-      z-index: 1 !important;
+      z-index: 10 !important;
     }
     .flt-platform-view {
       z-index: 0 !important;

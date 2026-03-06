@@ -993,8 +993,24 @@ class AgoraService {
           }
         }
         
-        // Unmute video stream
+        // Unmute video stream and explicitly enable publishing
         await _engine!.muteLocalVideoStream(false);
+        if (_isInChannel) {
+          try {
+            await _engine!.updateChannelMediaOptions(
+              ChannelMediaOptions(
+                publishCameraTrack: true,
+                publishScreenTrack: _isPublishingScreen,
+                publishScreenCaptureVideo: _isPublishingScreen,
+                publishScreenCaptureAudio: _isPublishingScreen && kIsWeb,
+                publishMicrophoneTrack: _isAudioEnabled,
+              ),
+            );
+            LogService.info('📹 Channel media options updated: publishCameraTrack=true');
+          } catch (e) {
+            LogService.warning('Could not update channel media options on unmute: $e');
+          }
+        }
         LogService.info('✅ Video enabled - should be visible to remote users');
         
         // CRITICAL: Aggressively ensure video is unmuted (try multiple times)
@@ -1044,13 +1060,30 @@ class AgoraService {
           }
         });
       } else {
-        // Disabling camera - mute video stream
+        // Disabling camera - mute video stream and explicitly stop publishing
         if (kIsWeb) {
           _lastLocalVideoMuteTime = DateTime.now();
           LogService.info('[VIDEO_MUTE] local video muted=true, _lastLocalVideoMuteTime set to $_lastLocalVideoMuteTime');
           debugPrint('[VIDEO_MUTE] local video muted=true, _lastLocalVideoMuteTime set');
         }
         await _engine!.muteLocalVideoStream(true);
+        // Explicitly stop publishing camera track so remote reliably sees camera off
+        if (_isInChannel) {
+          try {
+            await _engine!.updateChannelMediaOptions(
+              ChannelMediaOptions(
+                publishCameraTrack: false,
+                publishScreenTrack: _isPublishingScreen,
+                publishScreenCaptureVideo: _isPublishingScreen,
+                publishScreenCaptureAudio: _isPublishingScreen && kIsWeb,
+                publishMicrophoneTrack: _isAudioEnabled,
+              ),
+            );
+            LogService.info('📹 Channel media options updated: publishCameraTrack=false');
+          } catch (e) {
+            LogService.warning('Could not update channel media options on mute: $e');
+          }
+        }
         LogService.info('📹 Video disabled - not visible to remote users');
         // Stop periodic check when video is disabled
         _stopVideoCheckTimer();
@@ -2230,9 +2263,15 @@ class AgoraService {
             }
             if (!isScreenSource) {
               LogService.warning('⚠️ Local video stopped - not publishing to remote users');
-              if (_isVideoEnabled && !_isPublishingScreen && _engine != null && _isInChannel) {
+              // Only attempt unmute if user explicitly wants camera ON; never unmute when we just muted
+              final recentlyMuted = kIsWeb && _lastLocalVideoMuteTime != null &&
+                  DateTime.now().difference(_lastLocalVideoMuteTime!) < _webMuteOfflineIgnoreWindowExtended;
+              if (_isVideoEnabled && !_isPublishingScreen && _engine != null && _isInChannel && !recentlyMuted) {
                 Future.delayed(const Duration(milliseconds: 500), () async {
                   if (_engine != null && _isInChannel && _isVideoEnabled && !_isPublishingScreen) {
+                    final stillRecentlyMuted = kIsWeb && _lastLocalVideoMuteTime != null &&
+                        DateTime.now().difference(_lastLocalVideoMuteTime!) < _webMuteOfflineIgnoreWindowExtended;
+                    if (stillRecentlyMuted) return; // Respect explicit mute
                     try {
                       await _engine!.muteLocalVideoStream(false);
                       LogService.info('✅ Attempted to unmute video after it stopped');

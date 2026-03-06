@@ -166,15 +166,11 @@ class AgoraTokenService {
           final message = serverErrorMessage ?? 'Access denied. You are not a participant in this session.';
           throw Exception(message);
         } else if (response.statusCode == 404) {
-          final message = serverErrorMessage ?? 'API endpoint not found. Please check server configuration.';
-          throw Exception(message);
+          throw Exception('Connection failed. Please check your internet and try again.');
         } else if (response.statusCode == 500) {
-          // HTTP 500 - Server error - show actual server error message
-          final message = serverErrorMessage ?? 'Server error occurred. Please check server logs.';
-          throw Exception('Server Error (500): $message\n\nThis is a server-side issue. Please check:\n1. Next.js API route logs\n2. Environment variables (AGORA_APP_ID, AGORA_APP_CERTIFICATE)\n3. Database connection\n4. Server deployment status');
+          throw Exception('Something went wrong on our end. Please try again later.');
         } else if (response.statusCode >= 500) {
-          final message = serverErrorMessage ?? 'Server error occurred.';
-          throw Exception('Server Error (${response.statusCode}): $message');
+          throw Exception('Something went wrong on our end. Please try again later.');
         } else {
           // Other 4xx errors
           final message = serverErrorMessage ?? 'Failed to fetch token (Status: ${response.statusCode})';
@@ -218,71 +214,36 @@ class AgoraTokenService {
       }
       
       // Check if ClientException contains [server] - this indicates a server error
-      // even though it's wrapped in ClientException
       if (e.toString().contains('[server]') && 
           (e.toString().contains('HTTP 500') || e.toString().contains('500'))) {
-        // Extract the actual server error message if available
-        String serverErrorMsg = 'Server Error (500): Internal server error occurred.\n\n'
-            'API URL: $errorUrl\n\n'
-            'This is a server-side issue. Please check:\n'
-            '1. Next.js API route logs (Vercel Functions logs)\n'
-            '2. Environment variables (AGORA_APP_ID, AGORA_APP_CERTIFICATE)\n'
-            '3. Database connection\n'
-            '4. Server deployment status\n\n'
-            'See AGORA_500_ERROR_DIAGNOSTIC.md for detailed troubleshooting steps.';
-        
-        LogService.error('❌ Final error message to user: $serverErrorMsg');
-        throw Exception(serverErrorMsg);
+        LogService.error('❌ Server error (500) - user message: Something went wrong on our end');
+        throw Exception('Something went wrong on our end. Please try again later.');
       }
       
       // Otherwise, provide helpful error message based on error type
       String errorMessage;
       
-      // Check for CORS errors (from web client)
+      // User-friendly error messages (no technical details)
       if (e.toString().contains('[cors]') || 
           e.toString().contains('CORS blocked') ||
-          e.toString().contains('status: 0')) {
-        errorMessage = 'CORS Error: The API server is not allowing requests from this origin.\n\n'
-            'API URL: $errorUrl\n\n'
-            'This usually means:\n'
-            '1. CORS headers are missing in Next.js API route\n'
-            '2. The origin (${Uri.base.origin}) is not whitelisted\n\n'
-            'Check: PrepSkul_Web/app/api/agora/token/route.ts';
+          e.toString().contains('CORS') ||
+          e.toString().contains('status: 0') ||
+          e.toString().contains('origin')) {
+        errorMessage = 'Poor network connection. Please check your internet and try again.';
       } else if (e.toString().contains('Failed to fetch') || 
                  (e.toString().contains('ClientException') && !e.toString().contains('[server]')) ||
                  (e.toString().contains('[network]') && !e.toString().contains('[server]'))) {
-        // Network/client exception (but not server errors)
-        errorMessage = 'Network Error: Unable to connect to video service API.\n\n'
-            'API URL: $errorUrl\n\n'
-            'Possible causes:\n'
-            '1. Server is down or unreachable\n'
-            '2. Network connectivity issue\n'
-            '3. CORS configuration problem\n'
-            '4. Firewall blocking the request\n\n'
-            'Check server logs and network connectivity.';
-      } else if (e.toString().contains('timeout')) {
-        errorMessage = 'Request Timeout: The API server did not respond in time.\n\n'
-            'API URL: $errorUrl\n\n'
-            'This usually means:\n'
-            '1. Server is slow to respond\n'
-            '2. Server is overloaded\n'
-            '3. Network latency is high\n'
-            '4. Server is down\n\n'
-            'Check server status and response times.';
+        errorMessage = 'Unable to connect. Please check your internet connection and try again.';
+      } else if (e.toString().contains('timeout') || 
+                 e.toString().contains('unreachable') ||
+                 e.toString().contains('slow to respond')) {
+        errorMessage = 'Connection timed out. Please check your connection and try again.';
       } else if (e.toString().contains('SocketException') || 
                  e.toString().contains('Network') ||
                  e.toString().contains('Connection')) {
-        errorMessage = 'Connection Error: Unable to establish connection to server.\n\n'
-            'API URL: $errorUrl\n\n'
-            'Check your internet connection and server status.';
+        errorMessage = 'Connection error. Please check your internet and try again.';
       } else {
-        // Generic error - show the actual error message
-        errorMessage = 'Error fetching Agora token:\n\n$e\n\n'
-            'API URL: $errorUrl\n\n'
-            'Please check:\n'
-            '1. Server logs for detailed error information\n'
-            '2. Network connectivity\n'
-            '3. Server deployment status';
+        errorMessage = 'Connection failed. Please check your internet and try again.';
       }
       
       LogService.error('❌ Final error message to user: $errorMessage');
