@@ -3422,12 +3422,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
             final bookingStatus = bookingRequest['status'] as String?;
             LogService.info('📋 Booking request status: $bookingStatus');
             
-            // Check if payment request exists
-            final paymentRequest = await supabase
+            // Check if payment request exists (use limit(1) to avoid error when multiple rows exist)
+            final prList = await supabase
                 .from('payment_requests')
                 .select('id, status, recurring_session_id')
                 .eq('booking_request_id', bookingRequestId)
-                .maybeSingle();
+                .order('created_at', ascending: false)
+                .limit(1);
+            final paymentRequest = (prList as List?)?.isNotEmpty == true
+                ? (prList as List)[0] as Map<String, dynamic>
+                : null;
             
             LogService.info('📋 Payment request check: ${paymentRequest != null ? "Found" : "Not found"}');
             final paymentStatus = paymentRequest?['status'] as String?;
@@ -3461,14 +3465,17 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               }
             }
             
-            // Fallback: Try to find by request_id (may be NULL due to FK constraint)
+            // Fallback: Try to find by request_id (use limit(1) to avoid error when multiple rows exist)
             if (recurringSession == null) {
               LogService.info('📋 Fallback: Trying to find recurring session by request_id: $bookingRequestId');
-              recurringSession = await supabase
+              final rsList = await supabase
                   .from('recurring_sessions')
                   .select('id, status, learner_id')
                   .eq('request_id', bookingRequestId)
-                  .maybeSingle();
+                  .limit(1);
+              recurringSession = (rsList as List?)?.isNotEmpty == true
+                  ? (rsList as List)[0] as Map<String, dynamic>
+                  : null;
               
               if (recurringSession != null) {
                 LogService.info('✅ Found recurring session via request_id');
@@ -3858,13 +3865,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       if (paymentRequestId == null) {
         LogService.info('📋 Payment request ID not provided, fetching from booking request...');
         try {
-          final paymentRequestData = await supabase
+          final prResp = await supabase
               .from('payment_requests')
               .select('id, status, recurring_session_id')
               .eq('booking_request_id', bookingRequestId)
               .order('created_at', ascending: false)
-              .limit(1)
-              .maybeSingle();
+              .limit(1);
+          final prList = (prResp as List?) ?? [];
+          final paymentRequestData = prList.isNotEmpty ? prList[0] as Map<String, dynamic> : null;
           
           if (paymentRequestData != null) {
             paymentRequestId = paymentRequestData['id'] as String?;
@@ -3903,13 +3911,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         }
       }
       
-      // Fallback: Try by request_id (may be NULL due to FK constraint)
+      // Fallback: Try by request_id (use limit(1) to avoid error when multiple rows exist)
       if (recurringSession == null) {
-        recurringSession = await supabase
+        final rsResp = await supabase
             .from('recurring_sessions')
             .select('id')
             .eq('request_id', bookingRequestId)
-            .maybeSingle();
+            .limit(1);
+        final rsList = (rsResp as List?) ?? [];
+        recurringSession = rsList.isNotEmpty ? rsList[0] as Map<String, dynamic> : null;
         if (recurringSession != null) {
           LogService.info('✅ Found recurring session via request_id');
         }

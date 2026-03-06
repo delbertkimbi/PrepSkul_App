@@ -1,0 +1,201 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
+import '../models/game_model.dart';
+import '../services/daily_challenge_service.dart';
+
+/// Card for "Today's Challenge" – one focused set per day. User-specific (or child-specific).
+class DailyChallengeCard extends StatefulWidget {
+  final List<GameModel> games;
+  final String? childId;
+  final int? currentStreak;
+  final VoidCallback onRefresh;
+  final void Function(GameModel game, {bool isDailyChallenge}) onPlay;
+
+  const DailyChallengeCard({
+    Key? key,
+    required this.games,
+    this.childId,
+    this.currentStreak,
+    required this.onRefresh,
+    required this.onPlay,
+  }) : super(key: key);
+
+  @override
+  State<DailyChallengeCard> createState() => _DailyChallengeCardState();
+}
+
+class _DailyChallengeCardState extends State<DailyChallengeCard> {
+  bool _completedToday = false;
+  int _dailyStreak = 0;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadState();
+  }
+
+  Future<void> _loadState() async {
+    setState(() => _loading = true);
+    final completed = await DailyChallengeService.isCompletedToday(childId: widget.childId);
+    final streak = await DailyChallengeService.getDailyStreak(childId: widget.childId);
+    if (mounted) {
+      setState(() {
+        _completedToday = completed;
+        _dailyStreak = streak;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(DailyChallengeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.games != widget.games) _loadState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.softBorder),
+        ),
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    final todayGame = DailyChallengeService.getTodayChallengeGame(widget.games, childId: widget.childId);
+    final hasChallenge = todayGame != null;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.primaryColor,
+            AppTheme.primaryColor.withOpacity(0.85),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: hasChallenge && !_completedToday
+              ? () => widget.onPlay(todayGame!, isDailyChallenge: true)
+              : null,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    _completedToday ? Icons.check_circle_rounded : Icons.today_rounded,
+                    size: 28,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _completedToday ? 'Done for today' : 'Today\'s Challenge',
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        hasChallenge
+                            ? (_completedToday
+                                ? 'Come back tomorrow for a new challenge.'
+                                : todayGame!.title)
+                            : 'Create a quiz game to unlock daily challenges.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.white.withOpacity(0.95),
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (_dailyStreak > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.local_fire_department, size: 16, color: Colors.amber[200]),
+                            const SizedBox(width: 4),
+                            Text(
+                              '$_dailyStreak day streak',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.amber[100],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (hasChallenge && !_completedToday)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      'Play',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ),
+                if (_completedToday)
+                  Icon(Icons.check_circle, color: Colors.white.withOpacity(0.9), size: 28),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -191,20 +191,14 @@ void main() {
       });      test('should handle API timeout', () async {
         // Test timeout handling
         expect(ChatService.sendMessage, isA<Function>());
-      });
-
-      test('should handle invalid conversation access', () async {
+      });      test('should handle invalid conversation access', () async {
         // Test authorization
         expect(ChatService.getMessages, isA<Function>());
-      });
-
-      test('should handle blocked message gracefully', () async {
+      });      test('should handle blocked message gracefully', () async {
         // Test blocked message handling
         expect(ChatService.previewMessage, isA<Function>());
       });
-    });
-
-    group('booking integration', () {
+    });    group('booking integration', () {
       test('should verify conversation creation methods exist', () {
         // Test that conversation creation methods exist for booking/trial
         expect(
@@ -216,9 +210,7 @@ void main() {
           isA<Function>(),
         );
       });
-    });
-
-    group('model validation', () {
+    });    group('model validation', () {
       test('should create valid Conversation from JSON', () {
         final json = {
           'id': 'conv-123',
@@ -226,9 +218,7 @@ void main() {
           'tutor_id': 'tutor-123',
           'status': 'active',
           'created_at': '2024-01-01T12:00:00Z',
-        };
-
-        final conversation = Conversation.fromJson(json);
+        };        final conversation = Conversation.fromJson(json);
         expect(conversation.id, 'conv-123');
         expect(conversation.studentId, 'student-123');
         expect(conversation.tutorId, 'tutor-123');

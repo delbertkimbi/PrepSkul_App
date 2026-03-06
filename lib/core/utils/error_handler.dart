@@ -15,8 +15,9 @@ class ErrorHandler {
     if (lowerError.contains('network') ||
         lowerError.contains('connection') ||
         lowerError.contains('failed to fetch') ||
+        lowerError.contains('clientexception') ||
         lowerError.contains('timeout')) {
-      return 'Network error. Please check your internet connection and try again.';
+      return 'Connection issue. Please check your internet and try again.';
     }
     
     // If error already contains user-friendly guidance (from FapshiService, etc.),

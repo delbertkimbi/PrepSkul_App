@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -8,6 +9,7 @@ import '../models/social_models.dart';
 import '../services/social_service.dart';
 import '../widgets/add_friend_dialog.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
+import 'add_friend_screen.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
 
 /// Friends screen for managing friendships
@@ -69,6 +71,31 @@ class _FriendsScreenState extends State<FriendsScreen>
     }
   }
 
+  Future<void> _declineRequest(String friendshipId) async {
+    try {
+      await SocialService.declineFriendRequest(friendshipId);
+      _loadFriends();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Friend request declined'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _acceptRequest(String friendshipId) async {
     try {
       await SocialService.acceptFriendRequest(friendshipId);
@@ -85,8 +112,9 @@ class _FriendsScreenState extends State<FriendsScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error accepting request: $e'),
-            backgroundColor: Colors.red,
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -113,12 +141,13 @@ class _FriendsScreenState extends State<FriendsScreen>
             icon: const Icon(Icons.person_add),
             tooltip: 'Add Friend',
             onPressed: () async {
-              final result = await showDialog(
-                context: context,
-                builder: (context) => const AddFriendDialog(),
+              final result = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AddFriendScreen(),
+                ),
               );
               if (result == true) {
-                // Refresh friends list if a request was sent
                 _loadFriends();
               }
             },
@@ -204,11 +233,16 @@ class _FriendsScreenState extends State<FriendsScreen>
   Widget _buildFriendsTab() {
     if (_friends.isEmpty) {
       return EmptyStateWidget.noFriends(
-        onAddFriend: () {
-          showDialog(
-            context: context,
-            builder: (context) => const AddFriendDialog(),
-          ).then((_) => _loadFriends());
+        onAddFriend: () async {
+          final result = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AddFriendScreen(),
+            ),
+          );
+          if (result == true) {
+            _loadFriends();
+          }
         },
       );
     }
@@ -392,9 +426,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                   ),
                 ),
                 TextButton(
-                  onPressed: () {
-                    // TODO: Decline request
-                  },
+                  onPressed: () => _declineRequest(request.id),
                   child: const Text('Decline'),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.red,

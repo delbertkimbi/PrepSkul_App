@@ -8,7 +8,13 @@ import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/widgets/offline_dialog.dart';
 
 class ForgotPasswordEmailScreen extends StatefulWidget {
-  const ForgotPasswordEmailScreen({Key? key}) : super(key: key);
+  const ForgotPasswordEmailScreen({
+    Key? key,
+    this.linkExpiredError = false,
+  }) : super(key: key);
+
+  /// When true, shows an error that the reset link expired and a "Request new link" action
+  final bool linkExpiredError;
 
   @override
   State<ForgotPasswordEmailScreen> createState() =>
@@ -98,6 +104,35 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                 children: [
                   const SizedBox(height: 40),
 
+                  // Link expired error banner
+                  if (widget.linkExpiredError) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'The reset link expired. Request a new one below.',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
                   // Email icon
                   Container(
                     width: 100,
@@ -186,7 +221,7 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            '• Check your spam/junk folder\n• Wait a few minutes (emails can take 1-5 minutes)\n• Make sure you used the correct email address\n',
+                                '• Check your spam/junk folder\n• Wait a few minutes (emails can take 1-5 minutes)\n• Make sure you used the correct email address\n• Link expired? Request a new one below\n',
                             style: GoogleFonts.poppins(
                               fontSize: 13,
                               color: AppTheme.textDark,
@@ -194,6 +229,15 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton.icon(
+                      onPressed: _isLoading ? null : _handleSendResetEmail,
+                      icon: const Icon(Icons.refresh),
+                      label: Text(
+                        'Request new link',
+                        style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
                       ),
                     ),
                   ] else ...[
@@ -357,7 +401,11 @@ class _ForgotPasswordEmailScreenState extends State<ForgotPasswordEmailScreen> {
                   Center(
                     child: TextButton(
                       onPressed: () {
-                        Navigator.pop(context);
+                        if (Navigator.canPop(context)) {
+                          Navigator.pop(context);
+                        } else {
+                          Navigator.pushReplacementNamed(context, '/email-login');
+                        }
                       },
                       child: Text(
                         'Back to Login',

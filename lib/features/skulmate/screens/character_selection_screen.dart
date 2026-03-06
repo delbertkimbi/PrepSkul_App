@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/skulmate_character_model.dart';
 import '../services/character_selection_service.dart';
 import '../widgets/skulmate_character_widget.dart';
+import 'skulmate_upload_screen.dart';
 
 /// Screen for selecting skulMate character
 class CharacterSelectionScreen extends StatefulWidget {
@@ -31,7 +32,16 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
       _selectedCharacter = character;
       _selectedAgeGroup = character.ageGroup;
     });
-  }  Future<void> _selectCharacter(SkulMateCharacter character) async {
+  }  void _skipToUpload() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const SkulMateUploadScreen(),
+      ),
+    );
+  }
+
+  Future<void> _selectCharacter(SkulMateCharacter character) async {
     safeSetState(() => _selectedCharacter = character);
     await CharacterSelectionService.selectCharacter(character);
     
@@ -44,7 +54,12 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
       );
       
       if (widget.isFirstTime) {
-        Navigator.pop(context);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const SkulMateUploadScreen(),
+          ),
+        );
       }
     }
   }
@@ -59,6 +74,14 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
         ),
         backgroundColor: Colors.white,
         elevation: 0,
+        actions: widget.isFirstTime
+            ? [
+                TextButton(
+                  onPressed: () => _skipToUpload(),
+                  child: Text('Skip', style: GoogleFonts.poppins(color: AppTheme.primaryColor)),
+                ),
+              ]
+            : null,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -94,15 +117,15 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _buildAgeGroupButton(AgeGroup.elementary, 'Elementary\n(5-10)'),
+                  child: _buildAgeGroupButton(AgeGroup.elementary, 'Elementary', '5-10'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _buildAgeGroupButton(AgeGroup.middle, 'Middle School\n(11-14)'),
+                  child: _buildAgeGroupButton(AgeGroup.middle, 'Middle School', '11-14'),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _buildAgeGroupButton(AgeGroup.high, 'High School\n(15-18)'),
+                  child: _buildAgeGroupButton(AgeGroup.high, 'High School', '15-18'),
                 ),
               ],
             ),
@@ -166,20 +189,47 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
     );
   }
 
-  Widget _buildAgeGroupButton(AgeGroup ageGroup, String label) {
+  Widget _buildAgeGroupButton(AgeGroup ageGroup, String label, String ageRange) {
     final isSelected = _selectedAgeGroup == ageGroup;
-    return ElevatedButton(
-      onPressed: () => safeSetState(() => _selectedAgeGroup = ageGroup),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isSelected ? AppTheme.primaryColor : Colors.grey[200],
-        padding: EdgeInsets.symmetric(vertical: 16),
-      ),
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        style: GoogleFonts.poppins(
-          color: isSelected ? Colors.white : Colors.black,
-          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => safeSetState(() => _selectedAgeGroup = ageGroup),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.primaryColor : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : AppTheme.textDark,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '($ageRange)',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 10,
+                  color: isSelected ? Colors.white70 : AppTheme.textMedium,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

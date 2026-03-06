@@ -1,27 +1,44 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import '../services/skulmate_service.dart';
 
 /// Service for managing skulMate onboarding state
+/// Uses user-scoped keys so each user sees onboarding on first use (e.g. after switching accounts)
 class SkulMateOnboardingService {
-  static const String _onboardingCompletedKey = 'skulmate_onboarding_completed';
+  static const String _onboardingCompletedKeyPrefix = 'skulmate_onboarding_completed_';
+  static const String _legacyKey = 'skulmate_onboarding_completed';
 
-  /// Check if user has completed skulMate onboarding
+  static String _userKey() {
+    final userId = SupabaseService.client.auth.currentUser?.id ?? '';
+    return userId.isNotEmpty
+        ? '$_onboardingCompletedKeyPrefix$userId'
+        : _legacyKey;
+  }
+
+  /// Check if current user has completed skulMate onboarding
   static Future<bool> hasCompletedOnboarding() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getBool(_onboardingCompletedKey) ?? false;
+      final key = _userKey();
+      final value = prefs.getBool(key);
+      if (value != null) return value;
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null || userId.isEmpty) {
+        return prefs.getBool(_legacyKey) ?? false;
+      }
+      return false;
     } catch (e) {
       LogService.error('Error checking onboarding status: $e');
       return false;
     }
   }
 
-  /// Mark onboarding as completed
+  /// Mark onboarding as completed for current user
   static Future<void> markOnboardingComplete() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_onboardingCompletedKey, true);
+      await prefs.setBool(_userKey(), true);
       LogService.success('skulMate onboarding marked as completed');
     } catch (e) {
       LogService.error('Error marking onboarding complete: $e');

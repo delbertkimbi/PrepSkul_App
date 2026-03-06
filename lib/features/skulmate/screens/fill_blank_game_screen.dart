@@ -12,6 +12,7 @@ import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
+import '../widgets/skulmate_game_app_bar.dart';
 import 'game_results_screen.dart';
 
 /// Fill-in-the-blank game screen
@@ -439,17 +440,8 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
           if (_currentStreak > 0)
             Padding(
@@ -488,7 +480,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                   style: GoogleFonts.poppins(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
+                    color: Colors.white,
                   ),
                 ),
                 if (_xpEarned > 0)
@@ -497,7 +489,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                     style: GoogleFonts.poppins(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
-                      color: AppTheme.textMedium,
+                      color: Colors.white.withOpacity(0.9),
                     ),
                   ),
               ],

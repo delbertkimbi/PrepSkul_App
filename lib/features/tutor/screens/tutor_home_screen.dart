@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/safe_set_state.dart';
 import '../../../core/utils/responsive_helper.dart';
+import '../../../core/utils/status_bar_utils.dart';
 import '../../../core/services/log_service.dart';
 import '../../../core/widgets/app_logo_header.dart';
 import '../../../core/services/auth_service.dart' hide LogService;
@@ -442,9 +443,10 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
         automaticallyImplyLeading: false, // No back button in bottom nav
         backgroundColor: Colors.white,
         elevation: 0,
@@ -464,8 +466,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
             child: const NotificationBell(),
           ),
         ],
-      ),
-      body: _isLoading
+        ),
+        body: _isLoading
           ? const TutorHomeSkeleton()
           : SingleChildScrollView(
               padding: EdgeInsets.fromLTRB(
@@ -699,6 +701,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 

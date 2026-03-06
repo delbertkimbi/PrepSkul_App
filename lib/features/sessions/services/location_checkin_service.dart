@@ -1,6 +1,7 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/storage_service.dart';
 
@@ -298,6 +299,19 @@ class LocationCheckInService {
             .from('session_attendance')
             .update(updateData)
             .eq('id', attendanceId);
+      }
+
+      // Notify admins if tutor checked in late beyond grace (e.g. >15 min)
+      if (punctualityStatus == 'late' && minutesEarlyOrLate != null && minutesEarlyOrLate >= 15) {
+        NotificationHelperService.notifyAdminsAboutSessionSafetyAlert(
+          sessionId: sessionId,
+          title: 'Tutor checked in late',
+          message: 'Tutor checked in $minutesEarlyOrLate minutes late (onsite session).',
+          severity: 'warning',
+          type: 'late_check_in',
+          metadata: {'minutes_late': minutesEarlyOrLate},
+          sendPush: true,
+        );
       }
 
       // Build message with punctuality info

@@ -126,45 +126,11 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
                         minHeight: constraints.maxHeight,
                       ),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Spacer(flex: 1),
-                          const SizedBox(height: 12),
-
-                          // PrepSkul branding + icon with soft fill
-                          Text(
-                            'PrepSkul',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withOpacity(0.9),
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.25),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.08),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              Icons.school_rounded,
-                              size: 52,
-                              color: Colors.white,
-                            ),
-                          ),
-
                           const SizedBox(height: 28),
 
-                          // Title – tighter proximity
+                          // Title – page starts here
                           Text(
                             'Help us find the best tutor for ${isParent ? 'your child' : 'you'}',
                             style: GoogleFonts.poppins(
@@ -176,7 +142,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
                             textAlign: TextAlign.center,
                           ),
 
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 16),
 
                           // Description
                           Text(
@@ -192,7 +158,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
                           ),
                           // Parents: clarify they can add more children later
                           if (isParent) ...[
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             Text(
                               'We\'ll start with one learner, you can add more children later in your profile.',
                               style: GoogleFonts.poppins(
@@ -206,7 +172,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
 
                           const SizedBox(height: 20),
 
-                          // Benefits list – soft card, closer spacing
+                          // Benefits list
                           _buildBenefitsList(isParent),
 
                           const SizedBox(height: 32),
@@ -265,7 +231,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          const Spacer(flex: 1),
+                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
@@ -293,10 +259,10 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
           ];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: Colors.white.withOpacity(0.2),
           width: 1,
@@ -304,9 +270,11 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: benefits.map((benefit) {
+        children: benefits.asMap().entries.map((entry) {
+          final index = entry.key;
+          final benefit = entry.value;
           return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.only(bottom: index < benefits.length - 1 ? 8 : 0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -329,6 +297,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
             ),
           );
         }).toList(),
+        mainAxisSize: MainAxisSize.min,
       ),
     );
   }

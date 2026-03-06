@@ -13,6 +13,7 @@ import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import 'game_results_screen.dart';
+import 'game_library_screen.dart';
 
 class CardData {
   final int id;
@@ -62,13 +63,15 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   GameStats? _currentStats;
   bool _isProcessing = false;
   bool _isTTSEnabled = true;
+  int _hintsRemaining = 3; // Peek at a pair (limited uses)
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
-    _soundService.initialize();
-    _ttsService.initialize();
+    // Initialize sound and TTS early so they're ready on first flip
+    _soundService.ensureInitialized();
+    _ttsService.ensureInitialized();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
     _progressController = AnimationController(
       vsync: this,
@@ -260,6 +263,42 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
   }
 
+  void _useHint() {
+    if (_hintsRemaining <= 0 || _isProcessing) return;
+    // Find a random unmatched pair
+    final unmatched = <int>[];
+    for (int i = 0; i < _cards.length; i++) {
+      if (!_matchedPairs.containsKey(i)) unmatched.add(i);
+    }
+    if (unmatched.length < 2) return;
+    // Group by pairId to find two cards of same pair
+    final byPair = <int, List<int>>{};
+    for (final i in unmatched) {
+      byPair.putIfAbsent(_cards[i].pairId, () => []).add(i);
+    }
+    final pairIndices = byPair.values.where((l) => l.length >= 2).toList();
+    if (pairIndices.isEmpty) return;
+    final pair = pairIndices[Random().nextInt(pairIndices.length)];
+    final idx1 = pair[0], idx2 = pair[1];
+    safeSetState(() {
+      _hintsRemaining--;
+      _flippedCards.add(idx1);
+      _flippedCards.add(idx2);
+    });
+    _flipControllers[idx1]?.forward();
+    _flipControllers[idx2]?.forward();
+    _soundService.playFlip();
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      _flipControllers[idx1]?.reverse();
+      _flipControllers[idx2]?.reverse();
+      safeSetState(() {
+        _flippedCards.remove(idx1);
+        _flippedCards.remove(idx2);
+      });
+    });
+  }
+
   void _showHowToPlay() {
     if (!mounted) return;
     showModalBottomSheet(
@@ -397,19 +436,60 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     }
   }
 
+  Future<void> _handleBack() async {
+    final quit = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Quit game?', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        content: Text(
+          'Your progress is saved. You can continue this game later from the Game Dashboard.',
+          style: GoogleFonts.poppins(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Keep playing', style: GoogleFonts.poppins(color: AppTheme.primaryColor)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Quit to Dashboard', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+    if (quit == true && mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GameLibraryScreen(childId: widget.game.childId),
+        ),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _handleBack();
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppTheme.primaryColor,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: _handleBack,
+        ),
         title: Text(
           widget.game.title,
           style: GoogleFonts.poppins(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
+            color: Colors.white,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -417,9 +497,21 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         actions: [
           IconButton(
             icon: Icon(
-              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
-              color: AppTheme.textDark,
+              _soundService.soundsEnabled ? Icons.graphic_eq : Icons.volume_off,
+              color: Colors.white,
             ),
+            tooltip: _soundService.soundsEnabled ? 'Game sounds on' : 'Game sounds off',
+            onPressed: () async {
+              await _soundService.toggleSounds(!_soundService.soundsEnabled);
+              if (mounted) safeSetState(() {});
+            },
+          ),
+          IconButton(
+            icon: Icon(
+              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
+              color: Colors.white,
+            ),
+            tooltip: _isTTSEnabled ? 'Read aloud on' : 'Read aloud off',
             onPressed: () {
               safeSetState(() {
                 _isTTSEnabled = !_isTTSEnabled;
@@ -427,37 +519,38 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
               });
             },
           ),
+          if (_hintsRemaining > 0)
+            IconButton(
+              icon: Tooltip(
+                message: 'Peek at a pair ($_hintsRemaining left)',
+                child: const Icon(Icons.lightbulb_outline, color: Colors.white),
+              ),
+              onPressed: _useHint,
+            ),
           IconButton(
             icon: Icon(
               Icons.help_outline,
-              color: AppTheme.textDark,
+              color: Colors.white,
             ),
             onPressed: _showHowToPlay,
           ),
           if (_currentStreak > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.orange, width: 1.5),
-                ),
-                child: Row(
-                  children: [
-                    const Text('🔥', style: TextStyle(fontSize: 16)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$_currentStreak',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.orange[800],
-                      ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🔥', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$_currentStreak',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
         ],
@@ -472,9 +565,9 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 builder: (context, child) {
                   return LinearProgressIndicator(
                     value: _progressAnimation.value,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                    minHeight: 6,
+                    backgroundColor: AppTheme.neutral200,
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                    minHeight: 4,
                   );
                 },
               ),
@@ -483,7 +576,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      // Game stats
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
@@ -538,30 +630,39 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
               gravity: 0.1,
               shouldLoop: false,
               colors: const [
-                Colors.green,
-                Colors.blue,
-                Colors.pink,
-                Colors.orange,
-                Colors.purple,
-                Colors.yellow,
+                AppTheme.accentGreen,
+                AppTheme.primaryColor,
+                AppTheme.skyBlue,
+                AppTheme.softYellow,
+                AppTheme.accentPurple,
+                Colors.white,
               ],
             ),
           ),
         ],
+      ),
       ),
     );
   }
   
   Widget _buildStatCard(String label, String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppTheme.skyBlueLight,
+            Colors.white,
+          ],
+        ),
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.skyBlue.withOpacity(0.3)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 5,
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -628,31 +729,25 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   Widget _buildCardBack(bool isMatched, bool isSelected) {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isMatched
-              ? [AppTheme.accentGreen, AppTheme.accentGreen.withOpacity(0.8)]
-              : isSelected
-                  ? [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.8)]
-                  : [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.9)],
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: isMatched
+            ? AppTheme.accentGreen
+            : AppTheme.primaryColor,
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Center(
         child: isMatched
-            ? const Icon(Icons.check_circle, color: Colors.white, size: 40)
+            ? const Icon(Icons.check_circle, color: Colors.white, size: 36)
             : Icon(
                 Icons.help_outline,
                 color: Colors.white.withOpacity(0.9),
-                size: 40,
+                size: 36,
               ),
       ),
     );
@@ -662,17 +757,17 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isMatched ? AppTheme.accentGreen.withOpacity(0.1) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isMatched ? AppTheme.accentGreen : Colors.grey[300]!,
+          color: isMatched ? AppTheme.accentGreen : AppTheme.softBorder,
           width: isMatched ? 2 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),

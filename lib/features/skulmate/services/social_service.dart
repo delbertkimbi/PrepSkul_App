@@ -1,11 +1,34 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/notification_service.dart';
 import '../models/social_models.dart';
 import '../models/game_stats_model.dart';
 import 'games_services_controller.dart';
 
 /// Service for managing social features (friendships, leaderboards, challenges)
 class SocialService {
+  /// Get recommended skulMate friends (users who play games, Duolingo-style)
+  static Future<List<Map<String, dynamic>>> getRecommendedFriends({
+    int limit = 20,
+  }) async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final response = await SupabaseService.client
+          .rpc('get_recommended_skulmate_friends', params: {'p_limit': limit});
+
+      return (response as List)
+          .map((e) => e as Map<String, dynamic>)
+          .toList();
+    } catch (e) {
+      LogService.error('🎮 [Social] Error fetching recommended friends: $e');
+      return [];
+    }
+  }
+
   /// Search for users by name or email
   static Future<List<Map<String, dynamic>>> searchUsers(String query) async {
     try {
@@ -74,10 +97,52 @@ class SocialService {
         throw Exception('Failed to create friend request');
       }
 
+      // Notify recipient
+      try {
+        final requesterName = (await SupabaseService.client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', userId)
+            .maybeSingle())?['full_name'] as String? ?? 'Someone';
+        await NotificationService.createNotification(
+          userId: friendId,
+          type: 'skulmate_friend_request',
+          title: '👋 New friend request',
+          message: '$requesterName wants to be your friend',
+          actionUrl: '/skulmate/friends',
+          actionText: 'View',
+          data: {'friendship_id': response['id'], 'requester_id': userId},
+        );
+      } catch (e) {
+        LogService.debug('Could not create friend request notification: $e');
+      }
+
       LogService.success('🎮 [Social] Friend request sent');
       return Friendship.fromJson(response);
     } catch (e) {
       LogService.error('🎮 [Social] Error sending friend request: $e');
+      rethrow;
+    }
+  }
+
+  /// Decline a friend request
+  static Future<void> declineFriendRequest(String friendshipId) async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      await SupabaseService.client
+          .from('skulmate_friendships')
+          .delete()
+          .eq('id', friendshipId)
+          .eq('friend_id', userId)
+          .eq('status', 'pending');
+
+      LogService.success('🎮 [Social] Friend request declined');
+    } catch (e) {
+      LogService.error('🎮 [Social] Error declining friend request: $e');
       rethrow;
     }
   }
@@ -90,11 +155,36 @@ class SocialService {
         throw Exception('User not authenticated');
       }
 
-      await SupabaseService.client
+      final row = await SupabaseService.client
           .from('skulmate_friendships')
           .update({'status': 'accepted'})
           .eq('id', friendshipId)
-          .eq('friend_id', userId); // Only accept if you're the recipient
+          .eq('friend_id', userId)
+          .select('user_id')
+          .maybeSingle();
+
+      // Notify requester (user_id) that their request was accepted
+      if (row != null) {
+        try {
+          final accepterName = (await SupabaseService.client
+              .from('profiles')
+              .select('full_name')
+              .eq('id', userId)
+              .maybeSingle())?['full_name'] as String? ?? 'Someone';
+          final requesterId = row['user_id'] as String;
+          await NotificationService.createNotification(
+            userId: requesterId,
+            type: 'skulmate_friend_accepted',
+            title: '✅ Friend request accepted',
+            message: '$accepterName accepted your friend request',
+            actionUrl: '/skulmate/friends',
+            actionText: 'View',
+            data: {'friendship_id': friendshipId},
+          );
+        } catch (e) {
+          LogService.debug('Could not create friend accepted notification: $e');
+        }
+      }
 
       LogService.success('🎮 [Social] Friend request accepted');
     } catch (e) {
@@ -407,6 +497,26 @@ class SocialService {
         throw Exception('Failed to create challenge');
       }
 
+      // Notify challengee
+      try {
+        final challengerName = (await SupabaseService.client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', userId)
+            .maybeSingle())?['full_name'] as String? ?? 'Someone';
+        await NotificationService.createNotification(
+          userId: challengeeId,
+          type: 'skulmate_challenge',
+          title: '⚔️ Challenge from $challengerName',
+          message: '$challengerName challenged you! Play to beat their score.',
+          actionUrl: '/skulmate/challenges',
+          actionText: 'View',
+          data: {'challenge_id': response['id'], 'challenger_id': userId},
+        );
+      } catch (e) {
+        LogService.debug('Could not create challenge notification: $e');
+      }
+
       LogService.success('🎮 [Social] Challenge created');
       return Challenge.fromJson(response);
     } catch (e) {
@@ -490,12 +600,43 @@ class SocialService {
         throw Exception('User not authenticated');
       }
 
+      final challenge = await SupabaseService.client
+          .from('skulmate_challenges')
+          .select('challenger_id')
+          .eq('id', challengeId)
+          .eq('challengee_id', userId)
+          .eq('status', 'pending')
+          .maybeSingle();
+
       await SupabaseService.client
           .from('skulmate_challenges')
           .update({'status': 'accepted'})
           .eq('id', challengeId)
           .eq('challengee_id', userId)
           .eq('status', 'pending');
+
+      // Notify challenger
+      if (challenge != null) {
+        try {
+          final accepterName = (await SupabaseService.client
+              .from('profiles')
+              .select('full_name')
+              .eq('id', userId)
+              .maybeSingle())?['full_name'] as String? ?? 'Someone';
+          final challengerId = challenge['challenger_id'] as String;
+          await NotificationService.createNotification(
+            userId: challengerId,
+            type: 'skulmate_challenge_accepted',
+            title: '✅ Challenge accepted',
+            message: '$accepterName accepted your challenge. Play now!',
+            actionUrl: '/skulmate/challenges',
+            actionText: 'View',
+            data: {'challenge_id': challengeId},
+          );
+        } catch (e) {
+          LogService.debug('Could not create challenge accepted notification: $e');
+        }
+      }
 
       LogService.success('🎮 [Social] Challenge accepted');
     } catch (e) {

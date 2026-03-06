@@ -6,6 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../services/skulmate_service.dart';
+import '../widgets/generation_context_sheet.dart';
 import 'game_generation_screen.dart';
 
 /// Screen for entering game title and notes text manually
@@ -61,19 +62,22 @@ class _TextInputScreenState extends State<TextInputScreen> {
           ? _titleController.text.trim()
           : null;
 
-      // Navigate to game generation screen
-      if (mounted) {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => GameGenerationScreen(
-              text: text,
-              topic: gameTitle,
-              childId: widget.childId,
-            ),
+      if (!mounted) return;
+      final contextResult = await GenerationContextSheet.show(context);
+      if (!mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GameGenerationScreen(
+            text: text,
+            topic: contextResult?.topic ?? gameTitle,
+            difficulty: contextResult?.difficulty,
+            gameType: contextResult?.gameType,
+            childId: widget.childId,
           ),
-        );
-      }
+        ),
+      );
 
       safeSetState(() => _isGenerating = false);
     } catch (e) {

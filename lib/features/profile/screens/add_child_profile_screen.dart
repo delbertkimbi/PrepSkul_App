@@ -1729,6 +1729,30 @@ class _AddChildProfileScreenState extends State<AddChildProfileScreen> {
             );
           }).toList(),
         ),
+        if (_preferredLocation == 'In-Person' || _preferredLocation == 'Hybrid') ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 20, color: AppTheme.primaryColor),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'If you book a tutor for onsite sessions, you\'ll be required to complete identity verification (KYC) when booking your first onsite session—after the tutor accepts your request and before payment.',
+                    style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textDark, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

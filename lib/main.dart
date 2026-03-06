@@ -22,6 +22,7 @@ import 'package:prepskul/features/auth/screens/auth_method_selection_screen.dart
 import 'package:prepskul/features/auth/screens/role_selection_screen.dart';
 import 'package:prepskul/features/auth/screens/email_signup_screen.dart';
 import 'package:prepskul/features/auth/screens/email_login_screen.dart';
+import 'package:prepskul/features/auth/screens/email_confirmation_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_screen.dart';
 import 'package:prepskul/features/tutor/screens/tutor_onboarding_choice_screen.dart';
 import 'package:prepskul/features/payment/screens/booking_payment_screen.dart';
@@ -58,11 +59,15 @@ import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
 
+/// Set by password reset deep link handler before exchangeCodeForSession.
+/// Auth listener skips handleEmailConfirmation when true (recovery sign-in must go to reset-password screen).
+bool _pendingPasswordRecoverySignIn = false;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Prevent google_fonts from crashing the app when offline.
-  // When disabled, TextStyles fall back gracefully without runtime downloads.
-  GoogleFonts.config.allowRuntimeFetching = false;
+  // Allow Poppins-Italic and other font variants to load at runtime when needed.
+  // With false, FontStyle.italic on Poppins throws if variant not in assets.
+  GoogleFonts.config.allowRuntimeFetching = true;
 
   try {
     // CRITICAL: Initialize Firebase BEFORE runApp() on web
@@ -554,29 +559,95 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     );
   }
 
+  /// Merge query params with fragment params (Supabase may put auth params in hash)
+  Map<String, String> _mergeAuthParams(Uri uri) {
+    final merged = Map<String, String>.from(uri.queryParameters);
+    if (uri.fragment.isNotEmpty) {
+      final fragmentParams = Uri.splitQueryString(uri.fragment);
+      for (final e in fragmentParams.entries) {
+        merged.putIfAbsent(e.key, () => e.value);
+      }
+    }
+    return merged;
+  }
+
   /// Handle deep link navigation from email notifications
   void _handleDeepLink(Uri uri) async {
     LogService.debug('🔗 Deep link received: $uri');
 
-    // Extract path from URL
+    // Merge query + fragment params (Supabase may use hash for auth callbacks)
+    final params = _mergeAuthParams(uri);
+
+    // Extract and normalize path from URL
     // Examples:
-    // - https://app.prepskul.com/bookings/123 → /bookings/123
-    // - prepskul://bookings/123 → /bookings/123
+    // - https://app.prepskul.com/bookings/123        → /bookings/123
+    // - prepskul://bookings/123                     → /bookings/123
+    // - prepskul://tutor/abc                        → /tutor/abc
+    // - prepskul://email-login?code=...             → /email-login
     String path = uri.path;
 
-    // If it's a full URL with host, use the path
-    if (uri.host == 'app.prepskul.com' || uri.host.isEmpty) {
+    // Normalize custom scheme links (prepskul://...)
+    // Treat the host as the first path segment so that:
+    // - prepskul://tutor/abc        → /tutor/abc
+    // - prepskul://email-login/...  → /email-login/...
+    if (uri.scheme == 'prepskul' && uri.host.isNotEmpty) {
+      final normalizedPath = uri.path.isNotEmpty ? uri.path : '';
+      path = '/${uri.host}$normalizedPath';
+    }
+    // For full HTTPS URLs, just use the path component
+    else if (uri.host == 'app.prepskul.com' || uri.host.isEmpty) {
       path = uri.path;
     }
 
-    // Allow path "/" or empty when query has code+type (e.g. email reset opens app: ?code=...&type=recovery)
-    // or when query has tutor= (e.g. web landing ?tutor=xxx) so we store and navigate after auth.
-    final code = uri.queryParameters['code'];
-    final type = uri.queryParameters['type'];
-    final tutorFromQuery = uri.queryParameters['tutor'];
+    final code = params['code'];
+    final type = params['type'];
+    final tutorFromQuery = params['tutor'];
+    final error = params['error'];
+    final errorCode = params['error_code'];
+
+    // Handle password reset / verification link errors early (e.g. otp_expired when user taps expired link)
+    // Redirect: prepskul://email-login with error=access_denied&error_code=otp_expired
+    if (uri.host == 'email-login' || path.contains('email-login')) {
+      if (error != null && (errorCode == 'otp_expired' || error == 'access_denied')) {
+        LogService.debug('🔑 [DEEP_LINK] Auth link expired/invalid');
+        final prefs = await SharedPreferences.getInstance();
+        final pendingSignupEmail = prefs.getString('signup_email');
+        final targetRoute = pendingSignupEmail != null ? '/email-confirmation' : '/forgot-password-email';
+        final targetArgs = pendingSignupEmail != null
+            ? {
+                'linkExpired': true,
+                'email': pendingSignupEmail,
+                'fullName': prefs.getString('signup_full_name') ?? 'User',
+                'userRole': prefs.getString('signup_user_role') ?? 'student',
+              }
+            : {'linkExpired': true};
+        final navService = NavigationService();
+        if (navService.isReady) {
+          await navService.navigateToRoute(targetRoute, arguments: targetArgs, replace: true);
+          // No snackbar - target screen shows link-expired banner
+        } else {
+          navService.queueDeepLink(Uri(
+            path: targetRoute,
+            queryParameters: targetArgs.map((k, v) => MapEntry(k, v.toString())),
+          ));
+        }
+        return;
+      }
+    }
+
+    // Allow path "/" or empty when query has code+type (e.g. email reset: ?code=...&type=recovery)
+    // Only treat as recovery when we have an explicit signal - NOT when host is email-login with
+    // missing type (that could be signup verification too; both use the same redirect URL).
     if (path.isEmpty || path == '/') {
-      if (code != null && type != null) path = '/reset-password';
-      else if (tutorFromQuery == null || tutorFromQuery.trim().isEmpty) return;
+      final isExplicitRecovery = code != null && type == 'recovery';
+      final isExplicitSignup = code != null && type != null && (type == 'signup' || type == 'email');
+      if (isExplicitRecovery) {
+        path = '/reset-password';
+      } else if (isExplicitSignup) {
+        // Email verification - handled below, don't return
+      } else if (tutorFromQuery == null || tutorFromQuery.trim().isEmpty) {
+        return;
+      }
     }
 
     // If a tutor id is present in query params, store it so post-auth can navigate
@@ -682,21 +753,44 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
 
     
     // Check if this is a Google OAuth callback
-    // Google OAuth redirects: https://app.prepskul.com/?code=...&provider=google
-    final provider = uri.queryParameters['provider'];
-    final token = uri.queryParameters['token'];
+    // Web:   https://app.prepskul.com/?code=...&provider=google
+    // Mobile: prepskul://email-login?code=... (PKCE flow, no provider param)
+    final provider = params['provider'];
+    final token = params['token'];
+    final isGoogleOAuthCallback = code != null &&
+        (provider == 'google' ||
+            uri.host == 'email-login' ||
+            path.contains('email-login'));
     
-    // Handle Google OAuth callback
-    if (code != null && provider == 'google') {
+    // Handle Google OAuth callback (first-time vs returning)
+    if (isGoogleOAuthCallback) {
       LogService.debug('🔐 [DEEP_LINK] Google OAuth callback detected');
       
       try {
-        // Exchange OAuth code for session
-        await SupabaseService.client.auth.exchangeCodeForSession(code);
-        LogService.success('✅ [DEEP_LINK] Google OAuth code verified! Session created.');
-        
-        // Check if user has user_type set - if not, navigate to role selection
-        final user = SupabaseService.currentUser;
+        // Web apps must exchange the code manually.
+        // On mobile, Supabase Flutter already handles exchangeCodeForSession via handleDeeplink.
+        if (kIsWeb && code != null) {
+          await SupabaseService.client.auth.exchangeCodeForSession(code);
+          LogService.success('✅ [DEEP_LINK] Google OAuth code verified! Session created (web).');
+        } else {
+          LogService.debug('✅ [DEEP_LINK] Assuming Supabase Flutter handled code exchange (mobile PKCE).');
+        }
+
+        // Ensure Supabase currentUser is populated (mobile PKCE can be slightly delayed)
+        var user = SupabaseService.currentUser;
+        if (user == null) {
+          LogService.debug('🔐 [DEEP_LINK] Supabase currentUser is null after callback, waiting briefly...');
+          for (int i = 0; i < 5; i++) {
+            await Future.delayed(const Duration(milliseconds: 200));
+            user = SupabaseService.currentUser;
+            if (user != null) {
+              LogService.debug('🔐 [DEEP_LINK] Supabase currentUser is now available after wait (attempt ${i + 1})');
+              break;
+            }
+          }
+        }
+
+        // Check if user has user_type set - if not, navigate to role (user type) selection
         if (user != null) {
           final profile = await SupabaseService.client
               .from('profiles')
@@ -707,8 +801,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           final userType = profile?['user_type'] as String?;
           
           if (userType == null || userType.isEmpty) {
-            // User doesn't have a role yet - navigate to role selection
-            LogService.debug('🔐 [DEEP_LINK] User has no role, navigating to role selection');
+            // First time after Google auth: send user to user type / role selection
+            LogService.debug('🔐 [DEEP_LINK] User has no role, navigating to /role-selection');
             final navService = NavigationService();
             if (navService.isReady) {
               await navService.navigateToRoute('/role-selection', replace: true);
@@ -717,8 +811,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             }
             return;
           } else {
-            // User has a role - use normal navigation flow
-            LogService.debug('🔐 [DEEP_LINK] User has role: $userType, using normal navigation');
+            // Returning Google user with role set - use normal navigation flow
+            LogService.debug('🔐 [DEEP_LINK] User has role: $userType, determining initial route');
             final navService = NavigationService();
             if (navService.isReady) {
               final routeResult = await navService.determineInitialRoute();
@@ -745,23 +839,23 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     }
     
     // Check if this is a password reset (recovery) link from email (mobile deep link).
-    // When the user taps the reset link in email, the app must receive the URL (use a redirect URL
-    // that opens the app: e.g. https://app.prepskul.com/... with App Links / Universal Links, or your
-    // custom scheme). Then we exchange the code for a session and open the set-new-password screen.
-    // Link format: ...?code=...&type=recovery (path can be / or contain reset/recovery)
+    // Only treat as recovery when we have an explicit signal: type=recovery or path contains reset/recovery.
+    // Do NOT infer recovery from email-login host + missing type - that could be signup verification.
     if (code != null &&
         (type == 'recovery' ||
             path.contains('reset') ||
             path.contains('recovery'))) {
       LogService.debug('🔑 [DEEP_LINK] Password reset (recovery) link detected');
       try {
+        _pendingPasswordRecoverySignIn = true;
         await SupabaseService.client.auth.exchangeCodeForSession(code);
         LogService.success('✅ [DEEP_LINK] Password reset code verified! Navigating to reset screen.');
         final navService = NavigationService();
-        if (navService.isReady && mounted) {
-          Navigator.of(context).pushReplacementNamed(
+        if (navService.isReady) {
+          await navService.navigateToRoute(
             '/reset-password',
             arguments: {'isEmailRecovery': true},
+            replace: true,
           );
         } else {
           navService.queueDeepLink(Uri(
@@ -771,24 +865,35 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         }
         return;
       } catch (e) {
+        _pendingPasswordRecoverySignIn = false;
         LogService.error('❌ [DEEP_LINK] Error handling password reset link: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Password reset link expired or invalid. Please request a new one.',
-                style: GoogleFonts.poppins(),
-              ),
-              backgroundColor: AppTheme.primaryColor,
-              behavior: SnackBarBehavior.floating,
-              margin: const EdgeInsets.all(16),
-              duration: const Duration(seconds: 5),
-            ),
-          );
+        // If user is already authenticated (e.g. they just completed reset, or hot restart
+        // replayed a stale deep link), ignore - don't show error or navigate.
+        if (SupabaseService.isAuthenticated) {
+          LogService.debug('🔑 [DEEP_LINK] User already logged in - ignoring stale reset link');
+          return;
         }
+        // User was signing up (waiting for verification) - don't send to forgot-password
+        final prefs = await SharedPreferences.getInstance();
+        final pendingSignupEmail = prefs.getString('signup_email');
+        final targetRoute = pendingSignupEmail != null ? '/email-confirmation' : '/forgot-password-email';
+        final targetArgs = pendingSignupEmail != null
+            ? {
+                'linkExpired': true,
+                'email': pendingSignupEmail,
+                'fullName': prefs.getString('signup_full_name') ?? 'User',
+                'userRole': prefs.getString('signup_user_role') ?? 'student',
+              }
+            : {'linkExpired': true};
         final navService = NavigationService();
         if (navService.isReady) {
-          await navService.navigateToRoute('/forgot-password-email', replace: true);
+          await navService.navigateToRoute(targetRoute, arguments: targetArgs, replace: true);
+          // No snackbar - target screen shows link-expired banner
+        } else {
+          navService.queueDeepLink(Uri(
+            path: targetRoute,
+            queryParameters: targetArgs.map((k, v) => MapEntry(k, v.toString())),
+          ));
         }
         return;
       }
@@ -1042,7 +1147,20 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           case '/forgot-password':
             return _createFadeRoute(() => const ForgotPasswordScreen());
           case '/forgot-password-email':
-            return _createFadeRoute(() => const ForgotPasswordEmailScreen());
+            final forgotArgs = settings.arguments as Map<String, dynamic>?;
+            final linkExpired = forgotArgs?['linkExpired'];
+            return _createFadeRoute(() => ForgotPasswordEmailScreen(
+              linkExpiredError: linkExpired == true || linkExpired == 'true',
+            ));
+          case '/email-confirmation':
+            final confirmArgs = settings.arguments as Map<String, dynamic>?;
+            final linkExpired = confirmArgs?['linkExpired'];
+            return _createFadeRoute(() => EmailConfirmationScreen(
+              email: confirmArgs?['email'] as String? ?? '',
+              fullName: confirmArgs?['fullName'] as String? ?? 'User',
+              userRole: confirmArgs?['userRole'] as String? ?? 'student',
+              linkExpiredError: linkExpired == true || linkExpired == 'true',
+            ));
           case '/skulmate/upload':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
@@ -1280,7 +1398,26 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             );
           }
         }
-        return null;
+        // Fallback: prevent navigator empty stack crash - always return a valid route
+        return PageRouteBuilder<void>(
+          settings: settings,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              const AuthMethodSelectionScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              FadeTransition(opacity: animation, child: child),
+          transitionDuration: const Duration(milliseconds: 150),
+        );
+      },
+      onUnknownRoute: (settings) {
+        // Safety: prevent _history.isNotEmpty crash if a named route is not found
+        return PageRouteBuilder<void>(
+          settings: settings,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              const AuthMethodSelectionScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+              FadeTransition(opacity: animation, child: child),
+          transitionDuration: const Duration(milliseconds: 150),
+        );
       },
 
       // Fallback locale - make resilient to LanguageService module loading failures
@@ -2013,7 +2150,15 @@ class _SplashScreenState extends State<SplashScreen> {
 
       LogService.debug('🔐 Auth state changed: $event');
 
-      // Handle email confirmation
+      // Skip email confirmation when this sign-in is from password recovery.
+      // The deep link handler navigates to reset-password instead.
+      if (event == AuthChangeEvent.passwordRecovery || _pendingPasswordRecoverySignIn) {
+        _pendingPasswordRecoverySignIn = false;
+        LogService.debug('🔐 Ignoring signedIn - password recovery flow, reset-password screen will be shown');
+        return;
+      }
+
+      // Handle email confirmation (new signup / magic link)
       if (event == AuthChangeEvent.signedIn &&
           session != null &&
           session.user.emailConfirmedAt != null) {

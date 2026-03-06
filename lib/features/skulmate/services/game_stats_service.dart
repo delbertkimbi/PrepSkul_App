@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_stats_model.dart';
+import 'streak_reminder_hook.dart';
 import '../models/achievement_mapping.dart';
 import 'social_service.dart';
 import 'games_services_controller.dart';
@@ -122,7 +123,10 @@ class GameStatsService {
       
       // Save to database and local storage
       await _saveStats(statsWithAchievements);
-      
+
+      // Cancel streak reminder since user just played
+      onSkulMateGameCompleted();
+
       // Update leaderboards (non-blocking)
       try {
         final averageScore = totalQuestions > 0
@@ -237,35 +241,43 @@ class GameStatsService {
     }
   }
 
-  /// Load stats from SharedPreferences
+  /// Load stats from SharedPreferences (offline fallback)
   static Future<GameStats> _loadFromPrefs() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final jsonString = prefs.getString(_prefsKey);
-      
-      if (jsonString != null) {
-        // Parse JSON manually (SharedPreferences stores as string)
-        // For now, return empty and let it build up
-        return GameStats.empty();
-      }
-      
-      return GameStats.empty();
+      final lastPlayedStr = prefs.getString(_lastPlayedKey);
+      final lastPlayed = lastPlayedStr != null ? DateTime.tryParse(lastPlayedStr) : null;
+      return GameStats(
+        totalXP: prefs.getInt('total_xp') ?? 0,
+        level: prefs.getInt('level') ?? 1,
+        currentStreak: prefs.getInt(_streakKey) ?? 0,
+        bestStreak: prefs.getInt('best_streak') ?? 0,
+        gamesPlayed: prefs.getInt('games_played') ?? 0,
+        perfectScores: prefs.getInt('perfect_scores') ?? 0,
+        totalCorrectAnswers: prefs.getInt('total_correct_answers') ?? 0,
+        totalQuestions: prefs.getInt('total_questions') ?? 0,
+        lastPlayedDate: lastPlayed,
+        achievements: prefs.getStringList('achievements') ?? [],
+      );
     } catch (e) {
       LogService.error('📊 [GameStats] Error loading from prefs: $e');
       return GameStats.empty();
     }
   }
 
-  /// Save stats to SharedPreferences
+  /// Save stats to SharedPreferences (offline fallback)
   static Future<void> _saveToPrefs(GameStats stats) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // For now, just save key stats
       await prefs.setInt('total_xp', stats.totalXP);
       await prefs.setInt('level', stats.level);
-      await prefs.setInt('current_streak', stats.currentStreak);
+      await prefs.setInt(_streakKey, stats.currentStreak);
       await prefs.setInt('best_streak', stats.bestStreak);
       await prefs.setInt('games_played', stats.gamesPlayed);
+      await prefs.setInt('perfect_scores', stats.perfectScores);
+      await prefs.setInt('total_correct_answers', stats.totalCorrectAnswers);
+      await prefs.setInt('total_questions', stats.totalQuestions);
+      await prefs.setString(_lastPlayedKey, stats.lastPlayedDate?.toIso8601String() ?? '');
       await prefs.setStringList('achievements', stats.achievements);
     } catch (e) {
       LogService.error('📊 [GameStats] Error saving to prefs: $e');

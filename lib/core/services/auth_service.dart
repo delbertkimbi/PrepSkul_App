@@ -199,6 +199,8 @@ class AuthService {
       await prefs.remove('signup_email');
       await prefs.remove('signup_full_name');
       await prefs.remove('pending_deep_link');
+      // Clear SkulMate onboarding so new/first-time users see onboarding + character selection
+      await prefs.remove('skulmate_onboarding_completed');
       
       // Keep remember_me for convenience
       LogService.success('User logged out successfully - all cached data cleared');
@@ -728,9 +730,9 @@ class AuthService {
       final response = await SupabaseService.client.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: redirectUrl,
-        scopes: 'https://www.googleapis.com/auth/calendar', // Request Calendar access
-        authScreenLaunchMode: kIsWeb 
-            ? LaunchMode.platformDefault 
+        // No explicit Calendar scopes – rely on basic profile/email scopes
+        authScreenLaunchMode: kIsWeb
+            ? LaunchMode.platformDefault
             : LaunchMode.externalApplication,
       );
       

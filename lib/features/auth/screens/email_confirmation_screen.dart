@@ -17,12 +17,15 @@ class EmailConfirmationScreen extends StatefulWidget {
   final String email;
   final String fullName;
   final String userRole;
+  /// When true, shows a warning that the verification link expired
+  final bool linkExpiredError;
 
   const EmailConfirmationScreen({
     Key? key,
     required this.email,
     required this.fullName,
     required this.userRole,
+    this.linkExpiredError = false,
   }) : super(key: key);
 
   @override
@@ -379,7 +382,35 @@ class _EmailConfirmationScreenState extends State<EmailConfirmationScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 24),
+                        if (widget.linkExpiredError) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    'The verification link expired. Request a new one below.',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      color: AppTheme.textDark,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                        const SizedBox(height: 26),
 
                         // Email icon
                         Container(

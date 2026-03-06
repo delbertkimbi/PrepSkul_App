@@ -1,4 +1,5 @@
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/services.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,6 +91,12 @@ class GameSoundService {
     }
   }
 
+  /// Ensure sound service is ready
+  Future<void> ensureInitialized() async {
+    if (_isInitialized) return;
+    await initialize();
+  }
+
   /// Check if sounds are enabled
   bool get soundsEnabled => _soundsEnabled;
 
@@ -106,9 +113,14 @@ class GameSoundService {
   }
 
   /// Play a sound effect
-  /// Uses system notification sounds or fails gracefully
+  /// Uses asset sounds when available, falls back to haptic + system click when assets missing
   Future<void> _playSound(SoundType type) async {
-    if (!_soundsEnabled || !_isInitialized) return;
+    if (!_soundsEnabled) return;
+    if (!_isInitialized) await ensureInitialized();
+    if (!_isInitialized) return;
+
+    // Always provide haptic feedback for key events (works even without sound files)
+    _playHaptic(type);
 
     try {
       // Use preloaded player if available
@@ -125,9 +137,42 @@ class GameSoundService {
         await _audioPlayer.play(AssetSource(soundPath));
       }
     } catch (e) {
-      // Silently fail - sounds are optional and enhance UX but aren't critical
-      // Games will work perfectly fine without sound files
+      // Fallback: system click when assets are missing
+      if (type == SoundType.flip || type == SoundType.click || type == SoundType.cardFlip ||
+          type == SoundType.match || type == SoundType.correct || type == SoundType.complete) {
+        SystemSound.play(SystemSoundType.click);
+      } else if (type == SoundType.incorrect) {
+        SystemSound.play(SystemSoundType.alert);
+      }
     }
+  }
+
+  void _playHaptic(SoundType type) {
+    try {
+      switch (type) {
+        case SoundType.correct:
+        case SoundType.match:
+        case SoundType.complete:
+          HapticFeedback.mediumImpact();
+          break;
+        case SoundType.incorrect:
+          HapticFeedback.heavyImpact();
+          break;
+        case SoundType.flip:
+        case SoundType.cardFlip:
+        case SoundType.click:
+          HapticFeedback.selectionClick();
+          break;
+        case SoundType.pop:
+        case SoundType.wordFound:
+        case SoundType.piecePlace:
+          HapticFeedback.lightImpact();
+          break;
+        case SoundType.levelComplete:
+          HapticFeedback.mediumImpact();
+          break;
+      }
+    } catch (_) {}
   }
 
   /// Play correct answer sound

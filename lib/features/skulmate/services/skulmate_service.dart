@@ -12,6 +12,36 @@ import '../models/game_model.dart';
 // On mobile (dart.library.html not available): use http_client_stub.dart
 import 'http_client_stub.dart' if (dart.library.html) 'http_client_web.dart';
 
+/// Result from explain flashcard API
+class ExplainResult {
+  final String explanation;
+  final List<ExplainVideo> videos;
+
+  ExplainResult({required this.explanation, required this.videos});
+}
+
+/// Video recommendation from explain API
+class ExplainVideo {
+  final String videoId;
+  final String title;
+  final String thumbnailUrl;
+
+  ExplainVideo({
+    required this.videoId,
+    required this.title,
+    required this.thumbnailUrl,
+  });
+
+  factory ExplainVideo.fromJson(Map<String, dynamic> json) {
+    return ExplainVideo(
+      videoId: json['videoId'] as String? ?? '',
+      title: json['title'] as String? ?? 'Video',
+      thumbnailUrl: json['thumbnailUrl'] as String? ??
+          'https://img.youtube.com/vi/${json['videoId'] ?? 'dQw4w9WgXcQ'}/hqdefault.jpg',
+    );
+  }
+}
+
 /// Service for interacting with skulMate API and database
 class SkulMateService {
   /// Get API base URL with smart fallback
@@ -30,6 +60,7 @@ class SkulMateService {
   // Endpoint is relative to apiBaseUrl (which already includes /api)
   static const String _generateEndpoint = '/skulmate/generate';
   static const String _challengeFromSessionEndpoint = '/skulmate/challenge/from-session';
+  static const String _explainEndpoint = '/skulmate/explain';
 
   /// Make HTTP POST request (web-aware)
   /// On web, uses dart:html for proper CORS handling with credentials
@@ -527,6 +558,68 @@ class SkulMateService {
     }
   }
 
+  /// Result from explainFlashcard API
+  static Future<ExplainResult> explainFlashcard({
+    required String term,
+    required String definition,
+  }) async {
+    try {
+      final session = SupabaseService.client.auth.currentSession;
+      final token = session?.accessToken;
+
+      final url = '$_apiBaseUrl$_explainEndpoint';
+      final httpResponse = await _makePostRequest(
+        url,
+        {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        jsonEncode({'term': term, 'definition': definition}),
+      ).timeout(
+        const Duration(seconds: 45),
+        onTimeout: () {
+          throw Exception('Request timeout. Please try again.');
+        },
+      );
+
+      if (httpResponse.statusCode != 200) {
+        final responseBody = httpResponse.body.trim();
+        String errorMsg = 'Failed to get explanation';
+        if (responseBody.isNotEmpty) {
+          try {
+            final jsonBody = jsonDecode(responseBody) as Map<String, dynamic>?;
+            errorMsg = jsonBody?['error'] as String? ?? errorMsg;
+          } catch (_) {
+            errorMsg = responseBody.length > 80 ? '${responseBody.substring(0, 80)}...' : responseBody;
+          }
+        }
+        throw Exception(errorMsg);
+      }
+
+      final responseBody = httpResponse.body.trim();
+      if (responseBody.isEmpty) {
+        throw Exception('Empty response from server. Please try again.');
+      }
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(responseBody) as Map<String, dynamic>;
+      } on FormatException catch (_) {
+        LogService.error('🎮 [skulMate] Explain API returned invalid JSON: ${responseBody.isEmpty ? "(empty)" : responseBody.substring(0, 200)}');
+        throw Exception('Could not read explanation (invalid response). Please try again.');
+      }
+      final explanation = data['explanation'] as String? ?? '';
+      final videosRaw = data['videos'] as List<dynamic>? ?? [];
+      final videos = videosRaw
+          .map((v) => ExplainVideo.fromJson(v as Map<String, dynamic>))
+          .toList();
+
+      return ExplainResult(explanation: explanation, videos: videos);
+    } catch (e) {
+      LogService.error('🎮 [skulMate] Error explaining flashcard: $e');
+      rethrow;
+    }
+  }
+
   /// Save game session result
   static Future<void> saveGameSession({
     required String gameId,
@@ -624,6 +717,35 @@ class SkulMateService {
         'lastPlayed': null,
         'averageScore': 0.0,
       };
+    }
+  }
+
+  /// Get activity counts by date (for activity calendar)
+  /// Returns map of date (normalized to midnight) -> number of sessions that day
+  static Future<Map<DateTime, int>> getActivityByDate({String? childId}) async {
+    try {
+      final userId = childId ?? SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) return {};
+
+      final oneYearAgo = DateTime.now().subtract(const Duration(days: 365));
+      final sessions = await SupabaseService.client
+          .from('skulmate_game_sessions')
+          .select('completed_at, created_at')
+          .eq('user_id', userId)
+          .gte('created_at', oneYearAgo.toIso8601String());
+
+      final activityByDate = <DateTime, int>{};
+      for (final s in sessions) {
+        final timestamp = s['completed_at'] ?? s['created_at'];
+        if (timestamp == null) continue;
+        final dt = DateTime.parse(timestamp as String);
+        final date = DateTime(dt.year, dt.month, dt.day);
+        activityByDate[date] = (activityByDate[date] ?? 0) + 1;
+      }
+      return activityByDate;
+    } catch (e) {
+      LogService.error('🎮 [skulMate] Error fetching activity by date: $e');
+      return {};
     }
   }
 
