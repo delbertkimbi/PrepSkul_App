@@ -499,9 +499,10 @@ class IndividualSessionService {
             scheduled_date,
             scheduled_time,
             duration_minutes,
+            learner_id,
+            parent_id,
             recurring_sessions!inner(
-              tutor_id,
-              student_name
+              tutor_id
             )
           ''')
           .eq('id', sessionId)
@@ -525,27 +526,14 @@ class IndividualSessionService {
           return null;
         }
 
-        // Get session details
+        // Get session details (learner_id/parent_id from same session select)
         final scheduledDate = DateTime.parse(session['scheduled_date'] as String);
         final scheduledTime = session['scheduled_time'] as String;
         final durationMinutes = session['duration_minutes'] as int;
         final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
         final tutorId = recurringData?['tutor_id'] as String;
-        // Note: recurring_sessions doesn't have 'subject' column, use default
         final subject = 'Tutoring Session';
-
-        // Get student ID from individual session (learner_id or parent_id)
-        final sessionData = await _supabase
-            .from('individual_sessions')
-            .select('learner_id, parent_id')
-            .eq('id', sessionId)
-            .maybeSingle();
-
-        if (sessionData == null) {
-          throw Exception('Session not found: $sessionId');
-        }
-
-        final studentId = sessionData['learner_id'] as String? ?? sessionData['parent_id'] as String?;
+        final studentId = session['learner_id'] as String? ?? session['parent_id'] as String?;
         
         if (studentId != null) {
           // Use MeetService for consistent Meet link generation

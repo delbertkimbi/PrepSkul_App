@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -31,6 +32,8 @@ import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'tutor_session_detail_full_screen.dart';
+import 'package:prepskul/core/utils/platform_utils_stub.dart'
+    if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
 class TutorSessionsScreen extends StatefulWidget {
   const TutorSessionsScreen({Key? key}) : super(key: key);
@@ -2564,6 +2567,7 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
         await SessionLifecycleService.startSession(
           sessionId,
           isOnline: isOnline ?? false,
+          skipCloudRecording: kIsWeb && platform_utils.PlatformUtils.isMobileWeb,
         );
       }
 

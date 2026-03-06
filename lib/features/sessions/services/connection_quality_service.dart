@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:http/http.dart' as http;
 
@@ -17,7 +18,7 @@ class ConnectionQualityService {
   Timer? _monitoringTimer;
   final List<bool> _connectivityChecks = [];
   static const int _maxChecks = 10; // Store last 10 checks
-  static const Duration _checkInterval = Duration(seconds: 30);
+  static const Duration _checkInterval = Duration(seconds: 15);
 
   /// Assess current connection quality
   ///
@@ -112,25 +113,22 @@ class ConnectionQualityService {
     }
   }
 
-  /// Test latency by making a quick HTTP request
+  /// Test latency by making a quick HTTP request (same-origin on web to avoid CORS)
   Future<int> _testLatency() async {
     try {
       final stopwatch = Stopwatch()..start();
-      
-      // Try to reach a reliable endpoint (Google's DNS)
-      final response = await http
-          .get(Uri.parse('https://www.google.com'))
-          .timeout(const Duration(seconds: 5));
-      
+      // On web, do not fetch external URLs (google.com etc.) - CORS blocks and causes console errors.
+      // Use a same-origin request or skip and return a default.
+      final Uri uri = kIsWeb
+          ? Uri.parse('/') // Same-origin; minimal payload
+          : Uri.parse('https://www.google.com');
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
       stopwatch.stop();
-      
       if (response.statusCode == 200) {
         return stopwatch.elapsedMilliseconds;
-      } else {
-        return 1000; // High latency if request failed
       }
+      return 1000;
     } catch (e) {
-      // Timeout or error - assume poor connection
       return 2000;
     }
   }

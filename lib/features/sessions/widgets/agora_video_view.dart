@@ -7,6 +7,9 @@ import 'package:prepskul/core/services/log_service.dart';
 ///
 /// Displays local or remote video from Agora RTC engine.
 /// Handles both Flutter Web and Mobile platforms.
+/// 
+/// STABILITY: Uses stable keys internally to prevent unnecessary widget recreation
+/// which can cause video blackouts during network fluctuations.
 class AgoraVideoViewWidget extends StatelessWidget {
   final agora_rtc_engine.RtcEngine engine;
   final int? uid;
@@ -22,6 +25,13 @@ class AgoraVideoViewWidget extends StatelessWidget {
     this.connection,
     this.sourceType,
   }) : super(key: key);
+  
+  /// Generate a stable key for the video view to prevent unnecessary recreation
+  String get _stableKey {
+    final type = isLocal ? 'local' : 'remote';
+    final source = sourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen ? 'screen' : 'camera';
+    return 'agora_video_${type}_${uid ?? 0}_$source';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,11 +64,19 @@ class AgoraVideoViewWidget extends StatelessWidget {
     // Determine the actual source type to use
     final actualSourceType = sourceType ?? agora_rtc_engine.VideoSourceType.videoSourceCamera;
     
+    // Choose render mode:
+    // - Camera: use HIDDEN (crop to fill, typical for faces)
+    // - Screen share: use FIT (show whole shared screen without zooming/cropping)
+    final renderMode = actualSourceType == agora_rtc_engine.VideoSourceType.videoSourceScreen
+        ? agora_rtc_engine.RenderModeType.renderModeFit
+        : agora_rtc_engine.RenderModeType.renderModeHidden;
+    
     // CRITICAL: For screen sharing, we need to explicitly set up the video source
     // before creating the view controller
     final canvas = agora_rtc_engine.VideoCanvas(
       uid: isLocal ? 0 : uid!,
       sourceType: actualSourceType,
+      renderMode: renderMode,
       // mirrorMode is optional - only set if available
     );
 
@@ -104,6 +122,7 @@ class AgoraVideoViewWidget extends StatelessWidget {
             canvas: agora_rtc_engine.VideoCanvas(
               uid: 0,
               sourceType: actualSourceType,
+              renderMode: renderMode,
               // mirrorMode is optional - only set if available
             ),
           )
@@ -113,11 +132,14 @@ class AgoraVideoViewWidget extends StatelessWidget {
             canvas: agora_rtc_engine.VideoCanvas(
               uid: uid!,
               sourceType: actualSourceType,
+              renderMode: renderMode,
               // mirrorMode is optional - only set if available
             ),
           );
 
+    // Use stable key to prevent unnecessary widget recreation during network fluctuations
     return SizedBox.expand(
+      key: ValueKey(_stableKey),
       child: agora_rtc_engine.AgoraVideoView(
         controller: controller,
       ),

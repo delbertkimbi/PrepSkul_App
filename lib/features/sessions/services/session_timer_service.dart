@@ -7,6 +7,10 @@ import 'package:prepskul/features/booking/services/session_lifecycle_service.dar
 ///
 /// Manages session timing, countdown, and automatic termination.
 /// Tracks session duration and automatically ends sessions when time expires.
+/// 
+/// Duration Logic:
+/// - 30-minute trial sessions always use 30 minutes (constant)
+/// - All other sessions (regular, 1-hour trial) use AppConfig.sessionDurationMinutes
 class SessionTimerService {
   static final SessionTimerService _instance = SessionTimerService._internal();
   factory SessionTimerService() => _instance;
@@ -18,6 +22,9 @@ class SessionTimerService {
   Timer? _countdownTimer;
   Timer? _autoTerminationTimer;
   
+  // Session-specific duration (can override config)
+  int? _sessionDurationMinutes;
+  
   // Streams for UI updates
   final _timeRemainingController = StreamController<Duration>.broadcast();
   final _sessionEndedController = StreamController<String>.broadcast();
@@ -26,8 +33,12 @@ class SessionTimerService {
   Stream<Duration> get timeRemainingStream => _timeRemainingController.stream;
   Stream<String> get sessionEndedStream => _sessionEndedController.stream;
   
-  /// Get session duration in minutes from config
-  int get sessionDurationMinutes => AppConfig.sessionDurationMinutes;
+  /// Get default session duration in minutes from config
+  int get defaultSessionDurationMinutes => AppConfig.sessionDurationMinutes;
+  
+  /// Get active session duration in minutes
+  /// Returns session-specific duration if set, otherwise config default
+  int get sessionDurationMinutes => _sessionDurationMinutes ?? defaultSessionDurationMinutes;
   
   /// Get session duration as Duration
   Duration get sessionDuration => Duration(minutes: sessionDurationMinutes);
@@ -36,15 +47,23 @@ class SessionTimerService {
   ///
   /// [sessionId] - The session ID to track
   /// [startTime] - When the session started (defaults to now)
-  Future<void> startSession(String sessionId, {DateTime? startTime}) async {
+  /// [durationMinutes] - Optional custom duration. If not provided:
+  ///   - For 30-min trials: uses 30 minutes (constant)
+  ///   - For all other sessions: uses AppConfig.sessionDurationMinutes
+  Future<void> startSession(
+    String sessionId, {
+    DateTime? startTime,
+    int? durationMinutes,
+  }) async {
     try {
       // Stop any existing session
       await stopSession();
       
       _activeSessionId = sessionId;
       _sessionStartTime = startTime ?? DateTime.now();
+      _sessionDurationMinutes = durationMinutes;
       
-      LogService.info('⏱️ Started session timer: $sessionId (duration: ${sessionDurationMinutes} minutes)');
+      LogService.info('⏱️ Started session timer: $sessionId (duration: $sessionDurationMinutes minutes)');
       
       // Start countdown timer (updates every second)
       _startCountdownTimer();
@@ -70,6 +89,7 @@ class SessionTimerService {
     
     _activeSessionId = null;
     _sessionStartTime = null;
+    _sessionDurationMinutes = null;
   }
   
   /// Get remaining time for the current session

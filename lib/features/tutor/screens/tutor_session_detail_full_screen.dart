@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -19,6 +20,8 @@ import '../../../features/sessions/widgets/session_location_map.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
 import '../../../features/booking/widgets/report_issue_bottom_sheet.dart';
+import 'package:prepskul/core/utils/platform_utils_stub.dart'
+    if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
 /// Full-screen detail view for tutor sessions
 /// Profile-like UI with all session details and action buttons at the bottom
@@ -1055,7 +1058,11 @@ class _TutorSessionDetailFullScreenState
     setState(() => _isLoading = true);
     try {
       if (isIndividual) {
-        await SessionLifecycleService.startSession(sessionId, isOnline: isOnline);
+        await SessionLifecycleService.startSession(
+          sessionId,
+          isOnline: isOnline,
+          skipCloudRecording: kIsWeb && platform_utils.PlatformUtils.isMobileWeb,
+        );
       } else {
         await TrialSessionService.startTrialSessionAsTutor(sessionId, isOnline: isOnline);
       }
@@ -1110,7 +1117,11 @@ class _TutorSessionDetailFullScreenState
     try {
       if (status == 'scheduled') {
         if (isIndividual) {
-          await SessionLifecycleService.startSession(sessionId, isOnline: true);
+          await SessionLifecycleService.startSession(
+            sessionId,
+            isOnline: true,
+            skipCloudRecording: kIsWeb && platform_utils.PlatformUtils.isMobileWeb,
+          );
         } else {
           await TrialSessionService.startTrialSessionAsTutor(sessionId, isOnline: true);
         }

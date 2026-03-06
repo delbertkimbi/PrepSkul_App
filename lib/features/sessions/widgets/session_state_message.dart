@@ -184,7 +184,7 @@ class SessionStateMessages {
 
   static Widget tutorConnectionUnstable() {
     return SessionStateMessage(
-      message: "Tutor's connection is unstable",
+      message: "Poor connection",
       icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
       color: Colors.orange,
       duration: const Duration(seconds: 5),
@@ -193,7 +193,7 @@ class SessionStateMessages {
 
   static Widget learnerConnectionUnstable() {
     return SessionStateMessage(
-      message: "Learner's connection is unstable",
+      message: "Poor connection",
       icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
       color: Colors.orange,
       duration: const Duration(seconds: 5),
@@ -202,8 +202,8 @@ class SessionStateMessages {
 
   static Widget tutorPoorConnection() {
     return SessionStateMessage(
-      message: "Tutor's connection is poor - reconnecting...",
-      icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
+      message: "Reconnecting…",
+      icon: Icons.sync,
       color: Colors.orange,
       duration: const Duration(seconds: 8),
     );
@@ -211,8 +211,8 @@ class SessionStateMessages {
 
   static Widget learnerPoorConnection() {
     return SessionStateMessage(
-      message: "Learner's connection is poor - reconnecting...",
-      icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
+      message: "Reconnecting…",
+      icon: Icons.sync,
       color: Colors.orange,
       duration: const Duration(seconds: 8),
     );
@@ -220,19 +220,19 @@ class SessionStateMessages {
 
   static Widget tutorReconnecting() {
     return SessionStateMessage(
-      message: "Tutor is reconnecting...",
+      message: "Reconnecting…",
       icon: Icons.sync,
-      color: Colors.blue,
-      duration: const Duration(seconds: 10),
+      color: Colors.orange,
+      duration: const Duration(seconds: 8),
     );
   }
 
   static Widget learnerReconnecting() {
     return SessionStateMessage(
-      message: "Learner is reconnecting...",
+      message: "Reconnecting…",
       icon: Icons.sync,
-      color: Colors.blue,
-      duration: const Duration(seconds: 10),
+      color: Colors.orange,
+      duration: const Duration(seconds: 8),
     );
   }
 }

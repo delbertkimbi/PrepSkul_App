@@ -30,12 +30,14 @@ class ErrorHandlerService {
     final errorString = error.toString().toLowerCase();
     final defaultMsg = defaultMessage ?? 'Something went wrong. Please try again.';
 
-    // Network errors
+    // Network errors (including CORS, fetch failures common on web)
     if (errorString.contains('network') ||
         errorString.contains('connection') ||
         errorString.contains('failed to fetch') ||
+        errorString.contains('clientexception') ||
         errorString.contains('socketexception') ||
-        errorString.contains('timeout')) {
+        errorString.contains('timeout') ||
+        errorString.contains('connection refused')) {
       return 'Network error. Please check your internet connection and try again.';
     }
 
@@ -45,6 +47,15 @@ class ErrorHandlerService {
         errorString.contains('invalid login') ||
         errorString.contains('session expired')) {
       return 'You are not logged in. Please sign in and try again.';
+    }
+
+    // RLS (Row-Level Security) / permission errors - common cause of booking failures
+    if (errorString.contains('row-level security') ||
+        errorString.contains('rls') ||
+        errorString.contains('42501') ||
+        errorString.contains('permission denied') ||
+        errorString.contains('policy violation')) {
+      return 'We couldn\'t complete your request due to a permission issue. Please ensure you\'re logged in, try again, or contact support if it persists.';
     }
 
     // Database constraint errors
@@ -197,7 +208,9 @@ class ErrorHandlerService {
         errorString.contains('connection') ||
         errorString.contains('timeout') ||
         errorString.contains('failed to fetch') ||
+        errorString.contains('clientexception') ||
         errorString.contains('socketexception') ||
+        errorString.contains('connection refused') ||
         errorString.contains('503') ||
         errorString.contains('unavailable') ||
         errorString.contains('429') ||

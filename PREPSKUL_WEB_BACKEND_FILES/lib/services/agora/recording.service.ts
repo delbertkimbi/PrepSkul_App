@@ -4,7 +4,7 @@
  * Handles starting and stopping Agora Cloud Recording in Individual Mode (audio only)
  */
 
-import { AgoraClient } from './agora.client';
+import { AgoraClient, getRecordingStorageConfig } from './agora.client';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -45,22 +45,28 @@ export class RecordingService {
   }
 
   /**
-   * Start recording in Individual Mode (audio only)
+   * Start recording in Individual Mode (audio only).
+   * Requires AGORA_RECORDING_STORAGE_BUCKET, AGORA_RECORDING_STORAGE_ACCESS_KEY, AGORA_RECORDING_STORAGE_SECRET_KEY.
    */
   async startRecording(params: StartRecordingParams): Promise<RecordingMetadata> {
     const { sessionId, channelName, tutorUid, learnerUid } = params;
 
-    try {
-      // Acquire resource
-      const resourceId = await this.acquireResource(channelName, tutorUid);
+    const storageConfig = getRecordingStorageConfig(channelName);
+    if (!storageConfig) {
+      throw new Error(
+        'Recording storage not configured. Set AGORA_RECORDING_STORAGE_BUCKET, AGORA_RECORDING_STORAGE_ACCESS_KEY, and AGORA_RECORDING_STORAGE_SECRET_KEY (vendor 1 = AWS S3, region 0 = US).'
+      );
+    }
 
-      // Start recording with Individual Mode (audio only)
+    try {
+      const resourceId = await this.acquireResource(channelName, tutorUid);
       const subscribeAudioUids = [tutorUid, learnerUid];
       const response = await this.agoraClient.startRecording(
         resourceId,
         channelName,
         tutorUid,
-        subscribeAudioUids
+        subscribeAudioUids,
+        storageConfig
       );
 
       const sid = response.sid;
@@ -118,8 +124,8 @@ export class RecordingService {
     tutorUid: string,
     learnerUid: string
   ): Promise<void> {
-    // Upsert session_recordings
-    const { error: recordingError } = await supabase
+    // Upsert session_recordings - CRITICAL for recordings to appear
+    const { data, error: recordingError } = await supabase
       .from('session_recordings')
       .upsert({
         session_id: sessionId,
@@ -129,12 +135,16 @@ export class RecordingService {
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'session_id',
-      });
+      })
+      .select('id');
 
     if (recordingError) {
-      console.error('[RecordingService] Failed to store recording metadata:', recordingError);
+      console.error('[RecordingService] FAILED to store recording metadata in session_recordings:', recordingError);
+      console.error('[RecordingService] sessionId:', sessionId, 'resourceId:', resourceId, 'sid:', sid);
+      console.error('[RecordingService] RLS or schema may be blocking insert - check Supabase policies');
       throw recordingError;
     }
+    console.log('[RecordingService] session_recordings upserted successfully:', data?.[0]?.id ?? 'ok');
 
     // Store participants with Agora UIDs
     const { data: session } = await supabase

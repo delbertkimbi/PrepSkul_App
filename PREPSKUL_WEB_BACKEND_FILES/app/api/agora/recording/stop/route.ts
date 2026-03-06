@@ -9,6 +9,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { RecordingService } from '@/lib/services/agora/recording.service';
 
+/**
+ * Generate a numeric Agora UID from a string user ID
+ * Must match the algorithm in the start route
+ */
+function generateAgoraUid(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    const char = userId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash) % 0xFFFFFFFF || 1;
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -80,7 +94,10 @@ export async function POST(request: NextRequest) {
     // Stop recording
     const recordingService = new RecordingService();
     const channelName = session.agora_channel_name || `session_${sessionId}`;
-    const uid = session.tutor_id; // Use tutor UID to stop
+    // Use numeric UID that matches what was used to start recording
+    const uid = generateAgoraUid(session.tutor_id).toString();
+
+    console.log(`[Recording Stop] Session: ${sessionId}, Channel: ${channelName}, UID: ${uid}`);
 
     await recordingService.stopRecording(
       sessionId,

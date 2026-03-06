@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/error_handler_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/booking/models/tutor_request_model.dart';
 import 'package:prepskul/features/booking/models/trial_session_model.dart';
+import 'dart:convert';
 import 'package:prepskul/features/booking/screens/request_tutor_flow_screen.dart';
 import 'package:prepskul/features/booking/screens/request_detail_screen.dart';
 import 'package:prepskul/features/booking/widgets/post_trial_dialog.dart';
@@ -59,6 +60,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   String? _highlightRequestId;
   bool _isNavigating = false; // Flag to prevent refresh during navigation
   String? _cachedUserType; // Cache user type to avoid repeated fetches
+  
+  // Track which trial dialogs have been shown to prevent repeated popups
+  final Set<String> _shownTrialDialogs = {};
+  bool _isShowingTrialDialog = false; // Prevent concurrent dialogs
+  DateTime? _lastTrialCheckTime; // Cooldown: skip if within 8 seconds
+  static const _trialCheckCooldown = Duration(seconds: 8);
+  // Track how many times we've shown the "Trial Session Completed" prompt per tutor
+  // so each tutor's prompt is only surfaced twice per learner overall.
+  final Map<String, int> _trialTutorDialogCounts = {};
+  static const _trialTutorDialogCountsKey = 'trial_tutor_dialog_counts_v1';
 
   @override
   void initState() {
@@ -67,7 +78,58 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     _highlightRequestId = widget.highlightRequestId;
     _initializeConnectivity();
     _loadUserType(); // Load user type early
-    _loadRequests();
+    _loadShownTrialDialogsFromStorage();
+    _loadRequests(checkCompletedTrials: true); // Only initial load checks trials
+  }
+
+  /// Load persisted shown trial dialog IDs from SharedPreferences
+  Future<void> _loadShownTrialDialogsFromStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getStringList('shown_trial_dialogs') ?? [];
+      _shownTrialDialogs.addAll(stored);
+
+      // Load per-tutor dialog show counts (JSON map: tutorId -> count)
+      final countsJson = prefs.getString(_trialTutorDialogCountsKey);
+      if (countsJson != null && countsJson.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(countsJson);
+          if (decoded is Map) {
+            decoded.forEach((key, value) {
+              final tutorId = key.toString();
+              final count = int.tryParse(value.toString()) ?? 0;
+              if (count > 0) {
+                _trialTutorDialogCounts[tutorId] = count;
+              }
+            });
+          }
+        } catch (e) {
+          LogService.warning('Could not parse trial tutor dialog counts: $e');
+        }
+      }
+    } catch (e) {
+      LogService.warning('Could not load shown trial dialogs: $e');
+    }
+  }
+
+  /// Persist shown trial dialog IDs to SharedPreferences
+  Future<void> _persistShownTrialDialogs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('shown_trial_dialogs', _shownTrialDialogs.toList());
+    } catch (e) {
+      LogService.warning('Could not persist shown trial dialogs: $e');
+    }
+  }
+
+  /// Persist per-tutor dialog show counts.
+  Future<void> _persistTrialTutorDialogCounts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_trialTutorDialogCountsKey, jsonEncode(_trialTutorDialogCounts));
+    } catch (e) {
+      LogService.warning('Could not persist trial tutor dialog counts: $e');
+    }
   }
 
   @override
@@ -202,7 +264,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   // Cache tutor info for trial sessions
   final Map<String, Map<String, dynamic>> _tutorInfoCache = {};
 
-  Future<void> _loadRequests() async {
+  Future<void> _loadRequests({bool checkCompletedTrials = false}) async {
     if (mounted) {
       safeSetState(() {
         _isLoading = true;
@@ -371,9 +433,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         LogService.warning('⚠️ No booking requests found for user: $userId');
       }
 
-      // Check for completed trials that haven't been converted
-      // Show dialog for the first one found
-      if (mounted) {
+      // Check for completed trials ONLY when explicitly requested (initial load, return from session, manual refresh)
+      // Reduces spam: do NOT run on every _loadRequests (didChangeDependencies, connectivity, etc.)
+      if (mounted && checkCompletedTrials) {
         _checkForCompletedTrials();
       }
     } catch (e) {
@@ -436,18 +498,63 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
   }
 
   /// Check for completed trials and show dialog
+  /// CRITICAL:
+  /// - Only shows dialog once per trial session (per _shownTrialDialogs).
+  /// - Only shows dialog at most twice per tutor for a given learner (per _trialTutorDialogCounts).
   Future<void> _checkForCompletedTrials() async {
-    // Find completed trials that haven't been converted
+    // UX update: disable post-trial popup and rely on Notifications tab instead.
+    // Trial completion is now surfaced via notifications only (for learner, parent, and tutor),
+    // so this dialog would be redundant and feel spammy on refresh.
+    return;
+
+    // Prevent concurrent dialogs
+    if (_isShowingTrialDialog) {
+      LogService.info('Trial dialog already showing, skipping');
+      return;
+    }
+    // Cooldown: skip if called within last 8 seconds
+    final now = DateTime.now();
+    if (_lastTrialCheckTime != null &&
+        now.difference(_lastTrialCheckTime!) < _trialCheckCooldown) {
+      LogService.info('Trial check cooldown active, skipping');
+      return;
+    }
+    _lastTrialCheckTime = now;
+
+    // Find completed trials that haven't been converted AND haven't had dialog shown
     final completedTrials = _trialSessions
         .where(
-          (trial) => trial.status == 'completed' && !trial.convertedToRecurring,
+          (trial) => trial.status == 'completed' &&
+                     !trial.convertedToRecurring &&
+                     !_shownTrialDialogs.contains(trial.id),
         )
         .toList();
 
     if (completedTrials.isEmpty) return;
 
-    // Show dialog for the first completed trial
+    // Show dialog for the first completed trial, respecting per-tutor cap
     final trial = completedTrials.first;
+
+    // Enforce "only twice per tutor" rule for this learner.
+    final tutorId = trial.tutorId;
+    final currentCount = _trialTutorDialogCounts[tutorId] ?? 0;
+    if (currentCount >= 2) {
+      LogService.info(
+        'Skipping post-trial dialog for tutor $tutorId: already shown $currentCount times for this learner',
+      );
+      return;
+    }
+    
+    // Mark as showing to prevent concurrent calls
+    _isShowingTrialDialog = true;
+    
+    // Mark this trial's dialog as shown BEFORE showing (prevents race conditions)
+    _shownTrialDialogs.add(trial.id);
+    await _persistShownTrialDialogs();
+
+    // Increment per-tutor show count and persist immediately so refreshes don't exceed cap.
+    _trialTutorDialogCounts[tutorId] = currentCount + 1;
+    await _persistTrialTutorDialogCounts();
 
     // Fetch tutor data
     try {
@@ -467,7 +574,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       // Wait a bit for the screen to be fully built
       await Future.delayed(const Duration(milliseconds: 500));
 
-      if (!mounted) return;
+      if (!mounted) {
+        _isShowingTrialDialog = false;
+        return;
+      }
 
       // Show dialog
       await PostTrialDialog.show(
@@ -480,12 +590,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
           'full_name': tutorData['profiles']?['full_name'] ?? 'Tutor',
         },
         onDismiss: () {
-          // Mark as dismissed (could store in local storage)
-          // For now, just remove from list temporarily
+          // Dialog was dismissed - mark as complete
+          LogService.info('Post-trial dialog dismissed for trial: ${trial.id}');
         },
       );
     } catch (e) {
       LogService.error('Error fetching tutor data: $e');
+    } finally {
+      _isShowingTrialDialog = false;
     }
   }
 

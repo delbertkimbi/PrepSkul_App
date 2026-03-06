@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -5,6 +6,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
@@ -21,6 +23,16 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WebSplashService.removeSplash();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

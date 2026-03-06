@@ -1134,11 +1134,12 @@ class _BookTutorFlowScreenState extends State<BookTutorFlowScreen> {
         
         _showExistingBookingDialog(message, requestId);
       } else {
-        // Use ErrorHandlerService for other errors
+        // Use ErrorHandlerService with retry for transient errors (network, timeout)
         ErrorHandlerService.showError(
           context,
           e,
-          'Failed to send booking request. Please try again.',
+          'We couldn\'t complete your booking. Please check your connection and try again.',
+          ErrorHandlerService.isRetryable(e) ? _submitBookingRequest : null,
         );
       }
     }

@@ -1888,7 +1888,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             // On web, wait briefly for the new screen to render before removing HTML splash
             if (kIsWeb) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                Future.delayed(const Duration(milliseconds: 300), () {
+                Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
                   if (mounted) {
                     WebSplashService.removeSplash();
                   }
@@ -1917,10 +1917,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           setState(() {
             _navigationComplete = true;
           });
-          // On web, wait for the new screen to paint before removing HTML splash (stable refresh)
+          // On web, wait for the new screen to paint before removing HTML splash (prevents blank auth screen)
           if (kIsWeb) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              Future.delayed(const Duration(milliseconds: 300), () {
+              Future.delayed(const Duration(milliseconds: 600), () {
                 if (mounted) {
                   WebSplashService.removeSplash();
                 }
@@ -1939,10 +1939,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 reverseTransitionDuration: Duration.zero,
               ),
             );
-            // On web, wait for the new screen to paint (stable refresh)
+            // On web, wait for the new screen to paint (prevents blank auth screen)
             if (kIsWeb) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                Future.delayed(const Duration(milliseconds: 300), () {
+                Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
                   if (mounted) {
                     WebSplashService.removeSplash();
                   }
@@ -1966,10 +1966,10 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                   reverseTransitionDuration: Duration.zero,
                 ),
               );
-              // On web, wait for the new screen to paint (stable refresh)
+              // On web, wait for the new screen to paint (prevents blank auth screen)
               if (kIsWeb) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  Future.delayed(const Duration(milliseconds: 300), () {
+                  Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
                     if (mounted) {
                       WebSplashService.removeSplash();
                     }

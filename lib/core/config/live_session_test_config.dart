@@ -19,6 +19,7 @@ class LiveSessionTestConfig {
   static const List<String> _testUserIds = [
     '69047dc1-b0ed-4de6-ac33-e27b95413079', // Tutor test account
     '8954db0d-1dfd-4013-bdbb-2c7ac843bce6', // Learner test account
+    '75fb8fd7-dbba-43ff-b3bd-476de9e35491', // Test user
   ];
 
   /// When true (and in debug/local), only [_testUserIds] can join sessions.
