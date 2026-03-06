@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -696,7 +696,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
   /// Diagnostic overlay when video is toggled on web - helps trace spurious "remote left" / UI issues.
   void _showVideoMuteDiagnostic(String? error) {
-    if (!mounted || !kIsWeb) return;
+    // Only show this diagnostic in debug builds; never surface raw backend details in production.
+    if (!mounted || !kIsWeb || !kDebugMode) return;
     final msg = error != null
         ? 'Video mute error: $error'
         : 'Video ${_isVideoEnabled ? "on" : "off"}. remoteUID=$_remoteUID, remoteLeft=$_remoteUserLeft';
@@ -1175,6 +1176,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   /// When joining, only a dark container is shown; the single "Connecting..." is in the overlay.
   Widget _buildMainVideoArea() {
     final engine = _agoraService.engine;
+    final bool isMobileWeb = kIsWeb && platform_utils.PlatformUtils.isMobileWeb;
     final isJoining = _sessionState == AgoraSessionState.joining;
     if (engine == null || isJoining) {
       return Container(color: _kSoftDark);
@@ -1251,6 +1253,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     // If remote user joined: show their video only when unmuted; when muted show only their profile (no black video behind)
     // CRITICAL: When _remoteUID != null && !_remoteUserLeft, main area must show REMOTE only (never local).
     // Key is stable and does not depend on local _isVideoEnabled so toggling own camera on web does not swap views.
+    // On mobile web specifically, we *always* keep the main area dedicated to the remote when a remote UID exists
+    // so that tapping the local mute button never swaps the main canvas to the local preview.
     if (_remoteUID != null && !_remoteUserLeft) {
       if (_remoteVideoMuted || _remoteScreenOff) {
         return RepaintBoundary(

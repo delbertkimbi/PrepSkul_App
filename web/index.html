@@ -149,11 +149,14 @@
      *
      * Make platform views sit below the Flutter glass pane and ignore pointer events
      * so the control bar remains visible/clickable.
+     *
+     * NOTE: These elements are rendered as CSS classes (.flt-glass-pane, .flt-platform-view),
+     * not HTML tags, so we must target them with class selectors.
      */
-    flt-glass-pane {
+    .flt-glass-pane {
       z-index: 1 !important;
     }
-    flt-platform-view {
+    .flt-platform-view {
       z-index: 0 !important;
       pointer-events: none !important;
     }

@@ -2132,7 +2132,7 @@ class AgoraService {
           } else if (state == LocalVideoStreamState.localVideoStreamStateEncoding) {
             LogService.success('✅ Local video is encoding (publishing to remote users)');
             // Only force-unmute when user expects camera ON. Respect explicit camera mute.
-            if (!isScreenSource && _engine != null && _isVideoEnabled) {
+            if (!isScreenSource && _engine != null && _isInChannel && _isVideoEnabled) {
               _engine!.muteLocalVideoStream(false).catchError((e) {
                 LogService.warning('Could not ensure video is unmuted: $e');
               });
