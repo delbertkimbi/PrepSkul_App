@@ -15,6 +15,9 @@ import 'package:http/http.dart' as http;
 
 /// Comprehensive authentication service for PrepSkul
 class AuthService {
+  /// Global flag so UI can show a blocking loader while Google OAuth completes
+  /// (including during deep-link callback back into the app).
+  static bool isGoogleSignInInProgress = false;
   // Session Management Keys
   static const String _keyIsLoggedIn = 'is_logged_in';
   static const String _keyUserRole = 'user_role';
@@ -255,6 +258,8 @@ class AuthService {
       await prefs.remove('signup_email');
       await prefs.remove('signup_full_name');
       await prefs.remove('pending_deep_link');
+      // Clear SkulMate onboarding so new/first-time users see onboarding + character selection
+      await prefs.remove('skulmate_onboarding_completed');
       
       // Keep remember_me for convenience
       LogService.success('User logged out successfully - all cached data cleared');
@@ -775,6 +780,7 @@ class AuthService {
   /// Sign in with Google (Web & Mobile)
   static Future<bool> signInWithGoogle() async {
     try {
+      isGoogleSignInInProgress = true;
       // Get redirect URL for Google Auth
       // For web, we want to come back to the current page (or specific callback)
       // For mobile, we want the deep link
@@ -784,15 +790,16 @@ class AuthService {
       final response = await SupabaseService.client.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: redirectUrl,
-        scopes: 'https://www.googleapis.com/auth/calendar', // Request Calendar access
-        authScreenLaunchMode: kIsWeb 
-            ? LaunchMode.platformDefault 
+        // No explicit Calendar scopes – rely on basic profile/email scopes
+        authScreenLaunchMode: kIsWeb
+            ? LaunchMode.platformDefault
             : LaunchMode.externalApplication,
       );
       
       LogService.success('Google Sign In initiated: $response');
       return true;
     } catch (e) {
+      isGoogleSignInInProgress = false;
       LogService.error('Error signing in with Google: $e');
       throw Exception(parseAuthError(e));
     }

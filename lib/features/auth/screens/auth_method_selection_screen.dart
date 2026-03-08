@@ -27,11 +27,15 @@ class AuthMethodSelectionScreen extends StatefulWidget {
 
 class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
   late bool _isLogin;
+  bool _isGoogleSigningIn = false;
 
   @override
   void initState() {
     super.initState();
     _isLogin = widget.isLogin;
+    // If we are returning from a Google OAuth deep link, keep showing
+    // the blocking loader so users don't tap other auth methods.
+    _isGoogleSigningIn = AuthService.isGoogleSignInInProgress;
     // On web: remove HTML splash only after this screen has painted (prevents blank auth screen)
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -100,13 +104,13 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                           transitionBuilder: (Widget child, Animation<double> animation) {
                             return FadeTransition(opacity: animation, child: child);
                           },
-                        child: Text(
+                          child: Text(
                             _isLogin ? t.authWelcomeBack : t.authJoinPrepSkul,
                             key: ValueKey<bool>(_isLogin),
-                          style: GoogleFonts.poppins(
-                            fontSize: titleFontSize,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            style: GoogleFonts.poppins(
+                              fontSize: titleFontSize,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -115,13 +119,13 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                       Center(
                         child: AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
-                        child: Text(
+                          child: Text(
                             _isLogin ? t.authSignInToContinue : t.authCreateAccount,
                             key: ValueKey<String>(_isLogin ? 'signin-sub' : 'signup-sub'),
-                          style: GoogleFonts.poppins(
-                            fontSize: subtitleFontSize,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
+                            style: GoogleFonts.poppins(
+                              fontSize: subtitleFontSize,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white.withOpacity(0.95),
                             ),
                           ),
                         ),
@@ -146,6 +150,11 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             label: t.authContinueWithGoogle,
                             isPrimary: false, // Changed to false to keep outlined style but distinct
                             onTap: () async {
+                              if (_isGoogleSigningIn) return;
+                              safeSetState(() {
+                                _isGoogleSigningIn = true;
+                              });
+                              AuthService.isGoogleSignInInProgress = true;
                               try {
                                 await AuthService.signInWithGoogle();
                               } catch (e) {
@@ -156,6 +165,13 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                       backgroundColor: Colors.red,
                                     ),
                                   );
+                                }
+                                // On error, remove the loading overlay so user can try again
+                                if (mounted) {
+                                  safeSetState(() {
+                                    _isGoogleSigningIn = false;
+                                    AuthService.isGoogleSignInInProgress = false;
+                                  });
                                 }
                               }
                             },
@@ -328,10 +344,35 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
               ],
             ),
           ),
+          if (_isGoogleSigningIn)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.35),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Completing Google sign-in…',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
-      ),
-    );
+    ),
+  );
   }
 }
 
@@ -369,26 +410,26 @@ class _AuthMethodButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (label.contains('Google'))
-              // Use a more specific Google-like icon presentation or asset
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                ),
-                child: Image.network(
-                  'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/240px-Google_%22G%22_logo.svg.png',
-                  height: 24,
-                  width: 24,
-                  errorBuilder: (context, error, stackTrace) => Icon(
-                    Icons.g_mobiledata,
-                    size: 32,
-                    color: AppTheme.textDark,
-                  ),
+              // Use local Google logo asset with transparent background.
+              // The button itself stays white, matching Google's brand guidelines.
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Image.asset(
+                  'assets/images/google.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    // Fallback to simple icon if asset missing
+                    return Icon(
+                      Icons.g_mobiledata,
+                      size: 22,
+                      color: AppTheme.textDark,
+                    );
+                  },
                 ),
               )
             else
-            Icon(icon, size: 24, color: AppTheme.textDark),
+              Icon(icon, size: 24, color: AppTheme.textDark),
             const SizedBox(width: 12),
             Flexible(
               child: Text(

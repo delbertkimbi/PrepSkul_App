@@ -338,6 +338,43 @@ All 7 priority tasks have been implemented and verified:
 
 ---
 
+### **Agreements, KYC notice, and public legal pages**
+
+**Plan:** [PLAN_AGREEMENTS_KYC_AND_PUBLIC_LEGAL_PAGES.md](../../PLAN_AGREEMENTS_KYC_AND_PUBLIC_LEGAL_PAGES.md) (repo root). Covers payments + platform abuse (tutor or parent).
+
+#### **Next.js (PrepSkul_Web)**
+- [x] Add Safeguarding Policy page: `app/[locale]/safeguarding/page.tsx` (parent presence, visible area, no closed-door with minor, reporting, zero tolerance for abuse by tutor or parent).
+- [x] Add Code of Conduct page: `app/[locale]/code-of-conduct/page.tsx` (professionalism, no off-platform payments, no harassment/abuse, no false reports).
+- [x] Add footer links to Safeguarding and Code of Conduct in `components/footer.tsx` (+ translations if needed).
+- [ ] Review Terms page: ensure payment rules and acceptable use (no abuse of disputes, no harassment) are covered.
+
+#### **Flutter – Parent/Learner onboarding (KYC notice)**
+- [x] parent_survey.dart: show KYC notice when Preferred Location is In-Person or Hybrid (`_buildLearningLocation()`).
+- [x] student_survey.dart: same KYC notice when In-Person or Hybrid selected.
+- [x] add_child_profile_screen.dart: same if Preferred Location step has In-Person/Hybrid.
+
+#### **Flutter – Booking flow**
+- [x] book_tutor_flow_screen.dart: show KYC notice below LocationSelector when location is onsite or hybrid.
+- [x] BookingReview: add Agreements block (Terms + Safeguarding checkboxes with links to prepuskul.com); callback `onAgreementsChanged`.
+- [x] BookTutorFlowScreen: state `_agreedToTerms`, `_agreedToSafeguarding`; require both in `_canProceed()` for last step; pass timestamps to createBookingRequest.
+- [x] BookingService: accept and send `agreedToTermsAt`, `agreedToSafeguardingAt` to backend.
+- [x] Migration: add `agreed_to_terms_at`, `agreed_to_safeguarding_at` (timestamptz, nullable) to booking_requests.
+
+#### **Flutter – Tutor onboarding**
+- [x] tutor_onboarding_screen.dart: add sixth affirmation `code_of_conduct_safeguarding` with tappable links to Code of Conduct and Safeguarding pages; persist in `_finalAgreements` / `final_agreements` JSONB.
+
+---
+
+### **Onsite safety — Prevention, real-time control, post-incident**
+
+- [ ] **Parent/Learner KYC flow for first onsite booking** — DB + storage + Flutter UI + admin verification, based on `PLAN_PARENT_LEARNER_KYC_ONSITE.md`.
+- [ ] **Tutor safeguarding micro-training/acknowledgement** before first onsite session (short in-app module or screen, tied to existing safeguarding + code of conduct).
+- [ ] **In-app safeguarding reminder** when tutor starts an onsite session (banner/hint reinforcing parent presence, visible area, and reporting).
+- [ ] **Escalation + zero-tolerance/blacklist policy docs** — document process and wire into Safeguarding + Code of Conduct pages.
+- [ ] **Terms & legal tightening** — clarify marketplace model, independent contractor status, indemnity, limitation of liability, incident process, and insurance status/intent.
+
+---
+
 ## 📅 **PENDING**
 
 ### **WEEK 1: Admin & Verification**

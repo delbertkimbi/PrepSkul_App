@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../services/social_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -16,13 +17,38 @@ class AddFriendDialog extends StatefulWidget {
 class _AddFriendDialogState extends State<AddFriendDialog> {
   final TextEditingController _searchController = TextEditingController();
   List<Map<String, dynamic>> _searchResults = [];
+  List<Map<String, dynamic>> _recommended = [];
   bool _isSearching = false;
+  bool _isLoadingRecommended = true;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecommended();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRecommended() async {
+    try {
+      final results = await SocialService.getRecommendedFriends(limit: 15);
+      if (mounted) {
+        setState(() {
+          _recommended = results;
+          _isLoadingRecommended = false;
+        });
+      }
+    } catch (e) {
+      LogService.error('🎮 [AddFriend] Error loading recommended: $e');
+      if (mounted) {
+        setState(() => _isLoadingRecommended = false);
+      }
+    }
   }
 
   Future<void> _searchUsers(String query) async {
@@ -70,8 +96,9 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -168,37 +195,37 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                           ),
                         )
                       : _searchResults.isEmpty
-                          ? Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(40),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.person_search_outlined,
-                                      size: 64,
-                                      color: Colors.grey[400],
+                          ? _searchController.text.isEmpty
+                              ? _buildRecommendedSection()
+                              : Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(40),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.person_search_outlined,
+                                          size: 64,
+                                          color: Colors.grey[400],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'No users found',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 16,
+                                            color: AppTheme.textMedium,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      _searchController.text.isEmpty
-                                          ? 'Search for users to add as friends'
-                                          : 'No users found',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 16,
-                                        color: AppTheme.textMedium,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
+                                  ),
+                                )
                           : ListView.builder(
                               shrinkWrap: true,
                               itemCount: _searchResults.length,
                               itemBuilder: (context, index) {
                                 final user = _searchResults[index];
-                                return _buildUserCard(user);
+                                return _buildUserCard(user, showGameStats: false);
                               },
                             ),
             ),
@@ -208,11 +235,81 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
     );
   }
 
-  Widget _buildUserCard(Map<String, dynamic> user) {
-    final name = user['full_name'] as String? ?? 'Unknown';
+  Widget _buildRecommendedSection() {
+    if (_isLoadingRecommended) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (_recommended.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.sports_esports, size: 64, color: Colors.grey[400]),
+              const SizedBox(height: 16),
+              Text(
+                'Recommended friends will appear here once others start playing',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Search by name or email to find friends',
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+          child: Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 18, color: AppTheme.primaryColor),
+              const SizedBox(width: 6),
+              Text(
+                'Recommended for you',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+        ..._recommended.map((user) => _buildUserCard(user, showGameStats: true)),
+      ],
+    );
+  }
+
+  Widget _buildUserCard(Map<String, dynamic> user, {bool showGameStats = false}) {
+    final nameRaw = user['full_name'] as String?;
     final email = user['email'] as String? ?? '';
+    final name = (nameRaw != null && nameRaw.isNotEmpty && nameRaw.toLowerCase() != 'user')
+        ? nameRaw
+        : (email.isNotEmpty ? email.split('@').first : 'Player');
     final avatarUrl = user['avatar_url'] as String?;
     final userId = user['id'] as String;
+    final xp = (user['total_xp'] as num?)?.toInt() ?? 0;
+    final games = (user['games_played'] as num?)?.toInt() ?? 0;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -254,8 +351,16 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                     color: AppTheme.textDark,
                   ),
                 ),
-                if (email.isNotEmpty) ...[
-                  const SizedBox(height: 2),
+                if (showGameStats && (xp > 0 || games > 0))
+                  Text(
+                    '${xp} XP · ${games} games',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: AppTheme.primaryColor,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  )
+                else if (email.isNotEmpty)
                   Text(
                     email,
                     style: GoogleFonts.poppins(
@@ -263,7 +368,6 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
                       color: AppTheme.textMedium,
                     ),
                   ),
-                ],
               ],
             ),
           ),

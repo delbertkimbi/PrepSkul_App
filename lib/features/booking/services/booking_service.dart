@@ -27,6 +27,8 @@ class BookingService {
     double? estimatedTransportationCost, // Estimated transportation cost for onsite/hybrid sessions
     Map<String, String>? sessionLocations, // For hybrid: which sessions are onsite
     Map<String, Map<String, String?>>? locationDetails, // For hybrid: location details per session
+    DateTime? agreedToTermsAt, // When user accepted Terms at booking
+    DateTime? agreedToSafeguardingAt, // When user accepted Safeguarding Policy at booking
   }) async {
     try {
       final userId = SupabaseService.currentUser?.id;
@@ -294,6 +296,9 @@ class BookingService {
         'tutor_avatar_url': effectiveTutorAvatarUrl,
         'tutor_rating':
             (tutorProfile?['admin_approved_rating'] as num?)?.toDouble() ?? 0.0,
+        // Agreement timestamps (evidence of acceptance at booking)
+        if (agreedToTermsAt != null) 'agreed_to_terms_at': agreedToTermsAt.toUtc().toIso8601String(),
+        if (agreedToSafeguardingAt != null) 'agreed_to_safeguarding_at': agreedToSafeguardingAt.toUtc().toIso8601String(),
       };
       
       // Note: session_locations column doesn't exist in booking_requests table

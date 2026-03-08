@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/navigation/navigation_service.dart';
+import 'package:prepskul/core/services/auth_service.dart';
+import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../models/game_model.dart';
+import '../models/game_stats_model.dart';
 import '../services/skulmate_service.dart';
+import '../services/game_stats_service.dart';
+import '../services/skulmate_streak_reminder_service.dart';
 import '../widgets/game_card.dart';
+import '../widgets/daily_challenge_card.dart';
+import '../services/daily_challenge_service.dart';
 import 'quiz_game_screen.dart';
 import 'flashcard_game_screen.dart';
 import 'matching_game_screen.dart';
@@ -25,9 +34,9 @@ import 'skulmate_upload_screen.dart';
 import 'leaderboard_screen.dart';
 import 'friends_screen.dart';
 import 'challenges_screen.dart';
+import 'activity_calendar_screen.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
-import 'package:prepskul/core/utils/debouncer.dart';
 import '../widgets/session_summaries_tab.dart';
 
 /// Screen showing all generated games with tabs: Sessions, My Games, Upload
@@ -53,9 +62,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   String? _selectedFilter; // 'quiz', 'flashcards', 'matching', 'fill_blank'
   bool _showFavoritesOnly = false;
   String _sortBy = 'recent'; // 'recent', 'recently_played', 'alphabetical'
-  final TextEditingController _searchController = TextEditingController();
-  final Debouncer _searchDebouncer = Debouncer(milliseconds: 500);
   Map<String, DateTime?> _gameLastPlayedDates = {}; // Cache for last played dates
+  GameStats? _gameStats;
+  int _dailyChallengeRefreshKey = 0;
 
   @override
   void initState() {
@@ -66,14 +75,20 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       initialIndex: widget.initialTab.clamp(0, 2),
     );
     _loadGames();
+    _loadGameStats();
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _loadGameStats() async {
+    final stats = await GameStatsService.getStats();
+    if (mounted) safeSetState(() => _gameStats = stats);
+    // Reschedule streak reminder if needed (daily at 6 PM when not played yet)
+    SkulMateStreakReminderService.rescheduleIfNeeded();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
-    _searchController.dispose();
-    _searchDebouncer.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -157,8 +172,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading more games: $e'),
-            backgroundColor: Colors.red,
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -188,27 +204,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
           return gameTypeStr == 'fillBlank';
         }
         return gameTypeStr == _selectedFilter;
-      }).toList();
-    }
-
-    // Enhanced search - search in title and content
-    if (_searchController.text.isNotEmpty) {
-      final query = _searchController.text.toLowerCase();
-      filtered = filtered.where((game) {
-        // Search in title
-        if (game.title.toLowerCase().contains(query)) {
-          return true;
-        }
-        // Search in game items (questions, terms, etc.)
-        for (final item in game.items) {
-          if (item.question?.toLowerCase().contains(query) == true ||
-              item.term?.toLowerCase().contains(query) == true ||
-              item.definition?.toLowerCase().contains(query) == true ||
-              item.blankText?.toLowerCase().contains(query) == true) {
-            return true;
-          }
-        }
-        return false;
       }).toList();
     }
 
@@ -469,11 +464,24 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     }
   }
 
-  void _navigateToGame(GameModel game) {
+  void _navigateToGame(GameModel game, {bool isDailyChallenge = false}) {
+    if (!game.isPlayable) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'This game doesn\'t have playable content. Try generating a new one or use "Enter Text Manually".',
+            style: TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     Widget gameScreen;
     switch (game.gameType) {
       case GameType.quiz:
-        gameScreen = QuizGameScreen(game: game);
+        gameScreen = QuizGameScreen(game: game, isDailyChallenge: isDailyChallenge);
         break;
       case GameType.flashcards:
         gameScreen = FlashcardGameScreen(game: game);
@@ -523,7 +531,11 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => gameScreen),
-    ).then((_) => _loadGames()); // Refresh after returning
+    ).then((_) {
+      _loadGames();
+      _loadGameStats();
+      if (isDailyChallenge) safeSetState(() => _dailyChallengeRefreshKey++);
+    });
   }
 
   Future<void> _deleteGame(GameModel game) async {
@@ -615,8 +627,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error deleting game: $e'),
-              backgroundColor: Colors.red,
+              content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+              backgroundColor: Colors.red.shade700,
+              behavior: SnackBarBehavior.floating,
             ),
           );
         }
@@ -646,8 +659,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sharing game: $e'),
-            backgroundColor: Colors.red,
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -661,14 +675,47 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark, size: 24),
+          onPressed: () async {
+            final role = await AuthService.getUserRole();
+            final navService = NavigationService();
+            final route = role == 'parent' ? '/parent-nav' : '/student-nav';
+            if (navService.isReady) {
+              await navService.navigateToRoute(route, replace: true);
+            } else if (context.mounted) {
+              Navigator.of(context).pop();
+            }
+          },
+          tooltip: 'Back to main app',
+        ),
         centerTitle: true,
-        title: Text(
-          'skulMate',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
+        titleSpacing: 0,
+        title: LayoutBuilder(
+          builder: (context, constraints) {
+            final canShowIcon = constraints.maxWidth >= 130;
+            return FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (canShowIcon) ...[
+                    PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AppTheme.textDark, size: 16),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    'skulMate',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
         bottom: TabBar(
           controller: _tabController,
@@ -691,10 +738,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.emoji_events_outlined),
+            icon: const Icon(Icons.emoji_events_outlined, size: 20),
             tooltip: 'Leaderboard',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
+            iconSize: 20,
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
                 context,
@@ -705,10 +754,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             },
           ),
           IconButton(
-            icon: const Icon(Icons.people_outline),
+            icon: const Icon(Icons.people_outline, size: 20),
             tooltip: 'Friends',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
+            iconSize: 20,
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
                 context,
@@ -719,10 +770,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             },
           ),
           IconButton(
-            icon: const Icon(Icons.sports_esports_outlined),
+            icon: const Icon(Icons.sports_esports_outlined, size: 20),
             tooltip: 'Challenges',
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
+            iconSize: 20,
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
                 context,
@@ -732,23 +785,47 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
               );
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            constraints: const BoxConstraints(),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SkulMateUploadScreen(
-                    childId: widget.childId,
+          if (_gameStats != null && _gameStats!.currentStreak > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 4, left: 0, top: 8),
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ActivityCalendarScreen(childId: widget.childId),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Tooltip(
+                  message: '${_gameStats!.currentStreak} day streak! Tap to view activity',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.orange.shade400, width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('🔥', style: TextStyle(fontSize: 14)),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${_gameStats!.currentStreak}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ).then((_) => _loadGames(refresh: true));
-            },
-            tooltip: 'Create New Game',
-          ),
-          const SizedBox(width: 8), // Spacing from edge
+              ),
+            ),
         ],
       ),
       body: TabBarView(
@@ -830,45 +907,122 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   Widget _buildMyGamesTab() {
     return Column(
       children: [
-        // Search and filter
+        // Progress summary (XP, level, streaks, simple rewards)
+        if (_gameStats != null)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+              border: Border.all(color: AppTheme.softBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.military_tech, size: 18, color: AppTheme.primaryColor),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Level ${_gameStats!.level}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      '${_gameStats!.totalXP} XP',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _gameStats!.levelProgress,
+                    minHeight: 6,
+                    backgroundColor: AppTheme.softBorder,
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_gameStats!.xpForNextLevel} XP to next level',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    if (_gameStats!.currentStreak > 0) ...[
+                      const Icon(Icons.local_fire_department_outlined, size: 16, color: Colors.orange),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_gameStats!.currentStreak} day streak',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ],
+                    if (_gameStats!.currentStreak > 0) const SizedBox(width: 12),
+                    const Icon(Icons.emoji_events_outlined, size: 16, color: AppTheme.accentGreen),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_gameStats!.achievements.length} rewards unlocked',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        // Daily Challenge card (one focused set per day; user-specific)
+        DailyChallengeCard(
+          key: ValueKey(_dailyChallengeRefreshKey),
+          games: _games,
+          childId: widget.childId,
+          currentStreak: _gameStats?.currentStreak,
+          onRefresh: () async {
+            await _loadGames(refresh: true);
+            safeSetState(() => _dailyChallengeRefreshKey++);
+          },
+          onPlay: (game, {isDailyChallenge = false}) =>
+              _navigateToGame(game, isDailyChallenge: isDailyChallenge),
+        ),
+        // Filter bar
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           color: Colors.white,
           child: Column(
             children: [
-              // Search bar
-              TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  _searchDebouncer.run(() {
-                    if (mounted) {
-                      setState(() {});
-                    }
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search games...',
-                  hintStyle: GoogleFonts.poppins(fontSize: 13),
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.grey[300]!),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey[50],
-                ),
-                style: GoogleFonts.poppins(fontSize: 14),
-              ),
-              const SizedBox(height: 10),
               // Filter chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -922,8 +1076,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                         final showRecentlyPlayed = recentlyPlayed.isNotEmpty && 
                                                    _sortBy != 'recently_played' &&
                                                    !_showFavoritesOnly &&
-                                                   _selectedFilter == null &&
-                                                   _searchController.text.isEmpty;
+                                                   _selectedFilter == null;
 
                         return RefreshIndicator(
                           onRefresh: () async {
@@ -965,7 +1118,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                                     game: game,
                                     onTap: () => _navigateToGame(game),
                                     onDelete: () => _deleteGame(game),
-                                    onPreview: () => _showGamePreview(game),
                                     onShare: () => _shareGame(game),
                                   ),
                                 );
@@ -999,7 +1151,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                                 game: game,
                                 onTap: () => _navigateToGame(game),
                                 onDelete: () => _deleteGame(game),
-                                onPreview: () => _showGamePreview(game),
                                 onShare: () => _shareGame(game),
                               );
                             },

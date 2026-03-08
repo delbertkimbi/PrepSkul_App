@@ -25,7 +25,7 @@ class TTSService {
       _currentLanguage = userLanguage == 'fr' ? 'fr-FR' : 'en-US';
       
       await _flutterTts!.setLanguage(_currentLanguage);
-      await _flutterTts!.setSpeechRate(0.5); // Normal speech rate
+      await _flutterTts!.setSpeechRate(0.5); // Normal speed (0.5 = platform default, 1.0 = faster)
       await _flutterTts!.setVolume(1.0);
       await _flutterTts!.setPitch(1.0);
       
@@ -42,9 +42,19 @@ class TTSService {
     }
   }
 
+  /// Ensure TTS is ready (call init if needed)
+  Future<void> ensureInitialized() async {
+    if (_isInitialized) return;
+    await initialize();
+  }
+
+  bool get isInitialized => _isInitialized;
+
   /// Speak text
   Future<void> speak(String text) async {
-    if (!_isEnabled || !_isInitialized || text.isEmpty) return;
+    if (!_isEnabled || text.isEmpty) return;
+    if (!_isInitialized) await ensureInitialized();
+    if (!_isInitialized) return;
 
     try {
       await _flutterTts!.speak(text);

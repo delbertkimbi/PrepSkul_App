@@ -67,8 +67,17 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
   // Tutor-specific additional field
   final _concernsController = TextEditingController();
   
+  // Onsite only: "Did this session take place?" (family confirmation / dispute)
+  String? _sessionTookPlace; // 'yes', 'no', 'partially'
+  final _sessionTookPlaceNotesController = TextEditingController();
+  
   // Session context
   Map<String, dynamic>? _sessionData;
+  
+  bool get _isOnsiteSession {
+    final loc = (_sessionData?['location'] as String?)?.toLowerCase().trim();
+    return loc == 'onsite' || loc == 'hybrid';
+  }
 
   @override
   void initState() {
@@ -92,6 +101,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     _nextSessionFocusController.dispose();
     _whatLearnedController.dispose();
     _concernsController.dispose();
+    _sessionTookPlaceNotesController.dispose();
     super.dispose();
   }
 
@@ -194,6 +204,13 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           wouldContinueLessons: wouldBook,
           studentProgressRating: _childEngagementRating,
           studentEngagement: _comfortLevelWithSetup, // Reuse field for comfort level
+          // Onsite only: family confirmation / dispute
+          sessionTookPlace: _isOnsiteSession ? _sessionTookPlace : null,
+          sessionTookPlaceNotes: _isOnsiteSession
+              ? (_sessionTookPlaceNotesController.text.trim().isEmpty
+                  ? null
+                  : _sessionTookPlaceNotesController.text.trim())
+              : null,
         );
       } else {
         // Learner feedback submission
@@ -226,6 +243,13 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           learningObjectivesMet: learningMet ?? _learningObjectivesMet,
           studentProgressRating: _confidenceLevel ?? _studentProgressRating,
           wouldContinueLessons: wouldContinue ?? _wouldContinueLessons,
+          // Onsite only: family confirmation / dispute
+          sessionTookPlace: _isOnsiteSession ? _sessionTookPlace : null,
+          sessionTookPlaceNotes: _isOnsiteSession
+              ? (_sessionTookPlaceNotesController.text.trim().isEmpty
+                  ? null
+                  : _sessionTookPlaceNotesController.text.trim())
+              : null,
         );
       }
 
@@ -1136,9 +1160,6 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     }
     
     if (_isParent) {
-      final isOnsite = _sessionData != null && 
-          (_sessionData!['location'] as String? ?? '').toLowerCase() == 'onsite';
-
       // Trial parent: conversion prompts – "Would you book regular sessions?"
       if (_isTrial) {
         return Column(
@@ -1296,7 +1317,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               );
             }),
           ),
-          if (isOnsite) ...[
+          if (_isOnsiteSession) ...[
             const SizedBox(height: 20),
             Text(
               'Was the location safe and appropriate? (optional)',
@@ -1324,6 +1345,8 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                 fillColor: Colors.white,
               ),
             ),
+            const SizedBox(height: 20),
+            _buildOnsiteSessionTookPlaceSection(),
           ],
           const SizedBox(height: 20),
           // Next Session Focus
@@ -1405,6 +1428,10 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
               fillColor: Colors.white,
             ),
           ),
+          if (_isOnsiteSession) ...[
+            const SizedBox(height: 20),
+            _buildOnsiteSessionTookPlaceSection(),
+          ],
           const SizedBox(height: 20),
           Text(
             'How confident do you feel about the topic? (1-5)',
@@ -1478,6 +1505,10 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           ),
         ),
         const SizedBox(height: 24),
+        if (_isOnsiteSession) ...[
+          _buildOnsiteSessionTookPlaceSection(),
+          const SizedBox(height: 20),
+        ],
         Text(
           'What went well? (optional)',
           style: GoogleFonts.poppins(
@@ -1584,6 +1615,72 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
         ),
       ),
+    );
+  }
+  
+  /// Onsite-only: \"Did this session take place?\" section (family confirmation / dispute)
+  Widget _buildOnsiteSessionTookPlaceSection() {
+    if (!_isOnsiteSession || _isTutor) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Did this session take place as scheduled?',
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.textDark,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _buildThreeOptionButton(
+                'Yes',
+                _sessionTookPlace == 'yes',
+                () => safeSetState(() => _sessionTookPlace = 'yes'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildThreeOptionButton(
+                'Partly',
+                _sessionTookPlace == 'partially',
+                () => safeSetState(() => _sessionTookPlace = 'partially'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildThreeOptionButton(
+                'No',
+                _sessionTookPlace == 'no',
+                () => safeSetState(() => _sessionTookPlace = 'no'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _sessionTookPlaceNotesController,
+          maxLines: 2,
+          decoration: InputDecoration(
+            hintText: 'Optional: Tell us what happened (e.g. tutor did not show, session was shorter, etc.)',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.softBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+            ),
+            filled: true,
+            fillColor: Colors.white,
+          ),
+        ),
+      ],
     );
   }
   

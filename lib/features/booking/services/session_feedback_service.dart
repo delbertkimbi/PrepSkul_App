@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 
 /// Session Feedback Service
 ///
@@ -34,6 +35,9 @@ class SessionFeedbackService {
     String? homeworkAssigned, // For tutors: homework given
     String? nextFocusAreas, // For tutors: next session focus
     int? studentEngagement, // For tutors: 1-5 engagement rating
+    // Onsite only: family confirmation / dispute (student/parent)
+    String? sessionTookPlace, // 'yes', 'no', 'partially'
+    String? sessionTookPlaceNotes,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -183,6 +187,15 @@ class SessionFeedbackService {
         feedbackData['session_type'] = sessionType;
       }
 
+      // Onsite only: "Did this session take place?" (family confirmation / dispute)
+      final location = (session['location'] as String?)?.toLowerCase().trim();
+      if (!isTutor && (location == 'onsite' || location == 'hybrid') && sessionTookPlace != null) {
+        feedbackData['session_took_place'] = sessionTookPlace;
+        if (sessionTookPlaceNotes != null && sessionTookPlaceNotes.isNotEmpty) {
+          feedbackData['session_took_place_notes'] = sessionTookPlaceNotes;
+        }
+      }
+
       // Add enhanced learning outcomes fields
       if (learningObjectivesMet != null) {
         feedbackData['learning_objectives_met'] = learningObjectivesMet;
@@ -224,6 +237,25 @@ class SessionFeedbackService {
                 .update({'feedback_id': newFeedback['id']})
                 .eq('id', sessionId);
           }
+        }
+
+        // Notify admins when family reports session did not take place or only partially
+        if (!isTutor && (sessionTookPlace == 'no' || sessionTookPlace == 'partially')) {
+          NotificationHelperService.notifyAdminsAboutSessionSafetyAlert(
+            sessionId: sessionId,
+            title: sessionTookPlace == 'no'
+                ? 'Session did not take place (reported by family)'
+                : 'Session only partially took place (reported by family)',
+            message: sessionTookPlaceNotes?.isNotEmpty == true
+                ? sessionTookPlaceNotes!
+                : (sessionTookPlace == 'no' ? 'Family reported the session did not take place.' : 'Family reported the session only partially took place.'),
+            severity: 'warning',
+            type: 'session_took_place_dispute',
+            metadata: {'session_took_place': sessionTookPlace},
+            sendPush: true,
+          ).catchError((e) {
+            LogService.warning('Failed to notify admins about session_took_place: $e');
+          });
         }
       } catch (e) {
         final errorStr = e.toString();

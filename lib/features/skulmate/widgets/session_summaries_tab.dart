@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/error_handler.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -137,6 +138,18 @@ class _SessionSummariesTabState extends State<SessionSummariesTab> {
         session['has_game'] = true; // Mark as having game
       });
 
+      // Validate playable before navigating (avoid broken quiz/flashcard screens)
+      if (mounted && !game.isPlayable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('This session challenge couldn\'t be turned into a playable game.'),
+            backgroundColor: Colors.orange.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
       // Navigate to game screen
       if (mounted) {
         Widget gameScreen;
@@ -170,8 +183,9 @@ class _SessionSummariesTabState extends State<SessionSummariesTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error generating game: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }

@@ -20,6 +20,7 @@ class GameResultsScreen extends StatefulWidget {
   final int? timeTakenSeconds;
   final int? xpEarned;
   final bool isPerfectScore;
+  final List<QuestionPerformance> questionBreakdown;
 
   const GameResultsScreen({
     Key? key,
@@ -29,6 +30,7 @@ class GameResultsScreen extends StatefulWidget {
     this.timeTakenSeconds,
     this.xpEarned,
     this.isPerfectScore = false,
+    this.questionBreakdown = const [],
   }) : super(key: key);
 
   @override
@@ -70,58 +72,148 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
         : 'N/A';
 
     return Scaffold(
+      backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
-        title: Text('Game Results', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        title: Text('Results', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         backgroundColor: Colors.white,
         elevation: 0,
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
-                  widget.isPerfectScore ? '🎉 Perfect Score! 🎉' : 'Challenge complete!',
+                  widget.isPerfectScore ? '🎉 Perfect!' : 'Done!',
                   style: GoogleFonts.poppins(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
                     color: widget.isPerfectScore ? AppTheme.accentGreen : AppTheme.primaryColor,
                   ),
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  '$percentage%',
-                  style: GoogleFonts.poppins(
-                    fontSize: 64,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primaryColor,
-                  ),
+                const SizedBox(height: 12),
+                // Score: percentage + fraction
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      '$percentage%',
+                      style: GoogleFonts.poppins(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${widget.score}/${widget.totalQuestions}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  '${widget.score} / ${widget.totalQuestions}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    color: AppTheme.textMedium,
-                  ),
+                const SizedBox(height: 20),
+                // Stats grid - 2x2 or 2x3 layout
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final statCards = <Widget>[
+                      _buildCompactStat('Time', timeText, Icons.timer_outlined),
+                      if (widget.xpEarned != null)
+                        _buildCompactStat('XP', '+${widget.xpEarned}', Icons.star_outline),
+                      if (_currentStats != null) ...[
+                        _buildCompactStat('Total XP', '${_currentStats!.totalXP}', Icons.emoji_events_outlined),
+                        _buildCompactStat('Level', '${_currentStats!.level}', Icons.military_tech),
+                        _buildCompactStat('Streak', '${_currentStats!.currentStreak}d', Icons.local_fire_department_outlined),
+                      ],
+                    ];
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 10,
+                      crossAxisSpacing: 10,
+                      childAspectRatio: 1.8,
+                      children: statCards,
+                    );
+                  },
                 ),
-                const SizedBox(height: 32),
-                _buildStatCard('Time', timeText, Icons.timer),
-                if (widget.xpEarned != null)
-                  _buildStatCard('XP Earned', '+${widget.xpEarned}', Icons.star),
-                if (_currentStats != null) ...[
-                  _buildStatCard('Total XP', '${_currentStats!.totalXP}', Icons.emoji_events),
-                  _buildStatCard('Level', '${_currentStats!.level}', Icons.military_tech),
-                  _buildStatCard('Current Streak', '${_currentStats!.currentStreak} day${_currentStats!.currentStreak == 1 ? '' : 's'}', Icons.local_fire_department),
+                if (_currentStats != null && _currentStats!.currentStreak > 0) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.softYellowLight,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.softYellow.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('🔥', style: TextStyle(fontSize: 18)),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_currentStats!.currentStreak} day streak!',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-                const SizedBox(height: 32),
+                // Strongest / weakest topics (based on per-question performance)
+                if (widget.questionBreakdown.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'What you did well',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildQuestionList(
+                    widget.questionBreakdown.where((q) => q.isCorrect).toList(),
+                    emptyLabel: 'We will highlight wins here when you get some questions correct.',
+                  ),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'What to review',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildQuestionList(
+                    widget.questionBreakdown.where((q) => !q.isCorrect).toList(),
+                    emptyLabel: 'No weak spots in this round – great job.',
+                  ),
+                ],
+                const SizedBox(height: 28),
                 if (widget.game.gameType == GameType.quiz && !widget.isPerfectScore) ...[
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.only(bottom: 12),
                     child: Column(
                       children: [
-                        ElevatedButton.icon(
+                        TextButton.icon(
                           onPressed: () {
                             Navigator.pushReplacement(
                               context,
@@ -130,25 +222,14 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
                               ),
                             );
                           },
-                          icon: Icon(Icons.refresh),
-                          label: Text('Try Again'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.accentBlue,
-                            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Try again to improve your score',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            color: AppTheme.textMedium,
-                          ),
+                          icon: Icon(Icons.refresh, size: 18, color: AppTheme.accentBlue),
+                          label: Text('Try Again', style: GoogleFonts.poppins(color: AppTheme.accentBlue, fontWeight: FontWeight.w500)),
                         ),
                       ],
                     ),
                   ),
                 ],
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -161,25 +242,26 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
                           ),
                         );
                       },
-                      icon: Icon(Icons.home),
-                      label: Text('Home'),
+                      icon: const Icon(Icons.home, size: 18),
+                      label: const Text('Home'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
-                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    ElevatedButton.icon(
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
                       onPressed: () {
                         Share.share(
                           'I scored $percentage% on ${widget.game.title}! 🎮',
                         );
                       },
-                      icon: Icon(Icons.share),
-                      label: Text('Share'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.accentGreen,
-                        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      icon: const Icon(Icons.share, size: 18),
+                      label: const Text('Share'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primaryColor,
+                        side: const BorderSide(color: AppTheme.primaryColor),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                       ),
                     ),
                   ],
@@ -197,44 +279,107 @@ class _GameResultsScreenState extends State<GameResultsScreen> {
               emissionFrequency: 0.05,
               numberOfParticles: 50,
               gravity: 0.1,
+              colors: const [
+                AppTheme.primaryColor,
+                AppTheme.skyBlue,
+                AppTheme.softYellow,
+                AppTheme.accentGreen,
+              ],
             ),
           ),
         ],
       ),
     );
-  }  Widget _buildStatCard(String label, String value, IconData icon) {
-    return Card(
-      margin: EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Icon(icon, color: AppTheme.primaryColor),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: AppTheme.textMedium,
-                    ),
-                  ),
-                  Text(
-                    value,
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+  }
+
+  Widget _buildCompactStat(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.softCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.softBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: AppTheme.primaryColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: AppTheme.textMedium,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textDark,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionList(
+    List<QuestionPerformance> items, {
+    required String emptyLabel,
+  }) {
+    if (items.isEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          emptyLabel,
+          style: GoogleFonts.poppins(
+            fontSize: 13,
+            color: AppTheme.textMedium,
+          ),
+        ),
+      );
+    }
+
+    final topItems = items.take(3).toList();
+    return Column(
+      children: topItems
+          .map(
+            (q) => Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.softBorder),
+              ),
+              child: Text(
+                '• ${q.question}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: AppTheme.textDark,
+                ),
               ),
             ),
-          ],
-        ),
-      ),
+          )
+          .toList(),
     );
   }
 }

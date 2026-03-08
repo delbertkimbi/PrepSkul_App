@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import '../services/skulmate_onboarding_service.dart';
-import 'skulmate_upload_screen.dart';
+import 'character_selection_screen.dart';
 
 /// 3-screen onboarding for skulMate
 class SkulMateOnboardingScreen extends StatefulWidget {
@@ -82,7 +83,7 @@ class _SkulMateOnboardingScreenState extends State<SkulMateOnboardingScreen>
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => const SkulMateUploadScreen(),
+          builder: (context) => const CharacterSelectionScreen(isFirstTime: true),
         ),
       );
     }
@@ -102,52 +103,54 @@ class _SkulMateOnboardingScreenState extends State<SkulMateOnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Skip button
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (_currentPage < _slides.length - 1)
-                    TextButton(
-                      onPressed: _skipOnboarding,
-                      child: Text(
-                        'Skip',
-                        style: GoogleFonts.poppins(
-                          color: AppTheme.textMedium,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
+    return StatusBarUtils.withLightStatusBar(
+      Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Skip button
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (_currentPage < _slides.length - 1)
+                      TextButton(
+                        onPressed: _skipOnboarding,
+                        child: Text(
+                          'Skip',
+                          style: GoogleFonts.poppins(
+                            color: AppTheme.textMedium,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                      ),
-                    )
-                  else
-                    const SizedBox.shrink(),
-                  const SizedBox.shrink(), // Spacer
-                ],
+                      )
+                    else
+                      const SizedBox.shrink(),
+                    const SizedBox.shrink(), // Spacer
+                  ],
+                ),
               ),
-            ),
-            // Page view
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                onPageChanged: _onPageChanged,
-                itemCount: _slides.length,
-                itemBuilder: (context, index) {
-                  return _buildSlide(_slides[index], index);
-                },
+              // Page view
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: _onPageChanged,
+                  itemCount: _slides.length,
+                  itemBuilder: (context, index) {
+                    return _buildSlide(_slides[index], index);
+                  },
+                ),
               ),
-            ),
-            // Page indicators
-            _buildPageIndicators(),
-            // Next/Get Started button
-            _buildActionButton(),
-            const SizedBox(height: 20),
-          ],
+              // Page indicators
+              _buildPageIndicators(),
+              // Next/Get Started button
+              _buildActionButton(),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );

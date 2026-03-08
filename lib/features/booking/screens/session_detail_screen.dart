@@ -5,6 +5,7 @@ import 'package:prepskul/core/config/live_session_test_config.dart';
 import 'package:prepskul/core/services/auth_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:intl/intl.dart';
 import 'package:prepskul/features/sessions/widgets/session_location_map.dart';
 import 'package:prepskul/features/sessions/widgets/location_tracking_widget.dart';
 import 'package:prepskul/features/sessions/widgets/session_mode_statistics_widget.dart';
@@ -15,6 +16,8 @@ import 'package:prepskul/features/messaging/services/conversation_lifecycle_serv
 import 'package:prepskul/features/messaging/screens/chat_screen.dart';
 import 'package:prepskul/features/messaging/models/conversation_model.dart';
 import 'package:prepskul/features/booking/services/session_reschedule_service.dart';
+import 'package:prepskul/features/booking/services/onsite_confirmation_service.dart';
+import 'package:prepskul/features/booking/widgets/report_issue_bottom_sheet.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:intl/intl.dart';
 
@@ -577,6 +580,37 @@ class SessionDetailScreen extends StatelessWidget {
                       sessionCoordinates: null,
                     ),
                   ],
+                  // Onsite: show tutor check-in time for family when available
+                  if ((userType == 'parent' || userType == 'student') && location == 'onsite' && session['type'] != 'trial') ...[
+                    const SizedBox(height: 12),
+                    _TutorCheckInLine(sessionId: sessionId),
+                  ],
+                  // Optional parent/learner confirm start (onsite, in_progress)
+                  if ((userType == 'parent' || userType == 'student') &&
+                      status == 'in_progress' &&
+                      session['type'] != 'trial') ...[
+                    const SizedBox(height: 20),
+                    _OnsiteConfirmStartCard(
+                      sessionId: sessionId,
+                      parentConfirmedAt: session['parent_confirmed_start_at'],
+                      learnerConfirmedAt: session['learner_confirmed_start_at'],
+                      isParent: userType == 'parent',
+                      isLearner: userType == 'student',
+                    ),
+                  ],
+                  // Optional parent/learner confirm end (onsite, completed)
+                  if ((userType == 'parent' || userType == 'student') &&
+                      status == 'completed' &&
+                      session['type'] != 'trial') ...[
+                    const SizedBox(height: 20),
+                    _OnsiteConfirmEndCard(
+                      sessionId: sessionId,
+                      parentConfirmedAt: session['parent_confirmed_end_at'],
+                      learnerConfirmedAt: session['learner_confirmed_end_at'],
+                      isParent: userType == 'parent',
+                      isLearner: userType == 'student',
+                    ),
+                  ],
                 ],
                 
                 // Action buttons: upcoming or in progress
@@ -618,8 +652,43 @@ class SessionDetailScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Report issue (only for individual sessions; trials use trial_sessions.id)
+                  if (session['type'] != 'trial') ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          final role = (userType == 'parent') ? 'parent' : 'learner';
+                          showReportIssueBottomSheet(
+                            context: context,
+                            sessionId: sessionId,
+                            role: role,
+                          );
+                        },
+                        icon: Icon(PhosphorIcons.warning(), size: 20, color: Colors.orange),
+                        label: Text(
+                          'Something wrong? Report issue',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.orange,
+                          side: BorderSide(color: Colors.orange, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-                // Past/completed sessions: Message Tutor + Request reschedule (if missed)
+                // Past/completed sessions: Message Tutor + Request reschedule (if missed) + Report issue
                 if (status != 'scheduled' && status != 'in_progress' && status != 'cancelled') ...[
                   const SizedBox(height: 24),
                   SizedBox(
@@ -647,6 +716,42 @@ class SessionDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  // Report issue for completed sessions (individual only)
+                  if (session['type'] != 'trial')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            final role = (userType == 'parent') ? 'parent' : 'learner';
+                            showReportIssueBottomSheet(
+                              context: context,
+                              sessionId: sessionId,
+                              role: role,
+                            );
+                          },
+                          icon: Icon(PhosphorIcons.warning(), size: 20, color: Colors.orange),
+                          label: Text(
+                            'Something wrong? Report issue',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.orange,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.orange,
+                            side: BorderSide(color: Colors.orange, width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   // Request reschedule for completed or missed sessions
                   Builder(
                     builder: (context) {
@@ -812,5 +917,300 @@ class _JoinVideoButtonWithCountdownState extends State<_JoinVideoButtonWithCount
         ],
       ),
     );
+  }
+}
+
+/// Shows "Tutor checked in at [time]" for parent/learner when tutor has checked in (onsite).
+class _TutorCheckInLine extends StatefulWidget {
+  final String sessionId;
+
+  const _TutorCheckInLine({required this.sessionId});
+
+  @override
+  State<_TutorCheckInLine> createState() => _TutorCheckInLineState();
+}
+
+class _TutorCheckInLineState extends State<_TutorCheckInLine> {
+  String? _checkInTime;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await SupabaseService.client
+          .from('session_attendance')
+          .select('check_in_time')
+          .eq('session_id', widget.sessionId)
+          .eq('user_type', 'tutor')
+          .maybeSingle();
+      if (res != null && res['check_in_time'] != null && mounted) {
+        final t = res['check_in_time'] as String;
+        setState(() {
+          _checkInTime = t;
+          _loaded = true;
+        });
+      } else if (mounted) {
+        setState(() => _loaded = true);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded || _checkInTime == null) return const SizedBox.shrink();
+    final formatted = DateFormat.jm().format(DateTime.parse(_checkInTime!));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.accentGreen.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accentGreen.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(PhosphorIcons.checkCircle(), size: 18, color: AppTheme.accentGreen),
+          const SizedBox(width: 8),
+          Text(
+            'Tutor checked in at $formatted',
+            style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Optional "Confirm start" for parent/learner (onsite, in_progress).
+class _OnsiteConfirmStartCard extends StatefulWidget {
+  final String sessionId;
+  final dynamic parentConfirmedAt;
+  final dynamic learnerConfirmedAt;
+  final bool isParent;
+  final bool isLearner;
+
+  const _OnsiteConfirmStartCard({
+    required this.sessionId,
+    this.parentConfirmedAt,
+    this.learnerConfirmedAt,
+    required this.isParent,
+    required this.isLearner,
+  });
+
+  @override
+  State<_OnsiteConfirmStartCard> createState() => _OnsiteConfirmStartCardState();
+}
+
+class _OnsiteConfirmStartCardState extends State<_OnsiteConfirmStartCard> {
+  bool _confirmed = false;
+  bool _loading = false;
+
+  bool get _alreadyConfirmed {
+    if (widget.isParent && widget.parentConfirmedAt != null) return true;
+    if (widget.isLearner && widget.learnerConfirmedAt != null) return true;
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_alreadyConfirmed || _confirmed) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.accentGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(PhosphorIcons.checkCircle(), color: AppTheme.accentGreen, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'You confirmed the session has started.',
+                style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Confirm that the tutor has arrived and the session has started?',
+            style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Helps us record attendance and process payment.',
+            style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _loading ? null : () => _confirmStart(),
+              icon: _loading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(PhosphorIcons.check(), size: 18),
+              label: Text(_loading ? 'Confirming...' : 'Confirm start', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmStart() async {
+    setState(() => _loading = true);
+    try {
+      await OnsiteConfirmationService.confirmSessionStarted(widget.sessionId);
+      if (mounted) setState(() { _confirmed = true; _loading = false; });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Thanks! Start confirmed.', style: GoogleFonts.poppins()), backgroundColor: AppTheme.accentGreen),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''), style: GoogleFonts.poppins()), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+}
+
+/// Optional "Confirm end" for parent/learner (onsite, completed).
+class _OnsiteConfirmEndCard extends StatefulWidget {
+  final String sessionId;
+  final dynamic parentConfirmedAt;
+  final dynamic learnerConfirmedAt;
+  final bool isParent;
+  final bool isLearner;
+
+  const _OnsiteConfirmEndCard({
+    required this.sessionId,
+    this.parentConfirmedAt,
+    this.learnerConfirmedAt,
+    required this.isParent,
+    required this.isLearner,
+  });
+
+  @override
+  State<_OnsiteConfirmEndCard> createState() => _OnsiteConfirmEndCardState();
+}
+
+class _OnsiteConfirmEndCardState extends State<_OnsiteConfirmEndCard> {
+  bool _confirmed = false;
+  bool _loading = false;
+
+  bool get _alreadyConfirmed {
+    if (widget.isParent && widget.parentConfirmedAt != null) return true;
+    if (widget.isLearner && widget.learnerConfirmedAt != null) return true;
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_alreadyConfirmed || _confirmed) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.accentGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.accentGreen.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(PhosphorIcons.checkCircle(), color: AppTheme.accentGreen, size: 24),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'You confirmed the session ended as expected.',
+                style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Confirm that the session ended as expected?',
+            style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textDark, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Helps us record attendance and process payment.',
+            style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _loading ? null : () => _confirmEnd(),
+              icon: _loading ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Icon(PhosphorIcons.check(), size: 18),
+              label: Text(_loading ? 'Confirming...' : 'Confirm end', style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmEnd() async {
+    setState(() => _loading = true);
+    try {
+      await OnsiteConfirmationService.confirmSessionEnded(widget.sessionId);
+      if (mounted) setState(() { _confirmed = true; _loading = false; });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Thanks! End confirmed.', style: GoogleFonts.poppins()), backgroundColor: AppTheme.accentGreen),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''), style: GoogleFonts.poppins()), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 }

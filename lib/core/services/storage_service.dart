@@ -66,10 +66,17 @@ class StorageService {
       // Create storage path
       final storagePath = '$userId/$fileName';
 
-      // Upload to Supabase
+      // Upload to Supabase (allow overwriting existing file for re-uploads)
       await SupabaseService.client.storage
           .from(profilePhotosBucket)
-          .upload(storagePath, fileToUpload);
+          .upload(
+            storagePath,
+            fileToUpload,
+            fileOptions: FileOptions(
+              upsert: true, // replace existing profile photo instead of 409 Duplicate
+              contentType: mimeType,
+            ),
+          );
 
       // Get public URL
       final publicUrl = SupabaseService.client.storage

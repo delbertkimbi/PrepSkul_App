@@ -17,23 +17,32 @@ import '../models/game_stats_model.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/game_roadmap_widget.dart';
 import '../widgets/game_rules_overlay.dart';
+import '../widgets/skulmate_game_app_bar.dart';
+import '../services/daily_challenge_service.dart';
 import 'game_results_screen.dart';
 
 /// Quiz game screen with multiple choice questions
 class QuizGameScreen extends StatefulWidget {
   final GameModel game;
+  final bool isDailyChallenge;
 
-  const QuizGameScreen({Key? key, required this.game}) : super(key: key);
+  const QuizGameScreen({Key? key, required this.game, this.isDailyChallenge = false}) : super(key: key);
 
   @override
   State<QuizGameScreen> createState() => _QuizGameScreenState();
 }
 
 class _QuizGameScreenState extends State<QuizGameScreen> {
+  static const int _minQuestionsPerRound = 5;
+  static const int _maxQuestionsPerRound = 7;
+
+  late final List<GameItem> _questions;
   int _currentQuestionIndex = 0;
   int? _selectedAnswerIndex;
   int _score = 0;
   int _xpEarned = 0;
+  /// Shuffled display order for options: maps question index -> [originalIndex, ...]
+  final Map<int, List<int>> _shuffledOptionIndices = {};
   DateTime? _startTime;
   final GameSoundService _soundService = GameSoundService();
   final TTSService _ttsService = TTSService();
@@ -42,16 +51,18 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
   int? _lastCorrectXp; // +10 or +15 for boss – show pop-up briefly
+  final List<QuestionPerformance> _questionBreakdown = [];
 
   bool _hasShownRules = false;
 
   @override
   void initState() {
     super.initState();
+    _questions = _buildQuestionSet(widget.game.items);
     _startTime = DateTime.now();
     _soundService.initialize();
     _ttsService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(duration: const Duration(milliseconds: 1200));
     _loadCharacter();
     _loadStats();
     // Show rules overlay if first time
@@ -109,18 +120,56 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
     safeSetState(() => _currentStats = stats);
   }
 
-  void _selectAnswer(int answerIndex) {
+  /// Get or create shuffled option indices for a question (so correct answer isn't always B)
+  List<int> _getShuffledOptionIndices(GameItem question) {
+    return _shuffledOptionIndices.putIfAbsent(_currentQuestionIndex, () {
+      final opts = question.options ?? [];
+      final indices = List.generate(opts.length, (i) => i);
+      indices.shuffle(Random());
+      return indices;
+    });
+  }
+
+  /// Build a short round of questions (5–7 where possible) for a tighter game loop
+  List<GameItem> _buildQuestionSet(List<GameItem> allItems) {
+    // Prefer only items that actually have options
+    final filtered = allItems.where((q) => (q.options ?? []).isNotEmpty).toList();
+    if (filtered.isEmpty) return allItems;
+
+    filtered.shuffle(Random());
+    final available = filtered.length;
+    if (available <= _minQuestionsPerRound) {
+      return filtered;
+    }
+    final target = min(_maxQuestionsPerRound, available);
+    return filtered.take(target).toList();
+  }
+
+  void _selectAnswer(int displayIndex) {
     if (_selectedAnswerIndex != null) return; // Already answered
-    final question = widget.game.items[_currentQuestionIndex];
+    final question = _questions[_currentQuestionIndex];
+    final shuffled = _getShuffledOptionIndices(question);
+    final originalIndex = displayIndex < shuffled.length ? shuffled[displayIndex] : displayIndex;
     final correctAnswerIndex = question.correctAnswer is int 
         ? question.correctAnswer as int 
         : (question.correctAnswer is String 
             ? int.tryParse(question.correctAnswer.toString()) ?? 0 
             : 0);
-    final isCorrect = answerIndex == correctAnswerIndex;
+    final isCorrect = originalIndex == correctAnswerIndex;
+
+    // Track per-question performance for end-of-game summary
+    final rawQuestionText = (question.question ?? question.term ?? '').trim();
+    if (rawQuestionText.isNotEmpty) {
+      _questionBreakdown.add(
+        QuestionPerformance(
+          question: rawQuestionText,
+          isCorrect: isCorrect,
+        ),
+      );
+    }
 
     safeSetState(() {
-      _selectedAnswerIndex = answerIndex;
+      _selectedAnswerIndex = displayIndex;
       if (isCorrect) {
         _score++;
         final xpPerCorrect = question.isBoss ? 15 : 10;
@@ -138,12 +187,15 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       } else {
         _soundService.playIncorrect();
         if (_isTTSEnabled) {
-          _ttsService.speak('Incorrect. The correct answer is ${question.options?[correctAnswerIndex] ?? ''}');
+          final correctText = question.options != null && correctAnswerIndex < question.options!.length
+              ? question.options![correctAnswerIndex]
+              : '';
+          _ttsService.speak('Incorrect. The correct answer is $correctText');
         }
       }
     });
 
-    Future.delayed(Duration(seconds: 2), () {
+    Future.delayed(const Duration(milliseconds: 900), () {
       if (mounted) {
         _nextQuestion();
       }
@@ -151,7 +203,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
   }
 
   void _nextQuestion() {
-    if (_currentQuestionIndex < widget.game.items.length - 1) {
+    if (_currentQuestionIndex < _questions.length - 1) {
       safeSetState(() {
         _currentQuestionIndex++;
         _selectedAnswerIndex = null;
@@ -169,7 +221,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
   Future<void> _finishGame() async {
     final timeTaken = DateTime.now().difference(_startTime!).inSeconds;
-    final totalQuestions = widget.game.items.length;
+    final totalQuestions = _questions.length;
     final isPerfectScore = _score == totalQuestions;
 
     _xpEarned += 50; // Completion bonus per PRD
@@ -185,6 +237,10 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       isPerfectScore: isPerfectScore,
     );
 
+    if (widget.isDailyChallenge) {
+      await DailyChallengeService.markCompleteForToday(childId: widget.game.childId);
+    }
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -196,6 +252,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
             timeTakenSeconds: timeTaken,
             xpEarned: _xpEarned,
             isPerfectScore: isPerfectScore,
+            questionBreakdown: _questionBreakdown,
           ),
         ),
       );
@@ -204,27 +261,21 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currentQuestionIndex >= widget.game.items.length) {
+    if (_currentQuestionIndex >= _questions.length) {
       return Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
-    final question = widget.game.items[_currentQuestionIndex];
-    final progress = (_currentQuestionIndex + 1) / widget.game.items.length;
+    final question = _questions[_currentQuestionIndex];
+    final progress = (_currentQuestionIndex + 1) / _questions.length;
     final isBossQuestion = question.isBoss;
 
     return Stack(
       children: [
         Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        backgroundColor: AppTheme.primaryColor,
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
           IconButton(
             icon: Icon(
@@ -252,7 +303,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Question ${_currentQuestionIndex + 1} of ${widget.game.items.length}',
+                      'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
@@ -289,12 +340,14 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
             ),
           ),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (isBossQuestion)
+            child: Container(
+              color: AppTheme.softBackground,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (isBossQuestion)
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -320,31 +373,83 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
                       ),
                     ),
                   Text(
-                    'Question ${_currentQuestionIndex + 1} of ${widget.game.items.length}',
+                    'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
                     style: GoogleFonts.poppins(fontSize: 16, color: AppTheme.textMedium),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    question.question ?? '',
-                    style: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.bold),
+                    (question.question ?? '').trim().isEmpty
+                        ? 'Question content is loading...'
+                        : (question.question ?? ''),
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textDark,
+                    ),
                   ),
+                  if ((question.question ?? '').trim().isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(
+                        'If this persists, the content may not support this game type. Go back and try a different format.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: AppTheme.textMedium,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 24),
-                  ...(question.options ?? []).asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final option = entry.value;
-                    final isSelected = _selectedAnswerIndex == index;
+                  if ((question.options ?? []).isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      margin: const EdgeInsets.only(top: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'No answer options available',
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textDark,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'This content may not be in quiz format. Try Flashcards or Matching instead.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if ((question.options ?? []).isNotEmpty)
+                    ..._getShuffledOptionIndices(question).asMap().entries.map((entry) {
+                    final displayIndex = entry.key;
+                    final originalIndex = entry.value;
+                    final option = (question.options ?? [])[originalIndex];
+                    final isSelected = _selectedAnswerIndex == displayIndex;
                     final correctAnswerIndex = question.correctAnswer is int 
                         ? question.correctAnswer as int 
                         : (question.correctAnswer is String 
                             ? int.tryParse(question.correctAnswer.toString()) ?? 0 
                             : 0);
-                    final isCorrect = index == correctAnswerIndex;
+                    final isCorrect = originalIndex == correctAnswerIndex;
                     final showResult = _selectedAnswerIndex != null;
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: ElevatedButton(
-                        onPressed: () => _selectAnswer(index),
+                        onPressed: () => _selectAnswer(displayIndex),
                         style: ElevatedButton.styleFrom(
                           padding: EdgeInsets.symmetric(vertical: 16),
                           backgroundColor: showResult
@@ -367,6 +472,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
                 ],
               ),
             ),
+          ),
           ),
         ],
       ),

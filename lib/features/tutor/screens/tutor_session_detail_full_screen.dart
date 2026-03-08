@@ -19,6 +19,7 @@ import '../../../features/sessions/screens/agora_video_session_screen.dart';
 import '../../../features/sessions/widgets/session_location_map.dart';
 import '../../../features/sessions/services/location_checkin_service.dart';
 import '../../../core/widgets/image_picker_bottom_sheet.dart';
+import '../../../features/booking/widgets/report_issue_bottom_sheet.dart';
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 
@@ -626,15 +627,15 @@ class _TutorSessionDetailFullScreenState
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline, size: 18, color: AppTheme.primaryColor),
+          Icon(Icons.shield_outlined, size: 18, color: AppTheme.primaryColor),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Keep app in background — it helps document your session and support smooth payment.',
+              'For onsite sessions, teach in a visible area with an adult at home (especially with minors). If you ever feel unsafe or harassed, end the session and use “Report issue” in the app. Keeping the app in the background also helps document your session and support smooth payment.',
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 color: AppTheme.textDark,
-                height: 1.35,
+                height: 1.4,
               ),
             ),
           ),
@@ -1014,6 +1015,36 @@ class _TutorSessionDetailFullScreenState
                 ),
               ],
             ),
+            // Report issue (individual sessions only; safety_incidents are per individual_session)
+            if (isIndividual) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => showReportIssueBottomSheet(
+                    context: context,
+                    sessionId: sessionId,
+                    role: 'tutor',
+                  ),
+                  icon: const Icon(Icons.warning_amber_rounded, size: 18),
+                  label: Text(
+                    'Something wrong? Report issue',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    side: const BorderSide(color: Colors.orange),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),

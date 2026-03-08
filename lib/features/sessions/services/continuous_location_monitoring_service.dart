@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/features/sessions/services/location_checkin_service.dart';
 
@@ -135,6 +136,23 @@ class ContinuousLocationMonitoringService {
           'resolved': false,
         });
         LogService.debug('[CONTINUOUS_MONITOR] Deviation logged: ${distanceMeters.round()}m from venue');
+        // Notify admins on significant deviation: >100m or more than one deviation
+        final shouldAlert = deviations.length >= 2 || distanceMeters > 100;
+        if (shouldAlert) {
+          try {
+            await NotificationHelperService.notifyAdminsAboutSessionSafetyAlert(
+              sessionId: sessionId,
+              title: 'Location deviation during session',
+              message: 'Tutor is ${distanceMeters.round()}m from venue (${deviations.length} deviation(s) logged).',
+              severity: deviations.length >= 2 || distanceMeters > 100 ? 'warning' : 'info',
+              type: 'location_deviation',
+              metadata: {'distance_meters': distanceMeters.round(), 'deviation_count': deviations.length},
+              sendPush: true,
+            );
+          } catch (e) {
+            LogService.warning('[CONTINUOUS_MONITOR] Failed to notify admins: $e');
+          }
+        }
       }
 
       final count = (attendance['location_check_count'] as int? ?? 0) + 1;

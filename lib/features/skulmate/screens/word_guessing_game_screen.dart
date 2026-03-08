@@ -4,6 +4,7 @@ import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
+import '../widgets/skulmate_game_app_bar.dart';
 import '../services/tts_service.dart';
 import '../services/sound_service.dart';
 import 'dart:math' as math;
@@ -355,7 +356,7 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
   Widget build(BuildContext context) {
     if (_wordItems.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: Text('Word Guessing')),
+        appBar: SkulMateGameAppBar(title: 'Word Guessing'),
         body: Center(child: Text('No words available')),
       );
     }
@@ -365,26 +366,13 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.textDark,
-          ),
-        ),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title,
         actions: [
           IconButton(
             icon: Icon(
               _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
-              color: AppTheme.textDark,
+              color: Colors.white,
               size: 20,
             ),
             onPressed: () {

@@ -138,8 +138,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
   Future<void> _checkPermissionStatus() async {
     if (kIsWeb) {
       // Web: permissions are requested by browser when joining (getUserMedia).
-      setState(() {
-        _showPermissionDialog = true;
+    setState(() {
+      _showPermissionDialog = true;
       });
       return;
     }
@@ -190,10 +190,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
       } else {
         if (defaultTargetPlatform == TargetPlatform.android) {
           final status = await _cameraMicPermissionService.request();
-          setState(() {
-            _cameraPermissionRequested = true;
-            _micPermissionRequested = true;
-            _notificationPermissionRequested = true;
+        setState(() {
+          _cameraPermissionRequested = true;
+          _micPermissionRequested = true;
+          _notificationPermissionRequested = true;
             _permissionsGranted = status.allGranted;
             _permissionDeniedPermanently = status.anyDeniedPermanently;
             _showPermissionDialog = !status.allGranted;
@@ -215,9 +215,9 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             _micPermissionRequested = true;
             _notificationPermissionRequested = true;
             _permissionsGranted = true;
-            _showPermissionDialog = false;
-          });
-          LogService.success('✅ Permissions will be requested by platform when joining');
+          _showPermissionDialog = false;
+        });
+        LogService.success('✅ Permissions will be requested by platform when joining');
         }
       }
     } catch (e) {
@@ -306,10 +306,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     } catch (e) {
       LogService.error('[PREVIEW] Error joining session: $e');
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = 'Failed to join session. Please try again.';
-        });
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Failed to join session. Please try again.';
+      });
       }
     }
   }
@@ -339,14 +339,14 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
 
     return StatusBarUtils.withLightStatusBar(
       Scaffold(
-        backgroundColor: AppTheme.softBackground,
-        body: Stack(
-          children: [
-            SafeArea(
-              child: isMobile ? _buildMobileLayout(name, avatarUrl) : _buildDesktopLayout(name, avatarUrl),
-            ),
-            if (_showPermissionDialog) _buildPermissionDialog(),
-          ],
+      backgroundColor: AppTheme.softBackground,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: isMobile ? _buildMobileLayout(name, avatarUrl) : _buildDesktopLayout(name, avatarUrl),
+          ),
+          if (_showPermissionDialog) _buildPermissionDialog(),
+        ],
         ),
       ),
     );
@@ -657,10 +657,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
         Expanded(
           flex: 1,
           child: Container(
-            color: Colors.white,
+          color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: SingleChildScrollView(
-              child: _buildJoinOptions(),
+          child: _buildJoinOptions(),
             ),
           ),
         ),
@@ -785,8 +785,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             style: GoogleFonts.poppins(
               fontSize: 14,
               color: Colors.grey[700],
-            ),
-          ),
+                  ),
+                ),
         ),
         if (!_permissionsGranted) ...[
           TextButton(
@@ -1052,7 +1052,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: isActive
+            color: isActive 
                 ? deepBlue.withOpacity(0.08)
                 : Colors.red.withOpacity(0.12),
             shape: BoxShape.circle,

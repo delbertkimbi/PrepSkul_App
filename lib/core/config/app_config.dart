@@ -39,7 +39,7 @@ class AppConfig {
   /// 
   /// Set to `false` until Google Cloud Console verification is complete.
   /// This only affects user authentication, not Google Calendar OAuth.
-  static const bool enableGoogleSignIn = false; // ← Disabled until Google verification complete
+  static const bool enableGoogleSignIn = true; // Google Sign-In enabled (uses basic scopes only)
   
   /// Enable/disable Phone Sign-In for user authentication
   /// 
@@ -51,7 +51,7 @@ class AppConfig {
   /// 
   /// Set to `true` to enable SkulMate (game generation and library).
   /// Set to `false` to disable SkulMate in production.
-  static const bool enableSkulMate = true; // ← Disabled in production until RLS issues are resolved
+  static const bool enableSkulMate = false; // ← Disabled in production until RLS issues are resolved
 
   /// Enable/disable PrepSkul VA (session summary, analysis, notifications)
   ///
