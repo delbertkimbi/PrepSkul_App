@@ -51,6 +51,7 @@ import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
 import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
+import 'package:prepskul/features/sessions/screens/prepskul_va_info_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'dart:async';
 import 'package:prepskul/core/services/supabase_service.dart';

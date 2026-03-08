@@ -691,6 +691,29 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           ),
         ),
         const SizedBox(height: 12),
+        Text(
+          "PrepSkul's Virtual Assistant will join the session to monitor and support.",
+          style: GoogleFonts.poppins(
+            fontSize: 12,
+            color: Colors.grey[700],
+          ),
+        ),
+        const SizedBox(height: 6),
+        GestureDetector(
+          onTap: () {
+            Navigator.of(context).pushNamed('/prepskulva');
+          },
+          child: Text(
+            "About PrepSkul's VA",
+            style: GoogleFonts.poppins(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.primaryColor,
+              decoration: TextDecoration.underline,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         if (_connectionQuality != null) ...[
           _buildConnectionResult(),
           const SizedBox(height: 12),

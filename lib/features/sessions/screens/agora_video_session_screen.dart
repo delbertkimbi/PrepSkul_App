@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -90,6 +90,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   // PrepSkul VA (Virtual Assistant) - UI-only monitoring indicator
   bool _showVaAvatar = false;
   bool _vaJoinNotificationShown = false;
+  /// Mobile web: show VA joined banner in overlay (above controls) so it's visible
+  bool _vaBannerVisible = false;
+  Timer? _vaBannerHideTimer;
   
   // Stream subscriptions
   StreamSubscription<AgoraSessionState>? _stateSubscription;
@@ -134,13 +137,37 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   
   // Debounce timer for video state changes (prevents flickering)
   Timer? _videoStateDebounceTimer;
-  
+
+  /// On mobile web, status/control bar is rendered via Overlay so it stays above Agora platform view after mute.
+  OverlayEntry? _mobileWebOverlayEntry;
+
+  /// Mobile web: last time we received any activity from remote (video/audio/join); used to detect "user left" when they close tab.
+  DateTime? _lastRemoteActivityAt;
+  Timer? _remoteLeftCheckTimer;
+  static const Duration _remoteLeftInactivityThreshold = Duration(seconds: 60);
+  static const Duration _remoteLeftCheckInterval = Duration(seconds: 15);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _scheduleMobileWebOverlayRefresh();
+  }
+
+  void _scheduleMobileWebOverlayRefresh() {
+    if (_mobileWebOverlayEntry != null && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mobileWebOverlayEntry?.markNeedsBuild();
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _initializeSession();
     _setupListeners();
     _setupTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _insertMobileWebOverlayIfNeeded());
   }
 
   @override
@@ -173,11 +200,108 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     
     // Cancel debounce timer
     _videoStateDebounceTimer?.cancel();
-    
+
+    _remoteLeftCheckTimer?.cancel();
+    _remoteLeftCheckTimer = null;
+    _removeMobileWebOverlay();
+
     // Stop timer
     _timerService.stopSession();
     // Don't dispose AgoraService here - it's a singleton
     super.dispose();
+  }
+
+  void _insertMobileWebOverlayIfNeeded() {
+    if (!mounted || !kIsWeb || !platform_utils.PlatformUtils.isMobileWeb) return;
+    if (_mobileWebOverlayEntry != null) return;
+    _mobileWebOverlayEntry = OverlayEntry(
+      builder: (context) => SizedBox.expand(
+        child: RepaintBoundary(
+          child: Material(
+            type: MaterialType.transparency,
+            elevation: 32,
+            child: IgnorePointer(
+              ignoring: false,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _buildStatusBar(),
+                  _buildControlBar(),
+                  // VA joined banner - above controls so clearly visible on mobile web
+                  if (_vaBannerVisible)
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 56,
+                      left: 16,
+                      right: 16,
+                      child: Center(
+                        child: Material(
+                          color: AppTheme.primaryColor,
+                          borderRadius: BorderRadius.circular(8),
+                          elevation: 8,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            child: Text(
+                              "PrepSkul VA has joined the session.",
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(_mobileWebOverlayEntry!);
+    LogService.info('[MOBILE_WEB] In-call overlay inserted into Overlay layer');
+  }
+
+  void _removeMobileWebOverlay() {
+    _vaBannerHideTimer?.cancel();
+    _vaBannerHideTimer = null;
+    _mobileWebOverlayEntry?.remove();
+    _mobileWebOverlayEntry = null;
+  }
+
+  /// On mobile web, we ignore onUserOffline (to avoid spurious "left" when local mutes).
+  /// Use a timeout: if no remote activity for [_remoteLeftInactivityThreshold], treat as left.
+  void _startRemoteLeftCheckTimerIfNeeded() {
+    if (!kIsWeb || !platform_utils.PlatformUtils.isMobileWeb) return;
+    _remoteLeftCheckTimer?.cancel();
+    _remoteLeftCheckTimer = Timer.periodic(_remoteLeftCheckInterval, (_) {
+      if (!mounted || _remoteUID == null || _lastRemoteActivityAt == null) return;
+      if (_sessionState != AgoraSessionState.connected) return;
+      final elapsed = DateTime.now().difference(_lastRemoteActivityAt!);
+      if (elapsed >= _remoteLeftInactivityThreshold) {
+        _remoteLeftCheckTimer?.cancel();
+        _remoteLeftCheckTimer = null;
+        final leftUid = _remoteUID;
+        safeSetState(() {
+          _remoteUserLeft = true;
+          _remoteUID = null;
+          _remoteConnectionUnstable = false;
+          _layout = VideoLayout.spotlight;
+        });
+        LogService.info('Mobile web: remote marked left after ${elapsed.inSeconds}s inactivity (uid=$leftUid)');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Remote participant left', style: GoogleFonts.poppins(fontSize: 12)),
+              backgroundColor: Colors.blueGrey.shade800,
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    });
   }
 
   /// Initialize Agora session
@@ -285,20 +409,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         userMessage = userMessage.substring(11);
       }
       
-      // Provide user-friendly error messages
+      // Provide user-friendly error messages (no technical details)
       if (userMessage.contains('timeout') || userMessage.contains('unreachable') || userMessage.contains('slow to respond')) {
-        userMessage = 'Connection timeout. The video service is taking too long to respond.\n\n'
-            'Please check:\n'
-            '• Your internet connection\n'
-            '• The API server is running\n'
-            '• Try again in a moment\n\n'
-            'If the problem persists, please contact support.';
-      } else if (userMessage.contains('CORS') || userMessage.contains('cors') || userMessage.contains('Cross-Origin')) {
-        userMessage = 'Connection blocked. This may be a browser security issue.\n\n'
-            'Please try:\n'
-            '• Refreshing the page\n'
-            '• Using a different browser\n'
-            '• Contacting support if the issue persists';
+        userMessage = 'Poor network connection. Please check your internet and try again.';
+      } else if (userMessage.contains('CORS') || userMessage.contains('cors') || userMessage.contains('Cross-Origin') ||
+          userMessage.contains('API URL') || userMessage.contains('origin')) {
+        userMessage = 'Poor network connection. Please check your internet and try again.';
       } else if (userMessage.contains('Unauthorized') || userMessage.contains('401')) {
         userMessage = 'Session expired. Please log in again.';
       } else if (userMessage.contains('Access denied') || userMessage.contains('403')) {
@@ -326,11 +442,16 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             '• Chrome/Edge: Click the padlock icon → Site settings → Allow camera and microphone\n'
             '• Firefox: Click the padlock icon → More Information → Permissions → Allow\n\n'
             'After allowing permissions, refresh the page and try again.';
-      } else if (userMessage.contains('localhost:3000')) {
-        // If error mentions localhost, suggest checking if server is running
-        userMessage = 'Unable to connect to video service.\n\n'
-            'The API server may not be running.\n'
-            'Please ensure the Next.js server is started and try again.';
+      } else if (userMessage.contains('localhost:3000') || userMessage.contains('API URL') || userMessage.contains('Check:')) {
+        userMessage = 'Poor network connection. Please check your internet and try again.';
+      } else if (userMessage.contains('Something went wrong on our end')) {
+        userMessage = 'Something went wrong on our end. Please try again later.';
+      } else if (userMessage.contains('Connection failed') || userMessage.contains('Unable to connect') ||
+          userMessage.contains('Connection timed out') || userMessage.contains('Connection error')) {
+        // Already user-friendly from token service
+      } else if (userMessage.contains('Failed to') || userMessage.contains('Error') ||
+          userMessage.contains('Exception') || userMessage.contains('http')) {
+        userMessage = 'Connection failed. Please check your internet and try again.';
       }
       
       safeSetState(() {
@@ -374,12 +495,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         _remoteUID = uid;
         _lastRemoteUID = uid; // Keep for mobile web main-area lock when forcing remote view
         _remoteUserLeft = false; // User joined, reset left state
+        _lastRemoteActivityAt = DateTime.now(); // For mobile web "user left" timeout
         // Reset video muted state - assume camera is ON initially
         // The actual state will be updated via onRemoteVideoStateChanged callback
         _remoteVideoMuted = false;
         _remoteAudioMuted = false;
         _showVaAvatar = true; // PrepSkul VA "joins" when both participants are in the call
       });
+      _startRemoteLeftCheckTimerIfNeeded();
       
       // Send our current camera state to the remote user via data channel
       // This ensures they know if we have our camera off already
@@ -396,28 +519,38 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       // One-time on-screen banner: "PrepSkul VA has joined" visible 5–8s for both users
       if (!_vaJoinNotificationShown && mounted) {
         _vaJoinNotificationShown = true;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  "PrepSkul VA has joined the session.",
-                  style: GoogleFonts.poppins(fontSize: 14),
+        final isMobileWeb = kIsWeb && platform_utils.PlatformUtils.isMobileWeb;
+        if (isMobileWeb) {
+          // On mobile web, show banner in overlay (above controls) so it's clearly visible
+          safeSetState(() => _vaBannerVisible = true);
+          _vaBannerHideTimer?.cancel();
+          _vaBannerHideTimer = Timer(const Duration(seconds: 6), () {
+            if (mounted) safeSetState(() => _vaBannerVisible = false);
+          });
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    "PrepSkul VA has joined the session.",
+                    style: GoogleFonts.poppins(fontSize: 14),
+                  ),
+                  backgroundColor: AppTheme.primaryColor,
+                  duration: const Duration(seconds: 6),
+                  behavior: SnackBarBehavior.floating,
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                 ),
-                backgroundColor: AppTheme.primaryColor,
-                duration: const Duration(seconds: 6),
-                behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              ),
-            );
-          }
-        });
+              );
+            }
+          });
+        }
       }
     });
 
     _errorSubscription = _agoraService.errorStream.listen((error) {
       safeSetState(() {
-        _errorMessage = error;
+        _errorMessage = _toUserFriendlyError(error);
         _sessionState = AgoraSessionState.error;
       });
     });
@@ -427,6 +560,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       final uid = data['uid'] as int;
       final muted = data['muted'] as bool;
       if (uid == _remoteUID) {
+        safeSetState(() => _lastRemoteActivityAt = DateTime.now());
         // 250ms debounce: responsive to user mute/unmute, prevents rapid flicker from SDK events
         _videoStateDebounceTimer?.cancel();
         _videoStateDebounceTimer = Timer(const Duration(milliseconds: 250), () {
@@ -445,6 +579,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       final muted = data['muted'] as bool;
       if (uid == _remoteUID) {
         safeSetState(() {
+          _lastRemoteActivityAt = DateTime.now();
           _remoteAudioMuted = muted;
         });
       }
@@ -474,6 +609,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
           return;
         }
         final leftUid = _remoteUID;
+        _remoteLeftCheckTimer?.cancel();
+        _remoteLeftCheckTimer = null;
         safeSetState(() {
           _remoteUserLeft = true;
           _remoteUID = null;
@@ -498,9 +635,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     _remoteNetworkQualitySubscription = _agoraService.remoteNetworkQualityStream.listen((data) {
       final uid = data['uid'] as int;
       final isUnstable = data['isUnstable'] as bool? ?? false;
-      
+
       if (uid == _remoteUID) {
         safeSetState(() {
+          _lastRemoteActivityAt = DateTime.now();
           _remoteConnectionUnstable = isUnstable;
         });
         
@@ -696,7 +834,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
   /// Diagnostic overlay when video is toggled on web - helps trace spurious "remote left" / UI issues.
   void _showVideoMuteDiagnostic(String? error) {
-    if (!mounted || !kIsWeb) return;
+    // Only show this diagnostic in debug builds; never surface raw backend details in production.
+    if (!mounted || !kIsWeb || !kDebugMode) return;
     final msg = error != null
         ? 'Video mute error: $error'
         : 'Video ${_isVideoEnabled ? "on" : "off"}. remoteUID=$_remoteUID, remoteLeft=$_remoteUserLeft';
@@ -1170,37 +1309,38 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                         Positioned(
                           top: MediaQuery.of(context).padding.top +
                               // Mobile web: keep lower for safe separation from status bar.
-                              // Desktop web: slightly below header; native mobile: similar to mobile web.
+                              // Desktop web: well below header for better view; native mobile: similar to mobile web.
                               (kIsWeb && platform_utils.PlatformUtils.isMobileWeb
                                   ? 88
                                   : kIsWeb
-                                      ? 56
+                                      ? 72
                                       : 80),
                           right: 12,
                           child: const PrepSkulVAAvatar(size: 48),
                         ),
                       if (_errorMessage != null) _buildErrorOverlay(),
                       if (_sessionState == AgoraSessionState.joining) _buildLoadingOverlay(),
-                      // CRITICAL: Status bar and control bar MUST be last - ensures they stay on top
-                      // of video/Agora platform views on mobile web (avoids controls disappearing on mute).
-                      Positioned.fill(
-                        child: RepaintBoundary(
-                          child: Material(
-                            type: MaterialType.transparency,
-                            elevation: 32,
-                            child: IgnorePointer(
-                              ignoring: false,
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  _buildStatusBar(),
-                                  _buildControlBar(),
-                                ],
+                      // On mobile web, status/control bar are rendered via OverlayEntry so they stay above Agora platform view.
+                      // On other platforms, keep overlay as last child in Stack.
+                      if (!kIsWeb || !platform_utils.PlatformUtils.isMobileWeb)
+                        Positioned.fill(
+                          child: RepaintBoundary(
+                            child: Material(
+                              type: MaterialType.transparency,
+                              elevation: 32,
+                              child: IgnorePointer(
+                                ignoring: false,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    _buildStatusBar(),
+                                    _buildControlBar(),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -1213,6 +1353,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   /// When joining, only a dark container is shown; the single "Connecting..." is in the overlay.
   Widget _buildMainVideoArea() {
     final engine = _agoraService.engine;
+    final bool isMobileWeb = kIsWeb && platform_utils.PlatformUtils.isMobileWeb;
     final isJoining = _sessionState == AgoraSessionState.joining;
     if (engine == null || isJoining) {
       return Container(color: _kSoftDark);
@@ -1289,6 +1430,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     // If remote user joined: show their video only when unmuted; when muted show only their profile (no black video behind)
     // CRITICAL: When _remoteUID != null && !_remoteUserLeft, main area must show REMOTE only (never local).
     // Key is stable and does not depend on local _isVideoEnabled so toggling own camera on web does not swap views.
+    // On mobile web specifically, we *always* keep the main area dedicated to the remote when a remote UID exists
+    // so that tapping the local mute button never swaps the main canvas to the local preview.
     if (_remoteUID != null && !_remoteUserLeft) {
       if (_remoteVideoMuted || _remoteScreenOff) {
         return RepaintBoundary(
@@ -2224,6 +2367,29 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     );
   }
 
+  /// Convert technical error messages to user-friendly ones
+  String _toUserFriendlyError(String error) {
+    String msg = error;
+    if (msg.startsWith('Failed to join: ')) msg = msg.substring(15);
+    if (msg.startsWith('Exception: ')) msg = msg.substring(11);
+    if (msg.contains('CORS') || msg.contains('cors') || msg.contains('API URL') || msg.contains('origin') || msg.contains('Check:')) {
+      return 'Poor network connection. Please check your internet and try again.';
+    }
+    if (msg.contains('timeout') || msg.contains('unreachable') || msg.contains('slow to respond')) {
+      return 'Connection timed out. Please check your connection and try again.';
+    }
+    if (msg.contains('Unauthorized') || msg.contains('401')) return 'Session expired. Please log in again.';
+    if (msg.contains('Access denied') || msg.contains('403')) return 'You do not have access to this session.';
+    if (msg.contains('Something went wrong on our end')) return msg;
+    if (msg.contains('Connection failed') || msg.contains('Unable to connect') || msg.contains('Connection timed out') || msg.contains('Connection error') || msg.contains('Poor network')) {
+      return msg;
+    }
+    if (msg.contains('permission') || msg.contains('Permission') || msg.contains('NotAllowedError') || msg.contains('NotAllowed')) {
+      return 'Camera and microphone access is required. Please allow access in your browser settings and refresh the page.';
+    }
+    return 'Connection failed. Please check your internet and try again.';
+  }
+
   /// Build error overlay
   Widget _buildErrorOverlay() {
     return Container(
@@ -2239,10 +2405,22 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 48),
+              Icon(
+                _errorMessage != null && (_errorMessage!.contains('network') || _errorMessage!.contains('connection') || _errorMessage!.contains('internet'))
+                    ? Icons.wifi_off_rounded
+                    : Icons.error_outline,
+                color: _errorMessage != null && _errorMessage!.contains('Session expired')
+                    ? Colors.orange
+                    : Colors.red,
+                size: 48,
+              ),
               const SizedBox(height: 16),
               Text(
-                'Error',
+                _errorMessage != null && _errorMessage!.contains('Session expired')
+                    ? 'Session Expired'
+                    : _errorMessage != null && (_errorMessage!.contains('network') || _errorMessage!.contains('connection') || _errorMessage!.contains('internet') || _errorMessage!.contains('Poor'))
+                        ? 'Connection Issue'
+                        : 'Error',
                 style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -2250,7 +2428,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                _errorMessage ?? 'Unknown error',
+                _errorMessage ?? 'Something went wrong. Please try again.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.poppins(fontSize: 14),
               ),
