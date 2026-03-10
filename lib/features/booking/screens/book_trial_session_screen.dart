@@ -1504,6 +1504,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                   children: _availableTimeSlots.map((time) {
                     final isSelected = _selectedTime == time;
                     final formattedTime = _formatTime(time);
+                    final isPastForSelectedDate = _isPastSlotForSelectedDate(time);
                     // Check if this time slot is blocked
                     final isBlocked = _blockedTimeSlots.any((blocked) {
                       // Convert blocked time to match format
@@ -1528,7 +1529,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                     });
 
                     return GestureDetector(
-                      onTap: isBlocked
+                      onTap: (isBlocked || isPastForSelectedDate)
                           ? null
                           : () => safeSetState(() => _selectedTime = time),
                       child: Container(
@@ -1537,14 +1538,14 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                           vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: isBlocked
+                          color: (isBlocked || isPastForSelectedDate)
                               ? Colors.grey[200]
                               : (isSelected
                                     ? AppTheme.primaryColor
                                     : Colors.white),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: isBlocked
+                            color: (isBlocked || isPastForSelectedDate)
                                 ? Colors.grey[300]!
                                 : (isSelected
                                       ? AppTheme.primaryColor
@@ -1555,7 +1556,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (isBlocked)
+                            if (isBlocked || isPastForSelectedDate)
                               Icon(
                                 Icons.block,
                                 size: 16,
@@ -1569,7 +1570,7 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                color: isBlocked
+                                color: (isBlocked || isPastForSelectedDate)
                                     ? Colors.grey[400]
                                     : (isSelected
                                           ? Colors.white
@@ -2196,6 +2197,49 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
       return '${hour - 12}:$minute PM';
     } catch (e) {
       return time;
+    }
+  }
+
+  bool _isPastSlotForSelectedDate(String slot) {
+    final now = DateTime.now();
+    final selected = _selectedDate;
+    if (selected == null) return false;
+
+    final isToday = selected.year == now.year &&
+        selected.month == now.month &&
+        selected.day == now.day;
+    if (!isToday) return false;
+
+    try {
+      int hour;
+      int minute;
+      final normalized = slot.trim().toUpperCase();
+
+      if (normalized.contains('AM') || normalized.contains('PM')) {
+        final match = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)').firstMatch(normalized);
+        if (match == null) return false;
+        hour = int.parse(match.group(1)!);
+        minute = int.parse(match.group(2)!);
+        final meridian = match.group(3)!;
+        if (meridian == 'PM' && hour != 12) hour += 12;
+        if (meridian == 'AM' && hour == 12) hour = 0;
+      } else {
+        final parts = normalized.split(':');
+        if (parts.length < 2) return false;
+        hour = int.tryParse(parts[0]) ?? 0;
+        minute = int.tryParse(parts[1].split(' ')[0]) ?? 0;
+      }
+
+      final slotTime = DateTime(
+        selected.year,
+        selected.month,
+        selected.day,
+        hour,
+        minute,
+      );
+      return !slotTime.isAfter(now);
+    } catch (_) {
+      return false;
     }
   }
 
