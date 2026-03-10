@@ -121,8 +121,9 @@ class AgoraService {
   static const _maxOfflineEvents = 3; // Number of offline events before confirming left
   DateTime? _lastLocalVideoMuteTime; // On web, Agora can fire spurious userOffline when local mutes - ignore if within window
   static const _webMuteOfflineIgnoreWindow = Duration(seconds: 5);
-  /// On web for Quit, short grace so refresh/close tab is treated as "user left" quickly.
-  static const _webQuitGracePeriod = Duration(seconds: 5);
+  /// On web for Quit, keep a slightly longer grace to absorb transient mobile-web
+  /// reconnect glitches that can otherwise look like a hard leave.
+  static const _webQuitGracePeriod = Duration(seconds: 12);
 
   /// True if local user muted video within the short ignore window. Used by UI to suppress "remote left" on mobile web when Agora fires spurious Quit.
   bool get didLocalUserMuteVideoRecently {
@@ -1982,13 +1983,9 @@ class AgoraService {
           switch (reason) {
             case UserOfflineReasonType.userOfflineQuit:
               reasonText = 'User left normally';
-              // After we have filtered out spurious web events that happen
-              // immediately after *local* video mute, a remaining Quit means
-              // the remote user has actually closed or refreshed their tab.
-              // Treat this as a definitive "user left" on all platforms so
-              // the other side sees \"left the call\" instead of just
-              // \"camera off\" while the SDK tears down the old connection.
-              isDefinitiveLeave = true;
+              // On native, Quit is definitive. On web/mobile-web, transient SDK/network
+              // churn can emit Quit briefly and then recover, so route through grace.
+              isDefinitiveLeave = !kIsWeb;
               break;
             case UserOfflineReasonType.userOfflineDropped:
               reasonText = 'User connection dropped (network issue)';
@@ -2071,6 +2068,7 @@ class AgoraService {
           
           // If we haven't detected this user yet, add them
           _userJoinedController.add(remoteUid);
+          _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
         },
         // Also detect when remote audio is first decoded
         onFirstRemoteAudioDecoded: (RtcConnection connection, int remoteUid, int elapsed) {
