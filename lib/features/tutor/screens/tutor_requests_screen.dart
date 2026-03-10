@@ -30,6 +30,40 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   bool _isLoading = true;
   String _selectedFilter = 'all'; // all, pending, approved, rejected
 
+  bool _isPastRequest(BookingRequest request) {
+    final now = DateTime.now();
+    final cutoff = now.subtract(const Duration(days: 30));
+    final status = request.status.toLowerCase();
+
+    // Always treat old records as past-history.
+    if (request.createdAt.isBefore(cutoff)) return true;
+
+    // Terminal states should live in Past.
+    if (status == 'rejected' || status == 'cancelled' || status == 'completed' || status == 'expired') {
+      return true;
+    }
+
+    // Approved requests are considered past once there is evidence payment
+    // completed and the associated scheduled date has already passed.
+    final payment = (request.paymentStatus ?? '').toLowerCase();
+    final isPaid = payment == 'paid' || payment == 'completed';
+    if (status == 'approved' && isPaid && request.scheduledDate != null) {
+      final endOfDay = DateTime(
+        request.scheduledDate!.year,
+        request.scheduledDate!.month,
+        request.scheduledDate!.day,
+        23,
+        59,
+        59,
+      );
+      if (now.isAfter(endOfDay)) return true;
+    }
+
+    return false;
+  }
+
+  bool _isActiveRequest(BookingRequest request) => !_isPastRequest(request);
+
   @override
   void initState() {
     super.initState();
@@ -45,12 +79,19 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
         status: null, // Always get all requests regardless of filter
       );
 
+      // Split active vs past first so main tabs don't keep old/handled records.
+      final activeRequests = allRequests.where(_isActiveRequest).toList();
+      final pastRequests = allRequests.where(_isPastRequest).toList();
+
       // Filter requests based on selected filter
       List<BookingRequest> filteredRequests;
       if (_selectedFilter == 'all') {
-        filteredRequests = List.from(allRequests);
+        filteredRequests = List.from(activeRequests);
+      } else if (_selectedFilter == 'past') {
+        filteredRequests = List.from(pastRequests);
       } else {
-        filteredRequests = allRequests.where((r) => r.status == _selectedFilter).toList();
+        final source = _selectedFilter == 'rejected' ? pastRequests : activeRequests;
+        filteredRequests = source.where((r) => r.status == _selectedFilter).toList();
       }
 
       // Sort by priority for "all" tab: pending with conflicts first, then pending, then others
@@ -287,6 +328,11 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
                     'rejected',
                     'Rejected (${_getCountForStatus('rejected')})',
                   ),
+                  const SizedBox(width: 8),
+                  _buildFilterChip(
+                    'past',
+                    'Past (${_getCountForStatus('past')})',
+                  ),
                 ],
               ),
             ),
@@ -342,7 +388,11 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   }
 
   int _getCountForStatus(String status) {
-    if (status == 'all') return _allRequests.length;
+    if (status == 'all') return _allRequests.where(_isActiveRequest).length;
+    if (status == 'past') return _allRequests.where(_isPastRequest).length;
+    if (status == 'rejected') {
+      return _allRequests.where((r) => _isPastRequest(r) && r.status == status).length;
+    }
     return _allRequests.where((r) => r.status == status).length;
   }
 

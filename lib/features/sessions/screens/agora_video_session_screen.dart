@@ -70,6 +70,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   // Remote state tracking
   bool _remoteVideoMuted = false;
   bool _remoteAudioMuted = false;
+  bool _remoteVideoReady = false;
   bool _isScreenSharing = false;
   bool _remoteIsScreenSharing = false;
   bool _remoteUserLeft = false;
@@ -560,9 +561,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         _lastRemoteUID = uid; // Keep for mobile web main-area lock when forcing remote view
         _remoteUserLeft = false; // User joined, reset left state
         _lastRemoteActivityAt = DateTime.now(); // For mobile web "user left" timeout
-        // Assume camera ON until we get evidence it's off (onRemoteVideoStateChanged stopped/muted or data channel camera_off).
-        // Defaulting to true caused both ends to show "Camera is off" for the remote when cameras were actually on.
+        // Keep remote as "not ready" until we receive explicit active media events.
+        // This avoids a blank main surface between user join and first decoded frame.
         _remoteVideoMuted = false;
+        _remoteVideoReady = false;
         _remoteAudioMuted = false;
         _showVaAvatar = true; // PrepSkul VA "joins" when both participants are in the call
       });
@@ -632,6 +634,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             if (mounted && uid == _remoteUID) {
               _scheduleUiUpdate(() {
                 _remoteVideoMuted = muted;
+                if (!muted) {
+                  _remoteVideoReady = true;
+                }
               });
             }
           });
@@ -696,6 +701,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         // switches to local/profile instead of rendering a blank remote view.
         _lastRemoteUID = leftUid;
         _remoteUID = null;
+        _remoteVideoReady = false;
         _remoteConnectionUnstable = false;
         _layout = VideoLayout.spotlight;
       });
@@ -1457,15 +1463,13 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           right: 12,
                           child: const PrepSkulVAAvatar(size: 48),
                         ),
-                      if (_errorMessage != null) _buildErrorOverlay(),
-                      if (_sessionState == AgoraSessionState.joining) _buildLoadingOverlay(),
                       // Status/control bar: on mobile web render IN the Stack so they stay visible.
                       // Listener with opaque ensures this overlay is in the hit-test path on web (platform view
                       // can steal focus otherwise; opaque makes overlay receive taps so buttons work).
                       Positioned.fill(
                         child: RepaintBoundary(
                           child: Listener(
-                            behavior: HitTestBehavior.opaque,
+                            behavior: HitTestBehavior.deferToChild,
                             child: Material(
                               type: MaterialType.transparency,
                               elevation: 32,
@@ -1507,6 +1511,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           ),
                         ),
                       ),
+                      // Keep global blocking overlays ABOVE status/control layer so
+                      // their buttons (e.g. Retry) always receive taps.
+                      if (_errorMessage != null) _buildErrorOverlay(),
+                      if (_sessionState == AgoraSessionState.joining) _buildLoadingOverlay(),
                       if (_showReactionsPanel) _buildReactionsPanel(),
                     ],
                   ),
@@ -1743,6 +1751,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   }) {
     final showOverlay = forceOverlay ||
         _remoteUserLeft ||
+        !_remoteVideoReady ||
         _remoteVideoMuted ||
         _remoteScreenOff ||
         _remoteConnectionUnstable ||
