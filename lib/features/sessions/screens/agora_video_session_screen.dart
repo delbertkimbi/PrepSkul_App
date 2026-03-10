@@ -154,6 +154,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   // This helps fix cases where the bottom-right self-view stays blank on first join
   // until the user toggles the camera.
   Timer? _localPreviewWatchdogTimer;
+  DateTime? _lastLocalPreviewEnsureAt;
+  bool _localPreviewEnsureInProgress = false;
 
   /// On mobile web, status/control bar is rendered via Overlay so it stays above Agora platform view after mute.
   OverlayEntry? _mobileWebOverlayEntry;
@@ -570,7 +572,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         _remoteAudioMuted = false;
         _showVaAvatar = true; // PrepSkul VA "joins" when both participants are in the call
       });
-      if (_isVideoEnabled) {
+      if (_isVideoEnabled && !_localVideoReady) {
         _ensureLocalPreviewActiveNow();
       }
       _startRemoteLeftCheckTimerIfNeeded();
@@ -839,7 +841,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       _scheduleUiUpdate(() {
         if (connected && _localConnectionReconnecting) {
           _connectionRestoredAt = DateTime.now();
-          if (_isVideoEnabled) {
+          if (_isVideoEnabled && !_localVideoReady) {
             _ensureLocalPreviewActiveNow();
           }
           // Clear "Connection restored" after a few seconds
@@ -954,11 +956,16 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       // Run asynchronously so we do not block the timer callback.
       Future.microtask(() async {
         try {
-          if (kIsWeb) {
-            await engine.startPreview();
-            await Future.delayed(const Duration(milliseconds: 150));
+          if (!_localVideoReady) {
+            if (kIsWeb && !platform_utils.PlatformUtils.isMobileWeb) {
+              await engine.startPreview();
+              await Future.delayed(const Duration(milliseconds: 150));
+            }
+            await engine.muteLocalVideoStream(false);
+            _scheduleUiUpdate(() {
+              _localVideoReady = true;
+            });
           }
-          await engine.muteLocalVideoStream(false);
           LogService.info('[SESSION] Local preview watchdog reapplied preview successfully');
         } catch (e) {
           LogService.warning('[SESSION] Local preview watchdog failed: $e');
@@ -967,9 +974,19 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     });
   }
 
-  Future<void> _ensureLocalPreviewActiveNow() async {
+  Future<void> _ensureLocalPreviewActiveNow({bool force = false}) async {
     final engine = _agoraService.engine;
     if (engine == null || !_isVideoEnabled) return;
+    if (_localPreviewEnsureInProgress) return;
+    final now = DateTime.now();
+    final isMobileWeb = kIsWeb && platform_utils.PlatformUtils.isMobileWeb;
+    if (!force &&
+        _localVideoReady &&
+        _lastLocalPreviewEnsureAt != null &&
+        now.difference(_lastLocalPreviewEnsureAt!) < const Duration(seconds: 8)) {
+      return;
+    }
+    _localPreviewEnsureInProgress = true;
     try {
       await engine.setupLocalVideo(
         const agora_rtc_engine.VideoCanvas(
@@ -977,13 +994,18 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
           sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
         ),
       );
-      await engine.startPreview();
+      if (!isMobileWeb || force || !_localVideoReady) {
+        await engine.startPreview();
+      }
       await engine.muteLocalVideoStream(false);
+      _lastLocalPreviewEnsureAt = now;
       _scheduleUiUpdate(() {
         _localVideoReady = true;
       });
     } catch (e) {
       LogService.warning('ensureLocalPreviewActiveNow failed: $e');
+    } finally {
+      _localPreviewEnsureInProgress = false;
     }
   }
 
@@ -1004,7 +1026,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               _isVideoEnabled = _agoraService.isVideoEnabled();
             });
             if (_isVideoEnabled) {
-              _ensureLocalPreviewActiveNow();
+              _ensureLocalPreviewActiveNow(force: true);
               _showInfo('Camera is back on');
             }
             if (kIsWeb) _showVideoMuteDiagnostic(toggleError);
@@ -1677,6 +1699,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     if (_remoteUID != null && !_remoteUserLeft) {
       final connection = _agoraService.currentConnection;
       final showRemoteOverlay = _remoteVideoMuted ||
+          !_remoteVideoReady ||
           _remoteScreenOff ||
           _remoteConnectionUnstable ||
           (_remoteUnstableStickyUntil != null &&
