@@ -71,6 +71,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   bool _remoteVideoMuted = false;
   bool _remoteAudioMuted = false;
   bool _remoteVideoReady = false;
+  bool? _lastRemoteVideoMutedState;
+  bool? _lastRemoteAudioMutedState;
   bool _isScreenSharing = false;
   bool _remoteIsScreenSharing = false;
   bool _remoteUserLeft = false;
@@ -568,6 +570,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         _remoteAudioMuted = false;
         _showVaAvatar = true; // PrepSkul VA "joins" when both participants are in the call
       });
+      if (_isVideoEnabled) {
+        _ensureLocalPreviewActiveNow();
+      }
       _startRemoteLeftCheckTimerIfNeeded();
       
       // Send our current camera state to the remote user via data channel
@@ -624,6 +629,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       final uid = data['uid'] as int;
       final muted = data['muted'] as bool;
       if (uid == _remoteUID) {
+        final previous = _lastRemoteVideoMutedState;
+        _lastRemoteVideoMutedState = muted;
         _scheduleUiUpdate(() {
           _lastRemoteActivityAt = DateTime.now();
           // 250ms debounce inside the coalesced update: responsive to user
@@ -641,6 +648,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             }
           });
         });
+        if (previous == true && muted == false) {
+          _showInfo(widget.userRole == 'tutor'
+              ? 'Learner camera is back on'
+              : 'Tutor camera is back on');
+        }
       }
     });
 
@@ -650,10 +662,17 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       final uid = data['uid'] as int;
       final muted = data['muted'] as bool;
       if (uid == _remoteUID) {
+        final previous = _lastRemoteAudioMutedState;
+        _lastRemoteAudioMutedState = muted;
         _scheduleUiUpdate(() {
           _lastRemoteActivityAt = DateTime.now();
           _remoteAudioMuted = muted;
         });
+        if (previous == true && muted == false) {
+          _showInfo(widget.userRole == 'tutor'
+              ? 'Learner microphone unmuted'
+              : 'Tutor microphone unmuted');
+        }
       }
     });
 
@@ -820,6 +839,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       _scheduleUiUpdate(() {
         if (connected && _localConnectionReconnecting) {
           _connectionRestoredAt = DateTime.now();
+          if (_isVideoEnabled) {
+            _ensureLocalPreviewActiveNow();
+          }
           // Clear "Connection restored" after a few seconds
           Future.delayed(_connectionRestoredDisplayDuration, () {
             if (mounted) {
@@ -945,6 +967,26 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     });
   }
 
+  Future<void> _ensureLocalPreviewActiveNow() async {
+    final engine = _agoraService.engine;
+    if (engine == null || !_isVideoEnabled) return;
+    try {
+      await engine.setupLocalVideo(
+        const agora_rtc_engine.VideoCanvas(
+          uid: 0,
+          sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
+        ),
+      );
+      await engine.startPreview();
+      await engine.muteLocalVideoStream(false);
+      _scheduleUiUpdate(() {
+        _localVideoReady = true;
+      });
+    } catch (e) {
+      LogService.warning('ensureLocalPreviewActiveNow failed: $e');
+    }
+  }
+
   /// Toggle video (camera)
   /// Defers setState to next frame to avoid UI disappearing on mobile web when tapping control.
   /// Sends camera state after toggle so remote gets the new value (use service state, not widget state).
@@ -961,6 +1003,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             safeSetState(() {
               _isVideoEnabled = _agoraService.isVideoEnabled();
             });
+            if (_isVideoEnabled) {
+              _ensureLocalPreviewActiveNow();
+              _showInfo('Camera is back on');
+            }
             if (kIsWeb) _showVideoMuteDiagnostic(toggleError);
           }
         });
@@ -1011,6 +1057,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             safeSetState(() {
               _isAudioEnabled = _agoraService.isAudioEnabled();
             });
+            if (_isAudioEnabled) {
+              _showInfo('Microphone unmuted');
+            }
           }
         });
       }
@@ -1418,6 +1467,18 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     );
   }
 
+  void _showInfo(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.blueGrey.shade800,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return StatusBarUtils.withDarkStatusBar(
@@ -1441,12 +1502,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           _remoteUID != null &&
                           !_remoteUserLeft)
               _buildLocalVideoPIP(),
-                      if (_layout == VideoLayout.spotlight && _sessionState == AgoraSessionState.connected) ...[
-                        if (_remoteUserLeft) ...[
-                _buildLocalProfileCard(),
-                          _buildRemoteProfileCard(),
-                        ],
-                      ],
                       _buildStateMessages(),
                       _buildConnectionOverlay(),
                       ..._reactionAnimations,
@@ -1666,37 +1721,31 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       );
     }
 
-    // If remote user left: show just me (profile or video), no "waiting for" layer
-    // Mobile web: when camera is OFF (or recently muted), never show local video in main – show remote/profile
-    // so the user always sees remote context and UI stays consistent (fixes screenshot 3: camera off = no local full screen).
+    // If remote user left: always show only the remote profile card ("left the call"),
+    // never keep local profile/video in the main area behind it.
     if (_remoteUserLeft) {
-      final isMobileWeb = kIsWeb && platform_utils.PlatformUtils.isMobileWeb;
-      final mobileWebLock = isMobileWeb &&
-          (_agoraService.didLocalUserMuteVideoRecently || !_isVideoEnabled);
       final effectiveRemoteUid = _remoteUID ?? _lastRemoteUID;
-      if (mobileWebLock && effectiveRemoteUid != null) {
-        LogService.info(
-          '📺 [UI] Main area MOBILE_WEB_LOCK: showing remote (uid=$effectiveRemoteUid) instead of local',
-        );
+      if (effectiveRemoteUid != null) {
         final connection = _agoraService.currentConnection;
+        LogService.info(
+          '📺 [UI] Main area REMOTE_LEFT: showing only remote profile card (uid=$effectiveRemoteUid)',
+        );
         return _buildStableRemoteSurface(
           engine: engine,
           remoteUid: effectiveRemoteUid,
           connection: _remoteUID == effectiveRemoteUid ? connection : null,
-          forceShowAsPresent: true,
           forceOverlay: true,
         );
       }
-      LogService.info(
-        '📺 [UI] Main area showing LOCAL (remote left): remoteUID=$_remoteUID, remoteUserLeft=$_remoteUserLeft, isVideoEnabled=$_isVideoEnabled',
-      );
-      if (_agoraService.currentUID != null) {
-        return _buildStableLocalSurface(
+      if (_remoteProfile != null) {
+        return _buildStableRemoteSurface(
           engine: engine,
-          localUid: _agoraService.currentUID!,
+          remoteUid: _lastRemoteUID ?? 0,
+          connection: null,
+          forceOverlay: true,
         );
       }
-      return Container(color: _kSoftDark, child: Center(child: _buildLocalProfileCard()));
+      return Container(color: _kSoftDark);
     }
 
     // When alone: show self (video or profile) WITH "waiting for" overlay
