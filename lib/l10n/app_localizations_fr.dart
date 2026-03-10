@@ -150,6 +150,9 @@ class AppLocalizationsFr extends AppLocalizations {
   String get myRequestsFilterBooking => 'Réservations';
 
   @override
+  String get myRequestsFilterPast => 'Passées (30 jours)';
+
+  @override
   String get myRequestsEmptyTitle => 'Demander un tuteur de votre choix';
 
   @override

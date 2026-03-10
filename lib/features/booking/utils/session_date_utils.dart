@@ -164,7 +164,8 @@ class SessionDateUtils {
       return false;
     }
     
-    // Show only if session is upcoming and payment is pending
+    // Show Pay Now only when session is upcoming (not yet started)
+    // If session time has passed, show Reschedule instead (handled in UI)
     return isSessionUpcoming(session);
   }
 

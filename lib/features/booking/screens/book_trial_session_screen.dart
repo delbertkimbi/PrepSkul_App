@@ -1258,7 +1258,13 @@ class _BookTrialSessionScreenState extends State<BookTrialSessionScreen> {
   // STEP 1: Subject & Duration
   Widget _buildSubjectAndDuration() {
     // Use the helper function to normalize subjects (handles subjects/specializations, JSON strings, etc.)
-    final subjects = TutorService.normalizeTutorSubjects(widget.tutor);
+    var subjects = TutorService.normalizeTutorSubjects(widget.tutor);
+    // Reschedule path: if the tutor payload does not include subjects but the original
+    // trial session had a subject selected, prefer that so we don't incorrectly claim
+    // the tutor has no subjects.
+    if (subjects.isEmpty && _selectedSubject != null && _selectedSubject!.trim().isNotEmpty) {
+      subjects = <String>[_selectedSubject!.trim()];
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),

@@ -14,6 +14,8 @@ import 'package:prepskul/features/sessions/services/agora_service.dart';
 import 'package:prepskul/features/sessions/screens/agora_video_session_screen.dart';
 import 'package:prepskul/features/sessions/widgets/agora_video_view.dart' as agora_widget;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:prepskul/core/config/app_config.dart';
 
 /// Pre-join screen for Agora video sessions
 /// Allows users to grant permissions and choose initial camera/mic state
@@ -668,7 +670,73 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
     );
   }
 
-  /// Join options section (compact to avoid overflow; Join and Cancel always visible)
+  /// VA awareness: monitoring and supervision (no support). Visible block with link to web doc.
+  /// Uses smaller font and card on mobile (web and app).
+  Widget _buildVAAwarenessBlock() {
+    final isMobile = MediaQuery.of(context).size.width < 768;
+    final padding = isMobile ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8) : const EdgeInsets.symmetric(horizontal: 14, vertical: 12);
+    final iconSize = isMobile ? 18.0 : 22.0;
+    final bodyFontSize = isMobile ? 12.0 : 14.0;
+    final linkFontSize = isMobile ? 12.0 : 14.0;
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(isMobile ? 8 : 10),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.visibility, color: AppTheme.primaryColor, size: iconSize),
+              SizedBox(width: isMobile ? 8 : 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "PrepSkul's Virtual Assistant will join the session for monitoring and supervision.",
+                      style: GoogleFonts.poppins(
+                        fontSize: bodyFontSize,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[800],
+                        height: 1.35,
+                      ),
+                    ),
+                    SizedBox(height: isMobile ? 4 : 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final uri = Uri.parse(AppConfig.vaDocumentationUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      },
+                      child: Text(
+                        "About PrepSkul's VA",
+                        style: GoogleFonts.poppins(
+                          fontSize: linkFontSize,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Join options section (compact to avoid overflow; Join and Cancel always visible).
+  /// Join button is shown first (above VA block) on all screen sizes for better UX.
   Widget _buildJoinOptions() {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -690,59 +758,8 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             color: Colors.grey[600],
           ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          "PrepSkul's Virtual Assistant will join the session to monitor and support.",
-          style: GoogleFonts.poppins(
-            fontSize: 12,
-            color: Colors.grey[700],
-          ),
-        ),
-        const SizedBox(height: 6),
-        GestureDetector(
-          onTap: () {
-            Navigator.of(context).pushNamed('/prepskulva');
-          },
-          child: Text(
-            "About PrepSkul's VA",
-            style: GoogleFonts.poppins(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.primaryColor,
-              decoration: TextDecoration.underline,
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (_connectionQuality != null) ...[
-          _buildConnectionResult(),
-          const SizedBox(height: 12),
-        ],
-        if (_errorMessage != null)
-          Container(
-            padding: const EdgeInsets.all(10),
-            margin: const EdgeInsets.only(bottom: 10),
-            decoration: BoxDecoration(
-              color: Colors.orange[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.warning, color: Colors.orange[700], size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _errorMessage!,
-                    style: GoogleFonts.poppins(
-                      fontSize: 11,
-                      color: Colors.orange[900],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        const SizedBox(height: 14),
+        // Join button first (above VA block) on mobile and desktop
         ElevatedButton(
           onPressed: _permissionsGranted && !_isLoading ? _joinSession : null,
           style: ElevatedButton.styleFrom(
@@ -772,7 +789,38 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                   ),
                 ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 14),
+        _buildVAAwarenessBlock(),
+        const SizedBox(height: 14),
+        if (_connectionQuality != null) ...[
+          _buildConnectionResult(),
+          const SizedBox(height: 12),
+        ],
+        if (_errorMessage != null)
+          Container(
+            padding: const EdgeInsets.all(10),
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange[50],
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.warning, color: Colors.orange[700], size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _errorMessage!,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      color: Colors.orange[900],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           style: TextButton.styleFrom(

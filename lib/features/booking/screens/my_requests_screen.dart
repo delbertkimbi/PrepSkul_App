@@ -805,6 +805,56 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
     return _trialSessions.where((req) => req.isPending).toList();
   }
 
+  /// Determine if a trial session should still appear in the active Requests
+  /// views (All / Trial tabs) for the learner.
+  ///
+  /// Rules:
+  /// - Hide deleted sessions entirely.
+  /// - Hide cancelled sessions when they are still unpaid (user intentionally cancelled).
+  /// - Hide completed sessions immediately after they are marked completed (they live on
+  ///   in the Sessions tab instead).
+  /// - For unpaid, expired sessions, keep them visible for up to 24 hours so the
+  ///   learner can reschedule, then hide them afterwards.
+  bool _isTrialActiveForRequests(TrialSession session) {
+    // Deleted sessions are never shown
+    if (session.status == 'deleted') {
+      return false;
+    }
+
+    // Hide cancelled + unpaid sessions from Requests
+    if (session.status == 'cancelled') {
+      final paymentStatus = session.paymentStatus.toLowerCase();
+      if (paymentStatus != 'paid' && paymentStatus != 'completed') {
+        return false;
+      }
+    }
+
+    // Completed sessions move to the Sessions experience immediately
+    if (session.status == 'completed') {
+      return false;
+    }
+
+    // If the session time has passed, keep it in Requests only during the
+    // 24‑hour reschedule window for unpaid sessions.
+    if (SessionDateUtils.isSessionExpired(session)) {
+      final isPaid = session.paymentStatus.toLowerCase() == 'paid' ||
+          session.paymentStatus.toLowerCase() == 'completed';
+      if (isPaid) {
+        // Paid + expired trials are handled via Sessions, not Requests.
+        return false;
+      }
+
+      // Unpaid + expired: allow reschedule for up to 24 hours after the end.
+      final endTime = SessionDateUtils.getSessionEndTime(session);
+      final cutoff = endTime.add(const Duration(hours: 24));
+      if (DateTime.now().isAfter(cutoff)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context)!;
@@ -855,6 +905,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   _buildFilterChip(context, 'trial', t.myRequestsFilterTrial),
                   const SizedBox(width: 6),
                   _buildFilterChip(context, 'booking', t.myRequestsFilterBooking),
+                  const SizedBox(width: 6),
+                  _buildFilterChip(context, 'past', t.myRequestsFilterPast),
                 ],
               ),
             ),
@@ -866,7 +918,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
               padding: const EdgeInsets.all(20),
               child: ShimmerLoading.requestList(count: 5),
             )
-          : _buildSelectedTabContent(context, _selectedFilter),
+          : RefreshIndicator(
+              onRefresh: () async {
+                await _loadRequests();
+                if (mounted) safeSetState(() {});
+              },
+              child: _buildSelectedTabContent(context, _selectedFilter),
+            ),
       floatingActionButton: showFAB
           ? FloatingActionButton.extended(
               onPressed: _isOffline
@@ -904,28 +962,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildAllRequestsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    // Filter out only cancelled unpaid sessions (keep cancelled paid sessions)
-    final activeTrialSessions = _trialSessions.where((session) {
-      // Exclude deleted sessions
-      if (session.status == 'deleted') {
-        return false;
-      }
-      // Exclude cancelled sessions ONLY if they are unpaid
-      if (session.status == 'cancelled') {
-        final paymentStatus = session.paymentStatus.toLowerCase();
-        // Only exclude if unpaid - keep cancelled paid sessions
-        if (paymentStatus != 'paid' && paymentStatus != 'completed') {
-          return false;
-        }
-      }
-      // Also exclude rejected sessions that were deleted
-      if (session.status == 'rejected' && 
-          (session.rejectionReason?.toLowerCase().contains('deleted') == true ||
-           session.rejectionReason?.toLowerCase().contains('cancelled by user') == true)) {
-        return false;
-      }
-      return true;
-    }).toList();
+    // Active trial sessions for the Requests view (see _isTrialActiveForRequests)
+    final activeTrialSessions =
+        _trialSessions.where(_isTrialActiveForRequests).toList();
     
     // Exclude cancelled booking requests so they disappear after user cancels
     final activeBookingRequests = _bookingRequests.where((r) => r.status != 'cancelled').toList();
@@ -1135,7 +1174,12 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
   Widget _buildTrialSessionsTab(BuildContext context) {
     final t = AppLocalizations.of(context)!;
-    if (_trialSessions.isEmpty) {
+    // Only show trials that are still \"active\" for Requests; completed/old
+    // ones are cleared automatically (handled by _isTrialActiveForRequests).
+    final activeTrials =
+        _trialSessions.where(_isTrialActiveForRequests).toList();
+
+    if (activeTrials.isEmpty) {
       return _buildEmptyState(context, 
         icon: Icons.quiz_outlined,
         title: t.myRequestsNoTrialsTitle,
@@ -1146,10 +1190,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
 
     return ListView.builder(
       padding: const EdgeInsets.all(10),
-      itemCount: _trialSessions.length,
+      itemCount: activeTrials.length,
       itemBuilder: (ctx, index) {
-        final isHighlighted = _highlightRequestId != null && _trialSessions[index].id == _highlightRequestId;
-        return _buildTrialSessionCard(context, _trialSessions[index], isHighlighted: isHighlighted);
+        final trial = activeTrials[index];
+        final isHighlighted =
+            _highlightRequestId != null && trial.id == _highlightRequestId;
+        return _buildTrialSessionCard(context, trial,
+            isHighlighted: isHighlighted);
       },
     );
   }
@@ -1608,14 +1655,13 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                   flex: 3,
                   child: Builder(
                     builder: (context) {
-                      // Show Pay Now for approved, unpaid sessions
+                      // Show Pay Now for approved, unpaid sessions (prominent blue button like View Session)
                       if (request.status == 'approved' && 
                           request.paymentRequestId != null && 
                           request.paymentStatus != 'paid') {
-                        return ElevatedButton(
+                        return ElevatedButton.icon(
                           onPressed: () async {
                             LogService.info('💰 Pay Now button clicked for booking: ${request.id}');
-                            // Navigate directly to payment screen
                             final result = await Navigator.push(
                               context,
                               MaterialPageRoute(
@@ -1632,30 +1678,30 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                               await _loadRequests();
                               if (mounted) {
                                 safeSetState(() {});
-                                // Navigate to sessions tab to show the newly created sessions
                                 Navigator.of(context).pushNamedAndRemoveUntil(
                                   _getMainNavRoute(),
                                   (route) => route.isFirst,
-                                  arguments: {'initialTab': 2}, // Sessions tab
+                                  arguments: {'initialTab': 2},
                                 );
                               }
                             }
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: Text(
+                          icon: const Icon(Icons.payment, size: 18),
+                          label: Text(
                             t.myRequestsPayNow,
                             style: GoogleFonts.poppins(
-                              fontSize: 12,
+                              fontSize: 14,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
                           ),
                         );
                       }
@@ -2318,50 +2364,85 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                           
                           // Show Reschedule for:
                           // 1. Sessions that have fully passed (expired and not currently in progress)
-                          //    – this includes paid sessions whose time window is over.
+                          //    – includes unpaid (Pay Now replaced by Reschedule) and paid sessions.
                           // 2. Cancelled sessions with an explicit expiration / not‑completed reason.
                           //
-                          // This prevents the bad UX where "Reschedule" appears on an
-                          // active, paid session while the time is still ongoing;
-                          // during the active window, the "View Session" button below
-                          // remains available instead.
+                          // When session time passed and payment was not completed, show a short
+                          // reason so the user knows why Reschedule is shown instead of Pay Now.
                           if ((hasPassed && !isInProgress) || isCancelledExpired) {
-                            return OutlinedButton.icon(
-                              onPressed: () async {
-                                LogService.info('📅 Reschedule button clicked for trial session: ${session.id}');
-                                // Navigate to reschedule screen
-                                final tutorData = await _loadTutorInfoForReschedule(session.tutorId);
-                                if (tutorData != null && mounted) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => BookTrialSessionScreen(
-                                        tutor: tutorData,
-                                        rescheduleSessionId: session.id,
-                                        isReschedule: true,
+                            final isUnpaidAndPassed = (session.status == 'approved' || session.status == 'scheduled') &&
+                                (session.paymentStatus.toLowerCase() == 'unpaid' || session.paymentStatus.toLowerCase() == 'pending') &&
+                                hasPassed &&
+                                !isInProgress;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (isUnpaidAndPassed)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 8),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.shade50,
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.orange.shade200),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.schedule, size: 16, color: Colors.orange.shade800),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Session time passed before payment. Reschedule to pick a new time.',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 11,
+                                                color: Colors.orange.shade900,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  ).then((_) {
-                                    if (mounted) _loadRequests();
-                                  });
-                                }
-                              },
-                              icon: const Icon(Icons.edit_calendar, size: 17),
-                              label: Text(
-                                'Reschedule',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                                  ),
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    LogService.info('📅 Reschedule button clicked for trial session: ${session.id}');
+                                    final tutorData = await _loadTutorInfoForReschedule(session.tutorId);
+                                    if (tutorData != null && mounted) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => BookTrialSessionScreen(
+                                            tutor: tutorData,
+                                            rescheduleSessionId: session.id,
+                                            isReschedule: true,
+                                          ),
+                                        ),
+                                      ).then((_) {
+                                        if (mounted) _loadRequests();
+                                      });
+                                    }
+                                  },
+                                  icon: const Icon(Icons.edit_calendar, size: 17),
+                                  label: Text(
+                                    'Reschedule',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppTheme.primaryColor,
+                                    side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.primaryColor,
-                                side: BorderSide(color: AppTheme.primaryColor, width: 1.5),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
+                              ],
                             );
                           }
                           
@@ -2400,12 +2481,11 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                             );
                           }
                           
-                          // Show Pay Now for approved/scheduled, unpaid, non-expired sessions
+                          // Show Pay Now for approved/scheduled, unpaid, non-expired sessions (prominent blue, same as View Session)
                           if (SessionDateUtils.shouldShowPayNowButton(session)) {
-                            return ElevatedButton(
+                            return ElevatedButton.icon(
                               onPressed: () async {
                                 LogService.info('💰 Pay Now button clicked for trial session: ${session.id}');
-                                // Navigate directly to payment screen (not detail screen)
                                 final result = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -2415,37 +2495,36 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
                                 );
 
                                 if (result == true) {
-                                  // Payment successful - refresh and navigate to sessions
                                   await Future.delayed(const Duration(milliseconds: 2000));
                                   if (!mounted) return;
                                   await _refreshTrialSession(session.id);
                                   await _loadRequests();
                                   if (mounted) {
                                     safeSetState(() {});
-                                    // Navigate to sessions tab to show the newly created session
                                     Navigator.of(context).pushNamedAndRemoveUntil(
                                       _getMainNavRoute(),
                                       (route) => route.isFirst,
-                                      arguments: {'initialTab': 2}, // Sessions tab
+                                      arguments: {'initialTab': 2},
                                     );
                                   }
                                 }
                               },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryColor,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: Text(
+                              icon: const Icon(Icons.payment, size: 18),
+                              label: Text(
                                 t.myRequestsPayNow,
                                 style: GoogleFonts.poppins(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.white,
                                 ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryColor,
+                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
                               ),
                             );
                           }
@@ -2517,7 +2596,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
       // Fetch tutor profile and profile separately to avoid relationship ambiguity
       final tutorProfile = await supabase
           .from('tutor_profiles')
-          .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url')
+          .select('user_id, rating, admin_approved_rating, total_reviews, profile_photo_url, subjects, specializations')
           .eq('user_id', tutorId)
           .maybeSingle();
 
@@ -2535,6 +2614,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         'full_name': profile?['full_name'] as String? ?? 'Tutor',
         'avatar_url': tutorProfile['profile_photo_url'] as String? ?? 
                      profile?['avatar_url'] as String?,
+        // Include subjects/specializations so the reschedule flow can show the same
+        // subject chips instead of incorrectly claiming the tutor has none.
+        'subjects': tutorProfile['subjects'],
+        'specializations': tutorProfile['specializations'],
         'rating': tutorProfile['rating'] ?? 0.0,
         'admin_approved_rating': tutorProfile['admin_approved_rating'],
         'total_reviews': tutorProfile['total_reviews'] ?? 0,
@@ -4489,9 +4572,89 @@ class _MyRequestsScreenState extends State<MyRequestsScreen>
         return _buildTrialSessionsTab(context);
       case 'booking':
         return _buildBookingsTab(context);
+      case 'past':
+        return _buildPastRequestsTab(context);
       default:
         return _buildAllRequestsTab(context);
     }
+  }
+
+  /// Past requests (last 30 days) – historical view only.
+  Widget _buildPastRequestsTab(BuildContext context) {
+    final now = DateTime.now();
+    final cutoff = now.subtract(const Duration(days: 30));
+
+    bool _withinLast30Days(DateTime date) => date.isAfter(cutoff);
+
+    // Booking requests: treat anything not cancelled as active; past = cancelled/rejected or older states.
+    final pastBookings = _bookingRequests.where((r) {
+      final isActive = r.status == 'pending' || r.status == 'approved';
+      if (isActive) return false;
+      return _withinLast30Days(r.createdAt);
+    }).toList();
+
+    // Custom tutor requests: past when not pending anymore.
+    final pastCustom = _customRequests.where((r) {
+      final isActive = r.status == 'pending';
+      if (isActive) return false;
+      return _withinLast30Days(r.createdAt);
+    }).toList();
+
+    // Trial sessions: past when no longer considered active for Requests, but still within 30 days.
+    final pastTrials = _trialSessions.where((session) {
+      if (_isTrialActiveForRequests(session)) return false;
+      // Use scheduledDate as reference; if missing, skip
+      final date = session.scheduledDate;
+      return _withinLast30Days(date);
+    }).toList();
+
+    final items = <_RequestItem>[
+      ...pastBookings.map((r) => _RequestItem(type: 'booking', booking: r)),
+      ...pastCustom.map((r) => _RequestItem(type: 'custom', custom: r)),
+      ...pastTrials.map((r) => _RequestItem(type: 'trial', trial: r)),
+    ];
+
+    if (items.isEmpty) {
+      return _buildEmptyState(
+        context,
+        icon: Icons.history,
+        title: 'No past requests',
+        subtitle: 'You have no requests from the last 30 days.',
+      );
+    }
+
+    // Sort by created/scheduled date descending so most recent appear first.
+    items.sort((a, b) {
+      DateTime getDate(_RequestItem item) {
+        if (item.type == 'booking') {
+          return item.booking!.createdAt;
+        } else if (item.type == 'custom') {
+          return item.custom!.createdAt;
+        } else {
+          return item.trial!.createdAt;
+        }
+      }
+
+      return getDate(b).compareTo(getDate(a));
+    });
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(10),
+      itemCount: items.length,
+      itemBuilder: (ctx, index) {
+        final item = items[index];
+        switch (item.type) {
+          case 'booking':
+            return _buildBookingRequestCard(context, item.booking!, isHighlighted: false);
+          case 'custom':
+            return _buildCustomRequestCard(context, item.custom!, isHighlighted: false);
+          case 'trial':
+            return _buildTrialSessionCard(context, item.trial!, isHighlighted: false);
+          default:
+            return const SizedBox.shrink();
+        }
+      },
+    );
   }
 
   /// Get human-readable cache age text

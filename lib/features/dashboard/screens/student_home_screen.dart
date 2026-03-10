@@ -51,6 +51,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   int _activeTutorsCount = 0;
   int _upcomingSessionsCount = 0;
   final ConnectivityService _connectivity = ConnectivityService();
+  /// Incremented on pull-to-refresh so NotificationBell (and other keyed widgets) reload
+  int _homeRefreshKey = 0;
 
   @override
   void initState() {
@@ -396,8 +398,16 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         ),
         icon: PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: Colors.white),
       ) : null,
-      body: SingleChildScrollView(
-        child: Column(
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _loadUserData();
+          if (mounted) {
+            setState(() => _homeRefreshKey++);
+          }
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Hero Header - soft top-to-bottom gradient (matches theme-color deep blue)
@@ -446,7 +456,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                       ),
                       const MessageIconBadge(iconColor: Colors.white),
                       SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 12, desktop: 16)),
-                      const NotificationBell(iconColor: Colors.white),
+                      NotificationBell(key: ValueKey('bell_$_homeRefreshKey'), iconColor: Colors.white),
                     ],
                   ),
                 ],
@@ -652,6 +662,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
             ),
           ],
         ),
+      ),
       ),
       ),
     );
