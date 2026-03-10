@@ -225,7 +225,10 @@ class AppConfig {
       return _safeEnv('WEB_BASE_URL_DEV', 'https://www.prepskul.com');
     }
   }
-  
+
+  /// VA documentation page (public, no login). Opens in browser so user stays in app.
+  static String get vaDocumentationUrl => '$webBaseUrl/en/va-documentation';
+
   // ============================================
   // Fapshi Payment Configuration
   // ============================================

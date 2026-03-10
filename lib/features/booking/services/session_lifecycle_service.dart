@@ -282,10 +282,19 @@ class SessionLifecycleService {
         throw Exception('Unauthorized: Only the tutor can end the session');
       }
 
-      // Status validation
+      // Status validation: only allow completion when session is truly in progress
       if (session['status'] != 'in_progress') {
         throw Exception('Session is not in progress. Current status: ${session['status']}');
       }
+
+      // Strict completion check: session must have been started (session_started_at set)
+      // so we never mark as completed when e.g. only the learner left to rejoin
+      if (session['session_started_at'] == null || (session['session_started_at'] as String).isEmpty) {
+        LogService.warning('endSession: Refusing to complete session $sessionId - session_started_at not set (session may not have truly started)');
+        throw Exception('Session has not been started. Cannot complete.');
+      }
+
+      LogService.info('Session $sessionId marked as completed by tutor (userId=$userId). session_started_at=${session['session_started_at']}');
 
       // Extract learner_id and parent_id early for use in credit deduction
       final learnerId = session['learner_id'] as String?;

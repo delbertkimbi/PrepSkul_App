@@ -391,38 +391,33 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 status == 'expired';
             
             // Use SessionDateUtils for time-based classification
-            if (isCompleted) {
+            // Classification is primarily time-based:
+            // - Upcoming tab: now is before session end time (including grace)
+            // - Past tab: now is after session end time
+            // This prevents a session from jumping to Past just because someone
+            // left the call early; it only moves after the scheduled window.
+            final isExpired = SessionDateUtils.isSessionExpired(trial);
+            final isInProgress = SessionDateUtils.isSessionInProgress(trial);
+            final isUpcomingTime = SessionDateUtils.isSessionUpcoming(trial);
+
+            if (isExpired || status == 'expired' || isCompleted) {
+              // Fully past sessions (time window over) belong in Past, regardless of
+              // whether they were formally completed or left unattended.
               past.add(sessionMap);
-            } else {
-              // Distinguish clearly between upcoming, in‑progress, and expired.
-              final isExpired = SessionDateUtils.isSessionExpired(trial);
-              final isInProgress = SessionDateUtils.isSessionInProgress(trial);
-              final isUpcomingTime = SessionDateUtils.isSessionUpcoming(trial);
-              
-              // If expired but not yet marked, mark it now
-              if (isExpired && status != 'expired') {
-                // Update status to expired in the map
-                sessionMap['status'] = 'expired';
-              }
-              
-              if (isExpired || status == 'expired') {
-                // Fully past sessions (time window over) belong in Past.
-                past.add(sessionMap);
-              } else if (isInProgress || isUpcomingTime) {
-                // Time window is either upcoming or currently active.
-                // Only show on Upcoming tab when the trial is approved/scheduled and paid.
-                if (isApproved && isPaid) {
-                  upcoming.add(sessionMap);
-                } else {
-                  // Unapproved/unpaid trials remain in Past/history so they don't
-                  // clutter the "Upcoming" view used for joining sessions.
-                  past.add(sessionMap);
-                }
+            } else if (isInProgress || isUpcomingTime) {
+              // Time window is either upcoming or currently active.
+              // Only show on Upcoming tab when the trial is approved/scheduled and paid.
+              if (isApproved && isPaid) {
+                upcoming.add(sessionMap);
               } else {
-                // Fallback: if we can't confidently classify, keep in Past so
-                // the learner can still see the record without breaking UX.
+                // Unapproved/unpaid trials remain in Past/history so they don't
+                // clutter the "Upcoming" view used for joining sessions.
                 past.add(sessionMap);
               }
+            } else {
+              // Fallback: if we can't confidently classify, keep in Past so
+              // the learner can still see the record without breaking UX.
+              past.add(sessionMap);
             }
           }
         }
@@ -2692,7 +2687,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
           labelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
           tabs: [
             Tab(text: 'Upcoming (${_upcomingSessions.length})'),
-            Tab(text: 'Completed (${_pastSessions.length})'),
+            Tab(text: 'Past (${_pastSessions.length})'),
           ],
         ),
       ),

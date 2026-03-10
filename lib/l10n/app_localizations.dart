@@ -377,6 +377,12 @@ abstract class AppLocalizations {
   /// **'Bookings'**
   String get myRequestsFilterBooking;
 
+  /// No description provided for @myRequestsFilterPast.
+  ///
+  /// In en, this message translates to:
+  /// **'Past (30 days)'**
+  String get myRequestsFilterPast;
+
   /// No description provided for @myRequestsEmptyTitle.
   ///
   /// In en, this message translates to:
@@ -560,7 +566,7 @@ abstract class AppLocalizations {
   /// No description provided for @mySessionsTabCompleted.
   ///
   /// In en, this message translates to:
-  /// **'Completed'**
+  /// **'Past'**
   String get mySessionsTabCompleted;
 
   /// No description provided for @commonEmail.

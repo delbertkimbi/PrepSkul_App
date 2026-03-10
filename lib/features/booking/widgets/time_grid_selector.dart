@@ -134,6 +134,27 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
     }
   }
 
+  String _getDayName(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return 'monday';
+      case DateTime.tuesday:
+        return 'tuesday';
+      case DateTime.wednesday:
+        return 'wednesday';
+      case DateTime.thursday:
+        return 'thursday';
+      case DateTime.friday:
+        return 'friday';
+      case DateTime.saturday:
+        return 'saturday';
+      case DateTime.sunday:
+        return 'sunday';
+      default:
+        return '';
+    }
+  }
+
   void _selectTime(String time) {
     safeSetState(() {
       _selectedTimes[_currentDay] = time;
@@ -311,21 +332,53 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
   }
 
   Widget _buildTimeSlot(String time) {
-    // Availability is already filtered by the service, so all displayed slots are available
-    final isSelected = _selectedTimes[_currentDay] == time;
+    // Availability is already filtered by the service, but for the *current* day
+    // we additionally disable times that are already in the past so learners
+    // cannot book a slot that has already passed.
+    final now = DateTime.now();
+    bool isPastForToday = false;
+    final todayName = _getDayName(now.weekday).toLowerCase();
+    final selectedDayName = _currentDay.toLowerCase();
+    final isToday = selectedDayName == todayName;
+
+    if (isToday) {
+      try {
+        // Parse using the same helper used for sorting/grouping.
+        final parsed = _parseTime(time);
+        final slotTime = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          parsed.hour,
+          parsed.minute,
+        );
+        if (!slotTime.isAfter(now)) {
+          isPastForToday = true;
+        }
+      } catch (_) {
+        // If parsing fails, keep slot selectable rather than over-restricting.
+        isPastForToday = false;
+      }
+    }
+
+    final isSelected = !isPastForToday && _selectedTimes[_currentDay] == time;
 
     return GestureDetector(
-      onTap: () => _selectTime(time),
+      onTap: isPastForToday ? null : () => _selectTime(time),
       child: Container(
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryColor
-              : Colors.white,
+          color: isPastForToday
+              ? Colors.grey[200]
+              : isSelected
+                  ? AppTheme.primaryColor
+                  : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected
-                ? AppTheme.primaryColor
-                : Colors.grey[300]!,
+            color: isPastForToday
+                ? Colors.grey[300]!
+                : isSelected
+                    ? AppTheme.primaryColor
+                    : Colors.grey[300]!,
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
@@ -348,7 +401,11 @@ class _TimeGridSelectorState extends State<TimeGridSelector> {
                 style: GoogleFonts.poppins(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white : Colors.black,
+                  color: isPastForToday
+                      ? Colors.grey[500]
+                      : isSelected
+                          ? Colors.white
+                          : Colors.black,
                 ),
               ),
             ),

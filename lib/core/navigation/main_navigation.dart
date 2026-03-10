@@ -237,14 +237,17 @@ class _MainNavigationState extends State<MainNavigation> {
           );
           
           if (shouldExit == true && mounted) {
-            // User confirmed exit - log out and allow navigation
-            // The route guard will handle redirecting to auth screen if needed
             try {
               await AuthService.logout();
             } catch (e) {
               LogService.warning('Error logging out: $e');
             }
-            // Allow navigation after logout
+            if (mounted) {
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                '/auth-method-selection',
+                (route) => false,
+              );
+            }
             return;
           }
         } else {

@@ -12,8 +12,9 @@ class ProfileCardOverlay extends StatelessWidget {
   final bool isLocal; // true for local user, false for remote
   final bool userLeft; // true if user left the call (for remote users)
   final bool screenOff; // true if user's screen is off (for remote users)
+  final bool cameraOff; // true when remote camera is off (for remote users)
   final bool isSpeaking; // true when this user's audio is above threshold (talking indicator)
-  final bool reconnecting; // true when connection unstable - show "Reconnecting" instead of "Camera is off"
+  final bool reconnecting; // true when connection unstable - show "Reconnecting" (independent of camera/screen state)
 
   const ProfileCardOverlay({
     Key? key,
@@ -23,6 +24,7 @@ class ProfileCardOverlay extends StatelessWidget {
     this.isLocal = false,
     this.userLeft = false,
     this.screenOff = false,
+    this.cameraOff = false,
     this.isSpeaking = false,
     this.reconnecting = false,
   }) : super(key: key);
@@ -47,6 +49,41 @@ class ProfileCardOverlay extends StatelessWidget {
       default:
         return AppTheme.textMedium;
     }
+  }
+
+  /// Build one or more status lines (camera off, screen off, reconnecting) independently
+  List<Widget> _buildStatusLines() {
+    final lines = <Widget>[];
+    if (cameraOff) {
+      lines.add(_statusRow(Icons.videocam_off, 'Camera is off', Colors.orange.withOpacity(0.8)));
+    }
+    if (screenOff) {
+      lines.add(_statusRow(Icons.phone_android, 'Screen is off', Colors.blue.withOpacity(0.8)));
+    }
+    if (reconnecting) {
+      lines.add(_statusRow(Icons.sync, 'Reconnecting...', Colors.orange));
+    }
+    if (lines.isEmpty) {
+      lines.add(_statusRow(Icons.videocam_off, 'Camera is off', Colors.orange.withOpacity(0.8)));
+    }
+    return lines;
+  }
+
+  Widget _statusRow(IconData icon, String label, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: GoogleFonts.poppins(fontSize: 14, color: Colors.white70),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -150,27 +187,28 @@ class ProfileCardOverlay extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!isLocal && !userLeft) ...[
-                // Show appropriate message based on state
+              if (!isLocal && userLeft) ...[
                 const SizedBox(height: 16),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      reconnecting ? Icons.sync : (screenOff ? Icons.phone_android : Icons.videocam_off),
-                      color: reconnecting ? Colors.orange : (screenOff ? Colors.blue.withOpacity(0.8) : Colors.orange.withOpacity(0.8)),
-                      size: 16,
-                    ),
+                    const Icon(Icons.person_off, color: Colors.redAccent, size: 16),
                     const SizedBox(width: 8),
                     Text(
-                      reconnecting ? 'Reconnecting...' : (screenOff ? 'Screen is off' : 'Camera is off'),
+                      'Left the call',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
-                        color: Colors.white70,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.redAccent,
                       ),
                     ),
                   ],
                 ),
+              ],
+              if (!isLocal && !userLeft) ...[
+                // Show status lines independently: camera off, screen off, and reconnecting can all be shown when true
+                const SizedBox(height: 16),
+                ..._buildStatusLines(),
               ],
             ],
           ),

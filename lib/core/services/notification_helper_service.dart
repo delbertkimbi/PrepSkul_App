@@ -486,8 +486,9 @@ class NotificationHelperService {
         if (isGroupRequest) 'is_group_request': true,
         if (learnerCount != null) 'learner_count': learnerCount,
       },
-      sendEmail: true
-          );
+      sendEmail: true,
+      sendPush: true,
+    );
   }
 
   /// Notify student/parent when tutor accepts trial request
@@ -520,8 +521,9 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
-      sendEmail: true
-          );
+      sendEmail: true,
+      sendPush: true,
+    );
   }
 
   /// Notify student/parent when tutor rejects trial request
@@ -554,8 +556,9 @@ class NotificationHelperService {
         if (senderAvatarUrl != null) 'sender_avatar_url': senderAvatarUrl,
         'sender_initials': tutorName.isNotEmpty ? tutorName[0].toUpperCase() : null,
       },
-      sendEmail: true
-          );
+      sendEmail: true,
+      sendPush: true,
+    );
   }
 
   /// Notify tutor when student/parent cancels an approved trial session

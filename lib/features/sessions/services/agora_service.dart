@@ -39,6 +39,10 @@ class AgoraService {
   DateTime? _lastQualityChange;
   static const _qualityChangeCooldown = Duration(seconds: 10);
   String? _currentQualityTier; // Track current quality tier: '1080p', '720p', '480p'
+  int _consecutivePoorQualityCount = 0;
+  int _consecutiveGoodQualityCount = 0;
+  static const int _poorQualityThreshold = 3; // require 3 consecutive poor samples before downgrading
+  static const int _goodQualityThreshold = 4; // require 4 consecutive good samples before upgrading
   
   // Video recovery state - reduced aggressiveness to prevent flickering
   final Map<int, int> _videoRecoveryAttempts = {}; // remoteUid -> attempt count
@@ -117,15 +121,13 @@ class AgoraService {
   static const _maxOfflineEvents = 3; // Number of offline events before confirming left
   DateTime? _lastLocalVideoMuteTime; // On web, Agora can fire spurious userOffline when local mutes - ignore if within window
   static const _webMuteOfflineIgnoreWindow = Duration(seconds: 5);
-  /// On web, ignore userOffline(Quit) entirely when local video was muted within this window (stops spurious "remote left" on iPhone web).
-  static const _webMuteOfflineIgnoreWindowExtended = Duration(minutes: 2);
-  /// On web for Quit, grace period before confirming "user left" (longer to avoid brief glitches).
-  static const _webQuitGracePeriod = Duration(seconds: 10);
+  /// On web for Quit, short grace so refresh/close tab is treated as "user left" quickly.
+  static const _webQuitGracePeriod = Duration(seconds: 5);
 
-  /// True if local user muted video within the extended ignore window (e.g. 2 min). Used by UI to suppress "remote left" on mobile web.
+  /// True if local user muted video within the short ignore window. Used by UI to suppress "remote left" on mobile web when Agora fires spurious Quit.
   bool get didLocalUserMuteVideoRecently {
     if (_lastLocalVideoMuteTime == null) return false;
-    return DateTime.now().difference(_lastLocalVideoMuteTime!) < _webMuteOfflineIgnoreWindowExtended;
+    return DateTime.now().difference(_lastLocalVideoMuteTime!) < _webMuteOfflineIgnoreWindow;
   }
   
   // Screen-off detection state
@@ -1083,10 +1085,34 @@ class AgoraService {
           } catch (e) {
             LogService.warning('Could not update channel media options on mute: $e');
           }
+          // Send camera state on every mute so remote UI updates even if Agora callbacks are delayed
+          await sendCameraState(false);
         }
         LogService.info('📹 Video disabled - not visible to remote users');
         // Stop periodic check when video is disabled
         _stopVideoCheckTimer();
+        // On web, retry mute after short delay so second toggle reliably applies (desktop mute reliability)
+        if (kIsWeb && _isInChannel) {
+          Future.delayed(const Duration(milliseconds: 400), () async {
+            if (_engine == null || !_isInChannel || _isVideoEnabled) return;
+            try {
+              await _engine!.muteLocalVideoStream(true);
+              await _engine!.updateChannelMediaOptions(
+                ChannelMediaOptions(
+                  publishCameraTrack: false,
+                  publishScreenTrack: _isPublishingScreen,
+                  publishScreenCaptureVideo: _isPublishingScreen,
+                  publishScreenCaptureAudio: _isPublishingScreen && kIsWeb,
+                  publishMicrophoneTrack: _isAudioEnabled,
+                ),
+              );
+              await sendCameraState(false);
+              LogService.info('📹 Mute retry applied: publishCameraTrack=false');
+            } catch (e) {
+              LogService.warning('Mute retry failed: $e');
+            }
+          });
+        }
       }
     } catch (e) {
       LogService.error('Failed to toggle video: $e');
@@ -1440,17 +1466,32 @@ class AgoraService {
   Future<void> _adaptVideoQuality(QualityType quality) async {
     if (_engine == null || !_isInChannel) return;
     
+    // Track streaks of good/poor quality so we only change tiers when
+    // conditions are sustained, not on every short spike. This reduces
+    // visible resolution flicker and random UX changes.
+    final isGood = quality == QualityType.qualityExcellent || quality == QualityType.qualityGood;
+    final isPoorOrWorse = quality == QualityType.qualityPoor ||
+        quality == QualityType.qualityBad ||
+        quality == QualityType.qualityDown;
+
+    if (isGood) {
+      _consecutiveGoodQualityCount++;
+      _consecutivePoorQualityCount = 0;
+    } else if (isPoorOrWorse) {
+      _consecutivePoorQualityCount++;
+      _consecutiveGoodQualityCount = 0;
+    } else {
+      // Unsupported/unknown – reset streaks but do not adapt on this sample
+      _consecutiveGoodQualityCount = 0;
+      _consecutivePoorQualityCount = 0;
+    }
+
     // Check cooldown to prevent rapid quality changes
     if (_lastQualityChange != null) {
       final timeSinceLastChange = DateTime.now().difference(_lastQualityChange!);
       if (timeSinceLastChange < _qualityChangeCooldown) {
         return; // Too soon to change quality again
       }
-    }
-    
-    // Skip if quality hasn't changed significantly
-    if (_lastNetworkQuality == quality && _currentQualityTier != null) {
-      return;
     }
     
     _lastNetworkQuality = quality;
@@ -1471,6 +1512,22 @@ class AgoraService {
       targetConfig = _quality480p;
       targetTier = '480p';
     }
+
+    // Apply hysteresis: only downgrade after several poor samples in a row;
+    // only upgrade after a longer run of good samples. Initial tier change
+    // (when _currentQualityTier is null) happens immediately.
+    if (_currentQualityTier != null) {
+      if (targetTier == '480p' || targetTier == '720p-low') {
+        if (_consecutivePoorQualityCount < _poorQualityThreshold) {
+          return;
+        }
+      } else {
+        // Upgrading back to high quality
+        if (_consecutiveGoodQualityCount < _goodQualityThreshold) {
+          return;
+        }
+      }
+    }
     
     // Only change if different from current tier
     if (_currentQualityTier == targetTier) {
@@ -1481,6 +1538,10 @@ class AgoraService {
       await _engine!.setVideoEncoderConfiguration(targetConfig);
       _currentQualityTier = targetTier;
       _lastQualityChange = DateTime.now();
+      // Reset streaks after an adaptation so the next change also requires
+      // sustained evidence.
+      _consecutiveGoodQualityCount = 0;
+      _consecutivePoorQualityCount = 0;
       LogService.success('✅ Video quality adapted to $targetTier (network: $quality)');
       final dims = targetConfig.dimensions;
       if (dims != null) {
@@ -1905,41 +1966,29 @@ class AgoraService {
             LogService.debug('Ignoring onUserOffline for non-remote uid=$remoteUid (self=$_currentUID)');
             return;
           }
-          // On mobile web: never treat onUserOffline as "user left" for any reason (Quit/Dropped/BecomeAudience etc).
-          // Agora fires spurious callbacks when local user mutes video; emitting userLeftStream would swap main
-          // area to local video and can cause overlay to be covered. "Remote left" on mobile web is not shown from
-          // this callback; only from explicit leave or a future conservative timeout.
-          if (kIsWeb && platform_utils.PlatformUtils.isMobileWeb) {
-            LogService.warning('⚠️ [MOBILE_WEB] IGNORED userOffline(reason=$reason) UID=$remoteUid (mobile web: never emit userLeft)');
-            debugPrint('[userOffline] IGNORED (mobile web, all reasons)');
-            return;
-          }
-          // On desktop web, Agora SDK can fire spurious userOffline(Quit) when LOCAL user mutes video.
-          // Ignore offline events that occur within 5s of our own video mute.
+          // On web (desktop and mobile), Agora can fire spurious userOffline(Quit) when LOCAL user mutes video.
+          // Ignore Quit only within 5s of our own mute; after that treat refresh/close as "user left".
           if (kIsWeb && reason == UserOfflineReasonType.userOfflineQuit && _lastLocalVideoMuteTime != null) {
             final sinceMute = DateTime.now().difference(_lastLocalVideoMuteTime!);
             if (sinceMute < _webMuteOfflineIgnoreWindow) {
-              LogService.warning('⚠️ [WEB] IGNORED (within 5s of local mute) userOffline(Quit) UID=$remoteUid (${sinceMute.inSeconds}s after local video mute)');
-              debugPrint('[userOffline] IGNORED (within 5s of local mute)');
-              return;
-            }
-            // On web: if local video was muted within 2 minutes, ignore Quit entirely (spurious).
-            if (sinceMute < _webMuteOfflineIgnoreWindowExtended) {
-              LogService.warning('⚠️ [WEB] IGNORED (web Quit within 2min of local mute) userOffline(Quit) UID=$remoteUid (${sinceMute.inSeconds}s after local video mute)');
-              debugPrint('[userOffline] IGNORED (web Quit within 2min of local mute)');
+              LogService.warning('⚠️ [WEB] IGNORED (within 5s of local mute) userOffline(Quit) UID=$remoteUid');
               return;
             }
           }
-          
-          // Handle different offline reasons
+
+          // Handle different offline reasons (desktop and mobile web: Quit after short grace = "user left")
           String reasonText = 'Unknown';
           bool isDefinitiveLeave = false;
           switch (reason) {
             case UserOfflineReasonType.userOfflineQuit:
               reasonText = 'User left normally';
-              // On web (Safari/Chrome), Agora SDK can fire spurious userOffline when LOCAL user mutes video.
-              // Use a short grace period so we don't wrongly show "remote left" and swap to local view.
-              isDefinitiveLeave = !kIsWeb;
+              // After we have filtered out spurious web events that happen
+              // immediately after *local* video mute, a remaining Quit means
+              // the remote user has actually closed or refreshed their tab.
+              // Treat this as a definitive "user left" on all platforms so
+              // the other side sees \"left the call\" instead of just
+              // \"camera off\" while the SDK tears down the old connection.
+              isDefinitiveLeave = true;
               break;
             case UserOfflineReasonType.userOfflineDropped:
               reasonText = 'User connection dropped (network issue)';

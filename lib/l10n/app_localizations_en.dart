@@ -150,6 +150,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get myRequestsFilterBooking => 'Bookings';
 
   @override
+  String get myRequestsFilterPast => 'Past (30 days)';
+
+  @override
   String get myRequestsEmptyTitle => 'Request a tutor of your choice';
 
   @override

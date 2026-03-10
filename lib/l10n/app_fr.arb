@@ -47,6 +47,7 @@
   "myRequestsFilterCustom": "Demande personnalisée",
   "myRequestsFilterTrial": "Sessions d'essai",
   "myRequestsFilterBooking": "Réservations",
+  "myRequestsFilterPast": "Passées (30 jours)",
   "myRequestsEmptyTitle": "Demander un tuteur de votre choix",
   "myRequestsEmptySubtitle": "Dites-nous ce que vous recherchez et nous trouverons la correspondance parfaite pour vous",
   "myRequestsNoPendingTitle": "Aucune demande en attente",
