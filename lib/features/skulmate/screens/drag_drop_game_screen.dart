@@ -4,6 +4,8 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_model.dart';
 import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_character_widget.dart';
+import '../services/character_selection_service.dart';
 import 'game_results_screen.dart';
 
 /// Drag and drop game screen
@@ -18,10 +20,12 @@ class DragDropGameScreen extends StatefulWidget {
 
 class _DragDropGameScreenState extends State<DragDropGameScreen> {
   int _score = 0;
+  dynamic _character;
 
   @override
   void initState() {
     super.initState();
+    _loadCharacter();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         GameRulesOverlay.showIfNeeded(
@@ -33,11 +37,32 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
     });
   }
 
+  Future<void> _loadCharacter() async {
+    final character = await CharacterSelectionService.getSelectedCharacter();
+    if (mounted) setState(() => _character = character);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
-      appBar: SkulMateGameAppBar(title: widget.game.title.isNotEmpty ? widget.game.title : 'Drag & Drop'),
+      appBar: SkulMateGameAppBar(
+        title: widget.game.title.isNotEmpty ? widget.game.title : 'Drag & Drop',
+        actions: [
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Center(
+                child: SkulMateCharacterWidget(
+                  character: _character,
+                  size: 40,
+                  animated: false,
+                  showName: false,
+                ),
+              ),
+            ),
+        ],
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

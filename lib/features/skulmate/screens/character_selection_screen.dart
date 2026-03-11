@@ -41,26 +41,34 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
     );
   }
 
-  Future<void> _selectCharacter(SkulMateCharacter character) async {
+  /// Only updates selection in UI so user can try different characters.
+  void _selectCharacter(SkulMateCharacter character) {
     safeSetState(() => _selectedCharacter = character);
-    await CharacterSelectionService.selectCharacter(character);
-    
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${character.name} selected!'),
-          backgroundColor: AppTheme.accentGreen,
+          content: Text('${character.name} selected. Tap Continue to confirm.'),
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
         ),
       );
-      
-      if (widget.isFirstTime) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const SkulMateUploadScreen(),
-          ),
-        );
-      }
+    }
+  }
+
+  /// Saves selection and navigates (explicit Continue step).
+  Future<void> _continueWithCharacter() async {
+    if (_selectedCharacter == null) return;
+    await CharacterSelectionService.selectCharacter(_selectedCharacter!);
+    if (!mounted) return;
+    if (widget.isFirstTime) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const SkulMateUploadScreen(),
+        ),
+      );
+    } else {
+      Navigator.pop(context);
     }
   }
 
@@ -182,6 +190,32 @@ class _CharacterSelectionScreenState extends State<CharacterSelectionScreen> {
                   );
                 },
               ),
+              if (_selectedCharacter != null) ...[
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _continueWithCharacter,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                      shadowColor: AppTheme.primaryColor.withOpacity(0.4),
+                    ),
+                    child: Text(
+                      'Continue',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ],
         ),

@@ -12,6 +12,7 @@ import '../services/game_sound_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
+import '../widgets/skulmate_character_widget.dart';
 import 'game_results_screen.dart';
 import 'game_library_screen.dart';
 
@@ -495,6 +496,18 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: SkulMateCharacterWidget(
+                  character: _character,
+                  size: 40,
+                  animated: false,
+                  showName: false,
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(
               _soundService.soundsEnabled ? Icons.graphic_eq : Icons.volume_off,

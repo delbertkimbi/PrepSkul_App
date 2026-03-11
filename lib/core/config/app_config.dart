@@ -51,7 +51,7 @@ class AppConfig {
   /// 
   /// Set to `true` to enable SkulMate (game generation and library).
   /// Set to `false` to disable SkulMate in production.
-  static const bool enableSkulMate = false; // ← Disabled in production until RLS issues are resolved
+  static const bool enableSkulMate = true; // ← Disabled in production until RLS issues are resolved
 
   /// Enable/disable PrepSkul VA (session summary, analysis, notifications)
   ///

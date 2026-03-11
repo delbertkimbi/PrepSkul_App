@@ -20,19 +20,27 @@ import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../services/daily_challenge_service.dart';
 import 'game_results_screen.dart';
+import 'game_library_screen.dart';
 
 /// Quiz game screen with multiple choice questions
 class QuizGameScreen extends StatefulWidget {
   final GameModel game;
   final bool isDailyChallenge;
+  /// When true, back/exit goes to game library (dashboard) instead of upload.
+  final bool fromGenerationFlow;
 
-  const QuizGameScreen({Key? key, required this.game, this.isDailyChallenge = false}) : super(key: key);
+  const QuizGameScreen({
+    Key? key,
+    required this.game,
+    this.isDailyChallenge = false,
+    this.fromGenerationFlow = false,
+  }) : super(key: key);
 
   @override
   State<QuizGameScreen> createState() => _QuizGameScreenState();
 }
 
-class _QuizGameScreenState extends State<QuizGameScreen> {
+class _QuizGameScreenState extends State<QuizGameScreen> with SingleTickerProviderStateMixin {
   static const int _minQuestionsPerRound = 5;
   static const int _maxQuestionsPerRound = 7;
 
@@ -51,9 +59,15 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
   int? _lastCorrectXp; // +10 or +15 for boss – show pop-up briefly
+  bool _xpPopupVisible = false; // drives fade-out before advancing
   final List<QuestionPerformance> _questionBreakdown = [];
 
   bool _hasShownRules = false;
+  /// When true, show correct answer + explanation and "Next" instead of auto-advancing.
+  bool _showWrongAnswerFeedback = false;
+  static const int _countdownSecondsPerQuestion = 15;
+  int _countdownRemaining = _countdownSecondsPerQuestion;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
@@ -76,7 +90,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
         widget.game.gameType,
         () {
           _hasShownRules = true;
-          // Speak first question after rules
+          _startCountdown();
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted && _isTTSEnabled) {
               _speakCurrentQuestion();
@@ -85,7 +99,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
         },
       );
     } else {
-      // Speak first question
+      _startCountdown();
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted && _isTTSEnabled) {
           _speakCurrentQuestion();
@@ -96,14 +110,69 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     _confettiController.dispose();
     _ttsService.dispose();
     super.dispose();
   }
 
+  void _startCountdown() {
+    _countdownTimer?.cancel();
+    _countdownRemaining = _countdownSecondsPerQuestion;
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_countdownRemaining <= 0) {
+        t.cancel();
+        _onCountdownExpired();
+        return;
+      }
+      safeSetState(() => _countdownRemaining--);
+    });
+  }
+
+  /// When timer hits 0 without an answer: show correct answer + explanation and speak "No idea? No worries, let me explain..."
+  void _onCountdownExpired() {
+    if (_selectedAnswerIndex != null) return; // Already answered
+    final question = _questions[_currentQuestionIndex];
+    final correctAnswerIndex = question.correctAnswer is int
+        ? question.correctAnswer as int
+        : (question.correctAnswer is String
+            ? int.tryParse(question.correctAnswer.toString()) ?? 0
+            : 0);
+    final rawQuestionText = (question.question ?? question.term ?? '').trim();
+    if (rawQuestionText.isNotEmpty) {
+      _questionBreakdown.add(QuestionPerformance(question: rawQuestionText, isCorrect: false));
+    }
+    safeSetState(() {
+      _stopCountdown();
+      _showWrongAnswerFeedback = true;
+      // No answer selected; options stay unselected but we show correct + explanation
+    });
+    _soundService.playIncorrect();
+    final correctText = question.options != null && correctAnswerIndex < question.options!.length
+        ? question.options![correctAnswerIndex]
+        : '';
+    final explanation = (question.explanation ?? '').trim();
+    final toSpeak = explanation.isEmpty
+        ? 'No idea? No worries. The correct answer is $correctText.'
+        : 'No idea? No worries, let me explain. The correct answer is $correctText. $explanation';
+    if (_isTTSEnabled && toSpeak.isNotEmpty) {
+      _ttsService.speakAndWait(toSpeak);
+    }
+  }
+
+  void _stopCountdown() {
+    _countdownTimer?.cancel();
+    _countdownTimer = null;
+  }
+
   void _speakCurrentQuestion() {
     if (!_isTTSEnabled) return;
-    final question = widget.game.items[_currentQuestionIndex];
+    if (_currentQuestionIndex >= _questions.length) return;
+    final question = _questions[_currentQuestionIndex];
     final questionText = question.question ?? '';
     if (questionText.isNotEmpty) {
       _ttsService.speak(questionText);
@@ -147,6 +216,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
   void _selectAnswer(int displayIndex) {
     if (_selectedAnswerIndex != null) return; // Already answered
+    _soundService.playClick();
     final question = _questions[_currentQuestionIndex];
     final shuffled = _getShuffledOptionIndices(question);
     final originalIndex = displayIndex < shuffled.length ? shuffled[displayIndex] : displayIndex;
@@ -170,46 +240,60 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
 
     safeSetState(() {
       _selectedAnswerIndex = displayIndex;
+      _stopCountdown();
       if (isCorrect) {
         _score++;
         final xpPerCorrect = question.isBoss ? 15 : 10;
         _xpEarned += xpPerCorrect;
         _lastCorrectXp = xpPerCorrect;
+        _xpPopupVisible = true;
         _soundService.playCorrect();
         _confettiController.play();
         if (_isTTSEnabled) {
           _ttsService.speak('Correct!');
         }
-        // Clear XP pop-up after 1.2s
+        // Animate XP popup out, then advance
+        Future.delayed(const Duration(milliseconds: 700), () {
+          if (mounted) safeSetState(() => _xpPopupVisible = false);
+        });
         Future.delayed(const Duration(milliseconds: 1200), () {
-          if (mounted) safeSetState(() => _lastCorrectXp = null);
+          if (mounted) {
+            safeSetState(() => _lastCorrectXp = null);
+            _nextQuestion();
+          }
         });
       } else {
         _soundService.playIncorrect();
-        if (_isTTSEnabled) {
-          final correctText = question.options != null && correctAnswerIndex < question.options!.length
-              ? question.options![correctAnswerIndex]
-              : '';
-          _ttsService.speak('Incorrect. The correct answer is $correctText');
+        _showWrongAnswerFeedback = true;
+        final correctText = question.options != null && correctAnswerIndex < question.options!.length
+            ? question.options![correctAnswerIndex]
+            : '';
+        final explanation = (question.explanation ?? '').trim();
+        final toSpeak = explanation.isEmpty
+            ? 'Incorrect. The correct answer is $correctText.'
+            : 'Incorrect. The correct answer is $correctText. $explanation';
+        if (_isTTSEnabled && toSpeak.isNotEmpty) {
+          _ttsService.speakAndWait(toSpeak);
         }
-      }
-    });
-
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (mounted) {
-        _nextQuestion();
       }
     });
   }
 
   void _nextQuestion() {
+    safeSetState(() {
+      _lastCorrectXp = null;
+      _xpPopupVisible = false;
+      _showWrongAnswerFeedback = false;
+      _stopCountdown();
+    });
     if (_currentQuestionIndex < _questions.length - 1) {
       safeSetState(() {
         _currentQuestionIndex++;
         _selectedAnswerIndex = null;
+        _countdownRemaining = _countdownSecondsPerQuestion;
       });
-      // Speak next question
-      Future.delayed(const Duration(milliseconds: 300), () {
+      _startCountdown();
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted && _isTTSEnabled) {
           _speakCurrentQuestion();
         }
@@ -253,6 +337,7 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
             xpEarned: _xpEarned,
             isPerfectScore: isPerfectScore,
             questionBreakdown: _questionBreakdown,
+            fromGenerationFlow: widget.fromGenerationFlow,
           ),
         ),
       );
@@ -270,13 +355,56 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
     final question = _questions[_currentQuestionIndex];
     final progress = (_currentQuestionIndex + 1) / _questions.length;
     final isBossQuestion = question.isBoss;
+    final correctAnswerIdx = question.correctAnswer is int
+        ? question.correctAnswer as int
+        : (question.correctAnswer is String
+            ? int.tryParse(question.correctAnswer.toString()) ?? 0
+            : 0);
+    final correctAnswerText = (question.options != null && correctAnswerIdx < question.options!.length)
+        ? question.options![correctAnswerIdx]
+        : '';
 
     return Stack(
       children: [
         Scaffold(
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
+        leading: widget.fromGenerationFlow
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const GameLibraryScreen(initialTab: 1),
+                    ),
+                    (route) => false,
+                  );
+                },
+              )
+            : null,
         actions: [
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 2),
+              child: Center(
+                child: ClipOval(
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    color: Colors.white.withOpacity(0.2),
+                    child: Center(
+                      child: SkulMateCharacterWidget(
+                        character: _character,
+                        size: 28,
+                        animated: false,
+                        showName: false,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(
               _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
@@ -293,10 +421,19 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
       ),
       body: Column(
         children: [
-          // Enhanced progress indicator
+          // Progress + countdown (nkwa-style: clear percentage and time)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            color: Colors.white,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Column(
               children: [
                 Row(
@@ -327,14 +464,51 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: AppTheme.softBorder,
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 6,
+                          backgroundColor: AppTheme.softBorder,
+                          valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Circular countdown (Nkwa-style: dot-like ring that depletes to zero)
+                    SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: CircularProgressIndicator(
+                              value: _countdownRemaining / _countdownSecondsPerQuestion,
+                              strokeWidth: 3,
+                              backgroundColor: AppTheme.softBorder,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                _countdownRemaining <= 5 ? Colors.red : AppTheme.primaryColor,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${_countdownRemaining}s',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: _countdownRemaining <= 5 ? Colors.red : AppTheme.textDark,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -342,64 +516,85 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
           Expanded(
             child: Container(
               color: AppTheme.softBackground,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     if (isBossQuestion)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade700.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.amber.shade700, width: 2),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('⚔️', style: GoogleFonts.poppins(fontSize: 18)),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Boss Question',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber.shade900,
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade700.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade700, width: 2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('⚔️', style: GoogleFonts.poppins(fontSize: 18)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Boss Question',
+                              style: GoogleFonts.poppins(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.amber.shade900,
+                              ),
                             ),
+                          ],
+                        ),
+                      ),
+                    // Question card (compact: no redundant label, smaller text)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppTheme.primaryColor.withOpacity(0.06),
+                            AppTheme.accentPurple.withOpacity(0.04),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: AppTheme.softBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                    ),
-                  Text(
-                    'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
-                    style: GoogleFonts.poppins(fontSize: 16, color: AppTheme.textMedium),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    (question.question ?? '').trim().isEmpty
-                        ? 'Question content is loading...'
-                        : (question.question ?? ''),
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textDark,
-                    ),
-                  ),
-                  if ((question.question ?? '').trim().isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
                       child: Text(
-                        'If this persists, the content may not support this game type. Go back and try a different format.',
+                        (question.question ?? '').trim().isEmpty
+                            ? 'Question content is loading...'
+                            : (question.question ?? ''),
                         style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          color: AppTheme.textMedium,
-                          fontStyle: FontStyle.italic,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                          color: AppTheme.textDark,
                         ),
                       ),
                     ),
-                  const SizedBox(height: 24),
+                    if ((question.question ?? '').trim().isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'If this persists, the content may not support this game type. Go back and try a different format.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.textMedium,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
                   if ((question.options ?? []).isEmpty)
                     Container(
                       width: double.infinity,
@@ -432,43 +627,147 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
                         ],
                       ),
                     ),
-                  if ((question.options ?? []).isNotEmpty)
-                    ..._getShuffledOptionIndices(question).asMap().entries.map((entry) {
-                    final displayIndex = entry.key;
-                    final originalIndex = entry.value;
-                    final option = (question.options ?? [])[originalIndex];
-                    final isSelected = _selectedAnswerIndex == displayIndex;
-                    final correctAnswerIndex = question.correctAnswer is int 
-                        ? question.correctAnswer as int 
-                        : (question.correctAnswer is String 
-                            ? int.tryParse(question.correctAnswer.toString()) ?? 0 
-                            : 0);
-                    final isCorrect = originalIndex == correctAnswerIndex;
-                    final showResult = _selectedAnswerIndex != null;
+                    if ((question.options ?? []).isNotEmpty)
+                      ..._getShuffledOptionIndices(question).asMap().entries.map((entry) {
+                        final displayIndex = entry.key;
+                        final originalIndex = entry.value;
+                        final option = (question.options ?? [])[originalIndex];
+                        final isSelected = _selectedAnswerIndex == displayIndex;
+                        final correctAnswerIndex = question.correctAnswer is int
+                            ? question.correctAnswer as int
+                            : (question.correctAnswer is String
+                                ? int.tryParse(question.correctAnswer.toString()) ?? 0
+                                : 0);
+                        final isCorrect = originalIndex == correctAnswerIndex;
+                        final showResult = _selectedAnswerIndex != null;
 
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: ElevatedButton(
-                        onPressed: () => _selectAnswer(displayIndex),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                          backgroundColor: showResult
-                              ? (isCorrect
-                                  ? AppTheme.accentGreen
-                                  : (isSelected ? Colors.red : Colors.grey[300]))
-                              : (isSelected ? AppTheme.primaryColor : Colors.white),
-                        ),
-                        child: Text(
-                          option,
-                          style: GoogleFonts.poppins(
-                            color: showResult && isCorrect
-                                ? Colors.white
-                                : (isSelected && !isCorrect ? Colors.white : Colors.black),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _showWrongAnswerFeedback ? null : () => _selectAnswer(displayIndex),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: showResult
+                                      ? (isCorrect
+                                          ? AppTheme.accentGreen
+                                          : (isSelected ? Colors.red.shade400 : Colors.grey.shade200))
+                                      : (isSelected
+                                          ? AppTheme.primaryColor
+                                          : Colors.white),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: showResult
+                                        ? (isCorrect ? AppTheme.accentGreen : (isSelected ? Colors.red : Colors.grey.shade300!))
+                                        : (isSelected ? AppTheme.primaryColor : AppTheme.softBorder),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Text(
+                                  option,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: showResult && isCorrect
+                                        ? Colors.white
+                                        : (isSelected && !isCorrect ? Colors.white : AppTheme.textDark),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
+                        );
+                      }).toList(),
+                    if (_showWrongAnswerFeedback) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentLightGreen.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.accentGreen, width: 1.5),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.accentGreen.withOpacity(0.15),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.check_circle, color: AppTheme.accentGreen, size: 22),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Correct answer',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textDark,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              correctAnswerText,
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primaryColor,
+                              ),
+                            ),
+                            if ((question.explanation ?? '').trim().isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                question.explanation!.trim(),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13,
+                                  height: 1.4,
+                                  color: AppTheme.textDark,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: () {
+                                  _ttsService.stop();
+                                  _nextQuestion();
+                                },
+                                icon: const Icon(Icons.arrow_forward, size: 16),
+                                label: const Text('Next question'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 2,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  }).toList(),
+                    ],
                 ],
               ),
             ),
@@ -477,35 +776,39 @@ class _QuizGameScreenState extends State<QuizGameScreen> {
         ],
       ),
     ),
-        // XP pop-up on correct answer
+        // XP pop-up on correct answer: animates in, then fades out before next question
         if (_lastCorrectXp != null)
           Positioned(
-            top: MediaQuery.of(context).size.height * 0.35,
+            top: MediaQuery.of(context).size.height * 0.32,
             left: 0,
             right: 0,
             child: Center(
               child: AnimatedOpacity(
-                opacity: 1,
-                duration: const Duration(milliseconds: 200),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentGreen,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.accentGreen.withOpacity(0.5),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
+                opacity: _xpPopupVisible ? 1 : 0,
+                duration: const Duration(milliseconds: 300),
+                child: AnimatedSlide(
+                  offset: _xpPopupVisible ? Offset.zero : const Offset(0, -0.5),
+                  duration: const Duration(milliseconds: 300),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentGreen,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.accentGreen.withOpacity(0.5),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      '+$_lastCorrectXp XP',
+                      style: GoogleFonts.poppins(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    '+$_lastCorrectXp XP',
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
                     ),
                   ),
                 ),

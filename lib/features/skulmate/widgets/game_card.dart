@@ -144,15 +144,15 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: AppTheme.softCard,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.softBorder),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ],
@@ -163,28 +163,35 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         onTap: widget.onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Game icon
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _gameIcon,
-                  color: AppTheme.primaryColor,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Game info
+              // Left content: icon + game info (extra left/top for nicer fill)
               Expanded(
-                child: Column(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6, top: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Game icon
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          _gameIcon,
+                          color: AppTheme.primaryColor,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Game info
+                      Expanded(
+                        child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -313,11 +320,14 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                     ),
                   ],
                 ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              // Actions — favorite (single state, no duplicate) + share/delete
-              Column(
+              // Actions — favourite and share in a row (delete via swipe)
+              Row(
                 mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   InkWell(
                     onTap: _toggleFavorite,
@@ -332,24 +342,13 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                     ),
                   ),
                   if (widget.onShare != null) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(width: 4),
                     InkWell(
                       onTap: widget.onShare,
                       borderRadius: BorderRadius.circular(20),
                       child: Padding(
                         padding: const EdgeInsets.all(6),
                         child: Icon(Icons.share_outlined, size: 20, color: AppTheme.textMedium),
-                      ),
-                    ),
-                  ],
-                  if (widget.onDelete != null) ...[
-                    const SizedBox(height: 4),
-                    InkWell(
-                      onTap: widget.onDelete,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
                       ),
                     ),
                   ],

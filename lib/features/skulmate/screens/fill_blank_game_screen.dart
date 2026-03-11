@@ -13,6 +13,7 @@ import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_character_widget.dart';
 import 'game_results_screen.dart';
 
 /// Fill-in-the-blank game screen
@@ -443,6 +444,18 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: SkulMateCharacterWidget(
+                  character: _character,
+                  size: 40,
+                  animated: false,
+                  showName: false,
+                ),
+              ),
+            ),
           if (_currentStreak > 0)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),

@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../services/skulmate_service.dart';
 import '../widgets/generation_context_sheet.dart';
+import 'game_setup_flow_screen.dart';
 import 'game_generation_screen.dart';
 
 /// Screen for entering game title and notes text manually
@@ -63,7 +64,12 @@ class _TextInputScreenState extends State<TextInputScreen> {
           : null;
 
       if (!mounted) return;
-      final contextResult = await GenerationContextSheet.show(context);
+      final contextResult = await Navigator.push<GenerationContext?>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const GameSetupFlowScreen(),
+        ),
+      );
       if (!mounted) return;
 
       await Navigator.push(

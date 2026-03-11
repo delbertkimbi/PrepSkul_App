@@ -5,6 +5,8 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_character_widget.dart';
+import '../services/character_selection_service.dart';
 import '../services/tts_service.dart';
 import '../services/sound_service.dart';
 import 'dart:math' as math;
@@ -27,13 +29,20 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
   ConfettiController? _confettiController;
   bool _showDefinition = false;
   bool _isTTSEnabled = true;
+  dynamic _character;
 
   @override
   void initState() {
     super.initState();
     _initializeGame();
+    _loadCharacter();
     TTSService().initialize();
     SoundService().initialize();
+  }
+
+  Future<void> _loadCharacter() async {
+    final character = await CharacterSelectionService.getSelectedCharacter();
+    if (mounted) setState(() => _character = character);
   }
 
   @override
@@ -369,6 +378,18 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: SkulMateCharacterWidget(
+                  character: _character,
+                  size: 40,
+                  animated: false,
+                  showName: false,
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(
               _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
@@ -376,7 +397,7 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
               size: 20,
             ),
             onPressed: () {
-              safeSetState(() {
+              setState(() {
                 _isTTSEnabled = !_isTTSEnabled;
                 TTSService().setEnabled(_isTTSEnabled);
               });

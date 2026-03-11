@@ -19,6 +19,7 @@ import 'game_library_screen.dart';
 import 'text_input_screen.dart';
 import '../widgets/photo_upload_bottom_sheet.dart';
 import '../widgets/generation_context_sheet.dart';
+import 'game_setup_flow_screen.dart';
 
 /// Screen for uploading notes/documents to create games
 class SkulMateUploadScreen extends StatefulWidget {
@@ -439,6 +440,25 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     );
   }
 
+  static const int _maxUploadBytes = 10 * 1024 * 1024; // 10 MB
+
+  Future<int> _getTotalSelectionSizeBytes() async {
+    int total = 0;
+    if (kIsWeb && _selectedFilesWeb.isNotEmpty) {
+      for (final f in _selectedFilesWeb) {
+        total += f.size;
+      }
+    } else if (!kIsWeb && _selectedFiles.isNotEmpty) {
+      for (final f in _selectedFiles) {
+        total += f.lengthSync();
+      }
+    }
+    for (final x in _selectedImages) {
+      total += await x.length();
+    }
+    return total;
+  }
+
   Future<void> _uploadAndGenerate() async {
     if (_selectedFiles.isEmpty && _selectedFilesWeb.isEmpty && _selectedImages.isEmpty) {
       _showFriendlySnackBar('no_selection');
@@ -447,8 +467,30 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
     if (!mounted) return;
 
-    // Show optional context questionnaire first
-    final contextResult = await GenerationContextSheet.show(context);
+    final totalBytes = await _getTotalSelectionSizeBytes();
+    if (totalBytes > _maxUploadBytes) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'File(s) are too large (max 10 MB). Use smaller files or "Enter text manually".',
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            backgroundColor: const Color(0xFFB45309),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show optional game setup flow (difficulty, subject, exam, game type)
+    final contextResult = await Navigator.push<GenerationContext?>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const GameSetupFlowScreen(),
+      ),
+    );
     if (!mounted) return;
 
     final document = kIsWeb && _selectedFilesWeb.isNotEmpty
@@ -517,14 +559,14 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Simple hero banner
+            // Compact hero banner
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor,
                 borderRadius: BorderRadius.circular(12),
@@ -534,7 +576,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 children: [
                   if (_gameStats != null && _gameStats!.currentStreak > 0)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.only(bottom: 8),
                       child: Row(
                         children: [
                           Container(
@@ -547,12 +589,12 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text('🔥', style: TextStyle(fontSize: 16)),
-                                const SizedBox(width: 6),
+                                const Text('🔥', style: TextStyle(fontSize: 14)),
+                                const SizedBox(width: 4),
                                 Text(
                                   '${_gameStats!.currentStreak} day streak',
                                   style: GoogleFonts.poppins(
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.white,
                                   ),
@@ -566,31 +608,31 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   Text(
                     'Turn Your Notes Into Games',
                     style: GoogleFonts.poppins(
-                      fontSize: 18,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
-                    'Upload notes, documents, or photos — skulMate creates interactive games to help you learn.',
+                    'Upload notes, documents, or photos — skulMate creates interactive games.',
                     style: GoogleFonts.poppins(
-                      fontSize: 13,
+                      fontSize: 12,
                       color: Colors.white.withOpacity(0.92),
-                      height: 1.4,
+                      height: 1.35,
                     ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
 
             // Selected files/images - shown first when user has made a selection
             if (hasSelection) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
@@ -608,16 +650,16 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 20),
+                        Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 18),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Your selected files',
+                                'Your selection',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 15,
+                                  fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.textDark,
                                 ),
@@ -634,7 +676,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     if (_selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty) ...[
                       Wrap(
                         spacing: 8,
@@ -839,47 +881,45 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
             ],
 
-            // Choose Upload Method
+            // Choose source
             Text(
-              'Choose Upload Method',
+              'Choose source',
               style: GoogleFonts.poppins(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textDark,
               ),
             ),
+            const SizedBox(height: 8),
 
-            const SizedBox(height: 12),
-
-            // Upload Options - Three cards
             _buildUploadCard(
               icon: Icons.picture_as_pdf_rounded,
-              title: 'Upload PDF/Document',
-              subtitle: 'PDF, DOCX, or TXT files',
+              title: 'PDF/Document',
+              subtitle: 'PDF, DOCX, or TXT',
               onTap: _pickDocument,
               isSelected: kIsWeb ? _selectedFilesWeb.isNotEmpty : _selectedFiles.isNotEmpty,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildUploadCard(
               icon: Icons.photo_library_rounded,
-              title: 'Upload Photo/Image',
-              subtitle: 'Select multiple from gallery or take photos',
+              title: 'Photo/Image',
+              subtitle: 'Gallery or camera',
               onTap: _showPhotoOptions,
               isSelected: _selectedImages.isNotEmpty,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _buildUploadCard(
               icon: Icons.text_fields_rounded,
-              title: 'Enter Text Manually',
-              subtitle: 'Type or paste your notes',
+              title: 'Enter text',
+              subtitle: 'Type or paste notes',
               onTap: _navigateToTextInput,
               isSelected: false,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             // Generate Game Button (only for file/photo uploads)
               SizedBox(
                 width: double.infinity,
@@ -929,38 +969,38 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.primaryColor.withOpacity(0.1)
+              ? AppTheme.primaryColor.withOpacity(0.08)
               : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
                 ? AppTheme.primaryColor
-                : Colors.grey[300]!,
+                : AppTheme.softBorder,
             width: isSelected ? 2 : 1,
           ),
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: isSelected
                     ? AppTheme.primaryColor
-                    : Colors.grey[200],
+                    : AppTheme.softBackground,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 icon,
                 color: isSelected ? Colors.white : AppTheme.textMedium,
-                size: 24,
+                size: 20,
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -968,16 +1008,16 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: 13,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     subtitle,
-                      style: GoogleFonts.poppins(
-                      fontSize: 12,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
                       color: AppTheme.textMedium,
                     ),
                   ),

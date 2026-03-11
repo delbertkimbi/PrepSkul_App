@@ -126,7 +126,8 @@ class GameSoundService {
       // Use preloaded player if available
       if (_preloadedPlayers.containsKey(type)) {
         final player = _preloadedPlayers[type]!;
-        await player.seek(Duration.zero); // Reset to start
+        await player.stop(); // Stop so rapid repeats (e.g. card flips) each play fully
+        await player.seek(Duration.zero);
         await player.resume();
         return;
       }
