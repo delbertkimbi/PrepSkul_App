@@ -6,7 +6,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import '../models/social_models.dart';
 import '../services/social_service.dart';
-import '../widgets/create_challenge_dialog.dart';
+import 'challenge_create_screen.dart';
 import 'game_library_screen.dart';
 import 'quiz_game_screen.dart';
 import 'flashcard_game_screen.dart';
@@ -109,15 +109,17 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result = await showDialog(
-            context: context,
-            builder: (context) => CreateChallengeDialog(),
+          final result = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ChallengeCreateScreen(),
+            ),
           );
           if (result == true) {
             _loadChallenges();
           }
         },
-        child: Icon(Icons.add),
+        child: const Icon(Icons.add),
         backgroundColor: AppTheme.primaryColor,
       ),
     );

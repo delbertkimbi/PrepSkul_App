@@ -146,6 +146,30 @@ class NotificationHelperService {
     }
   }
 
+  /// Send SkulMate social notification (friend request, challenge, etc.) — in-app + push via API.
+  /// Same flow as friend requests: challengee gets in-app and push when challenged.
+  static Future<void> sendSkulmateNotification({
+    required String userId,
+    required String type,
+    required String title,
+    required String message,
+    String? actionUrl,
+    String? actionText,
+    Map<String, dynamic>? data,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: type,
+      title: title,
+      message: message,
+      actionUrl: actionUrl,
+      actionText: actionText,
+      metadata: data,
+      sendEmail: false,
+      sendPush: true,
+    );
+  }
+
   /// Send tutor onboarding reminder (in-app + email + push via API).
   /// Use when tutor skips onboarding or when tutor home detects incomplete onboarding.
   /// [metadata] may include onboarding_skipped, onboarding_complete, and reminder_stage

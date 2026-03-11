@@ -357,11 +357,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 ),
               );
             } else {
-              // Has games, navigate to game library (defaults to Sessions tab)
+              // Has games, navigate to game library (My Games tab by default)
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const GameLibraryScreen(initialTab: 0),
+                  builder: (context) => const GameLibraryScreen(initialTab: 1),
                 ),
               );
             }

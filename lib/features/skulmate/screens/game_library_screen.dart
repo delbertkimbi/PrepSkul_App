@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -65,6 +66,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   Map<String, DateTime?> _gameLastPlayedDates = {}; // Cache for last played dates
   GameStats? _gameStats;
   int _dailyChallengeRefreshKey = 0;
+  bool _swipeHintSeen = true; // After load: true = user has seen/dismissed the hint
+
+  static const String _prefKeySwipeHint = 'skulmate_swipe_delete_hint_seen';
 
   @override
   void initState() {
@@ -76,7 +80,16 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     );
     _loadGames();
     _loadGameStats();
+    _loadSwipeHintSeen();
     _scrollController.addListener(_onScroll);
+  }
+
+  Future<void> _loadSwipeHintSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seen = prefs.getBool(_prefKeySwipeHint) ?? false;
+      if (mounted) safeSetState(() => _swipeHintSeen = seen);
+    } catch (_) {}
   }
 
   Future<void> _loadGameStats() async {
@@ -539,11 +552,40 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   }
 
   Future<void> _deleteGame(GameModel game) async {
-    // Load stats before showing confirmation
+    final confirmed = await _confirmDeleteGame(game);
+    if (confirmed) await _deleteGameImmediate(game);
+  }
+
+  Future<void> _deleteGameImmediate(GameModel game) async {
+    try {
+      await SkulMateService.deleteGame(game.id);
+      if (mounted) _loadGames(refresh: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Game deleted'),
+            backgroundColor: AppTheme.accentGreen,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.getUserFriendlyMessage(e)),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool> _confirmDeleteGame(GameModel game) async {
     final stats = await SkulMateService.getGameStats(game.id);
     final timesPlayed = stats['totalPlays'] as int? ?? 0;
     final bestScore = stats['bestScore'] as int? ?? 0;
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -610,31 +652,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         ],
       ),
     );
-
-    if (confirmed == true) {
-      try {
-        await SkulMateService.deleteGame(game.id);
-        _loadGames(refresh: true);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Game deleted successfully'),
-              backgroundColor: AppTheme.accentGreen,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(ErrorHandler.getUserFriendlyMessage(e)),
-              backgroundColor: Colors.red.shade700,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
-    }
+    return confirmed == true;
   }
 
   Future<void> _shareGame(GameModel game) async {
@@ -741,8 +759,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             icon: const Icon(Icons.emoji_events_outlined, size: 20),
             tooltip: 'Leaderboard',
             iconSize: 20,
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: const EdgeInsets.all(1),
+            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
             visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
@@ -842,6 +860,94 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     );
   }
 
+  Widget _buildDismissibleGameCard({
+    required GameModel game,
+    required EdgeInsets padding,
+  }) {
+    return Dismissible(
+      key: ValueKey(game.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: Colors.red.shade400,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(Icons.delete_outline, color: Colors.white, size: 28),
+      ),
+      confirmDismiss: (direction) => _confirmDeleteGame(game),
+      onDismissed: (_) => _deleteGameImmediate(game),
+      child: Padding(
+        padding: padding,
+        child: GameCard(
+          game: game,
+          onTap: () => _navigateToGame(game),
+          onShare: () => _shareGame(game),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwipeToDeleteHint() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+      child: Material(
+        color: AppTheme.primaryColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setBool(_prefKeySwipeHint, true);
+            if (mounted) safeSetState(() => _swipeHintSeen = true);
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.swipe_left_rounded, color: AppTheme.primaryColor, size: 28),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Swipe left on a game to delete it',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Tap to dismiss',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          color: AppTheme.textMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  'Got it',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildFilterChip(String label, String? value) {
     final isSelected = _selectedFilter == value;
     return FilterChip(
@@ -857,6 +963,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       onSelected: (selected) {
         safeSetState(() {
           _selectedFilter = selected ? value : null;
+          if (selected) _showFavoritesOnly = false; // Deselect Favorites when another tab is chosen
         });
       },
       selectedColor: AppTheme.primaryColor, // Deep blue when selected
@@ -873,10 +980,11 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
 
   Widget _buildFavoriteChip() {
     return FilterChip(
+      showCheckmark: false,
       avatar: Icon(
         Icons.favorite,
         size: 16,
-        color: _showFavoritesOnly ? Colors.white : AppTheme.primaryColor,
+        color: _showFavoritesOnly ? Colors.red : AppTheme.primaryColor,
       ),
       label: Text(
         'Favorites',
@@ -892,8 +1000,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
           _showFavoritesOnly = selected;
         });
       },
-      selectedColor: AppTheme.primaryColor, // Deep blue instead of red
-      checkmarkColor: Colors.white,
+      selectedColor: AppTheme.primaryColor,
       backgroundColor: Colors.white,
       side: BorderSide(
         color: _showFavoritesOnly ? AppTheme.primaryColor : Colors.grey[300]!,
@@ -907,103 +1014,6 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   Widget _buildMyGamesTab() {
     return Column(
       children: [
-        // Progress summary (XP, level, streaks, simple rewards)
-        if (_gameStats != null)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-              border: Border.all(color: AppTheme.softBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.military_tech, size: 18, color: AppTheme.primaryColor),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Level ${_gameStats!.level}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '${_gameStats!.totalXP} XP',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: _gameStats!.levelProgress,
-                    minHeight: 6,
-                    backgroundColor: AppTheme.softBorder,
-                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_gameStats!.xpForNextLevel} XP to next level',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: AppTheme.textMedium,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    if (_gameStats!.currentStreak > 0) ...[
-                      const Icon(Icons.local_fire_department_outlined, size: 16, color: Colors.orange),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${_gameStats!.currentStreak} day streak',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AppTheme.textDark,
-                        ),
-                      ),
-                    ],
-                    if (_gameStats!.currentStreak > 0) const SizedBox(width: 12),
-                    const Icon(Icons.emoji_events_outlined, size: 16, color: AppTheme.accentGreen),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_gameStats!.achievements.length} rewards unlocked',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
         // Daily Challenge card (one focused set per day; user-specific)
         DailyChallengeCard(
           key: ValueKey(_dailyChallengeRefreshKey),
@@ -1019,7 +1029,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         ),
         // Filter bar
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           color: Colors.white,
           child: Column(
             children: [
@@ -1029,15 +1039,15 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                 child: Row(
                   children: [
                     _buildFilterChip('All', null),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildFavoriteChip(),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildFilterChip('Quiz', 'quiz'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildFilterChip('Flashcards', 'flashcards'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildFilterChip('Matching', 'matching'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildFilterChip('Fill Blank', 'fill_blank'),
                   ],
                 ),
@@ -1045,6 +1055,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             ],
           ),
         ),
+        // First-time: swipe to delete hint
+        if (!_swipeHintSeen) _buildSwipeToDeleteHint(),
         // Games list
         Expanded(
           child: _isLoading
@@ -1085,14 +1097,14 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                           },
                           child: ListView.builder(
                             controller: _scrollController,
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
                             itemCount: filteredGames.length + 
                                       (showRecentlyPlayed ? recentlyPlayed.length + 2 : 0) +
                                       (_isLoadingMore ? 1 : 0),
                             itemBuilder: (context, index) {
                               if (showRecentlyPlayed && index == 0) {
                                 return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.only(bottom: 2),
                                   child: Row(
                                     children: [
                                       Icon(Icons.history, color: AppTheme.primaryColor, size: 20),
@@ -1112,20 +1124,15 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
 
                               if (showRecentlyPlayed && index > 0 && index <= recentlyPlayed.length) {
                                 final game = recentlyPlayed[index - 1];
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: GameCard(
-                                    game: game,
-                                    onTap: () => _navigateToGame(game),
-                                    onDelete: () => _deleteGame(game),
-                                    onShare: () => _shareGame(game),
-                                  ),
+                                return _buildDismissibleGameCard(
+                                  game: game,
+                                  padding: const EdgeInsets.only(bottom: 4),
                                 );
                               }
 
                               if (showRecentlyPlayed && index == recentlyPlayed.length + 1) {
                                 return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  padding: const EdgeInsets.symmetric(vertical: 6),
                                   child: Divider(color: Colors.grey[300]),
                                 );
                               }
@@ -1147,11 +1154,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                               if (gameIndex < 0) return const SizedBox.shrink();
                               
                               final game = filteredGames[gameIndex];
-                              return GameCard(
+                              return _buildDismissibleGameCard(
                                 game: game,
-                                onTap: () => _navigateToGame(game),
-                                onDelete: () => _deleteGame(game),
-                                onShare: () => _shareGame(game),
+                                padding: const EdgeInsets.only(bottom: 4),
                               );
                             },
                           ),

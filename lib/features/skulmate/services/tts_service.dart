@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -12,6 +13,7 @@ class TTSService {
   bool _isInitialized = false;
   bool _isEnabled = true;
   String _currentLanguage = 'en';
+  Completer<void>? _speakCompleter;
 
   /// Initialize TTS service
   Future<void> initialize() async {
@@ -29,9 +31,11 @@ class TTSService {
       await _flutterTts!.setVolume(1.0);
       await _flutterTts!.setPitch(1.0);
       
-      // Set completion handler
+      // Set completion handler (used by speakAndWait)
       _flutterTts!.setCompletionHandler(() {
         LogService.debug('[TTS] Speech completed');
+        _speakCompleter?.complete();
+        _speakCompleter = null;
       });
       
       _isInitialized = true;
@@ -61,6 +65,32 @@ class TTSService {
       LogService.debug('[TTS] Speaking: ${text.substring(0, text.length > 50 ? 50 : text.length)}...');
     } catch (e) {
       LogService.error('[TTS] Error speaking: $e');
+    }
+  }
+
+  /// Speak text and return a Future that completes when speech finishes (or after a timeout).
+  /// Use this when you need to wait before advancing (e.g. wrong-answer explanation).
+  Future<void> speakAndWait(String text, {Duration? timeout}) async {
+    if (!_isEnabled || text.isEmpty) return;
+    if (!_isInitialized) await ensureInitialized();
+    if (!_isInitialized) return;
+
+    _speakCompleter = Completer<void>();
+    try {
+      await _flutterTts!.speak(text);
+      final t = timeout ?? Duration(
+        milliseconds: (text.length * 80).clamp(2000, 15000),
+      );
+      await _speakCompleter!.future.timeout(t, onTimeout: () {
+        _speakCompleter = null;
+      });
+    } catch (e) {
+      _speakCompleter = null;
+      if (e is TimeoutException) {
+        LogService.debug('[TTS] speakAndWait timed out');
+      } else {
+        LogService.error('[TTS] Error speaking: $e');
+      }
     }
   }
 

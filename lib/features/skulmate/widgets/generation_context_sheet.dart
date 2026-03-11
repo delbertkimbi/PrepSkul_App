@@ -234,6 +234,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   final isSelected = _practiceType == value;
                   return FilterChip(
                     selected: isSelected,
+                    showCheckmark: false,
                     label: Text(
                       '${opt['emoji']} ${opt['label']}',
                       style: GoogleFonts.poppins(
@@ -247,10 +248,9 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                     },
                     selectedColor: AppTheme.primaryColor,
                     backgroundColor: AppTheme.softBackground,
-                    checkmarkColor: Colors.white,
                     side: BorderSide(
                       color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-                      width: 1,
+                      width: isSelected ? 2 : 1,
                     ),
                   );
                 }).toList(),
@@ -273,6 +273,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   final isSelected = _gameType == value;
                   return FilterChip(
                     selected: isSelected,
+                    showCheckmark: false,
                     label: Text(
                       '${opt['emoji']} ${opt['label']}',
                       style: GoogleFonts.poppins(
@@ -286,10 +287,9 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                     },
                     selectedColor: AppTheme.primaryColor,
                     backgroundColor: AppTheme.softBackground,
-                    checkmarkColor: Colors.white,
                     side: BorderSide(
                       color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-                      width: 1,
+                      width: isSelected ? 2 : 1,
                     ),
                   );
                 }).toList(),

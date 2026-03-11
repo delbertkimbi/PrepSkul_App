@@ -11,6 +11,7 @@ import '../widgets/add_friend_dialog.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
 import 'add_friend_screen.dart';
 import 'package:prepskul/core/widgets/shimmer_loading.dart';
+import '../services/game_sound_service.dart';
 
 /// Friends screen for managing friendships
 class FriendsScreen extends StatefulWidget {
@@ -26,11 +27,13 @@ class _FriendsScreenState extends State<FriendsScreen>
   List<Friendship> _friends = [];
   List<Friendship> _pendingRequests = [];
   bool _isLoading = true;
+  final GameSoundService _soundService = GameSoundService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _soundService.initialize();
     _loadFriends();
   }
 
@@ -72,6 +75,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Future<void> _declineRequest(String friendshipId) async {
+    _soundService.playClick();
     try {
       await SocialService.declineFriendRequest(friendshipId);
       _loadFriends();
@@ -97,6 +101,7 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Future<void> _acceptRequest(String friendshipId) async {
+    _soundService.playClick();
     try {
       await SocialService.acceptFriendRequest(friendshipId);
       _loadFriends();
@@ -285,17 +290,20 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildFriendCard(Friendship friendship) {
+    final name = friendship.friendName ?? 'Friend';
+    final initial = name.trim().isEmpty ? '?' : name.trim().toUpperCase().substring(0, 1);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.softBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -309,7 +317,7 @@ class _FriendsScreenState extends State<FriendsScreen>
                 : null,
             child: friendship.friendAvatarUrl == null
                 ? Text(
-                    (friendship.friendName ?? 'F')[0].toUpperCase(),
+                    initial,
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
@@ -318,13 +326,13 @@ class _FriendsScreenState extends State<FriendsScreen>
                   )
                 : null,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  friendship.friendName ?? 'Friend',
+                  name,
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -332,12 +340,18 @@ class _FriendsScreenState extends State<FriendsScreen>
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Friend since ${_formatDate(friendship.createdAt)}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppTheme.textMedium,
-                  ),
+                Row(
+                  children: [
+                    Icon(Icons.people_outline, size: 14, color: AppTheme.textMedium),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Friend since ${_formatDate(friendship.createdAt)}',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -354,18 +368,20 @@ class _FriendsScreenState extends State<FriendsScreen>
   }
 
   Widget _buildRequestCard(Friendship request, bool isIncoming) {
+    final name = request.friendName ?? 'User';
+    final initial = name.trim().isEmpty ? '?' : name.trim().toUpperCase().substring(0, 1);
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange, width: 2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.shade200, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -373,28 +389,28 @@ class _FriendsScreenState extends State<FriendsScreen>
         children: [
           CircleAvatar(
             radius: 28,
-            backgroundColor: Colors.orange.withOpacity(0.1),
+            backgroundColor: Colors.orange.withOpacity(0.12),
             backgroundImage: request.friendAvatarUrl != null
                 ? NetworkImage(request.friendAvatarUrl!)
                 : null,
             child: request.friendAvatarUrl == null
                 ? Text(
-                    (request.friendName ?? 'U')[0].toUpperCase(),
+                    initial,
                     style: GoogleFonts.poppins(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
-                      color: Colors.orange[700],
+                      color: Colors.orange.shade700,
                     ),
                   )
                 : null,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  request.friendName ?? 'User',
+                  name,
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -402,14 +418,24 @@ class _FriendsScreenState extends State<FriendsScreen>
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  isIncoming
-                      ? 'Sent you a friend request'
-                      : 'Friend request sent',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    color: AppTheme.textMedium,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      isIncoming ? Icons.mail_outline : Icons.send_outlined,
+                      size: 14,
+                      color: AppTheme.textMedium,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      isIncoming
+                          ? 'Sent you a friend request'
+                          : 'Friend request sent',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: AppTheme.textMedium,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -418,19 +444,30 @@ class _FriendsScreenState extends State<FriendsScreen>
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextButton(
+                ElevatedButton(
                   onPressed: () => _acceptRequest(request.id),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.accentGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                   child: const Text('Accept'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.accentGreen,
-                  ),
                 ),
-                TextButton(
+                const SizedBox(width: 8),
+                OutlinedButton(
                   onPressed: () => _declineRequest(request.id),
-                  child: const Text('Decline'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.red,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade300),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
+                  child: const Text('Decline'),
                 ),
               ],
             ),

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -8,11 +8,14 @@ import 'package:prepskul/core/theme/app_theme.dart';
 class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
+  /// When set, used as the leading (e.g. back to dashboard instead of upload).
+  final Widget? leading;
 
   const SkulMateGameAppBar({
     Key? key,
     required this.title,
     this.actions,
+    this.leading,
   }) : super(key: key);
 
   @override
@@ -24,6 +27,7 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
       backgroundColor: AppTheme.primaryColor,
       foregroundColor: Colors.white,
       iconTheme: const IconThemeData(color: Colors.white),
+      leading: leading,
       titleTextStyle: GoogleFonts.poppins(
         color: Colors.white,
         fontWeight: FontWeight.w600,

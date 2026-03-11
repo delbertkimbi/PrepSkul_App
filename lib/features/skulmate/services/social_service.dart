@@ -1,6 +1,7 @@
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/notification_service.dart';
+import 'package:prepskul/core/services/notification_helper_service.dart';
 import '../models/social_models.dart';
 import '../models/game_stats_model.dart';
 import 'games_services_controller.dart';
@@ -97,14 +98,14 @@ class SocialService {
         throw Exception('Failed to create friend request');
       }
 
-      // Notify recipient
+      // Notify recipient (in-app + push, same as challenges)
       try {
         final requesterName = (await SupabaseService.client
             .from('profiles')
             .select('full_name')
             .eq('id', userId)
             .maybeSingle())?['full_name'] as String? ?? 'Someone';
-        await NotificationService.createNotification(
+        await NotificationHelperService.sendSkulmateNotification(
           userId: friendId,
           type: 'skulmate_friend_request',
           title: '👋 New friend request',
@@ -497,14 +498,14 @@ class SocialService {
         throw Exception('Failed to create challenge');
       }
 
-      // Notify challengee
+      // Notify challengee (in-app + push, same as friend requests)
       try {
         final challengerName = (await SupabaseService.client
             .from('profiles')
             .select('full_name')
             .eq('id', userId)
             .maybeSingle())?['full_name'] as String? ?? 'Someone';
-        await NotificationService.createNotification(
+        await NotificationHelperService.sendSkulmateNotification(
           userId: challengeeId,
           type: 'skulmate_challenge',
           title: '⚔️ Challenge from $challengerName',

@@ -429,6 +429,18 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(
+                child: SkulMateCharacterWidget(
+                  character: _character,
+                  size: 40,
+                  animated: false,
+                  showName: false,
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(
               _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
