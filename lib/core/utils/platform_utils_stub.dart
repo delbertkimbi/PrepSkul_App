@@ -3,4 +3,9 @@
 class PlatformUtils {
   static bool get isIosWeb => false;
   static bool get isMobileWeb => false;
+  
+  /// Non-web stub: no-op.
+  static void registerCallUnloadHandler(void Function() onLeave) {
+    // Not supported off web.
+  }
 }

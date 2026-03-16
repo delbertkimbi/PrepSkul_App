@@ -6,6 +6,7 @@ import 'dart:html' as html;
 class PlatformUtils {
   static bool? _isIosWebCached;
   static bool? _isMobileWebCached;
+  static bool _unloadHandlerRegistered = false;
 
   static bool get isIosWeb {
     _isIosWebCached ??= _detectIos();
@@ -16,6 +17,24 @@ class PlatformUtils {
   static bool get isMobileWeb {
     _isMobileWebCached ??= _detectMobileWeb();
     return _isMobileWebCached!;
+  }
+
+  /// Register a single global handler that fires when the page is being
+  /// unloaded (refresh, tab close, navigation). Used to send a best-effort
+  /// \"left\" heartbeat before the connection is torn down.
+  static void registerCallUnloadHandler(void Function() onLeave) {
+    if (_unloadHandlerRegistered) return;
+    _unloadHandlerRegistered = true;
+    try {
+      html.window.addEventListener('beforeunload', (event) {
+        onLeave();
+      });
+      html.window.addEventListener('pagehide', (event) {
+        onLeave();
+      });
+    } catch (_) {
+      // If anything goes wrong we simply skip the optimization.
+    }
   }
 
   static bool _detectIos() {

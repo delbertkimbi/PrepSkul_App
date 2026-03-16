@@ -87,6 +87,7 @@ class AgoraService {
   
   // Remote state tracking streams
   final _remoteVideoMutedController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, muted: bool}
+  final _remoteVideoFrameController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, ready: bool}
   final _remoteAudioMutedController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, muted: bool}
   final _screenSharingController = StreamController<Map<String, dynamic>>.broadcast(); // {uid: int, sharing: bool}
   final _userLeftController = StreamController<int>.broadcast(); // uid of user who left
@@ -138,6 +139,10 @@ class AgoraService {
   final Map<int, bool> _remoteAudioActive = {}; // remoteUid -> audio is still active (helps detect screen-off)
   static const _screenOffDetectionDelay = Duration(seconds: 5); // Wait 5 seconds before detecting screen-off
 
+  // Provisional "stopped" handling: avoid immediate ready=false on transient renegotiation (e.g. web)
+  final Map<int, Timer?> _remoteVideoStoppedProvisionalTimers = {};
+  static const _remoteVideoStoppedProvisionalDelay = Duration(milliseconds: 800);
+
   // Quality tier configurations
   static const _quality1080p = VideoEncoderConfiguration(
     dimensions: VideoDimensions(width: 1920, height: 1080),
@@ -179,6 +184,17 @@ class AgoraService {
     mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
   );
 
+  /// Extremely resilient tier for very poor networks – favors continuity over sharpness.
+  static const _quality360pVeryLow = VideoEncoderConfiguration(
+    dimensions: VideoDimensions(width: 480, height: 360),
+    frameRate: 15,
+    bitrate: 450,
+    minBitrate: 300,
+    orientationMode: OrientationMode.orientationModeAdaptive,
+    degradationPreference: DegradationPreference.maintainFramerate,
+    mirrorMode: VideoMirrorModeType.videoMirrorModeAuto,
+  );
+
   // Getters
   Stream<AgoraSessionState> get stateStream => _stateController.stream;
   Stream<int> get userJoinedStream => _userJoinedController.stream;
@@ -186,6 +202,7 @@ class AgoraService {
   Stream<ConnectionStateType> get connectionStateStream => _connectionStateController.stream;
   Stream<String> get errorStream => _errorController.stream;
   Stream<Map<String, dynamic>> get remoteVideoMutedStream => _remoteVideoMutedController.stream;
+  Stream<Map<String, dynamic>> get remoteVideoFrameStream => _remoteVideoFrameController.stream;
   Stream<Map<String, dynamic>> get remoteAudioMutedStream => _remoteAudioMutedController.stream;
   Stream<Map<String, dynamic>> get screenSharingStream => _screenSharingController.stream;
   Stream<int> get userLeftStream => _userLeftController.stream;
@@ -276,16 +293,13 @@ class AgoraService {
         LogService.warning('Could not set video encoder configuration: $e');
       }
 
-      // Configure audio for optimal clarity
+      // Configure audio for optimal clarity (speech‑optimized)
       try {
         await _engine!
             .setAudioProfile(
-          profile: AudioProfileType.audioProfileDefault,
-              scenario: AudioScenarioType
-                  .audioScenarioGameStreaming, // High quality for education
-            )
-            .timeout(const Duration(seconds: 3));
-        LogService.success('✅ Audio profile configured for high quality');
+          profile: AudioProfileType.audioProfileSpeechStandard,
+        ).timeout(const Duration(seconds: 3));
+        LogService.success('✅ Audio profile configured for speech / education');
       } catch (e) {
         LogService.warning('Could not set audio profile: $e');
       }
@@ -301,12 +315,20 @@ class AgoraService {
         await _engine!.setParameters('{"che.video.jitterBuffer": 50}');
         await _engine!.setParameters('{"che.audio.jitterBuffer": 50}');
         
-        // Disable automatic bandwidth estimation smoothing
-        await _engine!.setParameters('{"che.video.lowBitRateStreamParameter":{"width":640,"height":360,"frameRate":15,"bitRate":400}}');
+        // Configure low‑bitrate stream defaults for dual‑stream and fallback.
+        await _engine!.setParameters('{"che.video.lowBitRateStreamParameter":{"width":480,"height":360,"frameRate":15,"bitRate":400}}');
         
         LogService.success('✅ Low-latency mode configured (no catch-up playback)');
       } catch (e) {
         LogService.warning('Could not configure low-latency parameters: $e');
+      }
+
+      // Enable dual‑stream so we can dynamically switch remote quality.
+      try {
+        await _engine!.enableDualStreamMode(enabled: true);
+        LogService.success('✅ Dual stream mode enabled');
+      } catch (e) {
+        LogService.warning('Could not enable dual stream mode: $e');
       }
 
       // Register event handlers
@@ -588,6 +610,15 @@ class AgoraService {
         await _engine!.enableVideo();
         await _engine!.enableAudio();
         LogService.success('✅ Video and audio capabilities enabled');
+
+        // Ensure dual‑stream is active inside the channel as well (some platforms
+        // require calling this after join).
+        try {
+          await _engine!.enableDualStreamMode(enabled: true);
+          LogService.info('[NET] Dual stream mode confirmed in joinChannel');
+        } catch (e) {
+          LogService.warning('[NET] enableDualStreamMode in joinChannel failed: $e');
+        }
         
         // Set initial camera and mic state from pre-join screen
         _isVideoEnabled = initialCameraEnabled;
@@ -648,8 +679,9 @@ class AgoraService {
       // CRITICAL: Configure low-latency after joining channel
       // This ensures real-time communication without buffering missed content
       try {
-        // Set remote video stream to low-latency mode
-        await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamLow);
+        // Default to high stream; we will dynamically switch to low when we
+        // detect sustained poor network quality.
+        await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamHigh);
         
         // Disable automatic catch-up of missed frames
         await _engine!.setParameters('{"rtc.video.playout_delay_max": 0}');
@@ -806,6 +838,10 @@ class AgoraService {
       _remoteVideoStoppedTimestamps.clear();
       _remoteScreenOff.clear();
       _remoteAudioActive.clear();
+      for (var t in _remoteVideoStoppedProvisionalTimers.values) {
+        t?.cancel();
+      }
+      _remoteVideoStoppedProvisionalTimers.clear();
       
       // CRITICAL: IMMEDIATELY update state flags BEFORE any async operations
       // This ensures UI and other parts of the app know tracks are off right away
@@ -1449,6 +1485,7 @@ class AgoraService {
       await _connectionStateController.close();
       await _errorController.close();
       await _remoteVideoMutedController.close();
+      await _remoteVideoFrameController.close();
       await _remoteAudioMutedController.close();
       await _screenSharingController.close();
       await _userLeftController.close();
@@ -1463,7 +1500,7 @@ class AgoraService {
     }
   }
 
-  /// Adapt video quality based on network conditions
+  /// Adapt video (encoder + remote stream type) based on network conditions.
   Future<void> _adaptVideoQuality(QualityType quality) async {
     if (_engine == null || !_isInChannel) return;
     
@@ -1501,24 +1538,27 @@ class AgoraService {
     String targetTier;
     
     // Determine target quality based on network conditions
-    // Note: QualityType enum: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
+    // QualityType: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
     if (quality == QualityType.qualityExcellent || quality == QualityType.qualityGood) {
-      targetConfig = _quality1080p;
-      targetTier = '1080p';
-    } else if (quality == QualityType.qualityPoor) {
-      targetConfig = _quality720pLowFps;
-      targetTier = '720p-low';
-    } else {
-      // qualityBad, qualityVeryBad, qualityDown, or qualityUnsupported
+      // High tier: crisp video when network is solid.
+      targetConfig = _quality720p;
+      targetTier = 'high-720p';
+    } else if (quality == QualityType.qualityPoor || quality == QualityType.qualityBad) {
+      // Medium tier: balanced for moderate networks.
       targetConfig = _quality480p;
-      targetTier = '480p';
+      targetTier = 'medium-480p';
+    } else {
+      // Very poor networks – prioritize continuity over sharpness.
+      targetConfig = _quality360pVeryLow;
+      targetTier = 'low-360p';
     }
 
     // Apply hysteresis: only downgrade after several poor samples in a row;
     // only upgrade after a longer run of good samples. Initial tier change
     // (when _currentQualityTier is null) happens immediately.
     if (_currentQualityTier != null) {
-      if (targetTier == '480p' || targetTier == '720p-low') {
+      final isDowngrade = targetTier == 'medium-480p' || targetTier == 'low-360p';
+      if (isDowngrade) {
         if (_consecutivePoorQualityCount < _poorQualityThreshold) {
           return;
         }
@@ -1537,13 +1577,26 @@ class AgoraService {
     
     try {
       await _engine!.setVideoEncoderConfiguration(targetConfig);
+
+      // Pair encoder tier with appropriate remote stream type so we do not
+      // waste bandwidth on extremely poor networks.
+      try {
+        if (targetTier == 'high-720p') {
+          await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamHigh);
+        } else {
+          await _engine!.setRemoteDefaultVideoStreamType(VideoStreamType.videoStreamLow);
+        }
+      } catch (e) {
+        LogService.warning('[NET] Failed to update remote default stream type: $e');
+      }
+
       _currentQualityTier = targetTier;
       _lastQualityChange = DateTime.now();
       // Reset streaks after an adaptation so the next change also requires
       // sustained evidence.
       _consecutiveGoodQualityCount = 0;
       _consecutivePoorQualityCount = 0;
-      LogService.success('✅ Video quality adapted to $targetTier (network: $quality)');
+      LogService.info('[NET] Video quality adapted to $targetTier (network: $quality)');
       final dims = targetConfig.dimensions;
       if (dims != null) {
         LogService.info('📊 Quality config: ${dims.width}x${dims.height} @ ${targetConfig.frameRate}fps, ${targetConfig.bitrate}kbps');
@@ -1579,7 +1632,7 @@ class AgoraService {
     _lastRecoveryAttempt[remoteUid] = DateTime.now();
     
     try {
-      LogService.info('🔄 Attempting video recovery for UID=$remoteUid (attempt ${attempts + 1}/$_maxRecoveryAttempts)');
+      LogService.info('[RECOVERY] Attempting video recovery for UID=$remoteUid (attempt ${attempts + 1}/$_maxRecoveryAttempts)');
       
       // Note: Agora SDK automatically handles video subscription
       // Video recovery is primarily handled by the SDK's automatic reconnection
@@ -1941,7 +1994,7 @@ class AgoraService {
           });
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-          LogService.success('✅ Remote user joined channel: UID=$remoteUid (elapsed: ${elapsed}ms)');
+          LogService.info('[CALL] Remote user joined: UID=$remoteUid (elapsed: ${elapsed}ms)');
           LogService.info('Connection details: channelId=${connection.channelId}, localUid=${connection.localUid}');
           LogService.info('💡 Remote video is automatically subscribed by default');
           LogService.info('📹 Current stored connection: channelId=${_currentConnection?.channelId}, localUid=${_currentConnection?.localUid}');
@@ -1983,8 +2036,7 @@ class AgoraService {
           switch (reason) {
             case UserOfflineReasonType.userOfflineQuit:
               reasonText = 'User left normally';
-              // On native, Quit is definitive. On web/mobile-web, transient SDK/network
-              // churn can emit Quit briefly and then recover, so route through grace.
+              // On web, require confirmation window (grace) for Quit to absorb reconnect glitches.
               isDefinitiveLeave = !kIsWeb;
               break;
             case UserOfflineReasonType.userOfflineDropped:
@@ -2049,7 +2101,7 @@ class AgoraService {
         // Detect when remote video is first decoded (user might already be in channel)
         // This is CRITICAL for detecting users who joined before you
         onFirstRemoteVideoDecoded: (RtcConnection connection, int remoteUid, int width, int height, int elapsed) {
-          LogService.success('✅ Remote video decoded: UID=$remoteUid (${width}x${height}, elapsed: ${elapsed}ms)');
+          LogService.info('[MEDIA] Remote video decoded: UID=$remoteUid (${width}x${height}, elapsed: ${elapsed}ms)');
           LogService.info('This indicates a remote user is in the channel and publishing video');
           LogService.info('💡 Video stream is automatically subscribed - video should display now');
           LogService.info('📹 Connection for video view: channelId=${connection.channelId}, localUid=${connection.localUid}');
@@ -2065,18 +2117,16 @@ class AgoraService {
           
           // CRITICAL: Reset offline tracking when video is decoded (user is active)
           _resetUserOfflineTracking(remoteUid);
+          _cancelRemoteVideoStoppedProvisional(remoteUid);
           
-          // If we haven't detected this user yet, add them
-          _userJoinedController.add(remoteUid);
           _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
+          _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
         },
-        // Also detect when remote audio is first decoded
+        // Also detect when remote audio is first decoded (do not emit userJoined - join is from onUserJoined only)
         onFirstRemoteAudioDecoded: (RtcConnection connection, int remoteUid, int elapsed) {
           LogService.success('✅ Remote audio decoded: UID=$remoteUid (elapsed: ${elapsed}ms)');
           LogService.info('This indicates a remote user is in the channel and publishing audio');
-          if (_isValidRemoteUid(remoteUid)) {
-            _userJoinedController.add(remoteUid);
-          } else {
+          if (!_isValidRemoteUid(remoteUid)) {
             LogService.debug('Ignoring onFirstRemoteAudioDecoded for non-remote uid=$remoteUid (self=$_currentUID)');
           }
         },
@@ -2119,43 +2169,37 @@ class AgoraService {
             
             // Reset screen-off detection when video becomes active
             _resetScreenOffDetection(remoteUid);
+            _cancelRemoteVideoStoppedProvisional(remoteUid);
             
-            _userJoinedController.add(remoteUid);
-            // Emit video unmuted event
             _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
+            _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
           } else if (state == RemoteVideoState.remoteVideoStateStopped) {
             LogService.info('Remote video stopped for UID=$remoteUid (reason: $reason)');
-            // IMPORTANT: On Web (and some Safari/iOS cases), turning camera off may *not* report
-            // RemoteMuted; it can come through as other stop reasons (or simply "stopped").
-            // If we keep rendering the AgoraVideoView, the remote might see a frozen last-frame.
-            // So we always emit "muted=true" on stopped and let the UI show the profile placeholder.
             _remoteVideoMutedController.add({'uid': remoteUid, 'muted': true});
 
             if (reason == RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted) {
               LogService.info('📹 Remote camera OFF (remote muted): UID=$remoteUid');
-              // Reset screen-off detection (camera is intentionally off)
               _resetScreenOffDetection(remoteUid);
+              _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
             } else {
-              // Video stopped for non-mute reason - could be screen-off or network issue
-              LogService.warning('⚠️ Remote video stopped (non-mute reason): UID=$remoteUid, reason=$reason');
+              // Provisional: avoid immediate ready=false on transient renegotiation (e.g. web)
+              _cancelRemoteVideoStoppedProvisional(remoteUid);
+              _remoteVideoStoppedProvisionalTimers[remoteUid] = Timer(_remoteVideoStoppedProvisionalDelay, () {
+                _remoteVideoStoppedProvisionalTimers.remove(remoteUid);
+                _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
+                LogService.info('Provisional stopped confirmed for UID=$remoteUid (no decode recovery)');
+              });
 
-              // Track when video stopped
               _remoteVideoStoppedTimestamps[remoteUid] = DateTime.now();
-
-              // Check if audio is still active - if yes, likely screen-off
               final audioActive = _remoteAudioActive[remoteUid] ?? false;
               if (audioActive) {
-                // Audio is active but video stopped - likely screen-off
                 LogService.info('📱 Remote video stopped but audio active - possible screen-off detected');
                 _startScreenOffDetection(remoteUid);
               } else {
-                // Both video and audio stopped - likely network issue or user left
                 LogService.warning('⚠️ Remote video stopped and audio inactive - attempting recovery');
                 _attemptVideoRecovery(remoteUid, connection);
               }
             }
-            // Still add user to stream so UI can render (will show black screen or profile)
-            _userJoinedController.add(remoteUid);
           }
         },
         // Detect remote audio state changes
@@ -2167,11 +2211,8 @@ class AgoraService {
           }
           if (state == RemoteAudioState.remoteAudioStateStarting ||
               state == RemoteAudioState.remoteAudioStateDecoding) {
-            // Audio is active - user is in channel and mic is ON
             LogService.info('Remote audio is active for UID=$remoteUid');
             _remoteAudioActive[remoteUid] = true;
-            _userJoinedController.add(remoteUid);
-            // Emit audio unmuted event
             _remoteAudioMutedController.add({'uid': remoteUid, 'muted': false});
             
             // If video is stopped but audio is active, check for screen-off
@@ -2440,9 +2481,25 @@ class AgoraService {
             _updateState(AgoraSessionState.error);
           }
         },
-        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
-          LogService.warning('Token will expire soon, should refresh');
-          // TODO: Implement token refresh
+        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) async {
+          LogService.info('[CALL] Token privilege will expire – refreshing');
+          final sessionId = _lastSessionId;
+          if (sessionId == null || sessionId.isEmpty || _engine == null || !_isInChannel) {
+            LogService.warning('[CALL] Cannot refresh token: no session or not in channel');
+            return;
+          }
+          try {
+            final tokenData = await AgoraTokenService.fetchToken(sessionId);
+            final newToken = tokenData['token'] as String?;
+            if (newToken == null || newToken.isEmpty) {
+              LogService.warning('[CALL] Token refresh returned empty token');
+              return;
+            }
+            await _engine!.renewToken(newToken);
+            LogService.info('[CALL] Token renewed successfully');
+          } catch (e) {
+            LogService.warning('[CALL] Token refresh failed: $e');
+          }
         },
         // Network quality monitoring for adaptive bitrate
         onNetworkQuality: (RtcConnection connection, int remoteUid, QualityType txQuality, QualityType rxQuality) {
@@ -2498,9 +2555,11 @@ class AgoraService {
             } else if (message == 'camera_on') {
               LogService.info('📹 Remote user turned camera ON: UID=$remoteUid');
               _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
+              _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
             } else if (message == 'camera_off') {
               LogService.info('📹 Remote user turned camera OFF: UID=$remoteUid');
               _remoteVideoMutedController.add({'uid': remoteUid, 'muted': true});
+              _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
             } else if (message.startsWith('reaction:')) {
               final emoji = message.substring(9); // Extract emoji after "reaction:"
               LogService.info('🎭 [EMOJI] Received reaction: remoteUid=$remoteUid, emoji="$emoji", streamId=$streamId – pushing to UI');
@@ -2543,11 +2602,16 @@ class AgoraService {
     _userLeftController.add(remoteUid);
   }
   
+  void _cancelRemoteVideoStoppedProvisional(int remoteUid) {
+    _remoteVideoStoppedProvisionalTimers[remoteUid]?.cancel();
+    _remoteVideoStoppedProvisionalTimers.remove(remoteUid);
+  }
+
   /// Reset offline tracking when user rejoins or becomes active
   void _resetUserOfflineTracking(int remoteUid) {
-    // Cancel grace period timer if user rejoins
     _userLeftGracePeriodTimers[remoteUid]?.cancel();
     _userLeftGracePeriodTimers.remove(remoteUid);
+    _cancelRemoteVideoStoppedProvisional(remoteUid);
     
     // Reset offline tracking
     _userOfflineTimestamps.remove(remoteUid);
@@ -2592,6 +2656,7 @@ class AgoraService {
   void _resetScreenOffDetection(int remoteUid) {
     _screenOffDetectionTimers[remoteUid]?.cancel();
     _screenOffDetectionTimers.remove(remoteUid);
+    _cancelRemoteVideoStoppedProvisional(remoteUid);
     _remoteVideoStoppedTimestamps.remove(remoteUid);
     
     if (_remoteScreenOff[remoteUid] == true) {

@@ -235,5 +235,15 @@ class SessionStateMessages {
       duration: const Duration(seconds: 8),
     );
   }
+
+  /// Shown when remote video is not available (e.g. network or recovering).
+  static Widget remoteVideoTemporarilyUnavailable() {
+    return SessionStateMessage(
+      message: "The other participant's video is temporarily unavailable.",
+      icon: Icons.videocam_off,
+      color: Colors.orange,
+      duration: const Duration(seconds: 5),
+    );
+  }
 }
 

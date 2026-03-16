@@ -30,6 +30,16 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
   bool _isLoading = true;
   String _selectedFilter = 'all'; // all, pending, approved, rejected
 
+  bool _isPaidStatus(String? status) {
+    final normalized = (status ?? '').toLowerCase();
+    return normalized == 'paid' || normalized == 'completed';
+  }
+
+  bool _isSessionLinkedStatus(String status) {
+    final normalized = status.toLowerCase();
+    return normalized == 'approved' || normalized == 'matched' || normalized == 'scheduled';
+  }
+
   bool _isPastRequest(BookingRequest request) {
     final now = DateTime.now();
     final cutoff = now.subtract(const Duration(days: 30));
@@ -45,9 +55,9 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
 
     // Approved requests are considered past once there is evidence payment
     // completed and the associated scheduled date has already passed.
-    final payment = (request.paymentStatus ?? '').toLowerCase();
-    final isPaid = payment == 'paid' || payment == 'completed';
-    if (status == 'approved' && isPaid && request.scheduledDate != null) {
+    if (_isSessionLinkedStatus(status) &&
+        _isPaidStatus(request.paymentStatus) &&
+        request.scheduledDate != null) {
       final endOfDay = DateTime(
         request.scheduledDate!.year,
         request.scheduledDate!.month,
@@ -626,27 +636,69 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            // View Details Button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => _navigateToRequestDetail(request),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: AppTheme.primaryColor),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Text(
-                  'View Details',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-              ),
+            FutureBuilder<Map<String, dynamic>>(
+              future: _isSessionLinkedStatus(request.status)
+                  ? _getPaymentAndLinkedSession(request)
+                  : Future.value(<String, dynamic>{}),
+              builder: (context, snapshot) {
+                final data = snapshot.data ?? {};
+                final paymentStatus = (data['paymentStatus'] as String?) ?? request.paymentStatus;
+                final sessionId = data['sessionId'] as String?;
+                // Show View Session whenever request is approved/scheduled/matched and paid (session may be created async).
+                final canViewSession = _isSessionLinkedStatus(request.status) &&
+                    _isPaidStatus(paymentStatus);
+                return Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _navigateToRequestDetail(request),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppTheme.primaryColor),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          minimumSize: const Size(0, 40),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: Text(
+                          'View Details',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    if (canViewSession) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _openLinkedSession(request),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            minimumSize: const Size(0, 40),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'View Session',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
                   ],
                 ),
@@ -667,6 +719,116 @@ class _TutorRequestsScreenState extends State<TutorRequestsScreen> {
     );
     if (result == true) {
       _loadRequests();
+    }
+  }
+
+  /// Fresh payment + linked session for card visibility. For trials, payment may be in payment_requests (booking_request_id = trial id) or trial_sessions.payment_status.
+  Future<Map<String, dynamic>> _getPaymentAndLinkedSession(BookingRequest request) async {
+    final out = <String, dynamic>{};
+    try {
+      Map<String, dynamic>? payment = await PaymentRequestService.getPaymentRequestByBookingRequestId(request.id);
+      if (payment == null && request.isTrial) {
+        final trial = await SupabaseService.client
+            .from('trial_sessions')
+            .select('payment_status')
+            .eq('id', request.id)
+            .maybeSingle();
+        if (trial != null) {
+          out['paymentStatus'] = trial['payment_status'] as String? ?? request.paymentStatus;
+        } else {
+          out['paymentStatus'] = request.paymentStatus;
+        }
+      } else {
+        final status = payment?['status'] as String?;
+        out['paymentStatus'] = status ?? request.paymentStatus;
+      }
+      if (!out.containsKey('paymentStatus')) out['paymentStatus'] = request.paymentStatus;
+      final sessionId = await _findLinkedSessionId(request);
+      out['sessionId'] = sessionId;
+    } catch (e) {
+      LogService.warning('_getPaymentAndLinkedSession for request ${request.id}: $e');
+    }
+    return out;
+  }
+
+  Future<String?> _findLinkedSessionId(BookingRequest request) async {
+    final supabase = SupabaseService.client;
+    try {
+      if (request.isTrial) {
+        final trial = await supabase
+            .from('trial_sessions')
+            .select('id')
+            .eq('id', request.id)
+            .maybeSingle();
+        if (trial != null) return trial['id'] as String;
+
+        final linkedFromTrial = await supabase
+            .from('individual_sessions')
+            .select('id')
+            .eq('trial_session_id', request.id)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+        return linkedFromTrial?['id'] as String?;
+      }
+
+      final individual = await supabase
+          .from('individual_sessions')
+          .select('id')
+          .eq('booking_request_id', request.id)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      if (individual != null) return individual['id'] as String;
+
+      final recurring = await supabase
+          .from('recurring_sessions')
+          .select('id')
+          .eq('booking_request_id', request.id)
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      if (recurring != null) {
+        final recurringId = recurring['id'] as String;
+        final individualFromRecurring = await supabase
+            .from('individual_sessions')
+            .select('id')
+            .eq('recurring_session_id', recurringId)
+            .order('scheduled_date', ascending: true)
+            .limit(1)
+            .maybeSingle();
+        return individualFromRecurring?['id'] as String?;
+      }
+    } catch (e) {
+      LogService.error('Error finding linked session for request ${request.id}: $e');
+    }
+    return null;
+  }
+
+  Future<void> _openLinkedSession(BookingRequest request) async {
+    try {
+      final sessionId = await _findLinkedSessionId(request);
+      if (!mounted) return;
+      if (sessionId == null) {
+        BrandedSnackBar.showError(
+          context,
+          'Session not available yet. Please refresh and try again.',
+        );
+        return;
+      }
+
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/tutor-nav',
+        (route) => route.isFirst,
+        arguments: {
+          'initialTab': 2,
+          'sessionId': sessionId,
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        BrandedSnackBar.showError(context, 'Unable to open session.');
+      }
     }
   }
 

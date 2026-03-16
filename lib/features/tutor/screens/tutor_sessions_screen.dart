@@ -56,9 +56,20 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
   Timer? _countdownTimer;
   String? _currentUserId;
   final Map<String, String> _sessionSelfieUrls = {};
+  String? _highlightSessionId;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final incomingSessionId = args?['sessionId'] as String?;
+    if (incomingSessionId != null && incomingSessionId.isNotEmpty) {
+      _highlightSessionId = incomingSessionId;
+    }
+  }
 
   @override
   void initState() {
@@ -585,12 +596,30 @@ class _TutorSessionsScreenState extends State<TutorSessionsScreen>
       }
 
         safeSetState(() {
+          if (_highlightSessionId != null) {
+            final highlightIndex = recurringFiltered.indexWhere(
+              (s) => (s['id']?.toString() ?? '') == _highlightSessionId,
+            );
+            if (highlightIndex > 0) {
+              final highlighted = recurringFiltered.removeAt(highlightIndex);
+              recurringFiltered.insert(0, highlighted);
+            }
+          }
           _allSessions = recurringFiltered; // Store for count calculation
           _sessions = recurringFiltered;
           _isLoading = false;
         });
       } else {
       safeSetState(() {
+        if (_highlightSessionId != null) {
+          final highlightIndex = filtered.indexWhere(
+            (s) => (s['id']?.toString() ?? '') == _highlightSessionId,
+          );
+          if (highlightIndex > 0) {
+            final highlighted = filtered.removeAt(highlightIndex);
+            filtered.insert(0, highlighted);
+          }
+        }
         _allSessions = allSessions; // Store all sessions for count calculation
         _sessions = filtered;
         _isLoading = false;

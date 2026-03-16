@@ -78,7 +78,7 @@ class AppConfig {
   /// 
   /// Change this value to adjust session length across the entire app.
   /// Example: Set to 60 for 1-hour sessions, 20 for testing, etc.
-  static const int sessionDurationMinutes = 10; // ← Total time for regular sessions
+  static const int sessionDurationMinutes = 60; // ← Total time for regular sessions
   
   // ============================================
   // Environment Detection
