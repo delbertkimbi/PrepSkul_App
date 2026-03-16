@@ -310,7 +310,8 @@ class _TutorRequestDetailFullScreenState
         builder: (_) => const Center(child: CircularProgressIndicator()),
       );
       final conversationData = await ConversationLifecycleService.getOrCreateConversation(
-        bookingRequestId: request.id,
+        bookingRequestId: request.isTrial ? null : request.id,
+        trialSessionId: request.isTrial ? request.id : null,
         tutorId: currentUserId,
         studentId: request.studentId,
       );

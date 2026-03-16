@@ -18,12 +18,15 @@ import 'package:prepskul/features/sessions/widgets/agora_video_view.dart' as ago
 import 'package:prepskul/features/sessions/widgets/profile_card_overlay.dart';
 import 'package:prepskul/features/sessions/widgets/session_state_message.dart';
 import 'package:prepskul/features/sessions/widgets/local_video_pip.dart';
+import 'package:prepskul/features/sessions/widgets/call_status_banner.dart';
 import 'package:prepskul/features/sessions/widgets/reactions_panel.dart';
 import 'package:prepskul/features/sessions/widgets/reaction_animation.dart';
 import 'package:prepskul/features/sessions/widgets/prepskul_va_avatar.dart';
 import 'package:prepskul/features/booking/services/session_lifecycle_service.dart';
 import 'package:prepskul/features/sessions/services/agora_recording_service.dart';
 import 'package:prepskul/features/sessions/services/session_timer_service.dart';
+import 'package:prepskul/features/sessions/services/call_pip_controller.dart';
+import 'package:prepskul/features/sessions/services/session_heartbeat_service.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart' as agora_rtc_engine;
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
@@ -56,7 +59,8 @@ class AgoraVideoSessionScreen extends StatefulWidget {
   State<AgoraVideoSessionScreen> createState() => _AgoraVideoSessionScreenState();
 }
 
-class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
+class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
+    with WidgetsBindingObserver {
   final AgoraService _agoraService = AgoraService();
   final _supabase = SupabaseService.client;
   final SessionProfileService _profileService = SessionProfileService();
@@ -73,6 +77,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   bool _remoteVideoReady = false;
   bool? _lastRemoteVideoMutedState;
   bool? _lastRemoteAudioMutedState;
+  DateTime? _remoteJoinedAt;
+  String? _transientStateMessage;
+  Timer? _transientStateMessageTimer;
   bool _isScreenSharing = false;
   bool _remoteIsScreenSharing = false;
   bool _remoteUserLeft = false;
@@ -102,6 +109,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   StreamSubscription<int>? _userJoinedSubscription;
   StreamSubscription<String>? _errorSubscription;
   StreamSubscription<Map<String, dynamic>>? _remoteVideoMutedSubscription;
+  StreamSubscription<Map<String, dynamic>>? _remoteVideoFrameSubscription;
   StreamSubscription<Map<String, dynamic>>? _remoteAudioMutedSubscription;
   StreamSubscription<Map<String, dynamic>>? _screenSharingSubscription;
   StreamSubscription<int>? _userLeftSubscription;
@@ -149,6 +157,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   
   // Debounce timer for video state changes (prevents flickering)
   Timer? _videoStateDebounceTimer;
+  /// When frame-ready (ready=true) last received; used to ignore stale debounced muted callbacks.
+  DateTime? _lastRemoteVideoReadyAt;
 
   // Watchdog timer to re-ensure local preview is running shortly after join.
   // This helps fix cases where the bottom-right self-view stays blank on first join
@@ -208,6 +218,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    CallPipController().attachToLifecycle();
     _initializeSession();
     _setupListeners();
     _setupTimer();
@@ -231,6 +243,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     _userJoinedSubscription?.cancel();
     _errorSubscription?.cancel();
     _remoteVideoMutedSubscription?.cancel();
+    _remoteVideoFrameSubscription?.cancel();
     _remoteAudioMutedSubscription?.cancel();
     _screenSharingSubscription?.cancel();
     _userLeftSubscription?.cancel();
@@ -248,6 +261,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     _localPreviewWatchdogTimer?.cancel();
     _uiUpdateDebounceTimer?.cancel();
     _remoteUnstableTimer?.cancel();
+    _transientStateMessageTimer?.cancel();
 
     _remoteLeftCheckTimer?.cancel();
     _remoteLeftCheckTimer = null;
@@ -255,8 +269,21 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
     // Stop timer
     _timerService.stopSession();
+    WidgetsBinding.instance.removeObserver(this);
+    SessionHeartbeatService().stop();
+    CallPipController().detachFromLifecycle();
     // Don't dispose AgoraService here - it's a singleton
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // When the user backgrounds the app while the call is active, rely on the
+    // CallPipController to request OS-level PiP so the call keeps running.
+    if (state == AppLifecycleState.paused && _sessionState.isActive) {
+      CallPipController().enterPipMode();
+    }
   }
 
   void _insertMobileWebOverlayIfNeeded() {
@@ -386,6 +413,32 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
       // Load profile data
       _loadProfileData(user.id);
+
+      // Start heartbeat so the peer can detect if we disappear unexpectedly
+      // (refresh, force close, crash). Best-effort only; failures are logged.
+      try {
+        await SessionHeartbeatService().start(
+          sessionId: widget.sessionId,
+          userId: user.id,
+        );
+        // On web, hook into page unload so we can send a \"left\" signal before
+        // the tab closes or refreshes.
+        if (kIsWeb) {
+          platform_utils.PlatformUtils.registerCallUnloadHandler(() {
+            SessionHeartbeatService().sendLeftSignal();
+          });
+        }
+        // Listen for peer \"left\" signals and immediately reflect that in UI.
+        SessionHeartbeatService().peerLeftStream.listen((peerId) {
+          if (!mounted) return;
+          _scheduleUiUpdate(() {
+            _remoteUserLeft = true;
+            _remoteConnectionUnstable = false;
+          });
+        });
+      } catch (e) {
+        LogService.warning('[HEARTBEAT] Failed to start heartbeat: $e');
+      }
 
       // Set initial camera/mic state from pre-join screen
       _isVideoEnabled = widget.initialCameraEnabled;
@@ -560,15 +613,21 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
     _userJoinedSubscription = _agoraService.userJoinedStream.listen((uid) {
       LogService.info('👤 Remote user joined: UID=$uid');
+      _remoteUnstableTimer?.cancel();
+      _videoStateDebounceTimer?.cancel();
       _scheduleUiUpdate(() {
         _remoteUID = uid;
         _lastRemoteUID = uid; // Keep for mobile web main-area lock when forcing remote view
+        _remoteJoinedAt = DateTime.now();
         _remoteUserLeft = false; // User joined, reset left state
         _lastRemoteActivityAt = DateTime.now(); // For mobile web "user left" timeout
-        // Keep remote as "not ready" until we receive explicit active media events.
-        // This avoids a blank main surface between user join and first decoded frame.
+        // Clear stale overlay flags so rejoin doesn't keep old screen-off/unstable state
+        _remoteScreenOff = false;
+        _remoteConnectionUnstable = false;
+        _remoteUnstableStickyUntil = null;
         _remoteVideoMuted = false;
         _remoteVideoReady = false;
+        _lastRemoteVideoReadyAt = null;
         _remoteAudioMuted = false;
         _showVaAvatar = true; // PrepSkul VA "joins" when both participants are in the call
       });
@@ -620,41 +679,81 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     });
 
     _errorSubscription = _agoraService.errorStream.listen((error) {
+      final userMessage = _toUserFriendlyError(error);
+      final lowered = userMessage.toLowerCase();
+      final isRecoverableConnectionIssue =
+          lowered.contains('connection') ||
+          lowered.contains('network') ||
+          lowered.contains('internet') ||
+          lowered.contains('timeout');
+
+      if (_sessionState == AgoraSessionState.connected && isRecoverableConnectionIssue) {
+        _showTopStateMessage(userMessage);
+        return;
+      }
+
       safeSetState(() {
-        _errorMessage = _toUserFriendlyError(error);
+        _errorMessage = userMessage;
         _sessionState = AgoraSessionState.error;
       });
     });
 
-    // Remote video muted state - DEBOUNCED to prevent flickering, but short enough for responsive mute sync
+    // Remote video muted state - DEBOUNCED to prevent flickering; frame-ready is authoritative.
     _remoteVideoMutedSubscription = _agoraService.remoteVideoMutedStream.listen((data) {
       final uid = data['uid'] as int;
       final muted = data['muted'] as bool;
       if (uid == _remoteUID) {
         final previous = _lastRemoteVideoMutedState;
         _lastRemoteVideoMutedState = muted;
+        final debounceScheduledAt = DateTime.now();
         _scheduleUiUpdate(() {
           _lastRemoteActivityAt = DateTime.now();
-          // 250ms debounce inside the coalesced update: responsive to user
-          // mute/unmute, prevents rapid flicker from SDK events.
           _videoStateDebounceTimer?.cancel();
           _videoStateDebounceTimer =
               Timer(const Duration(milliseconds: 250), () {
-            if (mounted && uid == _remoteUID) {
-              _scheduleUiUpdate(() {
-                _remoteVideoMuted = muted;
-                if (!muted) {
-                  _remoteVideoReady = true;
+            if (!mounted || uid != _remoteUID) return;
+            _scheduleUiUpdate(() {
+              _remoteVideoMuted = muted;
+              // Only set ready=false if no frame-ready arrived after we scheduled this debounce
+              if (muted) {
+                final lastReady = _lastRemoteVideoReadyAt;
+                if (lastReady == null || lastReady.isBefore(debounceScheduledAt)) {
+                  _remoteVideoReady = false;
                 }
-              });
-            }
+              }
+            });
           });
         });
-        if (previous == true && muted == false) {
-          _showInfo(widget.userRole == 'tutor'
+        final joinedRecently = _remoteJoinedAt != null &&
+            DateTime.now().difference(_remoteJoinedAt!) < const Duration(seconds: 6);
+        if (previous == true &&
+            muted == false &&
+            !joinedRecently &&
+            !_remoteUserLeft &&
+            !_remoteConnectionUnstable &&
+            _sessionState == AgoraSessionState.connected) {
+          _showTopStateMessage(widget.userRole == 'tutor'
               ? 'Learner camera is back on'
               : 'Tutor camera is back on');
         }
+      }
+    });
+
+    _remoteVideoFrameSubscription = _agoraService.remoteVideoFrameStream.listen((data) {
+      final uid = data['uid'] as int;
+      final ready = data['ready'] as bool? ?? false;
+      if (uid == _remoteUID) {
+        if (ready) {
+          _videoStateDebounceTimer?.cancel();
+          _lastRemoteVideoReadyAt = DateTime.now();
+        }
+        _scheduleUiUpdate(() {
+          _lastRemoteActivityAt = DateTime.now();
+          _remoteVideoReady = ready;
+          if (ready) {
+            _remoteVideoMuted = false;
+          }
+        });
       }
     });
 
@@ -670,8 +769,15 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
           _lastRemoteActivityAt = DateTime.now();
           _remoteAudioMuted = muted;
         });
-        if (previous == true && muted == false) {
-          _showInfo(widget.userRole == 'tutor'
+        final joinedRecently = _remoteJoinedAt != null &&
+            DateTime.now().difference(_remoteJoinedAt!) < const Duration(seconds: 6);
+        if (previous == true &&
+            muted == false &&
+            !joinedRecently &&
+            !_remoteUserLeft &&
+            !_remoteConnectionUnstable &&
+            _sessionState == AgoraSessionState.connected) {
+          _showTopStateMessage(widget.userRole == 'tutor'
               ? 'Learner microphone unmuted'
               : 'Tutor microphone unmuted');
         }
@@ -718,6 +824,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
       _scheduleUiUpdate(() {
         _remoteUserLeft = true;
+        _remoteJoinedAt = null;
         // Keep track of who left for UI, but clear active remote so main area
         // switches to local/profile instead of rendering a blank remote view.
         _lastRemoteUID = leftUid;
@@ -1027,7 +1134,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
             });
             if (_isVideoEnabled) {
               _ensureLocalPreviewActiveNow(force: true);
-              _showInfo('Camera is back on');
+              _showTopStateMessage('Camera is back on');
             }
             if (kIsWeb) _showVideoMuteDiagnostic(toggleError);
           }
@@ -1080,7 +1187,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               _isAudioEnabled = _agoraService.isAudioEnabled();
             });
             if (_isAudioEnabled) {
-              _showInfo('Microphone unmuted');
+              _showTopStateMessage('Microphone unmuted');
             }
           }
         });
@@ -1336,6 +1443,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         await _agoraService.leaveChannel();
         channelLeft = true;
         LogService.info('✅ Agora channel left successfully');
+        await SessionHeartbeatService().sendLeftSignal();
       } catch (e) {
         // Handle mutex and other leave errors gracefully
         final errorStr = e.toString().toLowerCase();
@@ -1489,16 +1597,19 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     );
   }
 
-  void _showInfo(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 2),
-        backgroundColor: Colors.blueGrey.shade800,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+  void _showTopStateMessage(String message) {
+    _transientStateMessageTimer?.cancel();
+    _scheduleUiUpdate(() {
+      _transientStateMessage = message;
+    });
+    _transientStateMessageTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _scheduleUiUpdate(() {
+        if (_transientStateMessage == message) {
+          _transientStateMessage = null;
+        }
+      });
+    });
   }
 
   @override
@@ -1698,13 +1809,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     // local camera never produces a blank screen or full-screen local view; overlay (timer, controls) stays visible.
     if (_remoteUID != null && !_remoteUserLeft) {
       final connection = _agoraService.currentConnection;
+      // Overlay when frame not ready, camera off, or poor network so we never show a frozen/black video surface.
       final showRemoteOverlay = _remoteVideoMuted ||
           !_remoteVideoReady ||
           _remoteScreenOff ||
-          _remoteConnectionUnstable ||
-          (_remoteUnstableStickyUntil != null &&
-              DateTime.now().isBefore(_remoteUnstableStickyUntil!)) ||
-          connection == null;
+          connection == null ||
+          _remoteConnectionUnstable;
 
       // Keep a stable structure (base video + fading overlay) to reduce
       // flicker/shakes when Agora emits rapid state transitions.
@@ -1826,9 +1936,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
         !_remoteVideoReady ||
         _remoteVideoMuted ||
         _remoteScreenOff ||
-        _remoteConnectionUnstable ||
-        (_remoteUnstableStickyUntil != null &&
-            DateTime.now().isBefore(_remoteUnstableStickyUntil!)) ||
         connection == null;
 
     return RepaintBoundary(
@@ -2056,7 +2163,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
   /// [forceShowAsPresent] when true (e.g. mobile web main-area lock) shows "Camera is off" instead of "Left".
   Widget _buildRemoteProfileCard({bool forceShowAsPresent = false}) {
     // Show if remote user left OR remote video is muted (camera off) OR screen is off OR force
-    if (!forceShowAsPresent && !_remoteUserLeft && !_remoteVideoMuted && !_remoteScreenOff) {
+    if (!forceShowAsPresent &&
+        !_remoteUserLeft &&
+        _remoteVideoReady &&
+        !_remoteVideoMuted &&
+        !_remoteScreenOff) {
       return const SizedBox.shrink();
     }
 
@@ -2194,16 +2305,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
       message = widget.userRole == 'tutor'
           ? SessionStateMessages.learnerReconnecting()
           : SessionStateMessages.tutorReconnecting();
-    } else if (_remoteVideoMuted && _remoteUID != null) {
-      messageKey = 'camera_off';
-      message = widget.userRole == 'tutor'
-          ? SessionStateMessages.learnerCameraOff()
-          : SessionStateMessages.tutorCameraOff();
-    } else if (_remoteAudioMuted && _remoteUID != null) {
-      messageKey = 'mic_off';
-      message = widget.userRole == 'tutor'
-          ? SessionStateMessages.learnerMicMuted()
-          : SessionStateMessages.tutorMicMuted();
+    } else if (_transientStateMessage != null) {
+      messageKey = 'transient';
+      message = SessionStateMessage(
+        message: _transientStateMessage!,
+        icon: Icons.info_outline,
+        color: AppTheme.primaryColor,
+        duration: const Duration(seconds: 3),
+      );
     }
 
     return Positioned(
@@ -2228,50 +2337,30 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
 
   /// Build status bar (Meet/Zoom-style: clean gradient, connection pill, timer, quality)
   Widget _buildStatusBar() {
+    final isAloneWaiting =
+        _sessionState.isActive && !_remoteUserLeft && _remoteUID == null;
+
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withOpacity(0.55),
-              Colors.black.withOpacity(0.2),
-              Colors.transparent,
-            ],
-            stops: const [0.0, 0.5, 1.0],
+      child: Stack(
+        children: [
+          CallStatusBanner(
+            sessionState: _sessionState,
+            remoteConnectionUnstable: _remoteConnectionUnstable,
+            localReconnecting: _localConnectionReconnecting,
+            remoteUserLeft: _remoteUserLeft,
+            isAloneWaiting: isAloneWaiting,
+            timeRemaining: _timeRemaining,
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Left side: Connection status and timer
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Connection status: Reconnecting… / Connection restored / Connected
-                if (_sessionState.isActive) _buildConnectionStatusPill(),
-                // Connection quality (Good / Fair / Poor)
-                if (_sessionState.isActive) ...[
-                  const SizedBox(width: 12),
-                  _buildConnectionQualityChip(),
-                ],
-                // Session timer
-                if (_sessionState.isActive && _timeRemaining != null) ...[
-                  const SizedBox(width: 12),
-                  _buildTimerDisplay(),
-                ],
-              ],
-            ),
-            // Right side: Layout toggle only when there is a remote user (no split when alone)
-            if (_sessionState.isActive && _remoteUID != null)
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
+          if (_sessionState.isActive && _remoteUID != null)
+            Positioned(
+              top: 8,
+              right: 12,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
                   onTap: () {
                     setState(() {
                       _layout = _layout == VideoLayout.spotlight
@@ -2279,21 +2368,21 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
                           : VideoLayout.spotlight;
                     });
                   },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  child: Icon(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    child: Icon(
                       _layout == VideoLayout.spotlight
                           ? Icons.grid_view
                           : Icons.crop_free,
-                    color: Colors.white,
-                    size: 24,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -2687,9 +2776,39 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
     return 'Connection failed. Please check your internet and try again.';
   }
 
+  Future<void> _retryFromError() async {
+    _scheduleUiUpdate(() {
+      _errorMessage = null;
+      if (_sessionState == AgoraSessionState.error) {
+        _sessionState = AgoraSessionState.joining;
+      }
+      _remoteVideoReady = false;
+      _remoteVideoMuted = true;
+    });
+
+    try {
+      if (_agoraService.isInChannel) {
+        await _agoraService.tryRecoverCamera();
+        _scheduleUiUpdate(() {
+          _sessionState = AgoraSessionState.connected;
+        });
+      } else {
+        await _initializeSession();
+      }
+    } catch (e) {
+      LogService.error('Retry from error failed: $e');
+      if (!mounted) return;
+      _scheduleUiUpdate(() {
+        _sessionState = AgoraSessionState.error;
+        _errorMessage = _toUserFriendlyError(e.toString());
+      });
+    }
+  }
+
   /// Build error overlay
   Widget _buildErrorOverlay() {
-    return Container(
+    return Positioned.fill(
+      child: Material(
       color: Colors.black54,
       child: Center(
         child: Container(
@@ -2731,22 +2850,14 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen> {
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: () {
-                  safeSetState(() {
-                    _errorMessage = null;
-                    if (_sessionState == AgoraSessionState.error) {
-                      _sessionState = AgoraSessionState.connected;
-                    }
-                  });
-                  _agoraService.tryRecoverCamera();
-                },
+                onPressed: _retryFromError,
                 child: const Text('Retry'),
               ),
             ],
           ),
         ),
       ),
-    );
+    ));
   }
 
   /// Build loading overlay (branded, soft background – no pure black)

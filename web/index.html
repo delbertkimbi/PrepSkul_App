@@ -143,13 +143,11 @@
     }
 
     /**
-     * Flutter Web + Agora (platform views) layering fix (iOS Safari / Chrome / mobile web):
-     * Agora video is a platform view (separate DOM element). It must sit BELOW the Flutter
-     * canvas so in-call controls (status bar, control bar) are always visible and clickable.
-     *
-     * - Target both element (flt-glass-pane, flt-platform-view) and class selectors.
-     * - Ensure the Flutter view container has a stacking context and non-platform-view
-     *   content (canvas) is above platform views so overlay UI is never hidden by video.
+     * Flutter Web + Agora (platform views) layering (iOS Safari / Chrome / mobile web):
+     * Agora video is a platform view. It sits BELOW the Flutter canvas so in-call
+     * controls and status are always visible and clickable. Full-surface overlay
+     * (profile/placeholder) is controlled in Dart by frame-ready and camera-off only,
+     * not by platform-view CSS, so valid remote video is never masked by a stale layer.
      */
     flt-glass-pane,
     .flt-glass-pane {

@@ -469,7 +469,11 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
         ),
         body: _isLoading
           ? const TutorHomeSkeleton()
-          : SingleChildScrollView(
+          : RefreshIndicator(
+              onRefresh: _loadUserInfo,
+              color: AppTheme.primaryColor,
+              child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
                 ResponsiveHelper.responsiveHorizontalPadding(context),
                 ResponsiveHelper.responsiveVerticalPadding(context),
@@ -700,6 +704,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                   ),
                 ],
               ),
+            ),
             ),
       ),
     );

@@ -428,7 +428,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       body: _isLoading
           ? ShimmerLoading.profileScreen()
-          : SingleChildScrollView(
+          : RefreshIndicator(
+              onRefresh: _loadUserInfo,
+              color: AppTheme.primaryColor,
+              child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 children: [
                   // Hero Section with Deep Blue Background extending to AppBar
@@ -823,6 +827,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 40),
                 ],
               ),
+            ),
             ),
       ),
     );

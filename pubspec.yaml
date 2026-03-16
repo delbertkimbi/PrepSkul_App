@@ -80,6 +80,7 @@ dependencies:
   url_launcher: ^6.2.5
   youtube_player_flutter: ^9.0.3
   agora_rtc_engine: ^6.3.0  # Agora RTC SDK for live video sessions
+  pip_view: ^0.9.7  # Native Picture-in-Picture support for Android/iOS (updated)
   
   # Local Storage
   shared_preferences: ^2.2.2
