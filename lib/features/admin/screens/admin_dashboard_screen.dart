@@ -10,9 +10,10 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'admin_tutor_detail_screen.dart';
 import 'admin_user_detail_screen.dart';
 import 'admin_tutor_request_detail_screen.dart';
+import 'admin_notification_diagnostics_screen.dart';
 
 /// Admin Dashboard Screen
-/// 
+///
 /// Main dashboard for admin users showing stats and quick actions
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -85,7 +86,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         actions: [
           const MessageIconBadge(),
           Padding(
-            padding: EdgeInsets.only(right: ResponsiveHelper.responsiveHorizontalPadding(context)),
+            padding: EdgeInsets.only(
+              right: ResponsiveHelper.responsiveHorizontalPadding(context),
+            ),
             child: const NotificationBell(),
           ),
         ],
@@ -93,23 +96,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(ResponsiveHelper.responsiveHorizontalPadding(context)),
+              padding: EdgeInsets.all(
+                ResponsiveHelper.responsiveHorizontalPadding(context),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(height: ResponsiveHelper.responsiveVerticalPadding(context)),
-                  
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveVerticalPadding(context),
+                  ),
+
                   // Stats Cards
                   Text(
                     'Overview',
                     style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(
+                        context,
+                      ),
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-                  
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 12,
+                      tablet: 16,
+                      desktop: 20,
+                    ),
+                  ),
+
                   ResponsiveHelper.isMobile(context)
                       ? Column(
                           children: [
@@ -120,17 +136,34 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               Colors.orange,
                               onTap: () {
                                 // Navigate to pending tutors list
-                                Navigator.pushNamed(context, '/admin/pending-tutors');
+                                Navigator.pushNamed(
+                                  context,
+                                  '/admin/pending-tutors',
+                                );
                               },
                             ),
-                            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                            SizedBox(
+                              height: ResponsiveHelper.responsiveSpacing(
+                                context,
+                                mobile: 12,
+                                tablet: 16,
+                                desktop: 20,
+                              ),
+                            ),
                             _buildStatCard(
                               'Total Users',
                               '${_stats?['total_users'] ?? 0}',
                               PhosphorIcons.users(),
                               AppTheme.primaryColor,
                             ),
-                            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                            SizedBox(
+                              height: ResponsiveHelper.responsiveSpacing(
+                                context,
+                                mobile: 12,
+                                tablet: 16,
+                                desktop: 20,
+                              ),
+                            ),
                             _buildStatCard(
                               'Active Sessions',
                               '${_stats?['active_sessions'] ?? 0}',
@@ -148,11 +181,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 PhosphorIcons.userCircle(),
                                 Colors.orange,
                                 onTap: () {
-                                  Navigator.pushNamed(context, '/admin/pending-tutors');
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/admin/pending-tutors',
+                                  );
                                 },
                               ),
                             ),
-                            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                            SizedBox(
+                              width: ResponsiveHelper.responsiveSpacing(
+                                context,
+                                mobile: 12,
+                                tablet: 16,
+                                desktop: 20,
+                              ),
+                            ),
                             Expanded(
                               child: _buildStatCard(
                                 'Total Users',
@@ -161,7 +204,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 AppTheme.primaryColor,
                               ),
                             ),
-                            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+                            SizedBox(
+                              width: ResponsiveHelper.responsiveSpacing(
+                                context,
+                                mobile: 12,
+                                tablet: 16,
+                                desktop: 20,
+                              ),
+                            ),
                             Expanded(
                               child: _buildStatCard(
                                 'Active Sessions',
@@ -172,20 +222,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ),
                           ],
                         ),
-                  
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 24, tablet: 28, desktop: 32)),
-                  
+
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 24,
+                      tablet: 28,
+                      desktop: 32,
+                    ),
+                  ),
+
                   // Quick Actions
                   Text(
                     'Quick Actions',
                     style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context),
+                      fontSize: ResponsiveHelper.responsiveSubheadingSize(
+                        context,
+                      ),
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
-                  
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 12,
+                      tablet: 16,
+                      desktop: 20,
+                    ),
+                  ),
+
                   _buildActionCard(
                     icon: PhosphorIcons.userCircle(),
                     title: 'Pending Tutors',
@@ -195,8 +261,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       Navigator.pushNamed(context, '/admin/pending-tutors');
                     },
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
-                  
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 8,
+                      tablet: 10,
+                      desktop: 12,
+                    ),
+                  ),
+
                   _buildActionCard(
                     icon: PhosphorIcons.users(),
                     title: 'All Users',
@@ -206,8 +279,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       Navigator.pushNamed(context, '/admin/users');
                     },
                   ),
-                  SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 8, tablet: 10, desktop: 12)),
-                  
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 8,
+                      tablet: 10,
+                      desktop: 12,
+                    ),
+                  ),
+
                   _buildActionCard(
                     icon: PhosphorIcons.clipboardText(),
                     title: 'Tutor Requests',
@@ -215,6 +295,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     color: Colors.blue,
                     onTap: () {
                       Navigator.pushNamed(context, '/admin/tutor-requests');
+                    },
+                  ),
+                  SizedBox(
+                    height: ResponsiveHelper.responsiveSpacing(
+                      context,
+                      mobile: 8,
+                      tablet: 10,
+                      desktop: 12,
+                    ),
+                  ),
+
+                  _buildActionCard(
+                    icon: PhosphorIcons.bellRinging(),
+                    title: 'Notification Diagnostics',
+                    subtitle: 'Check push, queue, and delivery health',
+                    color: const Color(0xFF2A5AA3),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const AdminNotificationDiagnosticsScreen(),
+                        ),
+                      );
                     },
                   ),
                 ],
@@ -234,7 +338,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: EdgeInsets.all(ResponsiveHelper.responsiveSpacing(context, mobile: 16, tablet: 18, desktop: 20)),
+        padding: EdgeInsets.all(
+          ResponsiveHelper.responsiveSpacing(
+            context,
+            mobile: 16,
+            tablet: 18,
+            desktop: 20,
+          ),
+        ),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -251,7 +362,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: EdgeInsets.all(ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+              padding: EdgeInsets.all(
+                ResponsiveHelper.responsiveSpacing(
+                  context,
+                  mobile: 10,
+                  tablet: 12,
+                  desktop: 14,
+                ),
+              ),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -259,14 +377,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: PhosphorIcon(
                 icon,
                 color: color,
-                size: ResponsiveHelper.responsiveIconSize(context, mobile: 24, tablet: 28, desktop: 32),
+                size: ResponsiveHelper.responsiveIconSize(
+                  context,
+                  mobile: 24,
+                  tablet: 28,
+                  desktop: 32,
+                ),
               ),
             ),
-            SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 16, desktop: 20)),
+            SizedBox(
+              height: ResponsiveHelper.responsiveSpacing(
+                context,
+                mobile: 12,
+                tablet: 16,
+                desktop: 20,
+              ),
+            ),
             Text(
               value,
               style: GoogleFonts.poppins(
-                fontSize: ResponsiveHelper.responsiveSubheadingSize(context) + 4,
+                fontSize:
+                    ResponsiveHelper.responsiveSubheadingSize(context) + 4,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textDark,
               ),
@@ -296,7 +427,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: EdgeInsets.all(ResponsiveHelper.responsiveSpacing(context, mobile: 14, tablet: 16, desktop: 18)),
+        padding: EdgeInsets.all(
+          ResponsiveHelper.responsiveSpacing(
+            context,
+            mobile: 14,
+            tablet: 16,
+            desktop: 18,
+          ),
+        ),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -312,7 +450,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         child: Row(
           children: [
             Container(
-              padding: EdgeInsets.all(ResponsiveHelper.responsiveSpacing(context, mobile: 10, tablet: 12, desktop: 14)),
+              padding: EdgeInsets.all(
+                ResponsiveHelper.responsiveSpacing(
+                  context,
+                  mobile: 10,
+                  tablet: 12,
+                  desktop: 14,
+                ),
+              ),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
@@ -320,10 +465,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: PhosphorIcon(
                 icon,
                 color: color,
-                size: ResponsiveHelper.responsiveIconSize(context, mobile: 21, tablet: 24, desktop: 26),
+                size: ResponsiveHelper.responsiveIconSize(
+                  context,
+                  mobile: 21,
+                  tablet: 24,
+                  desktop: 26,
+                ),
               ),
             ),
-            SizedBox(width: ResponsiveHelper.responsiveSpacing(context, mobile: 12, tablet: 14, desktop: 16)),
+            SizedBox(
+              width: ResponsiveHelper.responsiveSpacing(
+                context,
+                mobile: 12,
+                tablet: 14,
+                desktop: 16,
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,16 +488,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   Text(
                     title,
                     style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveSubheadingSize(context) - 1,
+                      fontSize:
+                          ResponsiveHelper.responsiveSubheadingSize(context) -
+                          1,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textDark,
                     ),
                   ),
-                  SizedBox(height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2),
+                  SizedBox(
+                    height: ResponsiveHelper.isSmallHeight(context) ? 1 : 2,
+                  ),
                   Text(
                     subtitle,
                     style: GoogleFonts.poppins(
-                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
+                      fontSize:
+                          ResponsiveHelper.responsiveBodySize(context) - 1,
                       color: AppTheme.textMedium,
                     ),
                   ),
@@ -349,7 +511,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
             PhosphorIcon(
               PhosphorIcons.caretRight(),
-              size: ResponsiveHelper.responsiveIconSize(context, mobile: 14, tablet: 16, desktop: 18),
+              size: ResponsiveHelper.responsiveIconSize(
+                context,
+                mobile: 14,
+                tablet: 16,
+                desktop: 18,
+              ),
               color: Colors.grey[400],
             ),
           ],
@@ -358,4 +525,3 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 }
-

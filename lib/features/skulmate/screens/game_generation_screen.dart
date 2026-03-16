@@ -1,4 +1,5 @@
 import 'dart:io' show File;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
@@ -9,6 +10,9 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/services/survey_repository.dart';
+import 'package:prepskul/core/services/whatsapp_support_service.dart';
+import 'package:prepskul/core/localization/language_service.dart';
 import '../services/skulmate_service.dart';
 import '../models/game_model.dart';
 import 'quiz_game_screen.dart';
@@ -22,6 +26,7 @@ import 'mystery_game_screen.dart';
 import 'escape_room_game_screen.dart';
 import 'game_library_screen.dart';
 import 'text_input_screen.dart';
+import 'skulmate_plans_screen.dart';
 
 /// Screen showing game generation progress
 /// Accepts either pre-uploaded URLs or files to upload (navigates here first, then uploads)
@@ -33,12 +38,16 @@ class GameGenerationScreen extends StatefulWidget {
   final String? difficulty;
   final String? topic;
   final int? numQuestions;
+
   /// Preferred game type from context questionnaire (e.g. quiz, flashcards, matching, auto)
   final String? gameType;
+
   /// Document to upload (PlatformFile on web, File on mobile)
   final dynamic documentToUpload;
+
   /// Image to upload (XFile from image picker) - single image
   final dynamic imageToUpload;
+
   /// Multiple images to upload (used when user selects several photos)
   final List<dynamic>? imagesToUpload;
 
@@ -69,6 +78,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
   String? _error;
   String? _errorTitle;
   String? _errorDetails;
+
   /// When true, "Try again" is shown; when false (e.g. file too large), only Go back / Try text input.
   bool _errorRetryable = true;
   late AnimationController _animationController;
@@ -85,33 +95,24 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat();
-    
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    
+
     _scaleAnimation = Tween<double>(begin: 0.9, end: 1.1).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    
+
     _rotationAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.linear,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.linear),
     );
-    
+
     _pulseAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _pulseController!,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _pulseController!, curve: Curves.easeInOut),
     );
-    
+
     _simulateProgress();
     _generateGame();
   }
@@ -162,7 +163,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       String? imageUrl = widget.imageUrl;
 
       // Upload files if passed (user navigated here with files)
-      final hasImages = widget.imagesToUpload != null && widget.imagesToUpload!.isNotEmpty;
+      final hasImages =
+          widget.imagesToUpload != null && widget.imagesToUpload!.isNotEmpty;
       final hasSingleImage = widget.imageToUpload != null;
       final hasDocs = widget.documentToUpload != null;
 
@@ -184,7 +186,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           safeSetState(() {
             _isGenerating = false;
             _errorTitle = 'File too large';
-            _errorDetails = 'Keep files under 10 MB for best results. You can use "Enter Text Manually" or split content into smaller files.';
+            _errorDetails =
+                'Keep files under 10 MB for best results. You can use "Enter Text Manually" or split content into smaller files.';
             _error = '$_errorTitle\n\n$_errorDetails';
             _errorRetryable = false;
             _progress = 0.0;
@@ -194,10 +197,11 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
 
         safeSetState(() {
           _isGenerating = true;
-          _status = 'Uploading your file${hasImages && widget.imagesToUpload!.length > 1 ? 's' : ''}...';
+          _status =
+              'Uploading your file${hasImages && widget.imagesToUpload!.length > 1 ? 's' : ''}...';
         });
 
-        final user = await SupabaseService.client.auth.currentUser;
+        final user = SupabaseService.client.auth.currentUser;
         if (user == null) throw Exception('User not authenticated');
 
         if (widget.documentToUpload != null) {
@@ -212,7 +216,10 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           final urls = <String>[];
           for (int i = 0; i < widget.imagesToUpload!.length; i++) {
             if (i > 0) {
-              safeSetState(() => _status = 'Uploading image ${i + 1} of ${widget.imagesToUpload!.length}...');
+              safeSetState(
+                () => _status =
+                    'Uploading image ${i + 1} of ${widget.imagesToUpload!.length}...',
+              );
             }
             final url = await StorageService.uploadDocument(
               userId: user.id,
@@ -239,6 +246,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         });
       }
 
+      // Pull adaptive learner context from onboarding/survey so we avoid re-asking users.
+      final learnerContext = await _buildLearnerContext();
+
       // Try auto first; if not playable, retry with quiz then flashcards then matching (vary outcome)
       const fallbackTypes = ['quiz', 'flashcards', 'matching'];
       GameModel game = await SkulMateService.generateGame(
@@ -250,6 +260,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         difficulty: widget.difficulty,
         topic: widget.topic,
         numQuestions: widget.numQuestions,
+        learnerContext: learnerContext,
       );
 
       int attempt = 0;
@@ -264,6 +275,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           topic: widget.topic,
           numQuestions: widget.numQuestions,
           gameType: fallbackTypes[attempt],
+          learnerContext: learnerContext,
         );
         attempt++;
       }
@@ -278,7 +290,8 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         safeSetState(() {
           _isGenerating = false;
           _errorTitle = 'We couldn\'t create a playable game';
-          _errorDetails = 'This content doesn\'t work well for games yet. Try "Enter Text Manually" with clear notes (terms and definitions, or question-answer pairs), or upload different content.';
+          _errorDetails =
+              'This content doesn\'t work well for games yet. Try "Enter Text Manually" with clear notes (terms and definitions, or question-answer pairs), or upload different content.';
           _error = '$_errorTitle\n\n$_errorDetails';
           _errorRetryable = true;
         });
@@ -324,13 +337,13 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       }
     } catch (e) {
       LogService.error('Error generating game: $e');
-      
+
       // Parse structured error message (format: "Title\n\nDetails")
       String errorTitle = 'We couldn\'t create your game right now.';
       String errorDetails = '';
-      
+
       final errorStr = e.toString();
-      
+
       // Check if error already has structured format (title\n\ndetails)
       if (errorStr.contains('\n\n')) {
         final parts = errorStr.split('\n\n');
@@ -339,38 +352,72 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       } else {
         // Parse unstructured errors
         final lowerError = errorStr.toLowerCase();
-        
-        if (lowerError.contains('fileurl') || lowerError.contains('text is required')) {
+
+        if (lowerError.contains('fileurl') ||
+            lowerError.contains('text is required')) {
           errorTitle = 'Please provide content to generate a game.';
           errorDetails = 'Upload a document, image, or enter text to continue.';
-        } else if (lowerError.contains('too large') || lowerError.contains('file size') ||
-            lowerError.contains('size limit') || lowerError.contains('exceeds') ||
-            lowerError.contains('payload too large') || lowerError.contains('413')) {
+        } else if (lowerError.contains('too large') ||
+            lowerError.contains('file size') ||
+            lowerError.contains('size limit') ||
+            lowerError.contains('exceeds') ||
+            lowerError.contains('payload too large') ||
+            lowerError.contains('413')) {
           errorTitle = 'File too large';
-          errorDetails = 'Keep files under 10 MB for best results. Use "Enter Text Manually" or split content into smaller files.';
-        } else if (lowerError.contains('permissions') || lowerError.contains('rls') ||
-            lowerError.contains('row-level security') || lowerError.contains('upload failed') ||
-            lowerError.contains('clientexception') || lowerError.contains('failed to fetch')) {
+          errorDetails =
+              'Keep files under 10 MB for best results. Use "Enter Text Manually" or split content into smaller files.';
+        } else if (lowerError.contains('permissions') ||
+            lowerError.contains('rls') ||
+            lowerError.contains('row-level security') ||
+            lowerError.contains('upload failed') ||
+            lowerError.contains('clientexception') ||
+            lowerError.contains('failed to fetch')) {
           errorTitle = 'Upload didn\'t work';
-          errorDetails = 'We couldn\'t upload your file. Try "Enter Text Manually" on the upload screen, or a smaller file.';
-        } else if (lowerError.contains('api endpoint not found') || lowerError.contains('404')) {
+          errorDetails =
+              'We couldn\'t upload your file. Try "Enter Text Manually" on the upload screen, or a smaller file.';
+        } else if (lowerError.contains('api endpoint not found') ||
+            lowerError.contains('404')) {
           errorTitle = 'Service unavailable';
-          errorDetails = 'The game generation service may not be available. Please check your connection and try again.';
-        } else if (lowerError.contains('network') || lowerError.contains('connection') || lowerError.contains('failed host lookup')) {
+          errorDetails =
+              'The game generation service may not be available. Please check your connection and try again.';
+        } else if (lowerError.contains('network') ||
+            lowerError.contains('connection') ||
+            lowerError.contains('failed host lookup')) {
           errorTitle = 'Connection problem';
           errorDetails = 'Please check your internet connection and try again.';
-        } else if (lowerError.contains('timeout') || lowerError.contains('took too long')) {
+        } else if (lowerError.contains('daily free limit reached') ||
+            lowerError.contains('free image limit reached') ||
+            lowerError.contains('free document/text limit reached') ||
+            lowerError.contains('free limit reached')) {
+          errorTitle = 'Free plan limit reached';
+          errorDetails =
+              'You have reached today\'s free limit for this upload type. Choose a plan to keep generating now, or try again tomorrow.';
+        } else if (lowerError.contains('insufficient credits') ||
+            lowerError.contains('top up credits')) {
+          errorTitle = 'Pro required for this action';
+          errorDetails =
+              'This action needs a paid SkulMate plan. Please choose a plan and continue.';
+        } else if (lowerError.contains('timeout') ||
+            lowerError.contains('took too long')) {
           errorTitle = 'Request took too long';
-          errorDetails = 'The request is taking longer than expected. Please try again.';
-        } else if (lowerError.contains('server error') || lowerError.contains('500')) {
+          errorDetails =
+              'The request is taking longer than expected. Please try again.';
+        } else if (lowerError.contains('server error') ||
+            lowerError.contains('500')) {
           errorTitle = 'Server error';
-          errorDetails = 'Our servers are having issues. Please try again in a few moments.';
-        } else if (lowerError.contains('400') || lowerError.contains('bad request') || lowerError.contains('invalid')) {
+          errorDetails =
+              'Our servers are having issues. Please try again in a few moments.';
+        } else if (lowerError.contains('400') ||
+            lowerError.contains('bad request') ||
+            lowerError.contains('invalid')) {
           errorTitle = 'Invalid request';
-          errorDetails = 'Please make sure you\'ve uploaded a valid file or entered text.';
-        } else if (lowerError.contains('invalid response format') || lowerError.contains('html')) {
+          errorDetails =
+              'Please make sure you\'ve uploaded a valid file or entered text.';
+        } else if (lowerError.contains('invalid response format') ||
+            lowerError.contains('html')) {
           errorTitle = 'Service error';
-          errorDetails = 'The server returned an unexpected response. Please try again or contact support.';
+          errorDetails =
+              'The server returned an unexpected response. Please try again or contact support.';
         } else {
           // Extract message from exception
           final match = RegExp(r'Exception: (.+)').firstMatch(errorStr);
@@ -381,25 +428,48 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             }
           }
           if (errorDetails.isEmpty) {
-            errorDetails = 'Please try again or contact support if the problem persists.';
+            errorDetails =
+                'Please try again or contact support if the problem persists.';
           }
         }
       }
-      
+
+      // Last safety pass: never show raw technical/internal errors to users.
+      final combinedErrorForUi = '$errorTitle\n\n$errorDetails'.toLowerCase();
+      if (combinedErrorForUi.contains('cannot read properties of undefined') ||
+          combinedErrorForUi.contains('reading \'0\'') ||
+          combinedErrorForUi.contains('reading "0"') ||
+          combinedErrorForUi.contains('failed to extract meaningful text') ||
+          combinedErrorForUi.contains(
+            'failed to extract text from your file',
+          ) ||
+          combinedErrorForUi.contains('failed to extract text from image') ||
+          combinedErrorForUi.contains('openrouter api error') ||
+          combinedErrorForUi.contains('stack trace') ||
+          combinedErrorForUi.contains('typeerror')) {
+        errorTitle = 'We couldn\'t read text from this file.';
+        errorDetails =
+            'We can still continue: tap "Enter text manually", or upload a clearer image, or a DOCX/TXT/PDF with readable text. '
+            'If it keeps happening, contact support.';
+      }
+
       // Split error into title and details
-      final errorParts = errorDetails.isNotEmpty 
+      final errorParts = errorDetails.isNotEmpty
           ? '$errorTitle\n\n$errorDetails'
           : errorTitle;
       final parts = errorParts.split('\n\n');
-      
+
       // Non-retryable: file too large, invalid request, or missing content
-      final nonRetryable = errorStr.toLowerCase().contains('too large') ||
+      final nonRetryable =
+          errorStr.toLowerCase().contains('too large') ||
           errorStr.toLowerCase().contains('file size') ||
           errorStr.toLowerCase().contains('payload too large') ||
           errorStr.toLowerCase().contains('413') ||
           errorStr.toLowerCase().contains('fileurl') ||
           errorStr.toLowerCase().contains('text is required') ||
-          (parts.isNotEmpty && (parts[0].toLowerCase().contains('invalid') || parts[0].toLowerCase().contains('provide content')));
+          (parts.isNotEmpty &&
+              (parts[0].toLowerCase().contains('invalid') ||
+                  parts[0].toLowerCase().contains('provide content')));
 
       safeSetState(() {
         _isGenerating = false;
@@ -410,6 +480,139 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
         _progress = 0.0;
       });
     }
+  }
+
+  Future<void> _contactSupport() async {
+    try {
+      final source = widget.text != null && widget.text!.trim().isNotEmpty
+          ? 'manual text'
+          : (widget.imageToUpload != null ||
+                (widget.imagesToUpload?.isNotEmpty ?? false))
+          ? 'image upload'
+          : 'document upload';
+      final details =
+          'Hi PrepSkul Support, I need help with SkulMate.\n\n'
+          'I was trying to generate a ${widget.gameType ?? 'game'} from $source'
+          '${widget.topic != null && widget.topic!.trim().isNotEmpty ? ' (topic: ${widget.topic!.trim()})' : ''}.\n'
+          'What I saw:\n'
+          '${_errorTitle ?? 'Generation failed'}'
+          '${_errorDetails != null && _errorDetails!.isNotEmpty ? '\n${_errorDetails!}' : ''}\n\n'
+          'Platform: ${kIsWeb ? 'web' : 'mobile'}';
+      await WhatsAppSupportService.openWhatsApp(
+        context: 'skulmate_generation',
+        additionalInfo: details,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open WhatsApp. Please try again.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _buildLearnerContext() async {
+    try {
+      final user = SupabaseService.client.auth.currentUser;
+      if (user == null) return null;
+      final context = <String, dynamic>{};
+
+      final survey = await SurveyRepository.getParentSurvey(user.id);
+      if (survey != null) {
+        const preferredKeys = [
+          'student_grade',
+          'class_level',
+          'curriculum',
+          'exam',
+          'exam_type',
+          'target_exam',
+          'subjects',
+          'subject_preferences',
+          'learning_goals',
+          'learning_style',
+          'preferred_language',
+          'language_preference',
+          'student_age_group',
+        ];
+        for (final key in preferredKeys) {
+          final value = survey[key];
+          if (value != null && value.toString().trim().isNotEmpty) {
+            context[key] = value;
+          }
+        }
+      }
+
+      if (widget.childId != null && widget.childId!.isNotEmpty) {
+        context['childId'] = widget.childId;
+      }
+      context['language'] = LanguageService.languageCode;
+      return context.isEmpty ? null : context;
+    } catch (e) {
+      LogService.warning(
+        'Could not build learner context for game generation: $e',
+      );
+      return null;
+    }
+  }
+
+  bool _isBillingErrorState() {
+    final title = (_errorTitle ?? '').toLowerCase();
+    final details = (_errorDetails ?? '').toLowerCase();
+    final combined = '$title $details';
+    return combined.contains('daily free limit') ||
+        combined.contains('free plan limit') ||
+        combined.contains('free limit reached') ||
+        combined.contains('not enough credits') ||
+        combined.contains('insufficient credits') ||
+        combined.contains('top up');
+  }
+
+  Widget _buildErrorDetailsText() {
+    final details = _errorDetails;
+    if (details == null || details.isEmpty) return const SizedBox.shrink();
+    final lower = details.toLowerCase();
+    final key = 'contact support';
+    final index = lower.indexOf(key);
+    if (index < 0) {
+      return Text(
+        details,
+        style: GoogleFonts.poppins(
+          fontSize: 14,
+          color: AppTheme.textMedium,
+          height: 1.5,
+        ),
+        textAlign: TextAlign.center,
+      );
+    }
+    final before = details.substring(0, index);
+    final clickable = details.substring(index, index + key.length);
+    final after = details.substring(index + key.length);
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: before),
+          TextSpan(
+            text: clickable,
+            style: const TextStyle(
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.w600,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: TapGestureRecognizer()..onTap = _contactSupport,
+          ),
+          TextSpan(text: after),
+        ],
+      ),
+      style: GoogleFonts.poppins(
+        fontSize: 14,
+        color: AppTheme.textMedium,
+        height: 1.5,
+      ),
+      textAlign: TextAlign.center,
+    );
   }
 
   @override
@@ -438,10 +641,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryColor.withOpacity(0.1),
-              Colors.white,
-            ],
+            colors: [AppTheme.primaryColor.withOpacity(0.1), Colors.white],
           ),
         ),
         child: Center(
@@ -465,7 +665,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                             height: 140 + (40 * pulseValue),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: AppTheme.primaryColor.withOpacity(0.1 * pulseValue),
+                              color: AppTheme.primaryColor.withOpacity(
+                                0.1 * pulseValue,
+                              ),
                             ),
                           );
                         },
@@ -486,7 +688,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppTheme.primaryColor.withOpacity(0.4),
+                                      color: AppTheme.primaryColor.withOpacity(
+                                        0.4,
+                                      ),
                                       blurRadius: 20,
                                       spreadRadius: 5,
                                     ),
@@ -593,29 +797,63 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        if (_errorDetails != null && _errorDetails!.isNotEmpty) ...[
+                        if (_errorDetails != null &&
+                            _errorDetails!.isNotEmpty) ...[
                           const SizedBox(height: 10),
-                          Text(
-                            _errorDetails!,
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: AppTheme.textMedium,
-                              height: 1.5,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
+                          _buildErrorDetailsText(),
                         ],
                         const SizedBox(height: 20),
+                        if (_isBillingErrorState()) ...[
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SkulmatePlansScreen(),
+                                ),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primaryColor,
+                                side: BorderSide(
+                                  color: AppTheme.primaryColor.withOpacity(0.6),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.account_balance_wallet_rounded,
+                              ),
+                              label: Text(
+                                'See plans',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         TextButton.icon(
                           onPressed: () {
                             Navigator.pushReplacement(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => TextInputScreen(childId: widget.childId),
+                                builder: (context) =>
+                                    TextInputScreen(childId: widget.childId),
                               ),
                             );
                           },
-                          icon: const Icon(Icons.edit_note_rounded, size: 20, color: AppTheme.primaryColor),
+                          icon: const Icon(
+                            Icons.edit_note_rounded,
+                            size: 20,
+                            color: AppTheme.primaryColor,
+                          ),
                           label: Text(
                             'Enter text manually instead',
                             style: GoogleFonts.poppins(
@@ -633,8 +871,12 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                 onPressed: () => Navigator.pop(context),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppTheme.primaryColor,
-                                  side: const BorderSide(color: AppTheme.primaryColor),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  side: const BorderSide(
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -668,7 +910,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppTheme.primaryColor,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -737,8 +981,12 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                   Navigator.pop(context);
                                 },
                                 style: OutlinedButton.styleFrom(
-                                  side: BorderSide(color: AppTheme.primaryColor),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  side: BorderSide(
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -760,14 +1008,17 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) =>
-                                          GameLibraryScreen(childId: widget.childId),
+                                      builder: (context) => GameLibraryScreen(
+                                        childId: widget.childId,
+                                      ),
                                     ),
                                   );
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryColor,
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(8),
                                   ),

@@ -10,12 +10,14 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
   final List<Widget>? actions;
   /// When set, used as the leading (e.g. back to dashboard instead of upload).
   final Widget? leading;
+  final bool centerTitle;
 
   const SkulMateGameAppBar({
     Key? key,
     required this.title,
     this.actions,
     this.leading,
+    this.centerTitle = true,
   }) : super(key: key);
 
   @override
@@ -28,6 +30,8 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
       foregroundColor: Colors.white,
       iconTheme: const IconThemeData(color: Colors.white),
       leading: leading,
+      centerTitle: centerTitle,
+      actionsIconTheme: const IconThemeData(size: 20, color: Colors.white),
       titleTextStyle: GoogleFonts.poppins(
         color: Colors.white,
         fontWeight: FontWeight.w600,
@@ -35,23 +39,15 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
       ),
       systemOverlayStyle: SystemUiOverlayStyle.light,
       elevation: 0,
-      title: LayoutBuilder(
-        builder: (context, constraints) {
-          return FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              title,
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        },
+      title: Text(
+        title,
+        style: GoogleFonts.poppins(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+          fontSize: 16,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       actions: actions,
     );

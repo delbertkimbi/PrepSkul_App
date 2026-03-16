@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/localization/language_service.dart';
 import 'dart:math';
 import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
@@ -50,14 +52,15 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   dynamic _character; // Will be SkulMateCharacter
   GameStats? _currentStats;
   bool _isTTSEnabled = true;
-  
+
   // Swipe mechanics
   double _dragPosition = 0;
   bool _isDragging = false;
   Offset _dragOffset = Offset.zero;
-  
+
   // Card stack - show next 2 cards
   static const int _stackSize = 3;
+  bool get _isFrench => LanguageService.languageCode == 'fr';
 
   @override
   void initState() {
@@ -65,7 +68,9 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     _startTime = DateTime.now();
     _soundService.initialize();
     _ttsService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     // Speak first card term
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted && _isTTSEnabled) {
@@ -93,16 +98,15 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     _swipeAnimation = Tween<Offset>(
       begin: Offset.zero,
       end: const Offset(2, 0), // Default right swipe
-    ).animate(CurvedAnimation(
-      parent: _swipeController,
-      curve: Curves.easeOut,
-    ));
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.8).animate(
-      CurvedAnimation(parent: _swipeController, curve: Curves.easeOut),
-    );
-    _rotationAnimation = Tween<double>(begin: 0, end: 0.2).animate(
-      CurvedAnimation(parent: _swipeController, curve: Curves.easeOut),
-    );
+    ).animate(CurvedAnimation(parent: _swipeController, curve: Curves.easeOut));
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.8,
+    ).animate(CurvedAnimation(parent: _swipeController, curve: Curves.easeOut));
+    _rotationAnimation = Tween<double>(
+      begin: 0,
+      end: 0.2,
+    ).animate(CurvedAnimation(parent: _swipeController, curve: Curves.easeOut));
     _loadCharacter();
     _loadStats();
   }
@@ -116,42 +120,39 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     _confettiController.dispose();
     super.dispose();
   }
-  
+
   void _handleSwipe(bool isKnown) {
     if (_swipeController.isAnimating) return;
-    
+
     // Set swipe direction
     _swipeAnimation = Tween<Offset>(
       begin: Offset.zero,
       end: Offset(isKnown ? 2 : -2, 0), // Right for known, left for unknown
-    ).animate(CurvedAnimation(
-      parent: _swipeController,
-      curve: Curves.easeOut,
-    ));
-    
+    ).animate(CurvedAnimation(parent: _swipeController, curve: Curves.easeOut));
+
     _soundService.playFlip();
     _swipeController.forward().then((_) {
       _markAsKnown(isKnown);
       _swipeController.reset();
     });
   }
-  
+
   void _onPanUpdate(DragUpdateDetails details) {
     if (!_isFlipped) return; // Only allow swipe when card is flipped
-    
+
     setState(() {
       _isDragging = true;
       _dragOffset += details.delta;
       _dragPosition = _dragOffset.dx;
     });
   }
-  
+
   void _onPanEnd(DragEndDetails details) {
     if (!_isDragging) return;
-    
+
     final swipeThreshold = 100.0;
     final velocity = details.velocity.pixelsPerSecond.dx;
-    
+
     if (_dragPosition.abs() > swipeThreshold || velocity.abs() > 500) {
       // Swipe detected
       if (_dragPosition > 0 || velocity > 500) {
@@ -191,6 +192,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
 
     if (_isFlipped) {
       _flipController.reverse();
+      _soundService.playFlip();
       // Speak term when flipping back
       if (_isTTSEnabled) {
         _speakCurrentCard();
@@ -222,6 +224,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   }
 
   void _openLearnMoreSheet() {
+    _soundService.playClick();
     final card = widget.game.items[_currentCardIndex];
     final resolved = _resolveTermDefinition(card);
     FlashcardHelpSheet.show(
@@ -231,12 +234,74 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     );
   }
 
+  void _openGameSettings() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, modalSetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isFrench ? 'Parametres du jeu' : 'Game settings',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        _isFrench ? 'Sons du jeu' : 'Game sounds',
+                        style: GoogleFonts.poppins(),
+                      ),
+                      value: _soundService.soundsEnabled,
+                      onChanged: (v) async {
+                        await _soundService.toggleSounds(v);
+                        modalSetState(() {});
+                        if (mounted) safeSetState(() {});
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        _isFrench ? 'Lecture vocale (TTS)' : 'Read aloud (TTS)',
+                        style: GoogleFonts.poppins(),
+                      ),
+                      value: _isTTSEnabled,
+                      onChanged: (v) {
+                        _ttsService.setEnabled(v);
+                        modalSetState(() => _isTTSEnabled = v);
+                        if (mounted) safeSetState(() => _isTTSEnabled = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _markAsKnown(bool isKnown) {
     // Calculate XP with streak multiplier
     int baseXP = 10;
     int streakMultiplier = _currentStreak > 0 ? (1 + (_currentStreak ~/ 3)) : 1;
     int xpForThisCard = baseXP * streakMultiplier;
-    
+
     safeSetState(() {
       _knownCards[_currentCardIndex] = isKnown;
       if (isKnown) {
@@ -255,15 +320,22 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       _isDragging = false;
     });
 
+    // If learner doesn't know this card, immediately open explanation sheet.
+    if (!isKnown) {
+      Future.delayed(const Duration(milliseconds: 120), () {
+        if (mounted) _openLearnMoreSheet();
+      });
+    }
+
     // Update progress bar animation
     final newProgress = (_currentCardIndex + 1) / widget.game.items.length;
-    _progressAnimation = Tween<double>(
-      begin: _progressAnimation.value,
-      end: newProgress,
-    ).animate(CurvedAnimation(
-      parent: _progressController,
-      curve: Curves.easeOut,
-    ));
+    _progressAnimation =
+        Tween<double>(
+          begin: _progressAnimation.value,
+          end: newProgress,
+        ).animate(
+          CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+        );
     _progressController.forward(from: 0);
 
     // Show feedback with XP
@@ -272,7 +344,9 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         content: Row(
           children: [
             Text(
-              isKnown ? 'Great! 🎉' : 'Keep practicing!',
+              isKnown
+                  ? (_isFrench ? 'Super! 🎉' : 'Great! 🎉')
+                  : (_isFrench ? 'Continue à pratiquer !' : 'Keep practicing!'),
               style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
             ),
             if (isKnown) ...[
@@ -337,13 +411,13 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       });
       // Animate progress bar
       final newProgress = (_currentCardIndex + 1) / widget.game.items.length;
-      _progressAnimation = Tween<double>(
-        begin: _progressAnimation.value,
-        end: newProgress,
-      ).animate(CurvedAnimation(
-        parent: _progressController,
-        curve: Curves.easeOut,
-      ));
+      _progressAnimation =
+          Tween<double>(
+            begin: _progressAnimation.value,
+            end: newProgress,
+          ).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+          );
       _progressController.forward(from: 0);
     } else {
       _finishGame();
@@ -374,35 +448,35 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     if (timeTaken != null && timeTaken < 120) bonusXP += 25;
     final totalXP = _xpEarned + bonusXP;
 
-    // Update game stats
-    try {
-      await GameStatsService.addGameResult(
+    unawaited(
+      GameStatsService.addGameResult(
         correctAnswers: _score,
         totalQuestions: widget.game.items.length,
         timeTakenSeconds: timeTaken ?? 0,
         isPerfectScore: isPerfectScore,
-      );
-    } catch (e) {
-      LogService.error('🎮 [Flashcard] Error updating game stats: $e');
-    }
+      ).catchError((e) {
+        LogService.error('🎮 [Flashcard] Error updating game stats: $e');
+      }),
+    );
 
-    // Save session
-    try {
-      await SkulMateService.saveGameSession(
+    unawaited(
+      SkulMateService.saveGameSession(
         gameId: widget.game.id,
         score: _score,
         totalQuestions: widget.game.items.length,
         correctAnswers: _score,
         timeTakenSeconds: timeTaken,
-        answers: _knownCards.map((key, value) => MapEntry(key.toString(), value)),
-      );
-    } catch (e) {
-      LogService.error('🎮 [Flashcard] Error saving game session: $e');
-    }
+        answers: _knownCards.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ),
+      ).catchError((e) {
+        LogService.error('🎮 [Flashcard] Error saving game session: $e');
+      }),
+    );
 
     // Play completion sound
     await _soundService.playComplete();
-    
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -429,91 +503,53 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
-                ),
-              ),
-            ),
-          IconButton(
-            icon: Icon(
-              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
-              color: Colors.white,
-            ),
-            onPressed: () {
-              safeSetState(() {
-                _isTTSEnabled = !_isTTSEnabled;
-                _ttsService.setEnabled(_isTTSEnabled);
-              });
-            },
-          ),
-          if (_currentStreak > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('🔥', style: TextStyle(fontSize: 12)),
-                      const SizedBox(width: 2),
-                      Text(
-                        '$_currentStreak',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: 4),
             child: Center(
-              child: SizedBox(
-                height: 24,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '$_score/${widget.game.items.length}',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      if (_xpEarned > 0) ...[
-                        const SizedBox(width: 4),
-                        Text(
-                          '$_xpEarned XP',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withOpacity(0.9),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_score}/${widget.game.items.length}  $_xpEarned XP',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: _isFrench ? 'Suggestion' : 'Suggestion',
+            icon: const Icon(Icons.lightbulb_outline, color: Colors.white),
+            onPressed: _openLearnMoreSheet,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8, left: 2),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _openGameSettings,
+              child: CircleAvatar(
+                radius: 14,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: _character != null
+                    ? ClipOval(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: SkulMateCharacterWidget(
+                            character: _character,
+                            size: 20,
+                            animated: false,
+                            showName: false,
                           ),
                         ),
-                      ],
-                    ],
-                  ),
-                ),
+                      )
+                    : const Icon(Icons.settings, size: 16, color: Colors.white),
               ),
             ),
           ),
@@ -530,7 +566,9 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                   return LinearProgressIndicator(
                     value: _progressAnimation.value,
                     backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryColor,
+                    ),
                     minHeight: 6,
                   );
                 },
@@ -563,49 +601,60 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                               alignment: Alignment.center,
                               children: [
                                 // Stack of next cards (background)
-                                ...List.generate(
-                                  _stackSize - 1,
-                                  (index) {
-                                    final cardIndex = _currentCardIndex + index + 1;
-                                    if (cardIndex >= widget.game.items.length) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    final stackCard = widget.game.items[cardIndex];
-                                    return Positioned(
-                                      left: 0,
-                                      right: 0,
-                                      top: (index + 1) * 8.0,
-                                      child: Transform.scale(
-                                        scale: 1.0 - (index + 1) * 0.05,
-                                        child: Opacity(
-                                          opacity: 1.0 - (index + 1) * 0.3,
-                                          child: _buildCardStackItem(stackCard, index + 1),
+                                ...List.generate(_stackSize - 1, (index) {
+                                  final cardIndex =
+                                      _currentCardIndex + index + 1;
+                                  if (cardIndex >= widget.game.items.length) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final stackCard =
+                                      widget.game.items[cardIndex];
+                                  return Positioned(
+                                    left: 0,
+                                    right: 0,
+                                    top: (index + 1) * 8.0,
+                                    child: Transform.scale(
+                                      scale: 1.0 - (index + 1) * 0.05,
+                                      child: Opacity(
+                                        opacity: 1.0 - (index + 1) * 0.3,
+                                        child: _buildCardStackItem(
+                                          stackCard,
+                                          index + 1,
                                         ),
                                       ),
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  );
+                                }),
                                 // Current card (swipeable)
                                 AnimatedBuilder(
                                   animation: _swipeController,
                                   builder: (context, child) {
                                     final dragOffset = _isDragging
                                         ? _dragOffset
-                                        : Offset(_swipeAnimation.value.dx * MediaQuery.of(context).size.width, _swipeAnimation.value.dy);
-                                    
+                                        : Offset(
+                                            _swipeAnimation.value.dx *
+                                                MediaQuery.of(
+                                                  context,
+                                                ).size.width,
+                                            _swipeAnimation.value.dy,
+                                          );
+
                                     final rotation = _isDragging
                                         ? _dragPosition / 1000
                                         : _rotationAnimation.value;
-                                    
+
                                     final scale = _isDragging
                                         ? 1.0 - (_dragPosition.abs() / 2000)
                                         : _scaleAnimation.value;
-                                    
+
                                     final opacityValue = _isDragging
                                         ? (1.0 - (_dragPosition.abs() / 500))
-                                        : (1.0 - (_swipeAnimation.value.dx.abs() / 2.0));
-                                    final opacity = opacityValue.clamp(0.0, 1.0) as double;
-                                    
+                                        : (1.0 -
+                                              (_swipeAnimation.value.dx.abs() /
+                                                  2.0));
+                                    final opacity =
+                                        opacityValue.clamp(0.0, 1.0) as double;
+
                                     // Swipe direction indicators
                                     Color? swipeColor;
                                     IconData? swipeIcon;
@@ -618,13 +667,14 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                                         swipeIcon = Icons.close;
                                       }
                                     }
-                                    
+
                                     return Transform.translate(
                                       offset: dragOffset,
                                       child: Transform.rotate(
                                         angle: rotation,
                                         child: Transform.scale(
-                                          scale: scale.clamp(0.8, 1.0) as double,
+                                          scale:
+                                              scale.clamp(0.8, 1.0) as double,
                                           child: Opacity(
                                             opacity: opacity,
                                             child: GestureDetector(
@@ -634,39 +684,72 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                                               child: AnimatedBuilder(
                                                 animation: _flipAnimation,
                                                 builder: (context, child) {
-                                                  final angle = _flipAnimation.value * 3.14159;
-                                                  final isFront = _flipAnimation.value < 0.5;
-                                                  
+                                                  final angle =
+                                                      _flipAnimation.value *
+                                                      3.14159;
+                                                  final isFront =
+                                                      _flipAnimation.value <
+                                                      0.5;
+
                                                   return Stack(
                                                     children: [
                                                       Positioned.fill(
                                                         child: Transform(
-                                                          alignment: Alignment.center,
-                                                        transform: Matrix4.identity()
-                                                          ..setEntry(3, 2, 0.001)
-                                                          ..rotateY(angle),
-                                                        child: isFront
-                                                            ? _buildCardFront(card)
-                                                            : Transform(
-                                                                alignment: Alignment.center,
-                                                                transform: Matrix4.identity()..scale(-1.0, 1.0, 1.0),
-                                                                child: _buildCardBack(card),
-                                                              ),
+                                                          alignment:
+                                                              Alignment.center,
+                                                          transform:
+                                                              Matrix4.identity()
+                                                                ..setEntry(
+                                                                  3,
+                                                                  2,
+                                                                  0.001,
+                                                                )
+                                                                ..rotateY(
+                                                                  angle,
+                                                                ),
+                                                          child: isFront
+                                                              ? _buildCardFront(
+                                                                  card,
+                                                                )
+                                                              : Transform(
+                                                                  alignment:
+                                                                      Alignment
+                                                                          .center,
+                                                                  transform:
+                                                                      Matrix4.identity()
+                                                                        ..scale(
+                                                                          -1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                        ),
+                                                                  child:
+                                                                      _buildCardBack(
+                                                                        card,
+                                                                      ),
+                                                                ),
                                                         ),
                                                       ),
                                                       // Swipe indicator overlay
-                                                      if (swipeColor != null && swipeIcon != null)
+                                                      if (swipeColor != null &&
+                                                          swipeIcon != null)
                                                         Positioned.fill(
                                                           child: Container(
                                                             decoration: BoxDecoration(
-                                                              color: swipeColor!.withOpacity(0.2),
-                                                              borderRadius: BorderRadius.circular(20),
+                                                              color: swipeColor!
+                                                                  .withOpacity(
+                                                                    0.2,
+                                                                  ),
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    20,
+                                                                  ),
                                                             ),
                                                             child: Center(
                                                               child: Icon(
                                                                 swipeIcon,
                                                                 size: 80,
-                                                                color: swipeColor,
+                                                                color:
+                                                                    swipeColor,
                                                               ),
                                                             ),
                                                           ),
@@ -690,36 +773,36 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                         // Action buttons and instructions
                         if (_isFlipped) ...[
                           Text(
-                            'Swipe right if you know it, left if you don\'t',
+                            _isFrench
+                                ? 'Glisse à droite si tu connais, à gauche sinon'
+                                : 'Swipe right if you know it, left if you don\'t',
                             style: GoogleFonts.poppins(
                               fontSize: 13,
                               color: AppTheme.textMedium,
                               fontStyle: FontStyle.italic,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: _openLearnMoreSheet,
-                            icon: Icon(Icons.menu_book_outlined, size: 18, color: AppTheme.primaryColor),
-                            label: Text(
-                              'Learn more',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: AppTheme.primaryColor,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 12),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Expanded(
                                 child: OutlinedButton.icon(
                                   onPressed: () => _handleSwipe(false),
-                                  icon: const Icon(Icons.close, color: Colors.red),
-                                  label: const Text('Don\'t Know'),
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.red,
+                                  ),
+                                  label: Text(
+                                    _isFrench
+                                        ? 'Je ne sais pas'
+                                        : 'I Don\'t Know',
+                                  ),
                                   style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    foregroundColor: Colors.red,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 15,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -731,11 +814,19 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                               Expanded(
                                 child: ElevatedButton.icon(
                                   onPressed: () => _handleSwipe(true),
-                                  icon: const Icon(Icons.check, color: Colors.white),
-                                  label: const Text('I Know This'),
+                                  icon: const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                  ),
+                                  label: Text(
+                                    _isFrench ? 'Je connais' : 'I Know This',
+                                  ),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppTheme.accentGreen,
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 15,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -746,7 +837,9 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                           ),
                         ] else ...[
                           Text(
-                            'Tap card to flip',
+                            _isFrench
+                                ? 'Touchez la carte pour la retourner'
+                                : 'Tap card to flip',
                             style: GoogleFonts.poppins(
                               fontSize: 14,
                               color: AppTheme.textMedium,
@@ -762,14 +855,15 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                               IconButton(
                                 onPressed: _previousCard,
                                 icon: const Icon(Icons.arrow_back),
-                                tooltip: 'Previous',
+                                tooltip: _isFrench ? 'Précédent' : 'Previous',
                               ),
                             const SizedBox(width: 16),
-                            if (_currentCardIndex < widget.game.items.length - 1)
+                            if (_currentCardIndex <
+                                widget.game.items.length - 1)
                               IconButton(
                                 onPressed: _nextCard,
                                 icon: const Icon(Icons.arrow_forward),
-                                tooltip: 'Next',
+                                tooltip: _isFrench ? 'Suivant' : 'Next',
                               ),
                           ],
                         ),
@@ -829,10 +923,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppTheme.primaryColor,
-            AppTheme.skyBlue,
-          ],
+          colors: [AppTheme.primaryColor, AppTheme.skyBlue],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
@@ -875,29 +966,49 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
           ),
         ],
       ),
-      child: Center(
-        child: SingleChildScrollView(
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              resolved.definition,
-              style: GoogleFonts.poppins(
-                fontSize: 20,
-                color: AppTheme.textDark,
-                height: 1.5,
+      child: Stack(
+        children: [
+          Center(
+            child: SingleChildScrollView(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 8,
+                  horizontal: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  resolved.definition,
+                  style: GoogleFonts.poppins(
+                    fontSize: 20,
+                    color: AppTheme.textDark,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
           ),
-        ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: IconButton(
+              tooltip: _isFrench ? 'En savoir plus' : 'Read more',
+              onPressed: _openLearnMoreSheet,
+              icon: const Icon(
+                Icons.menu_book_rounded,
+                size: 22,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-  
+
   Widget _buildCardStackItem(GameItem card, int index) {
     final resolved = _resolveTermDefinition(card);
     return Container(
@@ -910,7 +1021,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         border: Border.all(color: AppTheme.skyBlue.withOpacity(0.3), width: 1),
       ),
       child: Center(
-          child: Text(
+        child: Text(
           resolved.term,
           style: GoogleFonts.poppins(
             fontSize: 24,

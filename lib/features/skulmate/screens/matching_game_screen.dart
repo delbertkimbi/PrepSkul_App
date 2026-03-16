@@ -4,6 +4,7 @@ import 'package:confetti/confetti.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'dart:async';
 import 'dart:math';
 import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
@@ -11,8 +12,10 @@ import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
+import '../services/game_rules_service.dart';
 import '../services/character_selection_service.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/skulmate_game_app_bar.dart';
 import 'game_results_screen.dart';
 import 'game_library_screen.dart';
 
@@ -21,7 +24,7 @@ class CardData {
   final String text;
   final int pairId;
   final bool isLeft;
-  
+
   CardData({
     required this.id,
     required this.text,
@@ -65,6 +68,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   bool _isProcessing = false;
   bool _isTTSEnabled = true;
   int _hintsRemaining = 3; // Peek at a pair (limited uses)
+  Timer? _matchFlyerTimer;
+  String? _matchFlyerText;
 
   @override
   void initState() {
@@ -73,7 +78,9 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     // Initialize sound and TTS early so they're ready on first flip
     _soundService.ensureInitialized();
     _ttsService.ensureInitialized();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -84,6 +91,9 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     _initializeItems();
     _loadCharacter();
     _loadStats();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showHowToPlayIfFirstTime();
+    });
   }
 
   Future<void> _loadStats() async {
@@ -107,26 +117,25 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     for (int i = 0; i < widget.game.items.length; i++) {
       final item = widget.game.items[i];
       if (item.leftItem != null && item.leftItem!.isNotEmpty) {
-        pairs.add(CardData(
-          id: i * 2,
-          text: item.leftItem!,
-          pairId: i,
-          isLeft: true,
-        ));
+        pairs.add(
+          CardData(id: i * 2, text: item.leftItem!, pairId: i, isLeft: true),
+        );
       }
       if (item.rightItem != null && item.rightItem!.isNotEmpty) {
-        pairs.add(CardData(
-          id: i * 2 + 1,
-          text: item.rightItem!,
-          pairId: i,
-          isLeft: false,
-        ));
+        pairs.add(
+          CardData(
+            id: i * 2 + 1,
+            text: item.rightItem!,
+            pairId: i,
+            isLeft: false,
+          ),
+        );
       }
     }
-    
+
     // Shuffle cards
     _cards = pairs..shuffle(Random());
-    
+
     // Initialize flip animations for each card
     for (int i = 0; i < _cards.length; i++) {
       final controller = AnimationController(
@@ -134,14 +143,16 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         duration: const Duration(milliseconds: 300),
       );
       _flipControllers[i] = controller;
-      _flipAnimations[i] = Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: controller, curve: Curves.easeInOut),
-      );
+      _flipAnimations[i] = Tween<double>(
+        begin: 0,
+        end: 1,
+      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut));
     }
   }
-  
+
   @override
   void dispose() {
+    _matchFlyerTimer?.cancel();
     for (final controller in _flipControllers.values) {
       controller.dispose();
     }
@@ -152,10 +163,11 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   void _flipCard(int index) {
-    if (_isProcessing || 
-        _flippedCards.contains(index) || 
-        _matchedPairs.containsKey(index)) return;
-    
+    if (_isProcessing ||
+        _flippedCards.contains(index) ||
+        _matchedPairs.containsKey(index))
+      return;
+
     if (_firstFlipped == null) {
       // First card flipped
       safeSetState(() {
@@ -164,7 +176,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _moves++;
       });
       _flipControllers[index]?.forward();
-      _soundService.playFlip();
+      _soundService.playCardFlip();
       // Speak card text
       if (_isTTSEnabled) {
         _ttsService.speak(_cards[index].text);
@@ -177,19 +189,19 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _isProcessing = true;
       });
       _flipControllers[index]?.forward();
-      _soundService.playFlip();
+      _soundService.playCardFlip();
       // Speak card text
       if (_isTTSEnabled) {
         _ttsService.speak(_cards[index].text);
       }
-      
+
       // Check for match
       Future.delayed(const Duration(milliseconds: 500), () {
         _checkMatch();
       });
     }
   }
-  
+
   void _checkMatch() {
     // Capture indices locally to avoid null issues inside delayed callbacks
     final firstIndex = _firstFlipped;
@@ -200,17 +212,18 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       });
       return;
     }
-    
+
     final card1 = _cards[firstIndex];
     final card2 = _cards[secondIndex];
-    
-    final isMatch = card1.pairId == card2.pairId && card1.isLeft != card2.isLeft;
-    
+
+    final isMatch =
+        card1.pairId == card2.pairId && card1.isLeft != card2.isLeft;
+
     if (isMatch) {
       // Correct match!
       _soundService.playCorrect();
       if (_isTTSEnabled) {
-        _ttsService.speak('Match! ${card1.text} and ${card2.text}');
+        _ttsService.speak(_buildMatchSentence(card1, card2));
       }
       safeSetState(() {
         _matchedPairs[firstIndex] = card1.pairId;
@@ -221,21 +234,21 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _flippedCards.remove(firstIndex);
         _flippedCards.remove(secondIndex);
       });
-      
-      _soundService.playMatch();
+
+      _showMatchFlyer(_buildMatchSentence(card1, card2));
       _confettiController.play();
-      
+
       // Update progress
       final newProgress = _matchedPairs.length / 2 / widget.game.items.length;
-      _progressAnimation = Tween<double>(
-        begin: _progressAnimation.value,
-        end: newProgress,
-      ).animate(CurvedAnimation(
-        parent: _progressController,
-        curve: Curves.easeOut,
-      ));
+      _progressAnimation =
+          Tween<double>(
+            begin: _progressAnimation.value,
+            end: newProgress,
+          ).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+          );
       _progressController.forward(from: 0);
-      
+
       // Check if game complete
       if (_matchedPairs.length == _cards.length) {
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -256,7 +269,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       });
       _soundService.playIncorrect();
     }
-    
+
     safeSetState(() {
       _firstFlipped = null;
       _secondFlipped = null;
@@ -266,6 +279,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
 
   void _useHint() {
     if (_hintsRemaining <= 0 || _isProcessing) return;
+    _soundService.playClick();
     // Find a random unmatched pair
     final unmatched = <int>[];
     for (int i = 0; i < _cards.length; i++) {
@@ -288,7 +302,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
     _flipControllers[idx1]?.forward();
     _flipControllers[idx2]?.forward();
-    _soundService.playFlip();
+    _soundService.playCardFlip();
+    if (_isTTSEnabled) {
+      _ttsService.speak('Hint used. Try matching these two cards.');
+    }
     Future.delayed(const Duration(milliseconds: 2500), () {
       if (!mounted) return;
       _flipControllers[idx1]?.reverse();
@@ -300,9 +317,41 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
   }
 
-  void _showHowToPlay() {
+  String _buildMatchSentence(CardData firstCard, CardData secondCard) {
+    final leftCard = firstCard.isLeft ? firstCard : secondCard;
+    final rightCard = firstCard.isLeft ? secondCard : firstCard;
+    return 'Great match! "${leftCard.text}" goes with "${rightCard.text}".';
+  }
+
+  void _showMatchFlyer(String text) {
+    _matchFlyerTimer?.cancel();
+    safeSetState(() {
+      _matchFlyerText = text;
+    });
+    _matchFlyerTimer = Timer(const Duration(milliseconds: 1800), () {
+      if (!mounted) return;
+      safeSetState(() {
+        _matchFlyerText = null;
+      });
+    });
+  }
+
+  Future<void> _showHowToPlayIfFirstTime() async {
+    final hasSeen = await GameRulesService.hasSeenRules(GameType.matching);
+    if (!mounted || hasSeen) return;
+    await _showHowToPlay(autoRead: true);
+    await GameRulesService.markRulesSeen(GameType.matching);
+  }
+
+  Future<void> _showHowToPlay({bool autoRead = false}) async {
     if (!mounted) return;
-    showModalBottomSheet(
+    final instructionText =
+        'This is a matching game. Each pair links two ideas from your notes. '
+        'Tap one card, then tap another card to find its match. '
+        'When cards match, they stay green and you earn XP. '
+        'If cards do not match, they flip back, so try to remember where they were.';
+    var muted = !_isTTSEnabled;
+    final sheetFuture = showModalBottomSheet(
       context: context,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
@@ -315,12 +364,39 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'How to play',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textDark,
+                StatefulBuilder(
+                  builder: (context, setSheetState) => Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'How to play',
+                          style: GoogleFonts.poppins(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: muted
+                            ? 'Unmute explanation'
+                            : 'Mute explanation',
+                        onPressed: () {
+                          setSheetState(() => muted = !muted);
+                          if (muted) {
+                            _ttsService.stop();
+                          } else if (_isTTSEnabled) {
+                            _ttsService.speak(instructionText);
+                          }
+                        },
+                        icon: Icon(
+                          muted
+                              ? Icons.volume_off_rounded
+                              : Icons.volume_up_rounded,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -332,11 +408,21 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                   ),
                 ),
                 const SizedBox(height: 12),
-                _buildHowToBullet('Tap any card to flip it and hear it read aloud.'),
-                _buildHowToBullet('Tap a second card to try to find its matching idea.'),
-                _buildHowToBullet('If they match, they stay green and you earn XP.'),
-                _buildHowToBullet('If they don’t match, they flip back—try to remember their positions.'),
-                _buildHowToBullet('Finish the game by matching all pairs with as few moves as possible.'),
+                _buildHowToBullet(
+                  'Tap any card to flip it and hear it read aloud.',
+                ),
+                _buildHowToBullet(
+                  'Tap a second card to try to find its matching idea.',
+                ),
+                _buildHowToBullet(
+                  'If they match, they stay green and you earn XP.',
+                ),
+                _buildHowToBullet(
+                  'If they don’t match, they flip back—try to remember their positions.',
+                ),
+                _buildHowToBullet(
+                  'Finish the game by matching all pairs with as few moves as possible.',
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Tip: Matching helps your brain connect concepts so you remember them longer.',
@@ -349,6 +435,70 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
               ],
             ),
           ),
+        );
+      },
+    );
+    if (autoRead && _isTTSEnabled && !muted) {
+      _ttsService.speak(instructionText);
+    }
+    await sheetFuture;
+    await _ttsService.stop();
+  }
+
+  void _openGameSettings() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, modalSetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Game settings',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Game sounds', style: GoogleFonts.poppins()),
+                      value: _soundService.soundsEnabled,
+                      onChanged: (v) async {
+                        await _soundService.toggleSounds(v);
+                        modalSetState(() {});
+                        if (mounted) safeSetState(() {});
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        'Read aloud (TTS)',
+                        style: GoogleFonts.poppins(),
+                      ),
+                      value: _isTTSEnabled,
+                      onChanged: (v) {
+                        _ttsService.setEnabled(v);
+                        modalSetState(() => _isTTSEnabled = v);
+                        if (mounted) safeSetState(() => _isTTSEnabled = v);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -391,35 +541,33 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     if (_moves <= optimalMoves * 1.5) bonusXP += 20; // Efficiency bonus
     final totalXP = _xpEarned + bonusXP;
 
-    // Update game stats
-    try {
-      await GameStatsService.addGameResult(
+    unawaited(
+      GameStatsService.addGameResult(
         correctAnswers: _score,
         totalQuestions: widget.game.items.length,
         timeTakenSeconds: timeTaken ?? 0,
         isPerfectScore: isPerfectScore,
-      );
-    } catch (e) {
-      LogService.error('🎮 [Matching] Error updating game stats: $e');
-    }
+      ).catchError((e) {
+        LogService.error('🎮 [Matching] Error updating game stats: $e');
+      }),
+    );
 
-    // Save session
-    try {
-      await SkulMateService.saveGameSession(
+    unawaited(
+      SkulMateService.saveGameSession(
         gameId: widget.game.id,
         score: _score,
         totalQuestions: widget.game.items.length,
         correctAnswers: _score,
         timeTakenSeconds: timeTaken,
         answers: {'moves': _moves, 'pairs': _matchedPairs.length},
-      );
-    } catch (e) {
-      LogService.error('🎮 [Matching] Error saving game session: $e');
-    }
+      ).catchError((e) {
+        LogService.error('🎮 [Matching] Error saving game session: $e');
+      }),
+    );
 
     // Play completion sound
     await _soundService.playComplete();
-    
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -441,7 +589,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     final quit = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Quit game?', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        title: Text(
+          'Quit game?',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
         content: Text(
           'Your progress is saved. You can continue this game later from the Game Dashboard.',
           style: GoogleFonts.poppins(fontSize: 14),
@@ -449,11 +600,17 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Keep playing', style: GoogleFonts.poppins(color: AppTheme.primaryColor)),
+            child: Text(
+              'Keep playing',
+              style: GoogleFonts.poppins(color: AppTheme.primaryColor),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Quit to Dashboard', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+            child: Text(
+              'Quit to Dashboard',
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -477,217 +634,284 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         if (!didPop) _handleBack();
       },
       child: Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: AppBar(
-        backgroundColor: AppTheme.primaryColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: _handleBack,
-        ),
-        title: Text(
-          widget.game.title,
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+        backgroundColor: AppTheme.softBackground,
+        appBar: SkulMateGameAppBar(
+          title: widget.game.title,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _handleBack,
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          if (_character != null)
+          actions: [
+            if (_hintsRemaining > 0)
+              IconButton(
+                tooltip: 'Peek at a pair ($_hintsRemaining left)',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                padding: const EdgeInsets.all(6),
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.lightbulb_outline, color: Colors.white),
+                    Positioned(
+                      right: -6,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade400,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$_hintsRemaining',
+                          style: GoogleFonts.poppins(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                onPressed: _useHint,
+              ),
+            IconButton(
+              tooltip: 'How to play',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+              padding: const EdgeInsets.all(6),
+              icon: const Icon(Icons.help_outline, color: Colors.white),
+              onPressed: _showHowToPlay,
+            ),
             Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
+              padding: const EdgeInsets.only(right: 2, left: 0),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: _openGameSettings,
+                child: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.white.withOpacity(0.22),
+                  child: _character != null
+                      ? ClipOval(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: SkulMateCharacterWidget(
+                              character: _character,
+                              size: 24,
+                              animated: false,
+                              showName: false,
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.settings,
+                          size: 16,
+                          color: Colors.white,
+                        ),
                 ),
               ),
             ),
-          IconButton(
-            icon: Icon(
-              _soundService.soundsEnabled ? Icons.graphic_eq : Icons.volume_off,
-              color: Colors.white,
-            ),
-            tooltip: _soundService.soundsEnabled ? 'Game sounds on' : 'Game sounds off',
-            onPressed: () async {
-              await _soundService.toggleSounds(!_soundService.soundsEnabled);
-              if (mounted) safeSetState(() {});
-            },
-          ),
-          IconButton(
-            icon: Icon(
-              _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
-              color: Colors.white,
-            ),
-            tooltip: _isTTSEnabled ? 'Read aloud on' : 'Read aloud off',
-            onPressed: () {
-              safeSetState(() {
-                _isTTSEnabled = !_isTTSEnabled;
-                _ttsService.setEnabled(_isTTSEnabled);
-              });
-            },
-          ),
-          if (_hintsRemaining > 0)
-            IconButton(
-              icon: Tooltip(
-                message: 'Peek at a pair ($_hintsRemaining left)',
-                child: const Icon(Icons.lightbulb_outline, color: Colors.white),
-              ),
-              onPressed: _useHint,
-            ),
-          IconButton(
-            icon: Icon(
-              Icons.help_outline,
-              color: Colors.white,
-            ),
-            onPressed: _showHowToPlay,
-          ),
-          if (_currentStreak > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('🔥', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: 4),
-                  Text(
-                    '$_currentStreak',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+          ],
+        ),
+        body: Stack(
+          children: [
+            Column(
+              children: [
+                // Animated Progress bar
+                AnimatedBuilder(
+                  animation: _progressAnimation,
+                  builder: (context, child) {
+                    return LinearProgressIndicator(
+                      value: _progressAnimation.value,
+                      backgroundColor: AppTheme.neutral200,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        AppTheme.primaryColor,
+                      ),
+                      minHeight: 4,
+                    );
+                  },
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildStatCard(
+                                'Moves',
+                                '$_moves',
+                                Icons.touch_app,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildStatCard(
+                                'Matches',
+                                '${_matchedPairs.length ~/ 2}/${widget.game.items.length}',
+                                Icons.check_circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildStatCard(
+                                'XP',
+                                '$_xpEarned',
+                                Icons.star,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Memory game grid
+                        Expanded(
+                          child: GridView.builder(
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: _cards.length <= 8 ? 2 : 3,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 10,
+                                  childAspectRatio: _cards.length <= 8
+                                      ? 0.84
+                                      : 0.88,
+                                ),
+                            itemCount: _cards.length,
+                            itemBuilder: (context, index) {
+                              final card = _cards[index];
+                              final isFlipped = _flippedCards.contains(index);
+                              final isMatched = _matchedPairs.containsKey(
+                                index,
+                              );
+                              final isSelected =
+                                  _firstFlipped == index ||
+                                  _secondFlipped == index;
+
+                              return _buildMemoryCard(
+                                card: card,
+                                index: index,
+                                isFlipped: isFlipped || isMatched,
+                                isMatched: isMatched,
+                                isSelected: isSelected,
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                ),
+              ],
+            ),
+            // Confetti overlay
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConfettiWidget(
+                confettiController: _confettiController,
+                blastDirection: pi / 2, // Downward
+                maxBlastForce: 5,
+                minBlastForce: 2,
+                emissionFrequency: 0.05,
+                numberOfParticles: 20,
+                gravity: 0.1,
+                shouldLoop: false,
+                colors: const [
+                  AppTheme.accentGreen,
+                  AppTheme.primaryColor,
+                  AppTheme.skyBlue,
+                  AppTheme.softYellow,
+                  AppTheme.accentPurple,
+                  Colors.white,
                 ],
               ),
             ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          Column(
-            children: [
-              // Animated Progress bar
-              AnimatedBuilder(
-                animation: _progressAnimation,
-                builder: (context, child) {
-                  return LinearProgressIndicator(
-                    value: _progressAnimation.value,
-                    backgroundColor: AppTheme.neutral200,
-                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                    minHeight: 4,
-                  );
-                },
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildStatCard('Moves', '$_moves', Icons.touch_app),
-                          _buildStatCard('Matches', '${_matchedPairs.length ~/ 2}/${widget.game.items.length}', Icons.check_circle),
-                          _buildStatCard('XP', '$_xpEarned', Icons.star),
-                        ],
+            if (_matchFlyerText != null)
+              Positioned(
+                top: 10,
+                left: 16,
+                right: 16,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 220),
+                  opacity: _matchFlyerText == null ? 0 : 1,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF13458F), Color(0xFF0A2E68)],
                       ),
-                      const SizedBox(height: 20),
-                      // Memory game grid
-                      Expanded(
-                        child: GridView.builder(
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: _cards.length <= 8 ? 2 : 3,
-                            crossAxisSpacing: 12,
-                            mainAxisSpacing: 12,
-                            childAspectRatio: 0.75,
-                          ),
-                          itemCount: _cards.length,
-                          itemBuilder: (context, index) {
-                            final card = _cards[index];
-                            final isFlipped = _flippedCards.contains(index);
-                            final isMatched = _matchedPairs.containsKey(index);
-                            final isSelected = _firstFlipped == index || _secondFlipped == index;
-                            
-                            return _buildMemoryCard(
-                              card: card,
-                              index: index,
-                              isFlipped: isFlipped || isMatched,
-                              isMatched: isMatched,
-                              isSelected: isSelected,
-                            );
-                          },
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppTheme.accentGreen.withOpacity(0.9),
+                        width: 1.6,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryColor.withOpacity(0.2),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
+                      ],
+                    ),
+                    child: Text(
+                      _matchFlyerText!,
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
-                    ],
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ),
-            ],
-          ),
-          // Confetti overlay
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirection: pi / 2, // Downward
-              maxBlastForce: 5,
-              minBlastForce: 2,
-              emissionFrequency: 0.05,
-              numberOfParticles: 20,
-              gravity: 0.1,
-              shouldLoop: false,
-              colors: const [
-                AppTheme.accentGreen,
-                AppTheme.primaryColor,
-                AppTheme.skyBlue,
-                AppTheme.softYellow,
-                AppTheme.accentPurple,
-                Colors.white,
-              ],
-            ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
-  
+
   Widget _buildStatCard(String label, String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      height: 82,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppTheme.skyBlueLight,
-            Colors.white,
-          ],
+          colors: [const Color(0xFFEFF5FF), const Color(0xFFF8FBFF)],
         ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.skyBlue.withOpacity(0.3)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.primaryColor.withOpacity(0.14)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: Colors.white.withOpacity(0.9),
+            blurRadius: 8,
+            offset: const Offset(-2, -2),
+          ),
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.10),
+            blurRadius: 10,
+            offset: const Offset(2, 4),
           ),
         ],
       ),
       child: Column(
         children: [
           Icon(icon, color: AppTheme.primaryColor, size: 20),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -695,7 +919,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 11,
+              fontSize: 10,
               color: AppTheme.textMedium,
             ),
           ),
@@ -703,7 +927,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       ),
     );
   }
-  
+
   Widget _buildMemoryCard({
     required CardData card,
     required int index,
@@ -711,12 +935,15 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     required bool isMatched,
     required bool isSelected,
   }) {
-    final flipAnimation = _flipAnimations[index] ?? _flipControllers[index]!.drive(
-      Tween<double>(begin: 0, end: 1).chain(
-        CurveTween(curve: Curves.easeInOut),
-      ),
-    );
-    
+    final flipAnimation =
+        _flipAnimations[index] ??
+        _flipControllers[index]!.drive(
+          Tween<double>(
+            begin: 0,
+            end: 1,
+          ).chain(CurveTween(curve: Curves.easeInOut)),
+        );
+
     return GestureDetector(
       onTap: () => _flipCard(index),
       child: AnimatedBuilder(
@@ -724,7 +951,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         builder: (context, child) {
           final angle = flipAnimation.value * 3.14159;
           final isFront = flipAnimation.value < 0.5;
-          
+
           return Transform(
             alignment: Alignment.center,
             transform: Matrix4.identity()
@@ -738,19 +965,28 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       ),
     );
   }
-  
+
   Widget _buildCardBack(bool isMatched, bool isSelected) {
     return Container(
       decoration: BoxDecoration(
-        color: isMatched
-            ? AppTheme.accentGreen
-            : AppTheme.primaryColor,
-        borderRadius: BorderRadius.circular(12),
+        gradient: isMatched
+            ? const LinearGradient(
+                colors: [Color(0xFF2DBE62), Color(0xFF1E8E4D)],
+              )
+            : null,
+        color: isMatched ? null : const Color(0xFF0A2D67),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isMatched
+              ? Colors.white
+              : const Color(0xFF1E5AAE).withOpacity(0.95),
+          width: isMatched ? 1.6 : 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: AppTheme.primaryColor.withOpacity(0.26),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -758,29 +994,40 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         child: isMatched
             ? const Icon(Icons.check_circle, color: Colors.white, size: 36)
             : Icon(
-                Icons.help_outline,
-                color: Colors.white.withOpacity(0.9),
-                size: 36,
+                isSelected ? Icons.radio_button_checked : Icons.help_outline,
+                color: Colors.white.withOpacity(0.96),
+                size: 34,
               ),
       ),
     );
   }
-  
+
   Widget _buildCardFront(CardData card, bool isMatched, double rotationAngle) {
+    // Front of the card should stay clean white whether the pair is correct
+    // or not. We only vary the border subtlely for matched cards.
+    final showExcitedBlue = false;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
+        gradient: null,
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isMatched ? AppTheme.accentGreen : AppTheme.softBorder,
-          width: isMatched ? 2 : 1,
+          color: isMatched
+              ? const Color(0xFF0A2D67)
+              : const Color(0xFF69A6FF).withOpacity(0.9),
+          width: isMatched ? 1.8 : 1.35,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: Colors.white.withOpacity(0.9),
+            blurRadius: 7,
+            offset: const Offset(-2, -2),
+          ),
+          BoxShadow(
+            color: const Color(0xFF123F87).withOpacity(0.12),
+            blurRadius: 10,
+            offset: const Offset(2, 4),
           ),
         ],
       ),
@@ -793,7 +1040,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           child: Text(
             card.text,
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),

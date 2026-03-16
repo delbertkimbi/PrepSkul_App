@@ -20,7 +20,8 @@ import 'game_results_screen.dart';
 class PuzzlePiecesGameScreen extends StatefulWidget {
   final GameModel game;
 
-  const PuzzlePiecesGameScreen({Key? key, required this.game}) : super(key: key);
+  const PuzzlePiecesGameScreen({Key? key, required this.game})
+    : super(key: key);
 
   @override
   State<PuzzlePiecesGameScreen> createState() => _PuzzlePiecesGameScreenState();
@@ -65,7 +66,9 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -101,23 +104,27 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
       }
       if (item.puzzlePieces != null) {
         for (final pieceData in item.puzzlePieces!) {
-          _pieces.add(PuzzlePiece(
-            id: pieceData['id']?.toString() ?? Random().nextInt(1000).toString(),
-            text: pieceData['text'] as String? ?? 'Piece',
-            correctPosition: Offset(
-              (pieceData['correctPosition']?['x'] as num?)?.toDouble() ?? 0.5,
-              (pieceData['correctPosition']?['y'] as num?)?.toDouble() ?? 0.5,
+          _pieces.add(
+            PuzzlePiece(
+              id:
+                  pieceData['id']?.toString() ??
+                  Random().nextInt(1000).toString(),
+              text: pieceData['text'] as String? ?? 'Piece',
+              correctPosition: Offset(
+                (pieceData['correctPosition']?['x'] as num?)?.toDouble() ?? 0.5,
+                (pieceData['correctPosition']?['y'] as num?)?.toDouble() ?? 0.5,
+              ),
+              rotation: (pieceData['rotation'] as num?)?.toDouble() ?? 0.0,
+              currentPosition: Offset(
+                Random().nextDouble() * 200 + 50,
+                Random().nextDouble() * 400 + 100,
+              ),
             ),
-            rotation: (pieceData['rotation'] as num?)?.toDouble() ?? 0.0,
-            currentPosition: Offset(
-              Random().nextDouble() * 200 + 50,
-              Random().nextDouble() * 400 + 100,
-            ),
-          ));
+          );
         }
       }
     }
-    
+
     if (_pieces.isEmpty) {
       // Create default pieces
       _pieces = [
@@ -147,7 +154,7 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     final piece = _pieces.firstWhere((p) => p.id == pieceId);
     final distance = (newPosition - piece.correctPosition).distance;
     final isCorrect = distance < 30; // 30 pixel tolerance
-    
+
     safeSetState(() {
       piece.currentPosition = newPosition;
       if (isCorrect && !piece.isPlaced) {
@@ -158,18 +165,22 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
         _xpEarned += 5;
         _soundService.playPiecePlace();
         _confettiController.play();
-        
+
         // Update progress
-        final newProgress = _pieces.where((p) => p.isPlaced).length / _pieces.length;
-        _progressAnimation = Tween<double>(
-          begin: _progressAnimation.value,
-          end: newProgress.clamp(0.0, 1.0),
-        ).animate(CurvedAnimation(
-          parent: _progressController,
-          curve: Curves.easeOut,
-        ));
+        final newProgress =
+            _pieces.where((p) => p.isPlaced).length / _pieces.length;
+        _progressAnimation =
+            Tween<double>(
+              begin: _progressAnimation.value,
+              end: newProgress.clamp(0.0, 1.0),
+            ).animate(
+              CurvedAnimation(
+                parent: _progressController,
+                curve: Curves.easeOut,
+              ),
+            );
         _progressController.forward(from: 0);
-        
+
         // Check if game complete
         if (_pieces.every((p) => p.isPlaced)) {
           Future.delayed(const Duration(milliseconds: 500), () {
@@ -193,32 +204,32 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
     if (timeTaken != null && timeTaken < 180) bonusXP += 25;
     final totalXP = _xpEarned + bonusXP;
 
-    try {
-      await GameStatsService.addGameResult(
+    unawaited(
+      GameStatsService.addGameResult(
         correctAnswers: _pieces.where((p) => p.isPlaced).length,
         totalQuestions: _pieces.length,
         timeTakenSeconds: timeTaken ?? 0,
         isPerfectScore: isPerfectScore,
-      );
-    } catch (e) {
-      LogService.error('🎮 [PuzzlePieces] Error updating game stats: $e');
-    }
+      ).catchError((e) {
+        LogService.error('🎮 [PuzzlePieces] Error updating game stats: $e');
+      }),
+    );
 
-    try {
-      await SkulMateService.saveGameSession(
+    unawaited(
+      SkulMateService.saveGameSession(
         gameId: widget.game.id,
         score: _score,
         totalQuestions: _pieces.length,
         correctAnswers: _pieces.where((p) => p.isPlaced).length,
         timeTakenSeconds: timeTaken,
         answers: {'pieces': _pieces.where((p) => p.isPlaced).length},
-      );
-    } catch (e) {
-      LogService.error('🎮 [PuzzlePieces] Error saving game session: $e');
-    }
+      ).catchError((e) {
+        LogService.error('🎮 [PuzzlePieces] Error saving game session: $e');
+      }),
+    );
 
     await _soundService.playComplete();
-    
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -294,7 +305,9 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
               return LinearProgressIndicator(
                 value: _progressAnimation.value,
                 backgroundColor: Colors.grey[200],
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
                 minHeight: 6,
               );
             },
@@ -307,9 +320,8 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
                     child: CachedNetworkImage(
                       imageUrl: _imageUrl!,
                       fit: BoxFit.contain,
-                      placeholder: (context, url) => const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      placeholder: (context, url) =>
+                          const Center(child: CircularProgressIndicator()),
                       errorWidget: (context, url, error) => Container(
                         color: Colors.grey[200],
                         child: const Center(
@@ -377,10 +389,7 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
             ),
           ),
           if (_character != null)
-            SkulMateCharacterWidget(
-              character: _character,
-              size: 80,
-            ),
+            SkulMateCharacterWidget(character: _character, size: 80),
         ],
       ),
     );

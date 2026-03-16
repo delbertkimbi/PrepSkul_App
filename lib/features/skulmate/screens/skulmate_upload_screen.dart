@@ -5,18 +5,17 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
-import 'package:prepskul/core/services/storage_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
-import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'dart:io' show File;
 import 'dart:typed_data';
-import '../services/skulmate_service.dart';
 import '../services/game_stats_service.dart';
+import '../services/skulmate_access_service.dart';
 import '../models/game_stats_model.dart';
 import 'game_generation_screen.dart';
 import 'game_library_screen.dart';
 import 'text_input_screen.dart';
+import 'skulmate_plans_screen.dart';
 import '../widgets/photo_upload_bottom_sheet.dart';
 import '../widgets/generation_context_sheet.dart';
 import 'game_setup_flow_screen.dart';
@@ -35,19 +34,40 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   List<File> _selectedFiles = [];
   List<PlatformFile> _selectedFilesWeb = []; // For web platform
   List<XFile> _selectedImages = [];
-  Map<int, Uint8List> _imageBytesCache = {}; // Cache image bytes for web display
+  Map<int, Uint8List> _imageBytesCache =
+      {}; // Cache image bytes for web display
   List<String> _selectedFileNames = [];
   GameStats? _gameStats;
+  int _creditsBalance = 0;
 
   @override
   void initState() {
     super.initState();
     _loadGameStats();
+    _loadCreditsBalance();
   }
 
   Future<void> _loadGameStats() async {
     final stats = await GameStatsService.getStats();
     if (mounted) safeSetState(() => _gameStats = stats);
+  }
+
+  Future<void> _loadCreditsBalance() async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null) return;
+      final row = await SupabaseService.client
+          .from('user_credits')
+          .select('balance')
+          .eq('user_id', userId)
+          .maybeSingle();
+      if (!mounted) return;
+      safeSetState(() {
+        _creditsBalance = (row?['balance'] as num?)?.toInt() ?? 0;
+      });
+    } catch (_) {
+      // Silent fail; upload flow itself does not depend on this value
+    }
   }
 
   @override
@@ -58,7 +78,8 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   Future<void> _pickDocument() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Allow all document types
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'docx', 'txt', 'jpg', 'jpeg', 'png'],
         allowMultiple: true, // Allow multiple files
       );
 
@@ -70,7 +91,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 .toList();
             _selectedFiles = [];
             _selectedFileNames = _selectedFilesWeb
-                .map((f) => f.name.trim().isEmpty || f.name == '_' ? '' : f.name)
+                .map(
+                  (f) => f.name.trim().isEmpty || f.name == '_' ? '' : f.name,
+                )
                 .toList();
           } else {
             final mobileFiles = result.files
@@ -81,7 +104,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 .toList();
             _selectedFilesWeb = [];
             _selectedFileNames = mobileFiles
-                .map((f) => (f.name.trim().isEmpty || f.name == '_') ? '' : f.name)
+                .map(
+                  (f) => (f.name.trim().isEmpty || f.name == '_') ? '' : f.name,
+                )
                 .toList();
           }
           _selectedImages = [];
@@ -102,7 +127,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     if (source != null) {
       try {
         final ImagePicker picker = ImagePicker();
-        
+
         if (source == ImageSource.gallery) {
           // Multiple selection from gallery
           final List<XFile> images = await picker.pickMultiImage(
@@ -134,7 +159,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
   Future<void> _captureSequentialPhotos(ImagePicker picker) async {
     bool continueCapturing = true;
-    
+
     while (continueCapturing && mounted) {
       final XFile? image = await picker.pickImage(
         source: ImageSource.camera,
@@ -156,7 +181,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
           builder: (context) => AlertDialog(
             title: Text(
               'Photo Added',
-              style: GoogleFonts.poppins(fontSize: 16, fontWeight: FontWeight.w600),
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             content: Text(
               'Would you like to take another photo?',
@@ -172,7 +200,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                 ),
-                child: Text('Add Another', style: GoogleFonts.poppins(color: Colors.white)),
+                child: Text(
+                  'Add Another',
+                  style: GoogleFonts.poppins(color: Colors.white),
+                ),
               ),
             ],
           ),
@@ -203,7 +234,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
   String _getDisplayFileName(String rawName, int index) {
     final cleaned = rawName.trim();
-    if (cleaned.isEmpty || cleaned == '_' || cleaned == '_.pdf' || cleaned == '.pdf') {
+    if (cleaned.isEmpty ||
+        cleaned == '_' ||
+        cleaned == '_.pdf' ||
+        cleaned == '.pdf') {
       return 'Document ${index + 1}';
     }
     if (cleaned.endsWith('.pdf')) return cleaned;
@@ -230,13 +264,14 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     String message;
     switch (errorType) {
       case 'upload_permission':
-        message = 'Couldn\'t upload your file. Try "Enter Text Manually" instead.';
+        message =
+            'Couldn\'t upload your file. Try "Enter Text Manually" instead.';
         break;
       case 'file_too_large':
         message = 'File too large. Try a smaller file or text input.';
         break;
       case 'unsupported_format':
-        message = 'Unsupported format. Try PDF, DOCX, or images.';
+        message = 'Unsupported format. Try PDF, DOCX, TXT, JPG, or PNG.';
         break;
       case 'network_error':
         message = 'Connection issue. Check your internet or try text input.';
@@ -254,10 +289,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: GoogleFonts.poppins(fontSize: 14),
-        ),
+        content: Text(message, style: GoogleFonts.poppins(fontSize: 14)),
         behavior: SnackBarBehavior.floating,
         backgroundColor: Colors.red.shade700,
         action: errorType != 'no_selection'
@@ -284,35 +316,40 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     switch (errorType) {
       case 'upload_permission':
         title = 'Upload Issue';
-        message = 'We couldn\'t upload your file. Try entering text manually instead.';
+        message =
+            'We couldn\'t upload your file. Try entering text manually instead.';
         icon = Icons.warning_amber_rounded;
         iconColor = Colors.orange;
         showTextInputButton = true;
         break;
       case 'file_too_large':
         title = 'File Too Large';
-        message = 'This file is too large. Please select a smaller file or use text input.';
+        message =
+            'This file is too large. Please select a smaller file or use text input.';
         icon = Icons.folder_off_rounded;
         iconColor = Colors.orange;
         showTextInputButton = true;
         break;
       case 'unsupported_format':
         title = 'Unsupported Format';
-        message = 'This file type isn\'t supported. Try PDF, DOCX, or images.';
+        message =
+            'This file type isn\'t supported. Try PDF, DOCX, TXT, JPG, or PNG.';
         icon = Icons.insert_drive_file_outlined;
         iconColor = Colors.orange;
         showTextInputButton = true;
         break;
       case 'network_error':
         title = 'Connection Issue';
-        message = 'Upload failed. Check your internet connection and try again, or use text input instead.';
+        message =
+            'Upload failed. Check your internet connection and try again, or use text input instead.';
         icon = Icons.wifi_off_rounded;
         iconColor = Colors.orange;
         showTextInputButton = true;
         break;
       case 'no_selection':
         title = 'No Content Selected';
-        message = 'Please select files, photos, or use text input to create a game.';
+        message =
+            'Please select files, photos, or use text input to create a game.';
         icon = Icons.info_outline;
         iconColor = AppTheme.primaryColor;
         showTextInputButton = true;
@@ -320,7 +357,8 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       case 'file_selection':
       case 'photo_selection':
         title = 'Selection Error';
-        message = 'We couldn\'t select that file. Please try again or use text input.';
+        message =
+            'We couldn\'t select that file. Please try again or use text input.';
         icon = Icons.error_outline;
         iconColor = Colors.orange;
         showTextInputButton = true;
@@ -337,9 +375,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         elevation: 0,
         backgroundColor: Colors.transparent,
         child: Container(
@@ -417,7 +453,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -460,7 +499,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   }
 
   Future<void> _uploadAndGenerate() async {
-    if (_selectedFiles.isEmpty && _selectedFilesWeb.isEmpty && _selectedImages.isEmpty) {
+    if (_selectedFiles.isEmpty &&
+        _selectedFilesWeb.isEmpty &&
+        _selectedImages.isEmpty) {
       _showFriendlySnackBar('no_selection');
       return;
     }
@@ -484,26 +525,72 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       return;
     }
 
+    final access = await SkulmateAccessService.checkGenerationAccess(
+      sourceType: _selectedImages.isNotEmpty
+          ? SkulmateSourceType.image
+          : SkulmateSourceType.text,
+    );
+    if (!access.canProceed && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Plan required',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            access.message,
+            style: GoogleFonts.poppins(fontSize: 14, height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Not now', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _openPlansScreen();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+              ),
+              child: Text(
+                'See plans',
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     // Show optional game setup flow (difficulty, subject, exam, game type)
     final contextResult = await Navigator.push<GenerationContext?>(
       context,
-      MaterialPageRoute(
-        builder: (context) => const GameSetupFlowScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const GameSetupFlowScreen()),
     );
     if (!mounted) return;
 
     final document = kIsWeb && _selectedFilesWeb.isNotEmpty
         ? _selectedFilesWeb.first
         : (!kIsWeb && _selectedFiles.isNotEmpty ? _selectedFiles.first : null);
-    final images = _selectedImages.isNotEmpty ? List<XFile>.from(_selectedImages) : null;
+    final images = _selectedImages.isNotEmpty
+        ? List<XFile>.from(_selectedImages)
+        : null;
 
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => GameGenerationScreen(
           documentToUpload: document,
-          imageToUpload: images != null && images.length == 1 ? images.first : null,
+          imageToUpload: images != null && images.length == 1
+              ? images.first
+              : null,
           imagesToUpload: images != null && images.length > 1 ? images : null,
           childId: widget.childId,
           topic: contextResult?.topic,
@@ -514,9 +601,19 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     );
   }
 
+  Future<void> _openPlansScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SkulmatePlansScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final hasSelection = _selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty || _selectedImages.isNotEmpty;
+    final hasSelection =
+        _selectedFiles.isNotEmpty ||
+        _selectedFilesWeb.isNotEmpty ||
+        _selectedImages.isNotEmpty;
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
@@ -524,13 +621,21 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark, size: 20),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppTheme.textDark,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AppTheme.textDark, size: 20),
+            PhosphorIcon(
+              PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+              color: AppTheme.textDark,
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Text(
               'skulMate',
@@ -545,12 +650,26 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.dashboard_rounded, color: AppTheme.textDark, size: 20),
+            icon: const Icon(
+              Icons.workspace_premium_outlined,
+              color: AppTheme.textDark,
+              size: 20,
+            ),
+            onPressed: _openPlansScreen,
+            tooltip: 'SkulMate plans',
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.dashboard_rounded,
+              color: AppTheme.textDark,
+              size: 20,
+            ),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => GameLibraryScreen(childId: widget.childId),
+                  builder: (context) =>
+                      GameLibraryScreen(childId: widget.childId),
                 ),
               );
             },
@@ -580,16 +699,25 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: Colors.orange.withOpacity(0.3),
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: Colors.orange.shade200, width: 1),
+                              border: Border.all(
+                                color: Colors.orange.shade200,
+                                width: 1,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text('🔥', style: TextStyle(fontSize: 14)),
+                                const Text(
+                                  '🔥',
+                                  style: TextStyle(fontSize: 14),
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   '${_gameStats!.currentStreak} day streak',
@@ -627,16 +755,82 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             ),
 
             const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.softBorder),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.workspace_premium_outlined,
+                    size: 18,
+                    color: AppTheme.primaryColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SkulMate credits: $_creditsBalance',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Each day includes free games (2 document/text, 4 image). After that, games use your credits.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            color: AppTheme.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _openPlansScreen,
+                    style: TextButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'See plans',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
 
             // Selected files/images - shown first when user has made a selection
             if (hasSelection) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.primaryColor.withOpacity(0.4)),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.4),
+                  ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.06),
@@ -650,7 +844,11 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.check_circle_rounded, color: AppTheme.primaryColor, size: 18),
+                        Icon(
+                          Icons.check_circle_rounded,
+                          color: AppTheme.primaryColor,
+                          size: 18,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
@@ -677,66 +875,94 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    if (_selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty) ...[
+                    if (_selectedFiles.isNotEmpty ||
+                        _selectedFilesWeb.isNotEmpty) ...[
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
-                        children: List.generate(kIsWeb ? _selectedFilesWeb.length : _selectedFiles.length, (index) {
-                          final rawName = index < _selectedFileNames.length ? _selectedFileNames[index] : '';
-                          final displayName = _getDisplayFileName(rawName, index);
-                          final ext = displayName.contains('.') ? '' : '.pdf';
-                          int sizeBytes = 0;
-                          if (kIsWeb && index < _selectedFilesWeb.length) {
-                            sizeBytes = _selectedFilesWeb[index].size;
-                          } else if (!kIsWeb && index < _selectedFiles.length) {
-                            sizeBytes = _selectedFiles[index].lengthSync();
-                          }
-                          final sizeStr = sizeBytes > 0 ? ' (${_formatFileSize(sizeBytes)})' : '';
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: AppTheme.primaryColor.withOpacity(0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.picture_as_pdf_rounded, color: AppTheme.primaryColor, size: 20),
-                                const SizedBox(width: 8),
-                                ConstrainedBox(
-                                  constraints: const BoxConstraints(maxWidth: 220),
-                                  child: Text(
-                                    displayName + ext + sizeStr,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      color: AppTheme.textDark,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                        children: List.generate(
+                          kIsWeb
+                              ? _selectedFilesWeb.length
+                              : _selectedFiles.length,
+                          (index) {
+                            final rawName = index < _selectedFileNames.length
+                                ? _selectedFileNames[index]
+                                : '';
+                            final displayName = _getDisplayFileName(
+                              rawName,
+                              index,
+                            );
+                            int sizeBytes = 0;
+                            if (kIsWeb && index < _selectedFilesWeb.length) {
+                              sizeBytes = _selectedFilesWeb[index].size;
+                            } else if (!kIsWeb &&
+                                index < _selectedFiles.length) {
+                              sizeBytes = _selectedFiles[index].lengthSync();
+                            }
+                            final sizeStr = sizeBytes > 0
+                                ? ' (${_formatFileSize(sizeBytes)})'
+                                : '';
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: AppTheme.primaryColor.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.picture_as_pdf_rounded,
+                                    color: AppTheme.primaryColor,
+                                    size: 20,
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                                InkWell(
-                                  onTap: () {
-                                    safeSetState(() {
-                                      if (kIsWeb) {
-                                        _selectedFilesWeb.removeAt(index);
-                                      } else {
-                                        _selectedFiles.removeAt(index);
-                                      }
-                                      if (index < _selectedFileNames.length) {
-                                        _selectedFileNames.removeAt(index);
-                                      }
-                                    });
-                                  },
-                                  child: Icon(Icons.close, size: 16, color: AppTheme.textMedium),
-                                ),
-                              ],
-                            ),
-                          );
-                        }),
+                                  const SizedBox(width: 8),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 220,
+                                    ),
+                                    child: Text(
+                                      displayName + sizeStr,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppTheme.textDark,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  InkWell(
+                                    onTap: () {
+                                      safeSetState(() {
+                                        if (kIsWeb) {
+                                          _selectedFilesWeb.removeAt(index);
+                                        } else {
+                                          _selectedFiles.removeAt(index);
+                                        }
+                                        if (index < _selectedFileNames.length) {
+                                          _selectedFileNames.removeAt(index);
+                                        }
+                                      });
+                                    },
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 16,
+                                      color: AppTheme.textMedium,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(height: 12),
                     ],
@@ -777,7 +1003,8 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                           final maxVisibleRows = 3;
                           final maxHeight = rows <= maxVisibleRows
                               ? (cellExtent * rows) + (8 * (rows - 1))
-                              : (cellExtent * maxVisibleRows) + (8 * (maxVisibleRows - 1));
+                              : (cellExtent * maxVisibleRows) +
+                                    (8 * (maxVisibleRows - 1));
                           return ConstrainedBox(
                             constraints: BoxConstraints(maxHeight: maxHeight),
                             child: SingleChildScrollView(
@@ -785,13 +1012,14 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                               child: GridView.builder(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
-                                  childAspectRatio: 1,
-                                  mainAxisExtent: cellExtent,
-                                ),
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: crossAxisCount,
+                                      crossAxisSpacing: 8,
+                                      mainAxisSpacing: 8,
+                                      childAspectRatio: 1,
+                                      mainAxisExtent: cellExtent,
+                                    ),
                                 itemCount: count,
                                 itemBuilder: (context, index) {
                                   final image = _selectedImages[index];
@@ -802,14 +1030,22 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                                         borderRadius: BorderRadius.circular(8),
                                         child: kIsWeb
                                             ? FutureBuilder<Uint8List?>(
-                                                future: _imageBytesCache.containsKey(index)
-                                                    ? Future.value(_imageBytesCache[index])
-                                                    : image.readAsBytes().then((bytes) {
-                                                        _imageBytesCache[index] = bytes;
+                                                future:
+                                                    _imageBytesCache
+                                                        .containsKey(index)
+                                                    ? Future.value(
+                                                        _imageBytesCache[index],
+                                                      )
+                                                    : image.readAsBytes().then((
+                                                        bytes,
+                                                      ) {
+                                                        _imageBytesCache[index] =
+                                                            bytes;
                                                         return bytes;
                                                       }),
                                                 builder: (context, snapshot) {
-                                                  if (snapshot.hasData && snapshot.data != null) {
+                                                  if (snapshot.hasData &&
+                                                      snapshot.data != null) {
                                                     return Image.memory(
                                                       snapshot.data!,
                                                       fit: BoxFit.cover,
@@ -823,7 +1059,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                                                       child: SizedBox(
                                                         width: 24,
                                                         height: 24,
-                                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                              strokeWidth: 2,
+                                                            ),
                                                       ),
                                                     ),
                                                   );
@@ -844,17 +1083,28 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                                             safeSetState(() {
                                               _imageBytesCache.remove(index);
                                               _selectedImages.removeAt(index);
-                                              final newCache = <int, Uint8List>{};
-                                              for (int i = 0; i < _selectedImages.length; i++) {
-                                                final oldIndex = i < index ? i : i + 1;
-                                                if (_imageBytesCache.containsKey(oldIndex)) {
-                                                  newCache[i] = _imageBytesCache[oldIndex]!;
+                                              final newCache =
+                                                  <int, Uint8List>{};
+                                              for (
+                                                int i = 0;
+                                                i < _selectedImages.length;
+                                                i++
+                                              ) {
+                                                final oldIndex = i < index
+                                                    ? i
+                                                    : i + 1;
+                                                if (_imageBytesCache
+                                                    .containsKey(oldIndex)) {
+                                                  newCache[i] =
+                                                      _imageBytesCache[oldIndex]!;
                                                 }
                                               }
                                               _imageBytesCache = newCache;
                                             });
                                           },
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
                                           child: Container(
                                             padding: const EdgeInsets.all(4),
                                             decoration: BoxDecoration(
@@ -898,15 +1148,17 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             _buildUploadCard(
               icon: Icons.picture_as_pdf_rounded,
               title: 'PDF/Document',
-              subtitle: 'PDF, DOCX, or TXT',
+              subtitle: 'PDF/DOCX/TXT, free up to 2/day',
               onTap: _pickDocument,
-              isSelected: kIsWeb ? _selectedFilesWeb.isNotEmpty : _selectedFiles.isNotEmpty,
+              isSelected: kIsWeb
+                  ? _selectedFilesWeb.isNotEmpty
+                  : _selectedFiles.isNotEmpty,
             ),
             const SizedBox(height: 8),
             _buildUploadCard(
               icon: Icons.photo_library_rounded,
               title: 'Photo/Image',
-              subtitle: 'Gallery or camera',
+              subtitle: 'Free up to 4/day, then plan required',
               onTap: _showPhotoOptions,
               isSelected: _selectedImages.isNotEmpty,
             ),
@@ -921,40 +1173,40 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
             const SizedBox(height: 12),
             // Generate Game Button (only for file/photo uploads)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _uploadAndGenerate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _uploadAndGenerate,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    PhosphorIcon(
+                      PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                      color: Colors.white,
+                      size: 18,
                     ),
-                    elevation: 0,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      PhosphorIcon(
-                        PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                        color: Colors.white,
-                        size: 18,
+                    const SizedBox(width: 8),
+                    Text(
+                      'Generate Game',
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Generate Game',
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
+          ],
         ),
       ),
     );
@@ -978,9 +1230,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
               : Colors.white,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isSelected
-                ? AppTheme.primaryColor
-                : AppTheme.softBorder,
+            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
             width: isSelected ? 2 : 1,
           ),
         ),

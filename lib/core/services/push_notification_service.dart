@@ -35,16 +35,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
-  static const MethodChannel _platform =
-      MethodChannel('com.prepskul.prepskul/notifications');
+  static const MethodChannel _platform = MethodChannel(
+    'com.prepskul.prepskul/notifications',
+  );
 
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
-  
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
+
   bool _initialized = false;
   String? _currentToken;
   Function(dynamic)? _onNotificationTap;
@@ -66,9 +69,7 @@ class PushNotificationService {
   }
 
   /// Initialize push notifications
-  Future<void> initialize({
-    Function(dynamic)? onNotificationTap,
-  }) async {
+  Future<void> initialize({Function(dynamic)? onNotificationTap}) async {
     if (_initialized) {
       // IMPORTANT: users can switch accounts in-app.
       // Even if the service is already initialized, we still need to:
@@ -76,15 +77,21 @@ class PushNotificationService {
       // - ensure the *current* signed-in user has an active FCM token stored in DB
       _onNotificationTap = onNotificationTap ?? _onNotificationTap;
       _flushPendingToken().catchError((e) {
-        LogService.debug('Could not flush pending FCM token (non-blocking): $e');
+        LogService.debug(
+          'Could not flush pending FCM token (non-blocking): $e',
+        );
       });
       if (!kIsWeb) {
         _getToken().catchError((error) {
-          LogService.warning('Error refreshing FCM token after re-initialize (non-blocking): $error');
+          LogService.warning(
+            'Error refreshing FCM token after re-initialize (non-blocking): $error',
+          );
           return null;
         });
       }
-      LogService.info('PushNotificationService already initialized (refreshed token sync)');
+      LogService.info(
+        'PushNotificationService already initialized (refreshed token sync)',
+      );
       return;
     }
 
@@ -95,7 +102,7 @@ class PushNotificationService {
       // In-app notifications from Supabase work fine on web without FCM
       if (kIsWeb) {
         LogService.info('Initializing push notifications for web');
-        
+
         try {
           // Try to set up message handlers (may fail if service worker not configured)
           await _setupMessageHandlers();
@@ -114,8 +121,12 @@ class PushNotificationService {
         } catch (e) {
           // FCM may not work on web if service worker is not configured
           // This is OK - in-app notifications from Supabase still work
-          LogService.warning('FCM not available on web (service worker not configured): $e');
-          LogService.info('In-app notifications will still work via Supabase Realtime');
+          LogService.warning(
+            'FCM not available on web (service worker not configured): $e',
+          );
+          LogService.info(
+            'In-app notifications will still work via Supabase Realtime',
+          );
           _initialized = true; // Mark as initialized so app doesn't block
         }
         return;
@@ -137,7 +148,9 @@ class PushNotificationService {
       // validate delivery during development and support data-only messaging.
       if (!kIsWeb && Platform.isAndroid) {
         _getToken().catchError((error) {
-          LogService.warning('Error getting FCM token on Android (non-blocking): $error');
+          LogService.warning(
+            'Error getting FCM token on Android (non-blocking): $error',
+          );
           return null;
         });
         _firebaseMessaging.onTokenRefresh.listen((newToken) {
@@ -153,14 +166,18 @@ class PushNotificationService {
       // Best-effort: if we previously failed to store a token (e.g., network/DNS),
       // retry now so backend keeps targeting the latest token.
       _flushPendingToken().catchError((e) {
-        LogService.debug('Could not flush pending FCM token (non-blocking): $e');
+        LogService.debug(
+          'Could not flush pending FCM token (non-blocking): $e',
+        );
       });
 
       // Mark as initialized immediately so app doesn't block
       // The splash screen should transition without waiting for push notifications
       // Permission will be requested later when appropriate (after onboarding/login)
       _initialized = true;
-      LogService.success('PushNotificationService initialized (permission will be requested when appropriate)');
+      LogService.success(
+        'PushNotificationService initialized (permission will be requested when appropriate)',
+      );
 
       return;
     } catch (e) {
@@ -194,21 +211,31 @@ class PushNotificationService {
       // permission APIs are primarily iOS-focused, so we also query the local
       // notifications plugin when available.
       if (Platform.isAndroid) {
-        final androidImpl = _localNotifications.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        final androidImpl = _localNotifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         try {
           final enabled = await androidImpl?.areNotificationsEnabled();
           if (enabled != null) {
-            LogService.info('Current notification permission (Android): $enabled');
-            return enabled ? AuthorizationStatus.authorized : AuthorizationStatus.denied;
+            LogService.info(
+              'Current notification permission (Android): $enabled',
+            );
+            return enabled
+                ? AuthorizationStatus.authorized
+                : AuthorizationStatus.denied;
           }
         } catch (e) {
-          LogService.debug('Could not query Android notification enablement: $e');
+          LogService.debug(
+            'Could not query Android notification enablement: $e',
+          );
         }
       }
 
       final settings = await _firebaseMessaging.getNotificationSettings();
-      LogService.info('Current notification permission: ${settings.authorizationStatus}');
+      LogService.info(
+        'Current notification permission: ${settings.authorizationStatus}',
+      );
       return settings.authorizationStatus;
     } catch (e) {
       LogService.error('Error checking permission status: $e');
@@ -222,7 +249,7 @@ class PushNotificationService {
     try {
       // Check current status first
       final currentStatus = await getPermissionStatus();
-      
+
       // If already authorized or provisional, don't request again
       if (currentStatus == AuthorizationStatus.authorized ||
           currentStatus == AuthorizationStatus.provisional) {
@@ -231,10 +258,12 @@ class PushNotificationService {
         await _completeMobileInitialization();
         return currentStatus;
       }
-      
+
       // If denied, don't request again (user must enable in settings)
       if (currentStatus == AuthorizationStatus.denied) {
-        LogService.warning('Notification permission was denied - user must enable in settings');
+        LogService.warning(
+          'Notification permission was denied - user must enable in settings',
+        );
         return currentStatus;
       }
 
@@ -243,9 +272,12 @@ class PushNotificationService {
 
       // Android: request POST_NOTIFICATIONS via flutter_local_notifications plugin.
       if (!kIsWeb && Platform.isAndroid) {
-        final androidImpl = _localNotifications.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-        final granted = await androidImpl?.requestNotificationsPermission() ?? true;
+        final androidImpl = _localNotifications
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+        final granted =
+            await androidImpl?.requestNotificationsPermission() ?? true;
         LogService.info('Android notification permission result: $granted');
         if (granted) {
           LogService.success('Push notification permission granted (Android)');
@@ -267,7 +299,9 @@ class PushNotificationService {
         sound: true,
       );
 
-      LogService.info('Notification permission result: ${settings.authorizationStatus}');
+      LogService.info(
+        'Notification permission result: ${settings.authorizationStatus}',
+      );
 
       // Complete initialization if permission was granted
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
@@ -313,7 +347,9 @@ class PushNotificationService {
       final status = await getPermissionStatus();
       if (status == AuthorizationStatus.authorized ||
           status == AuthorizationStatus.provisional) {
-        LogService.success('Notification permission already granted, completing initialization');
+        LogService.success(
+          'Notification permission already granted, completing initialization',
+        );
         await _completeMobileInitialization();
       } else {
         // Android: still attempt to fetch token even if notifications are disabled/denied.
@@ -337,8 +373,10 @@ class PushNotificationService {
     // Android initialization
     // Use app launcher icon as the notification small icon so the status bar icon
     // matches the PrepSkul mark (Android will render it as a monochrome silhouette).
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
+
     // iOS initialization - DO NOT request permission here
     // Permission will be requested explicitly when appropriate
     const iosSettings = DarwinInitializationSettings(
@@ -374,7 +412,9 @@ class PushNotificationService {
       );
 
       await _localNotifications
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(androidChannel);
     }
   }
@@ -418,7 +458,9 @@ class PushNotificationService {
     try {
       // Set background message handler (skip on web)
       if (!kIsWeb) {
-        FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+        FirebaseMessaging.onBackgroundMessage(
+          firebaseMessagingBackgroundHandler,
+        );
       }
 
       // Handle foreground messages
@@ -455,7 +497,9 @@ class PushNotificationService {
   Future<void> _handleForegroundMessage(dynamic message) async {
     // Skip on web - web handles notifications differently via FCM
     if (kIsWeb) {
-      LogService.info('Web foreground notification received - handled by browser');
+      LogService.info(
+        'Web foreground notification received - handled by browser',
+      );
       return;
     }
 
@@ -475,29 +519,33 @@ class PushNotificationService {
       notification.title,
       notification.body,
       NotificationDetails(
-        android: Platform.isAndroid ? AndroidNotificationDetails(
-          'prepskul_notifications',
-          'PrepSkul Notifications',
-          channelDescription: 'Notifications for PrepSkul app',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: shouldPlaySound,
-          // If you pass "default" here, Android treats it as a raw resource name and will
-          // crash unless you have `android/app/src/main/res/raw/default.*`.
-          // Omitting `sound` uses the system default when `playSound` is true.
-          sound: (shouldPlaySound && sound != null && sound != 'default')
-              ? RawResourceAndroidNotificationSound(sound)
-              : null,
-          enableVibration: data?['vibrate'] != 'false',
-          // `icon` expects a resource name; Android will use it as the status bar small icon.
-          icon: android?.smallIcon ?? 'ic_launcher',
-        ) : null,
-        iOS: Platform.isIOS ? DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: shouldPlaySound,
-          sound: shouldPlaySound ? 'default' : null,
-        ) : null,
+        android: Platform.isAndroid
+            ? AndroidNotificationDetails(
+                'prepskul_notifications',
+                'PrepSkul Notifications',
+                channelDescription: 'Notifications for PrepSkul app',
+                importance: Importance.high,
+                priority: Priority.high,
+                playSound: shouldPlaySound,
+                // If you pass "default" here, Android treats it as a raw resource name and will
+                // crash unless you have `android/app/src/main/res/raw/default.*`.
+                // Omitting `sound` uses the system default when `playSound` is true.
+                sound: (shouldPlaySound && sound != null && sound != 'default')
+                    ? RawResourceAndroidNotificationSound(sound)
+                    : null,
+                enableVibration: data?['vibrate'] != 'false',
+                // `icon` expects a resource name; Android will use it as the status bar small icon.
+                icon: android?.smallIcon ?? 'ic_launcher',
+              )
+            : null,
+        iOS: Platform.isIOS
+            ? DarwinNotificationDetails(
+                presentAlert: true,
+                presentBadge: true,
+                presentSound: shouldPlaySound,
+                sound: shouldPlaySound ? 'default' : null,
+              )
+            : null,
       ),
       // Use JSON so we can reliably parse on tap (instead of Map.toString()).
       payload: jsonEncode(message.data ?? const <String, dynamic>{}),
@@ -538,8 +586,12 @@ class PushNotificationService {
           // Request APNS token first (this is required for iOS)
           final apnsToken = await _firebaseMessaging.getAPNSToken();
           if (apnsToken == null) {
-            LogService.warning('APNS token not available yet - this is normal on simulator or before permission is granted');
-            LogService.info('FCM token will be available once APNS token is set (usually after permission is granted)');
+            LogService.warning(
+              'APNS token not available yet - this is normal on simulator or before permission is granted',
+            );
+            LogService.info(
+              'FCM token will be available once APNS token is set (usually after permission is granted)',
+            );
             // Don't throw error - this is expected behavior on iOS simulator or before permission
             return null;
           }
@@ -550,7 +602,9 @@ class PushNotificationService {
           // 2. Permission not granted yet
           // 3. App not properly configured for push notifications
           LogService.warning('Could not get APNS token: $apnsError');
-          LogService.info('This is normal on iOS simulator or before permission is granted');
+          LogService.info(
+            'This is normal on iOS simulator or before permission is granted',
+          );
           // Continue anyway - might still work on real device
         }
       }
@@ -568,8 +622,12 @@ class PushNotificationService {
       // Check if it's the APNS token error
       final errorString = e.toString();
       if (errorString.contains('apns-token-not-set')) {
-        LogService.warning('APNS token not set yet - this is normal on iOS simulator or before permission is granted');
-        LogService.info('Push notifications will work once APNS token is available (usually on real device after permission)');
+        LogService.warning(
+          'APNS token not set yet - this is normal on iOS simulator or before permission is granted',
+        );
+        LogService.info(
+          'Push notifications will work once APNS token is available (usually on real device after permission)',
+        );
         // Don't treat this as a critical error - it's expected behavior
         return null;
       }
@@ -595,7 +653,8 @@ class PushNotificationService {
       // Preferred: register token via backend (service-role) so account switching on same device works.
       // This avoids RLS/unique-constraint edge cases where a token previously belonged to another user.
       try {
-        final accessToken = SupabaseService.client.auth.currentSession?.accessToken;
+        final accessToken =
+            SupabaseService.client.auth.currentSession?.accessToken;
         if (accessToken != null && accessToken.isNotEmpty) {
           final res = await http
               .post(
@@ -628,23 +687,23 @@ class PushNotificationService {
           }
         }
       } catch (e) {
-        LogService.debug('FCM token backend registration failed (fallback to direct DB): $e');
+        LogService.debug(
+          'FCM token backend registration failed (fallback to direct DB): $e',
+        );
       }
-      
+
       // Try to insert the token first
       // If it's a duplicate, update the existing token instead
       try {
-        await SupabaseService.client
-            .from('fcm_tokens')
-            .insert({
-              'user_id': userId,
-              'token': token,
-              'platform': platform,
-              'device_id': deviceInfo['device_id'],
-              'device_name': deviceInfo['device_name'],
-              'app_version': deviceInfo['app_version'],
-              'is_active': true,
-            });
+        await SupabaseService.client.from('fcm_tokens').insert({
+          'user_id': userId,
+          'token': token,
+          'platform': platform,
+          'device_id': deviceInfo['device_id'],
+          'device_name': deviceInfo['device_name'],
+          'app_version': deviceInfo['app_version'],
+          'is_active': true,
+        });
         LogService.success('FCM token stored in database');
         // Clear any pending token once storage succeeds.
         try {
@@ -653,7 +712,7 @@ class PushNotificationService {
         } catch (_) {}
       } catch (insertError) {
         // If insert fails due to duplicate token, update the existing token
-        if (insertError.toString().contains('duplicate') || 
+        if (insertError.toString().contains('duplicate') ||
             insertError.toString().contains('23505') ||
             insertError.toString().contains('unique constraint')) {
           // Token already exists - update it instead
@@ -670,7 +729,9 @@ class PushNotificationService {
                   'updated_at': DateTime.now().toIso8601String(),
                 })
                 .eq('token', token);
-            LogService.success('FCM token updated in database (duplicate handled)');
+            LogService.success(
+              'FCM token updated in database (duplicate handled)',
+            );
             // Clear any pending token once storage succeeds.
             try {
               final prefs = await SharedPreferences.getInstance();
@@ -678,7 +739,9 @@ class PushNotificationService {
             } catch (_) {}
           } catch (updateError) {
             // If update also fails, log but don't throw (token might be in use by another user)
-            LogService.info('FCM token exists but update failed (may belong to different user): $updateError');
+            LogService.info(
+              'FCM token exists but update failed (may belong to different user): $updateError',
+            );
           }
         } else {
           // Some other error occurred
@@ -687,11 +750,13 @@ class PushNotificationService {
       }
     } catch (e) {
       // Only log error if it's not a duplicate key error (which we handle gracefully)
-      if (!e.toString().contains('duplicate') && !e.toString().contains('23505')) {
+      if (!e.toString().contains('duplicate') &&
+          !e.toString().contains('23505')) {
         LogService.error('Error storing FCM token: $e');
         // Persist for retry if this looks like a transient network/DNS issue.
         final es = e.toString();
-        final looksTransient = es.contains('SocketException') ||
+        final looksTransient =
+            es.contains('SocketException') ||
             es.contains('Failed host lookup') ||
             es.contains('ClientException') ||
             es.contains('connection abort') ||
@@ -700,7 +765,9 @@ class PushNotificationService {
           try {
             final prefs = await SharedPreferences.getInstance();
             await prefs.setString(_pendingTokenKey, token);
-            LogService.info('Saved pending FCM token for retry when network returns');
+            LogService.info(
+              'Saved pending FCM token for retry when network returns',
+            );
           } catch (_) {}
         }
       } else {
@@ -800,7 +867,14 @@ class PushNotificationService {
         tz_data.initializeTimeZones();
       } catch (_) {}
       final local = tz.local;
-      var scheduled = tz.TZDateTime(tz.local, DateTime.now().year, DateTime.now().month, DateTime.now().day, hour, minute);
+      var scheduled = tz.TZDateTime(
+        tz.local,
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+        hour,
+        minute,
+      );
       if (scheduled.isBefore(tz.TZDateTime.now(local))) {
         scheduled = scheduled.add(const Duration(days: 1));
       }
@@ -819,11 +893,14 @@ class PushNotificationService {
             : 'Play a game to keep your streak going!',
         scheduled,
         const NotificationDetails(android: androidDetails, iOS: iosDetails),
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
-      LogService.info('Scheduled skulMate streak reminder at $hour:${minute.toString().padLeft(2, '0')}');
+      LogService.info(
+        'Scheduled skulMate streak reminder at $hour:${minute.toString().padLeft(2, '0')}',
+      );
     } catch (e) {
       LogService.warning('Could not schedule streak reminder: $e');
     }
@@ -834,5 +911,63 @@ class PushNotificationService {
     try {
       await _localNotifications.cancel(_streakReminderId);
     } catch (_) {}
+  }
+
+  /// Schedule a one-time local notification for payment reminders and
+  /// other time-bound nudges.
+  Future<void> scheduleLocalOneTimeReminder({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime when,
+    Map<String, dynamic>? payload,
+    bool urgent = false,
+  }) async {
+    if (kIsWeb) return;
+    try {
+      if (when.isBefore(DateTime.now())) return;
+      try {
+        tz_data.initializeTimeZones();
+      } catch (_) {}
+
+      final scheduled = tz.TZDateTime.from(when, tz.local);
+      final androidDetails = AndroidNotificationDetails(
+        'prepskul_notifications',
+        'PrepSkul Notifications',
+        channelDescription: 'PrepSkul notifications',
+        importance: urgent ? Importance.high : Importance.defaultImportance,
+        priority: urgent ? Priority.high : Priority.defaultPriority,
+      );
+      const iosDetails = DarwinNotificationDetails();
+
+      await _localNotifications.zonedSchedule(
+        id,
+        title,
+        body,
+        scheduled,
+        NotificationDetails(android: androidDetails, iOS: iosDetails),
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        androidScheduleMode: urgent
+            ? AndroidScheduleMode.exactAllowWhileIdle
+            : AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: jsonEncode(payload ?? const <String, dynamic>{}),
+      );
+      LogService.info('Scheduled local reminder id=$id at $when');
+    } catch (e) {
+      LogService.warning('Could not schedule local one-time reminder: $e');
+    }
+  }
+
+  /// Exposes pending local notifications for diagnostics (admin/debug screens).
+  Future<List<PendingNotificationRequest>>
+  getPendingLocalNotifications() async {
+    if (kIsWeb) return const <PendingNotificationRequest>[];
+    try {
+      return await _localNotifications.pendingNotificationRequests();
+    } catch (e) {
+      LogService.warning('Could not read pending local notifications: $e');
+      return const <PendingNotificationRequest>[];
+    }
   }
 }

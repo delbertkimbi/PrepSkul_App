@@ -45,7 +45,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   late AnimationController _typingController;
   dynamic _character;
   GameStats? _currentStats;
-  
+
   // Typing game mechanics
   int _timePerQuestion = 45; // seconds
   int _remainingTime = 45;
@@ -62,7 +62,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -74,9 +76,10 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       vsync: this,
       duration: Duration(seconds: _timePerQuestion),
     );
-    _timerAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _timerController, curve: Curves.linear),
-    );
+    _timerAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(parent: _timerController, curve: Curves.linear));
     _typingController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
@@ -90,21 +93,21 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     _loadStats();
     _startQuestionTimer();
   }
-  
+
   void _onTextChanged(int index) {
     if (index != _currentQuestionIndex) return;
-    
+
     if (_typingStartTime == null) {
       _typingStartTime = DateTime.now();
     }
-    
+
     final text = _controllers[index]?.text ?? '';
     _charactersTyped = text.length;
-    
+
     // Generate hints based on partial input
     _generateHints(text);
   }
-  
+
   void _generateHints(String partial) {
     if (partial.isEmpty || partial.length < 2) {
       safeSetState(() {
@@ -113,17 +116,24 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       });
       return;
     }
-    
+
     final question = widget.game.items[_currentQuestionIndex];
-    final correctAnswer = (question.correctAnswer ?? '').toString().toLowerCase();
+    final correctAnswer = (question.correctAnswer ?? '')
+        .toString()
+        .toLowerCase();
     final partialLower = partial.toLowerCase();
-    
+
     // Simple hint generation - show if partial matches start of answer
     if (correctAnswer.startsWith(partialLower)) {
       final remaining = correctAnswer.substring(partialLower.length);
       if (remaining.isNotEmpty) {
         safeSetState(() {
-          _hints = [remaining.substring(0, remaining.length > 10 ? 10 : remaining.length)];
+          _hints = [
+            remaining.substring(
+              0,
+              remaining.length > 10 ? 10 : remaining.length,
+            ),
+          ];
           _hintShown = true;
         });
       }
@@ -134,7 +144,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       });
     }
   }
-  
+
   void _startQuestionTimer() {
     _questionTimer?.cancel();
     _remainingTime = _timePerQuestion;
@@ -142,20 +152,20 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     _hintShown = false;
     _typingStartTime = null;
     _charactersTyped = 0;
-    
+
     _timerController.reset();
     _timerController.forward();
-    
+
     _questionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted || !_isTimerRunning) {
         timer.cancel();
         return;
       }
-      
+
       safeSetState(() {
         _remainingTime--;
       });
-      
+
       if (_remainingTime <= 0) {
         timer.cancel();
         _isTimerRunning = false;
@@ -163,10 +173,10 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
       }
     });
   }
-  
+
   void _onTimerExpired() {
     if (_answeredQuestions.containsKey(_currentQuestionIndex)) return;
-    
+
     final answer = _controllers[_currentQuestionIndex]?.text.trim() ?? '';
     if (answer.isNotEmpty) {
       _submitAnswer();
@@ -177,7 +187,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         _currentStreak = 0;
       });
       _soundService.playIncorrect();
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -188,7 +198,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
           duration: const Duration(seconds: 1),
         ),
       );
-      
+
       Future.delayed(const Duration(milliseconds: 1500), () {
         if (mounted) _nextQuestion();
       });
@@ -226,15 +236,18 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   void _submitAnswer() {
     _questionTimer?.cancel();
     _isTimerRunning = false;
-    
+
     final answer = _controllers[_currentQuestionIndex]?.text.trim() ?? '';
     if (answer.isEmpty) return;
 
     final question = widget.game.items[_currentQuestionIndex];
-    final correctAnswer = (question.correctAnswer ?? '').toString().toLowerCase().trim();
+    final correctAnswer = (question.correctAnswer ?? '')
+        .toString()
+        .toLowerCase()
+        .trim();
     final userAnswer = answer.toLowerCase().trim();
     final isCorrect = userAnswer == correctAnswer;
-    
+
     // Calculate typing speed bonus
     int speedBonus = 0;
     if (_typingStartTime != null && _charactersTyped > 0) {
@@ -244,7 +257,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         if (_typingSpeed > 3 && isCorrect) speedBonus = 5; // Fast typing bonus
       }
     }
-    
+
     // Calculate XP with streak multiplier
     int baseXP = 10;
     int streakMultiplier = _currentStreak > 0 ? (1 + (_currentStreak ~/ 3)) : 1;
@@ -271,13 +284,13 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
 
     // Update progress bar animation
     final newProgress = (_currentQuestionIndex + 1) / widget.game.items.length;
-    _progressAnimation = Tween<double>(
-      begin: _progressAnimation.value,
-      end: newProgress,
-    ).animate(CurvedAnimation(
-      parent: _progressController,
-      curve: Curves.easeOut,
-    ));
+    _progressAnimation =
+        Tween<double>(
+          begin: _progressAnimation.value,
+          end: newProgress,
+        ).animate(
+          CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+        );
     _progressController.forward(from: 0);
 
     // Show feedback with XP
@@ -287,7 +300,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
           children: [
             Expanded(
               child: Text(
-                isCorrect ? 'Correct! 🎉' : 'Incorrect. The answer is: ${question.correctAnswer}',
+                isCorrect
+                    ? 'Correct! 🎉'
+                    : 'Incorrect. The answer is: ${question.correctAnswer}',
                 style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
               ),
             ),
@@ -339,7 +354,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     _soundService.playClick();
     _questionTimer?.cancel();
     _isTimerRunning = false;
-    
+
     if (_currentQuestionIndex < widget.game.items.length - 1) {
       safeSetState(() {
         _currentQuestionIndex++;
@@ -349,14 +364,15 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         _charactersTyped = 0;
       });
       // Animate progress bar
-      final newProgress = (_currentQuestionIndex + 1) / widget.game.items.length;
-      _progressAnimation = Tween<double>(
-        begin: _progressAnimation.value,
-        end: newProgress,
-      ).animate(CurvedAnimation(
-        parent: _progressController,
-        curve: Curves.easeOut,
-      ));
+      final newProgress =
+          (_currentQuestionIndex + 1) / widget.game.items.length;
+      _progressAnimation =
+          Tween<double>(
+            begin: _progressAnimation.value,
+            end: newProgress,
+          ).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+          );
       _progressController.forward(from: 0);
       _startQuestionTimer(); // Start timer for next question
     } else {
@@ -387,35 +403,35 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     if (timeTaken != null && timeTaken < 120) bonusXP += 25;
     final totalXP = _xpEarned + bonusXP;
 
-    // Update game stats
-    try {
-      await GameStatsService.addGameResult(
+    unawaited(
+      GameStatsService.addGameResult(
         correctAnswers: _score,
         totalQuestions: widget.game.items.length,
         timeTakenSeconds: timeTaken ?? 0,
         isPerfectScore: isPerfectScore,
-      );
-    } catch (e) {
-      LogService.error('🎮 [FillBlank] Error updating game stats: $e');
-    }
+      ).catchError((e) {
+        LogService.error('🎮 [FillBlank] Error updating game stats: $e');
+      }),
+    );
 
-    // Save session
-    try {
-      await SkulMateService.saveGameSession(
+    unawaited(
+      SkulMateService.saveGameSession(
         gameId: widget.game.id,
         score: _score,
         totalQuestions: widget.game.items.length,
         correctAnswers: _score,
         timeTakenSeconds: timeTaken,
-        answers: _userAnswers.map((key, value) => MapEntry(key.toString(), value)),
-      );
-    } catch (e) {
-      LogService.error('🎮 [FillBlank] Error saving game session: $e');
-    }
+        answers: _userAnswers.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ),
+      ).catchError((e) {
+        LogService.error('🎮 [FillBlank] Error saving game session: $e');
+      }),
+    );
 
     // Play completion sound
     await _soundService.playComplete();
-    
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -460,7 +476,10 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.orange.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -521,7 +540,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                   return LinearProgressIndicator(
                     value: _progressAnimation.value,
                     backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppTheme.primaryColor,
+                    ),
                     minHeight: 6,
                   );
                 },
@@ -555,12 +576,19 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                           // Timer
                           Expanded(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
                               decoration: BoxDecoration(
-                                color: _remainingTime <= 10 ? Colors.red.withOpacity(0.1) : Colors.white,
+                                color: _remainingTime <= 10
+                                    ? Colors.red.withOpacity(0.1)
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: _remainingTime <= 10 ? Colors.red : AppTheme.accentGreen,
+                                  color: _remainingTime <= 10
+                                      ? Colors.red
+                                      : AppTheme.accentGreen,
                                   width: 2,
                                 ),
                               ),
@@ -569,7 +597,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                 children: [
                                   Icon(
                                     Icons.timer,
-                                    color: _remainingTime <= 10 ? Colors.red : AppTheme.accentGreen,
+                                    color: _remainingTime <= 10
+                                        ? Colors.red
+                                        : AppTheme.accentGreen,
                                     size: 20,
                                   ),
                                   const SizedBox(width: 8),
@@ -578,7 +608,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                     style: GoogleFonts.poppins(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700,
-                                      color: _remainingTime <= 10 ? Colors.red : AppTheme.accentGreen,
+                                      color: _remainingTime <= 10
+                                          ? Colors.red
+                                          : AppTheme.accentGreen,
                                     ),
                                   ),
                                 ],
@@ -588,11 +620,17 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                           if (_typingSpeed > 0 && !isAnswered) ...[
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.blue.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.blue, width: 1),
+                                border: Border.all(
+                                  color: Colors.blue,
+                                  width: 1,
+                                ),
                               ),
                               child: Text(
                                 '⚡ $_typingSpeed c/s',
@@ -609,187 +647,229 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                       const SizedBox(height: 16),
                       // Question with blank
                       Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          question.blankText ?? '',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Answer input with auto-complete
-                        Column(
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            TextField(
-                              controller: _controllers[_currentQuestionIndex],
-                              enabled: !isAnswered,
-                              autofocus: !isAnswered,
-                              decoration: InputDecoration(
-                                hintText: 'Type your answer...',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                filled: true,
-                                fillColor: isAnswered
-                                    ? (isCorrect
-                                        ? AppTheme.accentGreen.withOpacity(0.1)
-                                        : Colors.red.withOpacity(0.1))
-                                    : Colors.grey[50],
-                                suffixIcon: isAnswered
-                                    ? Icon(
-                                        isCorrect ? Icons.check_circle : Icons.cancel,
-                                        color: isCorrect ? AppTheme.accentGreen : Colors.red,
-                                      )
-                                    : _hintShown && _hints.isNotEmpty
+                            Text(
+                              question.blankText ?? '',
+                              style: GoogleFonts.poppins(
+                                fontSize: 18,
+                                color: AppTheme.textDark,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Answer input with auto-complete
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                TextField(
+                                  controller:
+                                      _controllers[_currentQuestionIndex],
+                                  enabled: !isAnswered,
+                                  autofocus: !isAnswered,
+                                  decoration: InputDecoration(
+                                    hintText: 'Type your answer...',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    filled: true,
+                                    fillColor: isAnswered
+                                        ? (isCorrect
+                                              ? AppTheme.accentGreen
+                                                    .withOpacity(0.1)
+                                              : Colors.red.withOpacity(0.1))
+                                        : Colors.grey[50],
+                                    suffixIcon: isAnswered
+                                        ? Icon(
+                                            isCorrect
+                                                ? Icons.check_circle
+                                                : Icons.cancel,
+                                            color: isCorrect
+                                                ? AppTheme.accentGreen
+                                                : Colors.red,
+                                          )
+                                        : _hintShown && _hints.isNotEmpty
                                         ? IconButton(
-                                            icon: const Icon(Icons.lightbulb_outline, color: Colors.amber),
+                                            icon: const Icon(
+                                              Icons.lightbulb_outline,
+                                              color: Colors.amber,
+                                            ),
                                             onPressed: () {
                                               _soundService.playClick();
-                                              final currentText = _controllers[_currentQuestionIndex]?.text ?? '';
-                                              _controllers[_currentQuestionIndex]?.text = currentText + _hints[0];
-                                              _generateHints(_controllers[_currentQuestionIndex]!.text);
+                                              final currentText =
+                                                  _controllers[_currentQuestionIndex]
+                                                      ?.text ??
+                                                  '';
+                                              _controllers[_currentQuestionIndex]
+                                                      ?.text =
+                                                  currentText + _hints[0];
+                                              _generateHints(
+                                                _controllers[_currentQuestionIndex]!
+                                                    .text,
+                                              );
                                             },
                                             tooltip: 'Use hint',
                                           )
                                         : null,
-                              ),
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w500,
-                                color: AppTheme.textDark,
-                              ),
-                              onSubmitted: (_) {
-                                if (!isAnswered) {
-                                  _submitAnswer();
-                                }
-                              },
-                            ),
-                            // Auto-complete hint
-                            if (_hintShown && _hints.isNotEmpty && !isAnswered)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.amber, width: 1),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.lightbulb, color: Colors.amber, size: 20),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'Hint: Continue with "${_hints[0]}"',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 13,
-                                            color: Colors.amber[900],
-                                            fontStyle: FontStyle.italic,
-                                          ),
-                                        ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () {
-                                          _soundService.playClick();
-                                          final currentText = _controllers[_currentQuestionIndex]?.text ?? '';
-                                          _controllers[_currentQuestionIndex]?.text = currentText + _hints[0];
-                                          _generateHints(_controllers[_currentQuestionIndex]!.text);
-                                        },
-                                        child: Text(
-                                          'Use',
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.amber[900],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textDark,
                                   ),
+                                  onSubmitted: (_) {
+                                    if (!isAnswered) {
+                                      _submitAnswer();
+                                    }
+                                  },
                                 ),
-                              ),
-                          ],
-                        ),
-                        if (isAnswered && !isCorrect) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Correct answer: ${question.correctAnswer}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      color: Colors.blue[900],
+                                // Auto-complete hint
+                                if (_hintShown &&
+                                    _hints.isNotEmpty &&
+                                    !isAnswered)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: Colors.amber,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                            Icons.lightbulb,
+                                            color: Colors.amber,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              'Hint: Continue with "${_hints[0]}"',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 13,
+                                                color: Colors.amber[900],
+                                                fontStyle: FontStyle.italic,
+                                              ),
+                                            ),
+                                          ),
+                                          TextButton(
+                                            onPressed: () {
+                                              _soundService.playClick();
+                                              final currentText =
+                                                  _controllers[_currentQuestionIndex]
+                                                      ?.text ??
+                                                  '';
+                                              _controllers[_currentQuestionIndex]
+                                                      ?.text =
+                                                  currentText + _hints[0];
+                                              _generateHints(
+                                                _controllers[_currentQuestionIndex]!
+                                                    .text,
+                                              );
+                                            },
+                                            child: Text(
+                                              'Use',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.amber[900],
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                ),
                               ],
                             ),
-                          ),
-                        ],
-                      ],
-                    ),
+                            if (isAnswered && !isCorrect) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline,
+                                      color: Colors.blue,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Correct answer: ${question.correctAnswer}',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          color: Colors.blue[900],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
                       // Submit button
                       if (!isAnswered)
                         ElevatedButton(
-                      onPressed: () {
-                        final answer = _controllers[_currentQuestionIndex]?.text.trim() ?? '';
-                        if (answer.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Please enter an answer'),
-                              backgroundColor: Colors.orange,
+                          onPressed: () {
+                            final answer =
+                                _controllers[_currentQuestionIndex]?.text
+                                    .trim() ??
+                                '';
+                            if (answer.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please enter an answer'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                              return;
+                            }
+                            _submitAnswer();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                          );
-                          return;
-                        }
-                        _submitAnswer();
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _currentQuestionIndex ==
+                                    widget.game.items.length - 1
+                                ? 'Finish Quiz'
+                                : 'Submit Answer',
+                            style: GoogleFonts.poppins(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        _currentQuestionIndex == widget.game.items.length - 1
-                            ? 'Finish Quiz'
-                            : 'Submit Answer',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      ),
                       // Navigation buttons
                       if (isAnswered) ...[
                         const SizedBox(height: 12),
@@ -800,7 +880,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                 child: OutlinedButton(
                                   onPressed: _previousQuestion,
                                   style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 16,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -814,19 +896,23 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                   ),
                                 ),
                               ),
-                            if (_currentQuestionIndex > 0) const SizedBox(width: 12),
+                            if (_currentQuestionIndex > 0)
+                              const SizedBox(width: 12),
                             Expanded(
                               child: ElevatedButton(
                                 onPressed: _nextQuestion,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.primaryColor,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
                                 child: Text(
-                                  _currentQuestionIndex == widget.game.items.length - 1
+                                  _currentQuestionIndex ==
+                                          widget.game.items.length - 1
                                       ? 'View Results'
                                       : 'Next',
                                   style: GoogleFonts.poppins(

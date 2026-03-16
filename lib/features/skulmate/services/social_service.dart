@@ -312,7 +312,8 @@ class SocialService {
               id,
               full_name,
               email,
-              avatar_url
+              avatar_url,
+              skulmate_character_id
             )
           ''')
           .eq('period', period.toString())
@@ -342,6 +343,7 @@ class SocialService {
           ...json,
           'user_name': displayName,
           'user_avatar_url': user?['avatar_url'],
+          'user_character_id': user?['skulmate_character_id'],
           // Note: user_level would need to be fetched separately from user_game_stats
           // For now, we'll leave it null and it can be calculated client-side if needed
         });

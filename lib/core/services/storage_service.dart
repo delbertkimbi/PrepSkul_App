@@ -73,7 +73,8 @@ class StorageService {
             storagePath,
             fileToUpload,
             fileOptions: FileOptions(
-              upsert: true, // replace existing profile photo instead of 409 Duplicate
+              upsert:
+                  true, // replace existing profile photo instead of 409 Duplicate
               contentType: mimeType,
             ),
           );
@@ -246,7 +247,9 @@ class StorageService {
                 LogService.debug('[DEBUG] Mobile: Using default extension');
               }
             } catch (e) {
-              LogService.warning('[DEBUG] Error accessing path, using defaults: $e');
+              LogService.warning(
+                '[DEBUG] Error accessing path, using defaults: $e',
+              );
               fileExtension = '.jpg';
               mimeType = 'image/jpeg';
             }
@@ -282,7 +285,9 @@ class StorageService {
         if (kIsWeb) {
           // On web, File objects are NOT supported
           // File.path will throw NoSuchMethodError on web
-          LogService.error('[DEBUG] File object detected on web - not supported');
+          LogService.error(
+            '[DEBUG] File object detected on web - not supported',
+          );
           throw Exception(
             'File objects are not supported on web. Please use Gallery or Files option to select files.',
           );
@@ -307,7 +312,9 @@ class StorageService {
         fileExtension = '.jpg'; // Default
         LogService.debug('[DEBUG] Uint8List size: $fileSize bytes');
       } else {
-        LogService.error('[DEBUG] Unsupported file type: ${documentFile.runtimeType}');
+        LogService.error(
+          '[DEBUG] Unsupported file type: ${documentFile.runtimeType}',
+        );
         throw Exception(
           'Unsupported file type: ${documentFile.runtimeType}. Expected File, XFile, or PlatformFile.',
         );
@@ -320,10 +327,17 @@ class StorageService {
         );
       }
 
-      // Validate file type
-      if (!mimeType.startsWith('image/') && mimeType != 'application/pdf') {
+      // Validate file type for SkulMate/tutor flows.
+      // Supported by backend extractors: images, PDF, DOCX, plain text.
+      final isAllowedType =
+          mimeType.startsWith('image/') ||
+          mimeType == 'application/pdf' ||
+          mimeType ==
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          mimeType == 'text/plain';
+      if (!isAllowedType) {
         throw Exception(
-          'Invalid file type. Only images and PDF files are allowed',
+          'Invalid file type. Only images, PDF, DOCX, and TXT files are allowed',
         );
       }
 
@@ -384,9 +398,11 @@ class StorageService {
         // If file/path was already deleted or link expired, surface a friendly message
         if (statusCode == 404 || errorString.contains('404')) {
           LogService.warning(
-              '[Storage] Received 404 during upload (likely stale link). Prompting user to retry with a fresh selection.');
+            '[Storage] Received 404 during upload (likely stale link). Prompting user to retry with a fresh selection.',
+          );
           throw Exception(
-              'This file link expired or was removed. Please re-select the file and try again.');
+            'This file link expired or was removed. Please re-select the file and try again.',
+          );
         }
 
         // If 409 error (duplicate), try deleting and retrying once
@@ -394,7 +410,9 @@ class StorageService {
             errorString.contains('409') ||
             errorString.contains('already exists') ||
             errorString.contains('Duplicate')) {
-          LogService.warning('[DEBUG] Duplicate file detected, deleting and retrying...');
+          LogService.warning(
+            '[DEBUG] Duplicate file detected, deleting and retrying...',
+          );
           // Delete the exact file path and retry
           try {
             await SupabaseService.client.storage.from(documentsBucket).remove([
@@ -441,8 +459,12 @@ class StorageService {
           LogService.error('[DEBUG] Upload path: $storagePath');
           LogService.error('[DEBUG] User ID: $userId');
           LogService.error('[DEBUG] Bucket: $documentsBucket');
-          LogService.error('[DEBUG] This error indicates the storage bucket RLS policies are not configured correctly.');
-          LogService.error('[DEBUG] Please ensure migration 046_storage_bucket_rls_policies.sql has been run.');
+          LogService.error(
+            '[DEBUG] This error indicates the storage bucket RLS policies are not configured correctly.',
+          );
+          LogService.error(
+            '[DEBUG] Please ensure migration 046_storage_bucket_rls_policies.sql has been run.',
+          );
           throw Exception(
             'Upload failed due to permissions. Try "Enter Text Manually" below if you have notes to type.',
           );
@@ -551,7 +573,7 @@ class StorageService {
     try {
       final FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        allowedExtensions: ['pdf', 'docx', 'txt', 'jpg', 'jpeg', 'png'],
       );
 
       if (result == null || result.files.isEmpty) return null;

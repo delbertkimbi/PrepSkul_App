@@ -53,7 +53,9 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -68,25 +70,30 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
   void _parseGameData() {
     if (widget.game.items.isEmpty) return;
-    
+
     final firstItem = widget.game.items[0];
     _caseName = firstItem.caseName ?? 'The Mystery';
     _clues = firstItem.mysteryClues ?? [];
     _finalSolution = firstItem.solution;
-    
+
     // If clues not in first item, try to extract from gameData
     if (_clues == null || _clues!.isEmpty) {
       final gameData = firstItem.gameData;
       if (gameData != null) {
-        _caseName = gameData['case'] as String? ?? gameData['caseName'] as String? ?? _caseName;
+        _caseName =
+            gameData['case'] as String? ??
+            gameData['caseName'] as String? ??
+            _caseName;
         if (gameData['clues'] != null) {
           _clues = List<Map<String, dynamic>>.from(gameData['clues'] as List);
         }
         _finalSolution = gameData['solution'] as String? ?? _finalSolution;
       }
     }
-    
-    LogService.debug('Mystery game: Case=$_caseName, Clues=${_clues?.length ?? 0}');
+
+    LogService.debug(
+      'Mystery game: Case=$_caseName, Clues=${_clues?.length ?? 0}',
+    );
   }
 
   @override
@@ -113,7 +120,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
   void _revealClue(int index) {
     if (_revealedClues.contains(index)) return;
-    
+
     safeSetState(() {
       _revealedClues.add(index);
     });
@@ -126,10 +133,13 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
     final clue = _clues![_currentClueIndex];
     final reveals = clue['reveals'] as String? ?? '';
-    
+
     // Simple check: if interpretation is too generic or doesn't match reveals, it's a false lead
-    final isFalseLead = interpretation.toLowerCase().trim().length < 10 ||
-                        !interpretation.toLowerCase().contains(reveals.toLowerCase().substring(0, math.min(5, reveals.length)));
+    final isFalseLead =
+        interpretation.toLowerCase().trim().length < 10 ||
+        !interpretation.toLowerCase().contains(
+          reveals.toLowerCase().substring(0, math.min(5, reveals.length)),
+        );
 
     safeSetState(() {
       _interpretations[_currentClueIndex] = interpretation;
@@ -143,7 +153,11 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
     _showInterpretationFeedback(interpretation, isFalseLead, reveals);
   }
 
-  void _showInterpretationFeedback(String interpretation, bool isFalseLead, String reveals) {
+  void _showInterpretationFeedback(
+    String interpretation,
+    bool isFalseLead,
+    String reveals,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -210,19 +224,19 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
   void _nextClue() {
     if (_clues == null) return;
-    
+
     if (_currentClueIndex < _clues!.length - 1) {
       safeSetState(() {
         _currentClueIndex++;
       });
       _progressController.forward(from: 0);
-      _progressAnimation = Tween<double>(
-        begin: 0,
-        end: (_currentClueIndex + 1) / _clues!.length,
-      ).animate(CurvedAnimation(
-        parent: _progressController,
-        curve: Curves.easeOut,
-      ));
+      _progressAnimation =
+          Tween<double>(
+            begin: 0,
+            end: (_currentClueIndex + 1) / _clues!.length,
+          ).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+          );
       _progressController.forward();
     } else {
       // All clues revealed, show solution input
@@ -235,10 +249,16 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
   void _submitSolution() {
     final userSolution = _solutionController.text.trim();
     if (userSolution.isEmpty) return;
-    
-    final isCorrect = _finalSolution != null &&
-        userSolution.toLowerCase().contains(_finalSolution!.toLowerCase().substring(0, math.min(10, _finalSolution!.length)));
-    
+
+    final isCorrect =
+        _finalSolution != null &&
+        userSolution.toLowerCase().contains(
+          _finalSolution!.toLowerCase().substring(
+            0,
+            math.min(10, _finalSolution!.length),
+          ),
+        );
+
     if (isCorrect) {
       _score++;
       _xpEarned += 50;
@@ -247,7 +267,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
     } else {
       _soundService.playIncorrect();
     }
-    
+
     _completeGame(isCorrect);
   }
 
@@ -258,23 +278,25 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
         : 0;
 
     final totalClues = _clues?.length ?? 1;
-    final percentage = (_score / (totalClues + 1) * 100).round(); // +1 for final solution
-    
-    // Save game stats
+    final percentage = (_score / (totalClues + 1) * 100)
+        .round(); // +1 for final solution
+
     if (widget.game.userId.isNotEmpty) {
-      try {
-        await GameStatsService.recordGameCompletion(
+      unawaited(
+        GameStatsService.recordGameCompletion(
           gameId: widget.game.id,
           score: _score,
           totalItems: totalClues + 1,
           xpEarned: _xpEarned,
           duration: Duration(seconds: duration),
           streak: 0,
-        );
-      } catch (e) {
-        LogService.error('Failed to save game stats: $e');
-      }
+        ).catchError((e) {
+          LogService.error('Failed to save game stats: $e');
+        }),
+      );
     }
+
+    await _soundService.playComplete();
 
     // Navigate to results screen
     if (mounted) {
@@ -310,10 +332,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
           ),
         ),
         body: Center(
-          child: Text(
-            'No clues available',
-            style: GoogleFonts.poppins(),
-          ),
+          child: Text('No clues available', style: GoogleFonts.poppins()),
         ),
       );
     }
@@ -358,12 +377,14 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
               return LinearProgressIndicator(
                 value: _progressAnimation.value,
                 backgroundColor: AppTheme.textLight.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
                 minHeight: 4,
               );
             },
           ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -395,9 +416,9 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                         ],
                       ),
                     ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Clue number
                   Text(
                     'Clue ${_currentClueIndex + 1} of ${_clues!.length}',
@@ -407,9 +428,9 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Clue card
                   Container(
                     width: double.infinity,
@@ -459,7 +480,10 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.visibility_off, color: AppTheme.primaryColor),
+                                  Icon(
+                                    Icons.visibility_off,
+                                    color: AppTheme.primaryColor,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Tap to reveal clue',
@@ -502,7 +526,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                       ],
                     ),
                   ),
-                  
+
                   if (isRevealed && !hasInterpretation) ...[
                     const SizedBox(height: 24),
                     Text(
@@ -553,16 +577,18 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                       ),
                     ),
                   ],
-                  
+
                   // Show interpretation feedback
                   if (hasInterpretation) ...[
                     const SizedBox(height: 24),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: (_isFalseLead[_currentClueIndex] == true
-                            ? Colors.orange
-                            : AppTheme.accentGreen).withOpacity(0.1),
+                        color:
+                            (_isFalseLead[_currentClueIndex] == true
+                                    ? Colors.orange
+                                    : AppTheme.accentGreen)
+                                .withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: _isFalseLead[_currentClueIndex] == true
@@ -634,8 +660,8 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                           _isFalseLead[_currentClueIndex] == true
                               ? 'Try Again'
                               : _currentClueIndex < _clues!.length - 1
-                                  ? 'Next Clue'
-                                  : 'Solve Mystery',
+                              ? 'Next Clue'
+                              : 'Solve Mystery',
                           style: GoogleFonts.poppins(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,

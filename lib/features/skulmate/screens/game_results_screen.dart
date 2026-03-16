@@ -4,6 +4,8 @@ import 'package:confetti/confetti.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'dart:math';
 import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
@@ -23,6 +25,7 @@ class GameResultsScreen extends StatefulWidget {
   final int? xpEarned;
   final bool isPerfectScore;
   final List<QuestionPerformance> questionBreakdown;
+
   /// When true, back button goes to game library (dashboard) instead of previous screen.
   final bool fromGenerationFlow;
 
@@ -54,7 +57,9 @@ class _GameResultsScreenState extends State<GameResultsScreen>
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
     _scaleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -72,6 +77,9 @@ class _GameResultsScreenState extends State<GameResultsScreen>
       _soundService.playClick();
     }
     _scaleController.forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeShowFirstGameFeedback();
+    });
   }
 
   Future<void> _loadCharacter() async {
@@ -90,7 +98,8 @@ class _GameResultsScreenState extends State<GameResultsScreen>
   String _characterShortName(dynamic character) {
     if (character == null) return '';
     try {
-      final name = character.name as String? ?? character.displayName as String? ?? '';
+      final name =
+          character.name as String? ?? character.displayName as String? ?? '';
       return name.trim().isEmpty ? '' : name.trim().split(RegExp(r'\s+')).first;
     } catch (_) {
       return '';
@@ -100,6 +109,99 @@ class _GameResultsScreenState extends State<GameResultsScreen>
   Future<void> _loadStats() async {
     final stats = await GameStatsService.getStats();
     safeSetState(() => _currentStats = stats);
+  }
+
+  Future<void> _maybeShowFirstGameFeedback() async {
+    final stats = _currentStats ?? await GameStatsService.getStats();
+    final isFirstGame = stats.gamesPlayed <= 1;
+    if (!isFirstGame || !mounted) return;
+
+    final userId = SupabaseService.client.auth.currentUser?.id ?? 'guest';
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'skulmate_first_feedback_shown_$userId';
+    final shown = prefs.getBool(key) ?? false;
+    if (shown || !mounted) return;
+
+    await prefs.setBool(key, true);
+    if (!mounted) return;
+    await _showFirstGameFeedbackDialog();
+  }
+
+  Future<void> _showFirstGameFeedbackDialog() async {
+    int rating = 4;
+    final noteController = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: Text(
+                'Quick feedback',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'How was your first SkulMate game experience?',
+                      style: GoogleFonts.poppins(fontSize: 13),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      children: List.generate(5, (index) {
+                        final value = index + 1;
+                        final selected = value == rating;
+                        return ChoiceChip(
+                          label: Text('$value★'),
+                          selected: selected,
+                          onSelected: (_) =>
+                              setModalState(() => rating = value),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: noteController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'What should we improve next?',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text('Skip', style: GoogleFonts.poppins()),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Thanks! Your feedback helps us improve.',
+                          style: GoogleFonts.poppins(fontSize: 13),
+                        ),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  child: Text('Submit', style: GoogleFonts.poppins()),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    noteController.dispose();
   }
 
   @override
@@ -112,7 +214,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
       appBar: AppBar(
-        title: Text('Results', style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600)),
+        title: Text(
+          'Results',
+          style: GoogleFonts.poppins(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
         backgroundColor: AppTheme.softBackground,
         elevation: 0,
         foregroundColor: AppTheme.textDark,
@@ -123,7 +228,8 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const GameLibraryScreen(initialTab: 1),
+                      builder: (context) =>
+                          const GameLibraryScreen(initialTab: 1),
                     ),
                     (route) => false,
                   );
@@ -141,7 +247,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                 // Header: compact, soft tint (no big white block)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                    horizontal: 14,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
@@ -165,7 +274,9 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                               decoration: BoxDecoration(
                                 color: AppTheme.primaryColor.withOpacity(0.08),
                                 border: Border.all(
-                                  color: AppTheme.primaryColor.withOpacity(0.25),
+                                  color: AppTheme.primaryColor.withOpacity(
+                                    0.25,
+                                  ),
                                   width: 2,
                                 ),
                               ),
@@ -196,8 +307,8 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                         widget.isPerfectScore
                             ? 'Perfect score!'
                             : percentage >= 70
-                                ? 'Quiz complete'
-                                : 'Keep practicing',
+                            ? 'Quiz complete'
+                            : 'Keep practicing',
                         style: GoogleFonts.poppins(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -211,7 +322,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                 // Score card - compact, soft background
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.softCard,
                     borderRadius: BorderRadius.circular(12),
@@ -261,7 +375,9 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                           minHeight: 6,
                           backgroundColor: AppTheme.softBorder,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            percentage >= 70 ? AppTheme.accentGreen : AppTheme.primaryColor,
+                            percentage >= 70
+                                ? AppTheme.accentGreen
+                                : AppTheme.primaryColor,
                           ),
                         ),
                       ),
@@ -275,11 +391,27 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     final statCards = <Widget>[
                       _buildCompactStat('Time', timeText, Icons.timer_outlined),
                       if (widget.xpEarned != null)
-                        _buildCompactStat('XP', '+${widget.xpEarned}', Icons.star_outline),
+                        _buildCompactStat(
+                          'XP',
+                          '+${widget.xpEarned}',
+                          Icons.star_outline,
+                        ),
                       if (_currentStats != null) ...[
-                        _buildCompactStat('Total XP', '${_currentStats!.totalXP}', Icons.emoji_events_outlined),
-                        _buildCompactStat('Level', '${_currentStats!.level}', Icons.military_tech),
-                        _buildCompactStat('Streak', '${_currentStats!.currentStreak}d', Icons.local_fire_department_outlined),
+                        _buildCompactStat(
+                          'Total XP',
+                          '${_currentStats!.totalXP}',
+                          Icons.emoji_events_outlined,
+                        ),
+                        _buildCompactStat(
+                          'Level',
+                          '${_currentStats!.level}',
+                          Icons.military_tech,
+                        ),
+                        _buildCompactStat(
+                          'Streak',
+                          '${_currentStats!.currentStreak}d',
+                          Icons.local_fire_department_outlined,
+                        ),
                       ],
                     ];
                     return GridView.count(
@@ -293,14 +425,20 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     );
                   },
                 ),
-                if (_currentStats != null && _currentStats!.currentStreak > 0) ...[
+                if (_currentStats != null &&
+                    _currentStats!.currentStreak > 0) ...[
                   const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.softYellowLight,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.softYellow.withOpacity(0.4)),
+                      border: Border.all(
+                        color: AppTheme.softYellow.withOpacity(0.4),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -337,7 +475,8 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                   const SizedBox(height: 6),
                   _buildQuestionList(
                     widget.questionBreakdown.where((q) => q.isCorrect).toList(),
-                    emptyLabel: 'We will highlight wins here when you get some questions correct.',
+                    emptyLabel:
+                        'We will highlight wins here when you get some questions correct.',
                     accentColor: AppTheme.accentGreen,
                   ),
                   const SizedBox(height: 14),
@@ -354,14 +493,17 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                   ),
                   const SizedBox(height: 6),
                   _buildQuestionList(
-                    widget.questionBreakdown.where((q) => !q.isCorrect).toList(),
+                    widget.questionBreakdown
+                        .where((q) => !q.isCorrect)
+                        .toList(),
                     emptyLabel: 'No weak spots in this round – great job.',
                     accentColor: AppTheme.accentBlue,
                   ),
                 ],
                 const SizedBox(height: 18),
                 // Primary: Play again when quiz and not perfect; secondary: Home, Share
-                if (widget.game.gameType == GameType.quiz && !widget.isPerfectScore)
+                if (widget.game.gameType == GameType.quiz &&
+                    !widget.isPerfectScore)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: SizedBox(
@@ -400,7 +542,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const GameLibraryScreen(childId: null, initialTab: 1),
+                            builder: (context) => const GameLibraryScreen(
+                              childId: null,
+                              initialTab: 1,
+                            ),
                           ),
                           (route) => false,
                         );
@@ -410,7 +555,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -428,7 +576,10 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.primaryColor,
                         side: const BorderSide(color: AppTheme.primaryColor),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -517,10 +668,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
         ),
         child: Text(
           emptyLabel,
-          style: GoogleFonts.poppins(
-            fontSize: 13,
-            color: AppTheme.textMedium,
-          ),
+          style: GoogleFonts.poppins(fontSize: 13, color: AppTheme.textMedium),
         ),
       );
     }
@@ -532,7 +680,12 @@ class _GameResultsScreenState extends State<GameResultsScreen>
             (q) => Container(
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.only(left: 10, right: 10, top: 8, bottom: 8),
+              padding: const EdgeInsets.only(
+                left: 10,
+                right: 10,
+                top: 8,
+                bottom: 8,
+              ),
               decoration: BoxDecoration(
                 color: AppTheme.softCard,
                 borderRadius: BorderRadius.circular(10),

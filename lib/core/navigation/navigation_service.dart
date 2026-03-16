@@ -215,7 +215,23 @@ class NavigationService {
           }
         } catch (e) {
           LogService.warning('[NAV_SERVICE] Error fetching profile: $e');
-          
+
+          // Transient auth/network failures should NOT force logout.
+          // Keep users in cached session flow when possible.
+          if (_isTransientAuthNetworkError(e)) {
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              final cachedRole = prefs.getString('user_role');
+              final cachedLoggedIn = prefs.getBool('is_logged_in') ?? false;
+              if (cachedLoggedIn && cachedRole != null && cachedRole.isNotEmpty) {
+                LogService.info(
+                  '[NAV_SERVICE] Transient auth/network error - preserving cached route for role: $cachedRole',
+                );
+                return _getDashboardRoute(cachedRole);
+              }
+            } catch (_) {}
+          }
+
           // If error is due to invalid session/auth, redirect to login
           final errorStr = e.toString().toLowerCase();
           if (errorStr.contains('not authenticated') || 
@@ -239,13 +255,18 @@ class NavigationService {
           );
         }
       } else if (user != null && session == null) {
-        // User object exists but session is invalid - clear and redirect to login
-        LogService.warning('[NAV_SERVICE] User exists but session is invalid - redirecting to login');
-        try {
-          await SupabaseService.signOut();
-        } catch (_) {
-          // Ignore sign out errors
+        // User object can exist while token refresh is temporarily failing (network glitch).
+        // Prefer cached role route instead of forcing logout immediately.
+        final prefs = await SharedPreferences.getInstance();
+        final cachedRole = prefs.getString('user_role');
+        final cachedLoggedIn = prefs.getBool('is_logged_in') ?? false;
+        if (cachedLoggedIn && cachedRole != null && cachedRole.isNotEmpty) {
+          LogService.warning(
+            '[NAV_SERVICE] User exists without session; using cached route to avoid auth bounce',
+          );
+          return _getDashboardRoute(cachedRole);
         }
+        LogService.warning('[NAV_SERVICE] User exists but no usable cached session - redirecting to login');
         return NavigationResult('/auth-method-selection');
       }
 
@@ -413,6 +434,19 @@ class NavigationService {
       return result;
     } catch (e) {
       LogService.error('[NAV_SERVICE] Error determining route: $e');
+      if (_isTransientAuthNetworkError(e)) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final cachedRole = prefs.getString('user_role');
+          final cachedLoggedIn = prefs.getBool('is_logged_in') ?? false;
+          if (cachedLoggedIn && cachedRole != null && cachedRole.isNotEmpty) {
+            LogService.info(
+              '[NAV_SERVICE] determineInitialRoute transient failure - keeping cached dashboard route',
+            );
+            return _getDashboardRoute(cachedRole);
+          }
+        } catch (_) {}
+      }
       _analytics.trackNavigationError(
         '/',
         'Error determining route: $e',
@@ -420,6 +454,18 @@ class NavigationService {
       );
       return NavigationResult('/auth-method-selection');
     }
+  }
+
+  bool _isTransientAuthNetworkError(dynamic error) {
+    final s = error.toString().toLowerCase();
+    return s.contains('authretryablefetchexception') ||
+        s.contains('socketexception') ||
+        s.contains('clientexception') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection abort') ||
+        s.contains('connection reset') ||
+        s.contains('network is unreachable') ||
+        s.contains('software caused connection abort');
   }
 
   /// Get dashboard route based on user role

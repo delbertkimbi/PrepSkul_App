@@ -21,14 +21,16 @@ class UserCreditsService {
   /// Called after successful payment
   /// Formula: credits = (XAF_amount / 100).round()
   /// Example: 40,000 XAF = 400 credits
-  /// 
+  ///
   /// Idempotent: Checks if credits were already converted for this payment request
   static Future<int> convertPaymentToCredits(
     String paymentRequestId,
     double amountXaf,
   ) async {
     try {
-      LogService.info('Converting payment to credits: $paymentRequestId, ${amountXaf}XAF');
+      LogService.info(
+        'Converting payment to credits: $paymentRequestId, ${amountXaf}XAF',
+      );
 
       // Check if credits were already converted for this payment request (idempotency)
       final existingTransaction = await _supabase
@@ -41,21 +43,16 @@ class UserCreditsService {
 
       if (existingTransaction != null) {
         final existingCredits = existingTransaction['amount'] as int;
-        LogService.info('Credits already converted for payment request $paymentRequestId: $existingCredits credits');
+        LogService.info(
+          'Credits already converted for payment request $paymentRequestId: $existingCredits credits',
+        );
         return existingCredits;
       }
 
-      // Calculate credits: round to nearest integer
-      final credits = (amountXaf / creditsPerXaf).round();
-      
-      if (credits <= 0) {
-        throw Exception('Invalid credit amount: $credits (from ${amountXaf}XAF)');
-      }
-
-      // Get payment request to find user_id
+      // Get payment request to find user_id and optional top-up metadata
       final paymentRequest = await _supabase
           .from('payment_requests')
-          .select('student_id, status')
+          .select('student_id, status, metadata')
           .eq('id', paymentRequestId)
           .maybeSingle();
 
@@ -66,15 +63,37 @@ class UserCreditsService {
       // Verify payment is actually paid
       final paymentStatus = paymentRequest['status'] as String?;
       if (paymentStatus != 'paid') {
-        throw Exception('Payment request is not paid (status: $paymentStatus). Cannot convert to credits.');
+        throw Exception(
+          'Payment request is not paid (status: $paymentStatus). Cannot convert to credits.',
+        );
       }
 
       final userId = paymentRequest['student_id'] as String;
+      final metadata = (paymentRequest['metadata'] as Map?)
+          ?.cast<String, dynamic>();
+      final isSkulmateTopup = metadata?['is_skulmate_topup'] == true;
+      final packageCredits = (metadata?['credits'] as num?)?.toInt();
+
+      // Calculate credits:
+      // - For skulMate topups, prefer explicit package credits from metadata.
+      // - Otherwise fallback to generic XAF conversion.
+      final credits =
+          (isSkulmateTopup && packageCredits != null && packageCredits > 0)
+          ? packageCredits
+          : (amountXaf / creditsPerXaf).round();
+
+      if (credits <= 0) {
+        throw Exception(
+          'Invalid credit amount: $credits (from ${amountXaf}XAF)',
+        );
+      }
 
       // Verify the authenticated user is the student who made the payment
       final currentUserId = SupabaseService.currentUser?.id;
       if (currentUserId != userId) {
-        LogService.warning('Payment conversion: authenticated user ($currentUserId) does not match payment student ($userId). This may cause RLS issues.');
+        LogService.warning(
+          'Payment conversion: authenticated user ($currentUserId) does not match payment student ($userId). This may cause RLS issues.',
+        );
       }
 
       // Initialize user credits if doesn't exist
@@ -92,9 +111,10 @@ class UserCreditsService {
           .select('total_purchased')
           .eq('user_id', userId)
           .maybeSingle();
-      
-      final currentTotalPurchased = (currentCredits?['total_purchased'] as num?)?.toInt() ?? 0;
-      
+
+      final currentTotalPurchased =
+          (currentCredits?['total_purchased'] as num?)?.toInt() ?? 0;
+
       // Update user credits
       await _supabase
           .from('user_credits')
@@ -115,10 +135,14 @@ class UserCreditsService {
         balanceAfter: newBalance,
         referenceId: paymentRequestId,
         referenceType: 'payment_request',
-        description: 'Payment converted to credits',
+        description: isSkulmateTopup
+            ? 'SkulMate top-up converted to credits'
+            : 'Payment converted to credits',
       );
 
-      LogService.success('Payment converted to credits: ${amountXaf}XAF = $credits credits (balance: $newBalance)');
+      LogService.success(
+        'Payment converted to credits: ${amountXaf}XAF = $credits credits (balance: $newBalance)',
+      );
       return credits;
     } catch (e) {
       LogService.error('Error converting payment to credits: $e');
@@ -136,7 +160,9 @@ class UserCreditsService {
     double sessionCostXaf,
   ) async {
     try {
-      LogService.info('Deducting credits for session: $sessionId, ${sessionCostXaf}XAF');
+      LogService.info(
+        'Deducting credits for session: $sessionId, ${sessionCostXaf}XAF',
+      );
 
       // Calculate credits needed (round UP to ensure full coverage)
       final creditsNeeded = (sessionCostXaf / creditsPerXaf).ceil();
@@ -153,7 +179,8 @@ class UserCreditsService {
       }
 
       // Use learner_id or parent_id (whoever booked the session)
-      final userId = session['learner_id'] as String? ?? session['parent_id'] as String?;
+      final userId =
+          session['learner_id'] as String? ?? session['parent_id'] as String?;
       if (userId == null) {
         throw Exception('No user ID found for session: $sessionId');
       }
@@ -166,7 +193,9 @@ class UserCreditsService {
 
       // Check if sufficient credits
       if (currentBalance < creditsNeeded) {
-        LogService.warning('Insufficient credits: need $creditsNeeded, have $currentBalance');
+        LogService.warning(
+          'Insufficient credits: need $creditsNeeded, have $currentBalance',
+        );
         return false;
       }
 
@@ -179,8 +208,9 @@ class UserCreditsService {
           .select('total_spent')
           .eq('user_id', userId)
           .maybeSingle();
-      
-      final currentTotalSpent = (currentCredits?['total_spent'] as num?)?.toInt() ?? 0;
+
+      final currentTotalSpent =
+          (currentCredits?['total_spent'] as num?)?.toInt() ?? 0;
 
       // Update user credits
       await _supabase
@@ -215,7 +245,9 @@ class UserCreditsService {
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      LogService.success('Credits deducted: $creditsNeeded credits (${sessionCostXaf}XAF) for session $sessionId (balance: $newBalance)');
+      LogService.success(
+        'Credits deducted: $creditsNeeded credits (${sessionCostXaf}XAF) for session $sessionId (balance: $newBalance)',
+      );
       return true;
     } catch (e) {
       LogService.error('Error deducting credits for session: $e');
@@ -258,14 +290,16 @@ class UserCreditsService {
     try {
       // Convert monthly total to credits
       final monthlyCredits = (monthlyTotalXaf / creditsPerXaf).round();
-      
+
       // Calculate threshold (20% of monthly total in credits)
       final thresholdCredits = (monthlyCredits * 0.2).round();
-      
+
       // Get current balance
       final balance = await getUserBalance(userId);
 
-      LogService.debug('Checking low balance: balance=$balance, threshold=$thresholdCredits (monthly=$monthlyCredits credits)');
+      LogService.debug(
+        'Checking low balance: balance=$balance, threshold=$thresholdCredits (monthly=$monthlyCredits credits)',
+      );
 
       if (balance < thresholdCredits) {
         // Check if notification already sent recently (prevent spam)
@@ -275,14 +309,19 @@ class UserCreditsService {
             .eq('user_id', userId)
             .maybeSingle();
 
-        final lastNotification = credits?['last_low_balance_notification_at'] as String?;
+        final lastNotification =
+            credits?['last_low_balance_notification_at'] as String?;
         if (lastNotification != null) {
           final lastNotificationTime = DateTime.parse(lastNotification);
-          final hoursSinceLastNotification = DateTime.now().difference(lastNotificationTime).inHours;
-          
+          final hoursSinceLastNotification = DateTime.now()
+              .difference(lastNotificationTime)
+              .inHours;
+
           // Don't send if notification sent in last 24 hours
           if (hoursSinceLastNotification < 24) {
-            LogService.debug('Low balance notification already sent ${hoursSinceLastNotification}h ago, skipping');
+            LogService.debug(
+              'Low balance notification already sent ${hoursSinceLastNotification}h ago, skipping',
+            );
             return;
           }
         }
@@ -312,14 +351,17 @@ class UserCreditsService {
             if (bookingRequest != null) {
               // Import BookingRequest model to use it
               // For now, we'll create a minimal payment request
-              final paymentPlan = recurringSession['payment_plan'] as String? ?? 'monthly';
-              final monthlyTotal = (recurringSession['monthly_total'] as num).toDouble();
-              
+              final paymentPlan =
+                  recurringSession['payment_plan'] as String? ?? 'monthly';
+              final monthlyTotal = (recurringSession['monthly_total'] as num)
+                  .toDouble();
+
               // Calculate payment amount based on plan
               double paymentAmount;
               if (paymentPlan == 'weekly') {
                 paymentAmount = monthlyTotal / 4;
-              } else if (paymentPlan == 'biweekly' || paymentPlan == 'bi-weekly') {
+              } else if (paymentPlan == 'biweekly' ||
+                  paymentPlan == 'bi-weekly') {
                 paymentAmount = monthlyTotal / 2;
               } else {
                 paymentAmount = monthlyTotal; // monthly
@@ -335,7 +377,9 @@ class UserCreditsService {
                     'original_amount': monthlyTotal,
                     'payment_plan': paymentPlan,
                     'status': 'pending',
-                    'due_date': DateTime.now().add(const Duration(days: 7)).toIso8601String(),
+                    'due_date': DateTime.now()
+                        .add(const Duration(days: 7))
+                        .toIso8601String(),
                     'description': 'Top up credits - low balance',
                     'metadata': {
                       'low_balance_trigger': true,
@@ -350,7 +394,9 @@ class UserCreditsService {
               paymentRequestId = paymentRequest?['id'] as String?;
             }
           } catch (e) {
-            LogService.warning('Error creating payment request for low balance: $e');
+            LogService.warning(
+              'Error creating payment request for low balance: $e',
+            );
           }
         }
 
@@ -358,7 +404,8 @@ class UserCreditsService {
         await _supabase
             .from('user_credits')
             .update({
-              'last_low_balance_notification_at': DateTime.now().toIso8601String(),
+              'last_low_balance_notification_at': DateTime.now()
+                  .toIso8601String(),
             })
             .eq('user_id', userId);
 
@@ -370,7 +417,9 @@ class UserCreditsService {
           paymentRequestId: paymentRequestId,
         );
 
-        LogService.info('Low balance notification sent: $balance credits remaining (threshold: $thresholdCredits)');
+        LogService.info(
+          'Low balance notification sent: $balance credits remaining (threshold: $thresholdCredits)',
+        );
       }
     } catch (e) {
       LogService.error('Error checking low balance: $e');
@@ -389,7 +438,9 @@ class UserCreditsService {
   /// Get credit transaction history
   ///
   /// Returns list of transactions (all amounts in credits)
-  static Future<List<Map<String, dynamic>>> getCreditHistory(String userId) async {
+  static Future<List<Map<String, dynamic>>> getCreditHistory(
+    String userId,
+  ) async {
     try {
       final transactions = await _supabase
           .from('credit_transactions')
@@ -417,7 +468,9 @@ class UserCreditsService {
     String description,
   ) async {
     try {
-      LogService.info('Refunding credits: $userId, $credits credits (${amountXaf}XAF)');
+      LogService.info(
+        'Refunding credits: $userId, $credits credits (${amountXaf}XAF)',
+      );
 
       // Initialize user credits if doesn't exist
       await _initializeUserCredits(userId);
@@ -434,9 +487,12 @@ class UserCreditsService {
           .select('total_spent')
           .eq('user_id', userId)
           .maybeSingle();
-      
-      final currentTotalSpent = (currentCredits?['total_spent'] as num?)?.toInt() ?? 0;
-      final newTotalSpent = (currentTotalSpent - credits).clamp(0, double.infinity).toInt();
+
+      final currentTotalSpent =
+          (currentCredits?['total_spent'] as num?)?.toInt() ?? 0;
+      final newTotalSpent = (currentTotalSpent - credits)
+          .clamp(0, double.infinity)
+          .toInt();
 
       // Update user credits
       await _supabase
@@ -461,7 +517,9 @@ class UserCreditsService {
         description: description,
       );
 
-      LogService.success('Credits refunded: $credits credits (balance: $newBalance)');
+      LogService.success(
+        'Credits refunded: $credits credits (balance: $newBalance)',
+      );
     } catch (e) {
       LogService.error('Error refunding credits: $e');
       rethrow;
@@ -486,7 +544,9 @@ class UserCreditsService {
     } catch (e) {
       // Ignore if already exists (unique constraint violation)
       if (!e.toString().contains('duplicate key')) {
-        LogService.warning('Error initializing user credits (may already exist): $e');
+        LogService.warning(
+          'Error initializing user credits (may already exist): $e',
+        );
       }
     }
   }

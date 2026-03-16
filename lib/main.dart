@@ -58,6 +58,8 @@ import 'package:prepskul/core/services/connectivity_service.dart';
 import 'package:prepskul/core/services/offline_cache_service.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:prepskul/core/services/notification_permission_nudge_service.dart';
+import 'package:prepskul/features/skulmate/services/skulmate_streak_reminder_service.dart';
+import 'package:prepskul/features/payment/services/payment_local_reminder_service.dart';
 
 /// Set by password reset deep link handler before exchangeCodeForSession.
 /// Auth listener skips handleEmailConfirmation when true (recovery sign-in must go to reset-password screen).
@@ -94,7 +96,9 @@ void main() async {
       } catch (e) {
         // If firebase_options.dart module fails to load, log warning but continue
         // This allows app to start even if Firebase module has loading issues
-        LogService.warning('Firebase options not available (module loading issue): $e');
+        LogService.warning(
+          'Firebase options not available (module loading issue): $e',
+        );
         LogService.debug(
           'ℹ️ App will continue without Firebase - some features may be limited',
         );
@@ -126,7 +130,9 @@ void main() async {
       LogService.success('✅ Environment variables loaded from .env');
     } catch (e) {
       LogService.error('❌ Failed to load .env file: $e');
-      LogService.warning('⚠️ App will continue but Supabase may not initialize');
+      LogService.warning(
+        '⚠️ App will continue but Supabase may not initialize',
+      );
     }
 
     // Print current configuration
@@ -135,7 +141,7 @@ void main() async {
     // Initialize Supabase with AppConfig
     final supabaseUrl = AppConfig.supabaseUrl;
     final supabaseAnonKey = AppConfig.supabaseAnonKey;
-    
+
     if (supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty) {
       await Supabase.initialize(
         url: supabaseUrl,
@@ -155,9 +161,11 @@ void main() async {
           authFlowType: AuthFlowType.pkce,
         ),
       );
-      LogService.warning('Supabase initialized with fallback values (set SUPABASE_URL_DEV/PROD in .env)');
+      LogService.warning(
+        'Supabase initialized with fallback values (set SUPABASE_URL_DEV/PROD in .env)',
+      );
     }
-    
+
     // Give Supabase time to restore session from secure storage (especially important on iOS)
     // This prevents users from being logged out after hot restart
     await Future.delayed(const Duration(milliseconds: 300));
@@ -172,7 +180,9 @@ void main() async {
     } catch (e) {
       // If LanguageService module fails to load, log warning but continue
       // This allows app to start even if localization module has loading issues
-      LogService.warning('LanguageService not available (module loading issue): $e');
+      LogService.warning(
+        'LanguageService not available (module loading issue): $e',
+      );
       LogService.info('App will continue with default locale (English)');
     }
 
@@ -181,7 +191,9 @@ void main() async {
       AuthService.initAuthListener();
       LogService.success('AuthService initialized');
     } catch (e) {
-      LogService.warning('AuthService not available (module loading issue): $e');
+      LogService.warning(
+        'AuthService not available (module loading issue): $e',
+      );
       LogService.info('App will continue without auth state listener');
     }
 
@@ -203,16 +215,16 @@ void main() async {
     LogService.success('App initialization complete');
   } catch (e) {
     LogService.error('Error initializing app: $e');
-      // Even if initialization fails, run the app so user sees error screen
-    }
-
-    // Run app AFTER all critical initialization is complete
-    runApp(const PrepSkulApp());
-    
-    // CRITICAL: Don't remove HTML splash screen here on web
-    // The InitialLoadingWrapper will handle removing it after navigation completes
-    // This prevents white screen flash between HTML splash and Flutter content
+    // Even if initialization fails, run the app so user sees error screen
   }
+
+  // Run app AFTER all critical initialization is complete
+  runApp(const PrepSkulApp());
+
+  // CRITICAL: Don't remove HTML splash screen here on web
+  // The InitialLoadingWrapper will handle removing it after navigation completes
+  // This prevents white screen flash between HTML splash and Flutter content
+}
 
 /// Initialize push notifications
 Future<void> _initializePushNotifications() async {
@@ -237,7 +249,8 @@ Future<void> _initializePushNotifications() async {
 
           if (data != null) {
             LogService.debug('📱 Notification tapped: ${data.toString()}');
-            final actionUrl = data['actionUrl']?.toString() ?? data['action_url']?.toString();
+            final actionUrl =
+                data['actionUrl']?.toString() ?? data['action_url']?.toString();
             final type = data['type']?.toString();
             // Use the same navigation logic as in-app notifications.
             NotificationNavigationService.navigateToAction(
@@ -267,6 +280,12 @@ Future<void> _initializePushNotifications() async {
         }
       });
     }
+
+    // Ensure daily streak reminder is scheduled app-wide, even if user
+    // doesn't open the SkulMate library screen in this app session.
+    SkulMateStreakReminderService.rescheduleIfNeeded();
+    // Ensure payment due reminders are also scheduled locally for pending requests.
+    PaymentLocalReminderService.reschedulePendingForCurrentUser();
   } catch (e) {
     LogService.error('Error initializing push notifications: $e');
   }
@@ -332,8 +351,7 @@ Future<void> handleEmailConfirmation() async {
     bool needsUpdate = false;
 
     // Update email if it wasn't set
-    if ((existingProfile['email'] == null ||
-            existingProfile['email'] == '') &&
+    if ((existingProfile['email'] == null || existingProfile['email'] == '') &&
         (storedEmail != null || user.email != null)) {
       updates['email'] = storedEmail ?? user.email ?? '';
       needsUpdate = true;
@@ -376,7 +394,9 @@ Future<void> handleEmailConfirmation() async {
             currentName == 'User')) {
       updates['full_name'] = nameToUse;
       needsUpdate = true;
-      LogService.success('Updating profile name from "$currentName" to "$nameToUse"');
+      LogService.success(
+        'Updating profile name from "$currentName" to "$nameToUse"',
+      );
     }
 
     if (needsUpdate) {
@@ -402,9 +422,7 @@ Future<void> handleEmailConfirmation() async {
     // Only clear stored signup data AFTER we've successfully used it or confirmed it's not needed
     // Don't clear if profile still has default name and we couldn't update it
     final finalName = existingProfile?['full_name']?.toString() ?? '';
-    if (finalName != 'User' &&
-        finalName != 'Student' &&
-        finalName.isNotEmpty) {
+    if (finalName != 'User' && finalName != 'Student' && finalName.isNotEmpty) {
       // Profile has a valid name now, safe to clear stored data
       await prefs.remove('signup_user_role');
       await prefs.remove('signup_full_name');
@@ -485,8 +503,10 @@ Future<void> handleEmailConfirmation() async {
   if (navService.isReady) {
     // Use determineInitialRoute to handle all logic (intro screen, onboarding, etc.)
     final routeResult = await navService.determineInitialRoute();
-    LogService.success('[EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}');
-    
+    LogService.success(
+      '[EMAIL_CONFIRM] Navigating to determined route: ${routeResult.route}',
+    );
+
     await navService.navigateToRoute(
       routeResult.route,
       arguments: routeResult.arguments,
@@ -539,8 +559,13 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           final f = baseUri.fragment;
           path = f.startsWith('/') ? f : '/$f';
         }
-        if (path.isNotEmpty && (path != '/' || baseUri.queryParameters['tutor'] != null)) {
-          final uri = Uri(path: path, queryParameters: baseUri.queryParameters, fragment: baseUri.fragment);
+        if (path.isNotEmpty &&
+            (path != '/' || baseUri.queryParameters['tutor'] != null)) {
+          final uri = Uri(
+            path: path,
+            queryParameters: baseUri.queryParameters,
+            fragment: baseUri.fragment,
+          );
           _handleDeepLink(uri);
         }
       }
@@ -608,11 +633,14 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     // Handle password reset / verification link errors early (e.g. otp_expired when user taps expired link)
     // Redirect: prepskul://email-login with error=access_denied&error_code=otp_expired
     if (uri.host == 'email-login' || path.contains('email-login')) {
-      if (error != null && (errorCode == 'otp_expired' || error == 'access_denied')) {
+      if (error != null &&
+          (errorCode == 'otp_expired' || error == 'access_denied')) {
         LogService.debug('🔑 [DEEP_LINK] Auth link expired/invalid');
         final prefs = await SharedPreferences.getInstance();
         final pendingSignupEmail = prefs.getString('signup_email');
-        final targetRoute = pendingSignupEmail != null ? '/email-confirmation' : '/forgot-password-email';
+        final targetRoute = pendingSignupEmail != null
+            ? '/email-confirmation'
+            : '/forgot-password-email';
         final targetArgs = pendingSignupEmail != null
             ? {
                 'linkExpired': true,
@@ -623,13 +651,21 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             : {'linkExpired': true};
         final navService = NavigationService();
         if (navService.isReady) {
-          await navService.navigateToRoute(targetRoute, arguments: targetArgs, replace: true);
+          await navService.navigateToRoute(
+            targetRoute,
+            arguments: targetArgs,
+            replace: true,
+          );
           // No snackbar - target screen shows link-expired banner
         } else {
-          navService.queueDeepLink(Uri(
-            path: targetRoute,
-            queryParameters: targetArgs.map((k, v) => MapEntry(k, v.toString())),
-          ));
+          navService.queueDeepLink(
+            Uri(
+              path: targetRoute,
+              queryParameters: targetArgs.map(
+                (k, v) => MapEntry(k, v.toString()),
+              ),
+            ),
+          );
         }
         return;
       }
@@ -640,7 +676,8 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     // missing type (that could be signup verification too; both use the same redirect URL).
     if (path.isEmpty || path == '/') {
       final isExplicitRecovery = code != null && type == 'recovery';
-      final isExplicitSignup = code != null && type != null && (type == 'signup' || type == 'email');
+      final isExplicitSignup =
+          code != null && type != null && (type == 'signup' || type == 'email');
       if (isExplicitRecovery) {
         path = '/reset-password';
       } else if (isExplicitSignup) {
@@ -655,25 +692,35 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
       try {
         await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
-        LogService.debug('🔗 [DEEP_LINK] Stored pending tutor from query param: ${tutorFromQuery.trim()}');
+        LogService.debug(
+          '🔗 [DEEP_LINK] Stored pending tutor from query param: ${tutorFromQuery.trim()}',
+        );
       } catch (e) {
-        LogService.debug('🔗 [DEEP_LINK] Failed storing tutor query param (non-blocking): $e');
+        LogService.debug(
+          '🔗 [DEEP_LINK] Failed storing tutor query param (non-blocking): $e',
+        );
       }
     }
 
     // Handle tutor detail deep links: /tutor/{tutorId}
     // These are public routes (like Preply) - anyone can view tutor profiles
-    if (path.startsWith('/tutor/') && path != '/tutor' && !path.startsWith('/tutor/profile') && !path.startsWith('/tutor/dashboard') && !path.startsWith('/tutor/onboarding')) {
+    if (path.startsWith('/tutor/') &&
+        path != '/tutor' &&
+        !path.startsWith('/tutor/profile') &&
+        !path.startsWith('/tutor/dashboard') &&
+        !path.startsWith('/tutor/onboarding')) {
       final tutorId = path.replaceFirst('/tutor/', '').trim().split('/').first;
       if (tutorId.isNotEmpty) {
         LogService.debug('🔗 [DEEP_LINK] Tutor detail link detected: $tutorId');
-        
+
         // Check if user is authenticated
         final isAuthenticated = SupabaseService.isAuthenticated;
-        
+
         if (!isAuthenticated) {
           // Store pending tutor link for navigation after signup/login
-          LogService.debug('🔗 [DEEP_LINK] User not authenticated, storing pending tutor link: $tutorId');
+          LogService.debug(
+            '🔗 [DEEP_LINK] User not authenticated, storing pending tutor link: $tutorId',
+          );
           await NavigationService.storePendingTutorLink(tutorId);
           // Navigate to auth screen - after auth, they'll be redirected to tutor profile
           final navService = NavigationService();
@@ -684,7 +731,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           }
           return;
         }
-        
+
         // User is authenticated - navigate directly to tutor profile
         final navService = NavigationService();
         if (navService.isReady) {
@@ -700,14 +747,18 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
                   .maybeSingle();
               final myUserType = myProfile?['user_type'] as String?;
               if (myUserType == 'tutor') {
-                LogService.debug('🔗 [DEEP_LINK] Auth user is tutor; routing to dashboard instead of tutor detail');
+                LogService.debug(
+                  '🔗 [DEEP_LINK] Auth user is tutor; routing to dashboard instead of tutor detail',
+                );
                 navService.navigateToRoute('/tutor/dashboard');
                 return;
               }
             }
           } catch (e) {
             // Non-blocking; fall back to tutor detail navigation below.
-            LogService.debug('🔗 [DEEP_LINK] Could not resolve user_type (non-blocking): $e');
+            LogService.debug(
+              '🔗 [DEEP_LINK] Could not resolve user_type (non-blocking): $e',
+            );
           }
 
           // Fetch tutor data and navigate to tutor detail screen
@@ -751,40 +802,48 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       '/sessions',
     ];
 
-    
     // Check if this is a Google OAuth callback
     // Web:   https://app.prepskul.com/?code=...&provider=google
     // Mobile: prepskul://email-login?code=... (PKCE flow, no provider param)
     final provider = params['provider'];
     final token = params['token'];
-    final isGoogleOAuthCallback = code != null &&
+    final isGoogleOAuthCallback =
+        code != null &&
         (provider == 'google' ||
             uri.host == 'email-login' ||
             path.contains('email-login'));
-    
+
     // Handle Google OAuth callback (first-time vs returning)
     if (isGoogleOAuthCallback) {
       LogService.debug('🔐 [DEEP_LINK] Google OAuth callback detected');
-      
+
       try {
         // Web apps must exchange the code manually.
         // On mobile, Supabase Flutter already handles exchangeCodeForSession via handleDeeplink.
         if (kIsWeb && code != null) {
           await SupabaseService.client.auth.exchangeCodeForSession(code);
-          LogService.success('✅ [DEEP_LINK] Google OAuth code verified! Session created (web).');
+          LogService.success(
+            '✅ [DEEP_LINK] Google OAuth code verified! Session created (web).',
+          );
         } else {
-          LogService.debug('✅ [DEEP_LINK] Assuming Supabase Flutter handled code exchange (mobile PKCE).');
+          LogService.debug(
+            '✅ [DEEP_LINK] Assuming Supabase Flutter handled code exchange (mobile PKCE).',
+          );
         }
 
         // Ensure Supabase currentUser is populated (mobile PKCE can be slightly delayed)
         var user = SupabaseService.currentUser;
         if (user == null) {
-          LogService.debug('🔐 [DEEP_LINK] Supabase currentUser is null after callback, waiting briefly...');
+          LogService.debug(
+            '🔐 [DEEP_LINK] Supabase currentUser is null after callback, waiting briefly...',
+          );
           for (int i = 0; i < 5; i++) {
             await Future.delayed(const Duration(milliseconds: 200));
             user = SupabaseService.currentUser;
             if (user != null) {
-              LogService.debug('🔐 [DEEP_LINK] Supabase currentUser is now available after wait (attempt ${i + 1})');
+              LogService.debug(
+                '🔐 [DEEP_LINK] Supabase currentUser is now available after wait (attempt ${i + 1})',
+              );
               break;
             }
           }
@@ -797,15 +856,20 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
               .select('user_type')
               .eq('id', user.id)
               .maybeSingle();
-          
+
           final userType = profile?['user_type'] as String?;
-          
+
           if (userType == null || userType.isEmpty) {
             // First time after Google auth: send user to user type / role selection
-            LogService.debug('🔐 [DEEP_LINK] User has no role, navigating to /role-selection');
+            LogService.debug(
+              '🔐 [DEEP_LINK] User has no role, navigating to /role-selection',
+            );
             final navService = NavigationService();
             if (navService.isReady) {
-              await navService.navigateToRoute('/role-selection', replace: true);
+              await navService.navigateToRoute(
+                '/role-selection',
+                replace: true,
+              );
             } else {
               navService.queueDeepLink(Uri.parse('/role-selection'));
             }
@@ -814,7 +878,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             return;
           } else {
             // Returning Google user with role set - use normal navigation flow
-            LogService.debug('🔐 [DEEP_LINK] User has role: $userType, determining initial route');
+            LogService.debug(
+              '🔐 [DEEP_LINK] User has role: $userType, determining initial route',
+            );
             final navService = NavigationService();
             if (navService.isReady) {
               final routeResult = await navService.determineInitialRoute();
@@ -829,19 +895,24 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           }
         }
       } catch (e) {
-        LogService.error('❌ [DEEP_LINK] Error handling Google OAuth callback: $e');
+        LogService.error(
+          '❌ [DEEP_LINK] Error handling Google OAuth callback: $e',
+        );
         // On error, redirect to auth method selection
         AuthService.isGoogleSignInInProgress = false;
         final navService = NavigationService();
         if (navService.isReady) {
-          await navService.navigateToRoute('/auth-method-selection', replace: true);
+          await navService.navigateToRoute(
+            '/auth-method-selection',
+            replace: true,
+          );
         } else {
           navService.queueDeepLink(Uri.parse('/auth-method-selection'));
         }
         return;
       }
     }
-    
+
     // Check if this is a password reset (recovery) link from email (mobile deep link).
     // Only treat as recovery when we have an explicit signal: type=recovery or path contains reset/recovery.
     // Do NOT infer recovery from email-login host + missing type - that could be signup verification.
@@ -849,11 +920,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         (type == 'recovery' ||
             path.contains('reset') ||
             path.contains('recovery'))) {
-      LogService.debug('🔑 [DEEP_LINK] Password reset (recovery) link detected');
+      LogService.debug(
+        '🔑 [DEEP_LINK] Password reset (recovery) link detected',
+      );
       try {
         _pendingPasswordRecoverySignIn = true;
         await SupabaseService.client.auth.exchangeCodeForSession(code);
-        LogService.success('✅ [DEEP_LINK] Password reset code verified! Navigating to reset screen.');
+        LogService.success(
+          '✅ [DEEP_LINK] Password reset code verified! Navigating to reset screen.',
+        );
         final navService = NavigationService();
         if (navService.isReady) {
           await navService.navigateToRoute(
@@ -862,25 +937,33 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             replace: true,
           );
         } else {
-          navService.queueDeepLink(Uri(
-            path: '/reset-password',
-            queryParameters: {'isEmailRecovery': 'true'},
-          ));
+          navService.queueDeepLink(
+            Uri(
+              path: '/reset-password',
+              queryParameters: {'isEmailRecovery': 'true'},
+            ),
+          );
         }
         return;
       } catch (e) {
         _pendingPasswordRecoverySignIn = false;
-        LogService.error('❌ [DEEP_LINK] Error handling password reset link: $e');
+        LogService.error(
+          '❌ [DEEP_LINK] Error handling password reset link: $e',
+        );
         // If user is already authenticated (e.g. they just completed reset, or hot restart
         // replayed a stale deep link), ignore - don't show error or navigate.
         if (SupabaseService.isAuthenticated) {
-          LogService.debug('🔑 [DEEP_LINK] User already logged in - ignoring stale reset link');
+          LogService.debug(
+            '🔑 [DEEP_LINK] User already logged in - ignoring stale reset link',
+          );
           return;
         }
         // User was signing up (waiting for verification) - don't send to forgot-password
         final prefs = await SharedPreferences.getInstance();
         final pendingSignupEmail = prefs.getString('signup_email');
-        final targetRoute = pendingSignupEmail != null ? '/email-confirmation' : '/forgot-password-email';
+        final targetRoute = pendingSignupEmail != null
+            ? '/email-confirmation'
+            : '/forgot-password-email';
         final targetArgs = pendingSignupEmail != null
             ? {
                 'linkExpired': true,
@@ -891,13 +974,21 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             : {'linkExpired': true};
         final navService = NavigationService();
         if (navService.isReady) {
-          await navService.navigateToRoute(targetRoute, arguments: targetArgs, replace: true);
+          await navService.navigateToRoute(
+            targetRoute,
+            arguments: targetArgs,
+            replace: true,
+          );
           // No snackbar - target screen shows link-expired banner
         } else {
-          navService.queueDeepLink(Uri(
-            path: targetRoute,
-            queryParameters: targetArgs.map((k, v) => MapEntry(k, v.toString())),
-          ));
+          navService.queueDeepLink(
+            Uri(
+              path: targetRoute,
+              queryParameters: targetArgs.map(
+                (k, v) => MapEntry(k, v.toString()),
+              ),
+            ),
+          );
         }
         return;
       }
@@ -906,36 +997,43 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     // Check if this is an email verification link from Supabase
     // Supabase verification links: https://[project].supabase.co/auth/v1/verify?token=...&type=signup
     // OR: https://app.prepskul.com/?code=...&type=signup (redirected from Supabase)
-    if ((code != null || token != null) && 
-        type != null && 
+    if ((code != null || token != null) &&
+        type != null &&
         (type == 'signup' || type == 'email') &&
         type != 'recovery') {
       LogService.debug('📧 [DEEP_LINK] Email verification link detected');
-      
+
       try {
         // If we have a code, exchange it for a session (web redirect from Supabase)
         if (code != null) {
           LogService.debug('📧 [DEEP_LINK] Exchanging code for session...');
-          
+
           // Check if user is already on email confirmation screen
           // If so, let that screen handle the navigation via its auth state listener
           final navService = NavigationService();
           final currentRoute = navService.currentRoute;
-          final isOnEmailConfirmationScreen = currentRoute == '/email-confirmation' || 
-                                             currentRoute?.contains('email-confirmation') == true;
-          
+          final isOnEmailConfirmationScreen =
+              currentRoute == '/email-confirmation' ||
+              currentRoute?.contains('email-confirmation') == true;
+
           if (isOnEmailConfirmationScreen) {
-            LogService.debug('📧 [DEEP_LINK] User is on email confirmation screen - letting screen handle navigation');
+            LogService.debug(
+              '📧 [DEEP_LINK] User is on email confirmation screen - letting screen handle navigation',
+            );
             // Just exchange the code - the email confirmation screen's listener will handle navigation
             await SupabaseService.client.auth.exchangeCodeForSession(code);
-            LogService.success('✅ [DEEP_LINK] Email confirmation code verified! Screen will handle navigation.');
+            LogService.success(
+              '✅ [DEEP_LINK] Email confirmation code verified! Screen will handle navigation.',
+            );
             return; // Exit early, email confirmation screen will navigate
           }
-          
+
           // User is not on email confirmation screen - handle it here
           await SupabaseService.client.auth.exchangeCodeForSession(code);
-          LogService.success('✅ [DEEP_LINK] Email confirmation code verified! Session created.');
-          
+          LogService.success(
+            '✅ [DEEP_LINK] Email confirmation code verified! Session created.',
+          );
+
           // Handle email confirmation and navigate to appropriate screen
           Future.microtask(() => handleEmailConfirmation());
           return; // Exit early, navigation handled by _handleEmailConfirmation
@@ -945,7 +1043,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           LogService.debug('📧 [DEEP_LINK] Token-based verification detected');
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('email_verification_token', token);
-          
+
           // Navigate to email confirmation screen which will handle verification
           final navService = NavigationService();
           if (navService.isReady) {
@@ -953,7 +1051,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             final storedEmail = prefs.getString('signup_email');
             final user = SupabaseService.currentUser;
             final email = storedEmail ?? user?.email ?? '';
-            
+
             if (email.isNotEmpty && mounted) {
               Navigator.of(context).pushReplacementNamed(
                 '/email-confirmation',
@@ -973,7 +1071,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           return;
         }
       } catch (e) {
-        LogService.error('❌ [DEEP_LINK] Error verifying email confirmation: $e');
+        LogService.error(
+          '❌ [DEEP_LINK] Error verifying email confirmation: $e',
+        );
         // On error, redirect to email login with error message
         final navService = NavigationService();
         if (navService.isReady) {
@@ -984,7 +1084,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         return;
       }
     }
-    
+
     // Check if this is a protected route
     final isProtectedRoute = protectedRoutes.any(
       (route) => path.startsWith(route),
@@ -1033,7 +1133,9 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     } else {
       // Queue for later processing
       navService.queueDeepLink(uri);
-      LogService.debug('📥 [DEEP_LINK] Deep link queued, will process when app is ready');
+      LogService.debug(
+        '📥 [DEEP_LINK] Deep link queued, will process when app is ready',
+      );
     }
   }
 
@@ -1057,14 +1159,18 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       // If Provider module fails to load, use fallback without Provider
       // This allows app to start even if state management package has loading issues
       LogService.warning('Provider not available (module loading issue): $e');
-      LogService.info('App will continue without Provider - using default locale');
+      LogService.info(
+        'App will continue without Provider - using default locale',
+      );
       // Get locale - make resilient to LanguageService module loading failures
       Locale defaultLocale;
       try {
         defaultLocale = LanguageService.currentLocale;
       } catch (e) {
         // Fallback to English if LanguageService module fails to load
-        LogService.warning('LanguageService.currentLocale not available, using English');
+        LogService.warning(
+          'LanguageService.currentLocale not available, using English',
+        );
         defaultLocale = const Locale('en');
       }
       return _buildMaterialApp(defaultLocale);
@@ -1153,56 +1259,74 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           case '/forgot-password-email':
             final forgotArgs = settings.arguments as Map<String, dynamic>?;
             final linkExpired = forgotArgs?['linkExpired'];
-            return _createFadeRoute(() => ForgotPasswordEmailScreen(
-              linkExpiredError: linkExpired == true || linkExpired == 'true',
-            ));
+            return _createFadeRoute(
+              () => ForgotPasswordEmailScreen(
+                linkExpiredError: linkExpired == true || linkExpired == 'true',
+              ),
+            );
           case '/email-confirmation':
             final confirmArgs = settings.arguments as Map<String, dynamic>?;
             final linkExpired = confirmArgs?['linkExpired'];
-            return _createFadeRoute(() => EmailConfirmationScreen(
-              email: confirmArgs?['email'] as String? ?? '',
-              fullName: confirmArgs?['fullName'] as String? ?? 'User',
-              userRole: confirmArgs?['userRole'] as String? ?? 'student',
-              linkExpiredError: linkExpired == true || linkExpired == 'true',
-            ));
+            return _createFadeRoute(
+              () => EmailConfirmationScreen(
+                email: confirmArgs?['email'] as String? ?? '',
+                fullName: confirmArgs?['fullName'] as String? ?? 'User',
+                userRole: confirmArgs?['userRole'] as String? ?? 'student',
+                linkExpiredError: linkExpired == true || linkExpired == 'true',
+              ),
+            );
           case '/skulmate/upload':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
               return _createFadeRoute(() => SkulMateUploadScreen());
             } else {
-              return _createFadeRoute(() => Scaffold(
-                appBar: AppBar(title: const Text('SkulMate')),
-                body: const Center(
-                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+              return _createFadeRoute(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('SkulMate')),
+                  body: const Center(
+                    child: Text(
+                      'SkulMate is currently unavailable. Please check back later.',
+                    ),
+                  ),
                 ),
-              ));
+              );
             }
           case '/skulmate/library':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
               return _createFadeRoute(() => GameLibraryScreen());
             } else {
-              return _createFadeRoute(() => Scaffold(
-                appBar: AppBar(title: const Text('SkulMate')),
-                body: const Center(
-                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+              return _createFadeRoute(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('SkulMate')),
+                  body: const Center(
+                    child: Text(
+                      'SkulMate is currently unavailable. Please check back later.',
+                    ),
+                  ),
                 ),
-              ));
+              );
             }
           case '/skulmate/character-selection':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
               final args = settings.arguments as Map<String, dynamic>?;
-              return _createFadeRoute(() => CharacterSelectionScreen(
-                    isFirstTime: args?['isFirstTime'] ?? false,
-                  ));
-            } else {
-              return _createFadeRoute(() => Scaffold(
-                appBar: AppBar(title: const Text('SkulMate')),
-                body: const Center(
-                  child: Text('SkulMate is currently unavailable. Please check back later.'),
+              return _createFadeRoute(
+                () => CharacterSelectionScreen(
+                  isFirstTime: args?['isFirstTime'] ?? false,
                 ),
-              ));
+              );
+            } else {
+              return _createFadeRoute(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('SkulMate')),
+                  body: const Center(
+                    child: Text(
+                      'SkulMate is currently unavailable. Please check back later.',
+                    ),
+                  ),
+                ),
+              );
             }
         }
 
@@ -1236,9 +1360,7 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         }
 
         if (settings.name == '/tutor-onboarding-choice') {
-          return _createFadeRoute(
-            () => const TutorOnboardingChoiceScreen(),
-          );
+          return _createFadeRoute(() => const TutorOnboardingChoiceScreen());
         }
         if (settings.name == '/profile-setup') {
           final args = settings.arguments as Map<String, dynamic>?;
@@ -1276,14 +1398,13 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
         if (settings.name == '/reset-password-otp') {
           final args = settings.arguments as Map<String, dynamic>?;
           final phone = args?['phone'] ?? '';
-          return _createFadeRoute(
-            () => ResetPasswordOTPScreen(phone: phone),
-          );
+          return _createFadeRoute(() => ResetPasswordOTPScreen(phone: phone));
         }
         if (settings.name == '/reset-password') {
           final args = settings.arguments as Map<String, dynamic>?;
           final phone = args?['phone'] ?? '';
-          final isEmailRecovery = args?['isEmailRecovery'] == true ||
+          final isEmailRecovery =
+              args?['isEmailRecovery'] == true ||
               args?['isEmailRecovery'] == 'true';
           final setNewPasswordOnly =
               args?['setNewPasswordOnly'] == true ||
@@ -1334,14 +1455,15 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           );
         }
         // Session Feedback route: /sessions/{sessionId}/feedback
-        if (settings.name?.startsWith('/sessions/') == true && 
+        if (settings.name?.startsWith('/sessions/') == true &&
             settings.name?.endsWith('/feedback') == true) {
           final pathParts = settings.name!.split('/');
           if (pathParts.length >= 3) {
             final sessionId = pathParts[2]; // /sessions/{sessionId}/feedback
             return MaterialPageRoute(
               settings: const RouteSettings(name: '/session-feedback-flow'),
-              builder: (context) => SessionFeedbackFlowScreen(sessionId: sessionId),
+              builder: (context) =>
+                  SessionFeedbackFlowScreen(sessionId: sessionId),
             );
           }
         }
@@ -1388,7 +1510,10 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
                             const Text('Tutor profile not found.'),
                             const SizedBox(height: 16),
                             ElevatedButton(
-                              onPressed: () => Navigator.pushReplacementNamed(context, '/find-tutors'),
+                              onPressed: () => Navigator.pushReplacementNamed(
+                                context,
+                                '/find-tutors',
+                              ),
                               child: const Text('Browse Tutors'),
                             ),
                           ],
@@ -1475,18 +1600,20 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         _initializeAndNavigate();
       });
     }
-    
+
     // Safety timeout - ensure loading screen is replaced after maximum 5 seconds
     Future.delayed(const Duration(seconds: 5), () async {
       if (mounted && !_navigationComplete) {
-        LogService.warning('[INIT_LOAD] Navigation timeout - forcing fallback navigation');
+        LogService.warning(
+          '[INIT_LOAD] Navigation timeout - forcing fallback navigation',
+        );
         final navService = NavigationService();
         if (navService.isReady) {
           // CRITICAL: Check authentication before redirecting to auth screen
           // During hot restart, authenticated users should not be sent to auth screen
           final isAuthenticated = SupabaseService.isAuthenticated;
           final currentUser = SupabaseService.currentUser;
-          
+
           if (isAuthenticated && currentUser != null) {
             // User is authenticated - try to determine proper route
             try {
@@ -1499,7 +1626,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 });
               }
             } catch (e) {
-              LogService.warning('[INIT_LOAD] Error in timeout fallback for authenticated user: $e');
+              LogService.warning(
+                '[INIT_LOAD] Error in timeout fallback for authenticated user: $e',
+              );
               // If we can't determine route, try dashboard as last resort
               if (mounted) {
                 await _navigateInstant('/dashboard', null);
@@ -1543,16 +1672,24 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             !path.startsWith('/tutor/profile') &&
             !path.startsWith('/tutor/dashboard') &&
             !path.startsWith('/tutor/onboarding')) {
-          final tutorId = path.replaceFirst('/tutor/', '').trim().split('/').first;
+          final tutorId = path
+              .replaceFirst('/tutor/', '')
+              .trim()
+              .split('/')
+              .first;
           if (tutorId.isNotEmpty) {
             await NavigationService.storePendingTutorLink(tutorId);
-            LogService.debug('[INIT_LOAD] [WEB] Stored pending tutor from Uri.base: $tutorId');
+            LogService.debug(
+              '[INIT_LOAD] [WEB] Stored pending tutor from Uri.base: $tutorId',
+            );
           }
         }
         final tutorFromQuery = baseUri.queryParameters['tutor'];
         if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
           await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
-          LogService.debug('[INIT_LOAD] [WEB] Stored pending tutor from query: ${tutorFromQuery.trim()}');
+          LogService.debug(
+            '[INIT_LOAD] [WEB] Stored pending tutor from query: ${tutorFromQuery.trim()}',
+          );
         }
       }
       final appLinks = AppLinks();
@@ -1567,17 +1704,23 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           final tutorId = path.replaceFirst('/tutor/', '').trim();
           if (tutorId.isNotEmpty) {
             await NavigationService.storePendingTutorLink(tutorId);
-            LogService.debug('[INIT_LOAD] Stored pending tutor from initial link: $tutorId');
+            LogService.debug(
+              '[INIT_LOAD] Stored pending tutor from initial link: $tutorId',
+            );
           }
         }
         final tutorFromQuery = initialUri.queryParameters['tutor'];
         if (tutorFromQuery != null && tutorFromQuery.trim().isNotEmpty) {
           await NavigationService.storePendingTutorLink(tutorFromQuery.trim());
-          LogService.debug('[INIT_LOAD] Stored pending tutor from query: ${tutorFromQuery.trim()}');
+          LogService.debug(
+            '[INIT_LOAD] Stored pending tutor from query: ${tutorFromQuery.trim()}',
+          );
         }
       }
     } catch (e) {
-      LogService.debug('[INIT_LOAD] Could not parse initial link (non-blocking): $e');
+      LogService.debug(
+        '[INIT_LOAD] Could not parse initial link (non-blocking): $e',
+      );
     }
 
     // Check connectivity FIRST - if offline, use cached data immediately
@@ -1587,21 +1730,27 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       await connectivity.initialize();
       final isOnline = await connectivity.checkConnectivity();
       isOffline = !isOnline;
-      
+
       if (isOffline) {
-        LogService.info('[INIT_LOAD] Offline detected - checking cached auth session');
-        
+        LogService.info(
+          '[INIT_LOAD] Offline detected - checking cached auth session',
+        );
+
         // Check for cached auth session
         final prefs = await SharedPreferences.getInstance();
         final cachedIsLoggedIn = prefs.getBool('is_logged_in') ?? false;
-        
+
         if (cachedIsLoggedIn && SupabaseService.isAuthenticated) {
           // User was logged in - proceed with cached session immediately
-          LogService.info('[INIT_LOAD] Cached session found - proceeding offline without network delay');
+          LogService.info(
+            '[INIT_LOAD] Cached session found - proceeding offline without network delay',
+          );
           // Skip network waits and proceed directly to navigation
         } else if (!cachedIsLoggedIn) {
           // No cached session - can't proceed offline, show auth immediately
-          LogService.info('[INIT_LOAD] No cached session - showing auth screen immediately');
+          LogService.info(
+            '[INIT_LOAD] No cached session - showing auth screen immediately',
+          );
           if (mounted) {
             await _navigateInstant('/auth-method-selection', null);
             setState(() {
@@ -1612,7 +1761,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         }
       }
     } catch (e) {
-      LogService.warning('[INIT_LOAD] Error checking connectivity: $e - proceeding normally');
+      LogService.warning(
+        '[INIT_LOAD] Error checking connectivity: $e - proceeding normally',
+      );
     }
 
     // CRITICAL: Check authentication synchronously FIRST to avoid login screen flash
@@ -1625,9 +1776,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       // We should wait a bit longer for Supabase to process the code and potentially
       // confirm the email, which might trigger navigation handlers in SplashScreen
       if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
-        LogService.debug('🔗 [INIT_LOAD] Auth code detected in URL - waiting for processing');
+        LogService.debug(
+          '🔗 [INIT_LOAD] Auth code detected in URL - waiting for processing',
+        );
         // Give Supabase auth listener time to fire
-        await Future.delayed(const Duration(seconds: 2)); 
+        await Future.delayed(const Duration(seconds: 2));
       }
 
       LogService.debug(
@@ -1657,7 +1810,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             }
             return; // Exit early - navigation complete
           } catch (e) {
-            LogService.warning('[INIT_LOAD] Error navigating authenticated user: $e');
+            LogService.warning(
+              '[INIT_LOAD] Error navigating authenticated user: $e',
+            );
             // On error, check onboarding status explicitly before fallback
             final prefs = await SharedPreferences.getInstance();
             final hasCompletedOnboarding =
@@ -1685,7 +1840,9 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
                 }
                 return;
               } catch (e2) {
-                LogService.warning('[INIT_LOAD] Error in fallback navigation: $e2');
+                LogService.warning(
+                  '[INIT_LOAD] Error in fallback navigation: $e2',
+                );
               }
             }
           }
@@ -1698,11 +1855,13 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     // If not authenticated, proceed with normal flow (but still check quickly)
     // Check if we have a code first (wait longer if so)
     if (kIsWeb && Uri.base.queryParameters.containsKey('code')) {
-       LogService.debug('🔗 [INIT_LOAD] Auth code detected (unauthenticated) - waiting for processing');
-       await Future.delayed(const Duration(seconds: 2));
+      LogService.debug(
+        '🔗 [INIT_LOAD] Auth code detected (unauthenticated) - waiting for processing',
+      );
+      await Future.delayed(const Duration(seconds: 2));
     } else {
-       // Wait for minimum 300ms to show animation (reduced from 500ms)
-       await Future.delayed(const Duration(milliseconds: 300));
+      // Wait for minimum 300ms to show animation (reduced from 500ms)
+      await Future.delayed(const Duration(milliseconds: 300));
     }
 
     // Wait for Supabase to be ready (with timeout)
@@ -1732,7 +1891,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
             // Splash removal is now handled inside _navigateInstant for web
             // No need to remove here - it will be removed after screen renders
           }
-          
+
           if (mounted) {
             setState(() {
               _navigationComplete = true;
@@ -1772,14 +1931,17 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
     if (!mounted) return;
 
     // Preply-style: /tutor/xxx — keep loading screen, preload tutor, then show detail (no "Loading Tutor…" step)
-    final isTutorDetailRoute = routeName.startsWith('/tutor/') &&
+    final isTutorDetailRoute =
+        routeName.startsWith('/tutor/') &&
         routeName != '/tutor' &&
         !routeName.startsWith('/tutor/profile') &&
         !routeName.startsWith('/tutor/dashboard') &&
         !routeName.startsWith('/tutor/onboarding');
     if (isTutorDetailRoute) {
       final rawId = arguments is Map ? (arguments as Map)['tutorId'] : null;
-      final tutorId = (rawId?.toString() ?? routeName.replaceFirst('/tutor/', '').trim()).trim();
+      final tutorId =
+          (rawId?.toString() ?? routeName.replaceFirst('/tutor/', '').trim())
+              .trim();
       if (tutorId.isNotEmpty) {
         try {
           final tutor = await TutorService.fetchTutorById(tutorId);
@@ -1812,7 +1974,11 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         // Fallback: tutor not found or error — go to student nav
         final navService = NavigationService();
         if (navService.isReady) {
-          navService.navigateToRoute('/student-nav', arguments: null, replace: true);
+          navService.navigateToRoute(
+            '/student-nav',
+            arguments: null,
+            replace: true,
+          );
           if (mounted) {
             setState(() => _navigationComplete = true);
             if (kIsWeb) {
@@ -1830,79 +1996,86 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
 
     try {
       Widget? page;
-      
+
       // Map route names to widgets directly
       switch (routeName) {
-      case '/onboarding':
-        page = const SimpleOnboardingScreen();
-        break;
-      case '/auth-method-selection':
-        page = const AuthMethodSelectionScreen();
-        break;
-      case '/tutor-nav':
-        final args = arguments as Map<String, dynamic>?;
-        page = MainNavigation(
-          userRole: 'tutor',
-          initialTab: args?['initialTab'],
-        );
-        break;
-      case '/student-nav':
-        final args = arguments as Map<String, dynamic>?;
-        page = MainNavigation(
-          userRole: 'student',
-          initialTab: args?['initialTab'],
-        );
-        break;
-      case '/parent-nav':
-        final args = arguments as Map<String, dynamic>?;
-        page = MainNavigation(
-          userRole: 'parent',
-          initialTab: args?['initialTab'],
-        );
-        break;
-      case '/profile-setup':
-        final args = arguments as Map<String, dynamic>?;
-        final userRole = args?['userRole'] ?? 'student';
-        if (userRole == 'tutor') {
-          page = const TutorOnboardingScreen(basicInfo: {});
-        } else if (userRole == 'parent') {
-          page = const ParentSurvey();
-        } else {
-          page = const StudentSurvey();
-        }
-        break;
-      case '/tutor-onboarding':
-        final args = arguments as Map<String, dynamic>?;
-        page = TutorOnboardingScreen(basicInfo: args ?? {});
-        break;
-      default:
-        // Fallback to standard navigation if route not explicitly handled
-        // Use NavigationService but ensure we mark navigation as complete
-        final navService = NavigationService();
-        if (navService.isReady) {
-          navService.navigateToRoute(routeName, arguments: arguments as Map<String, dynamic>?, replace: true);
-          if (mounted) {
-            setState(() {
-              _navigationComplete = true;
-            });
-            // On web, wait briefly for the new screen to render before removing HTML splash
-            if (kIsWeb) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
-                  if (mounted) {
-                    WebSplashService.removeSplash();
-                  }
-                });
-              });
-            }
-          }
-          return; // Exit early since NavigationService handled it
-        } else {
-          // NavigationService not ready, fallback to auth screen
+        case '/onboarding':
+          page = const SimpleOnboardingScreen();
+          break;
+        case '/auth-method-selection':
           page = const AuthMethodSelectionScreen();
-        }
-        if (page == null) return;
-    }
+          break;
+        case '/tutor-nav':
+          final args = arguments as Map<String, dynamic>?;
+          page = MainNavigation(
+            userRole: 'tutor',
+            initialTab: args?['initialTab'],
+          );
+          break;
+        case '/student-nav':
+          final args = arguments as Map<String, dynamic>?;
+          page = MainNavigation(
+            userRole: 'student',
+            initialTab: args?['initialTab'],
+          );
+          break;
+        case '/parent-nav':
+          final args = arguments as Map<String, dynamic>?;
+          page = MainNavigation(
+            userRole: 'parent',
+            initialTab: args?['initialTab'],
+          );
+          break;
+        case '/profile-setup':
+          final args = arguments as Map<String, dynamic>?;
+          final userRole = args?['userRole'] ?? 'student';
+          if (userRole == 'tutor') {
+            page = const TutorOnboardingScreen(basicInfo: {});
+          } else if (userRole == 'parent') {
+            page = const ParentSurvey();
+          } else {
+            page = const StudentSurvey();
+          }
+          break;
+        case '/tutor-onboarding':
+          final args = arguments as Map<String, dynamic>?;
+          page = TutorOnboardingScreen(basicInfo: args ?? {});
+          break;
+        default:
+          // Fallback to standard navigation if route not explicitly handled
+          // Use NavigationService but ensure we mark navigation as complete
+          final navService = NavigationService();
+          if (navService.isReady) {
+            navService.navigateToRoute(
+              routeName,
+              arguments: arguments as Map<String, dynamic>?,
+              replace: true,
+            );
+            if (mounted) {
+              setState(() {
+                _navigationComplete = true;
+              });
+              // On web, wait briefly for the new screen to render before removing HTML splash
+              if (kIsWeb) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Future.delayed(
+                    Duration(milliseconds: kIsWeb ? 600 : 300),
+                    () {
+                      if (mounted) {
+                        WebSplashService.removeSplash();
+                      }
+                    },
+                  );
+                });
+              }
+            }
+            return; // Exit early since NavigationService handled it
+          } else {
+            // NavigationService not ready, fallback to auth screen
+            page = const AuthMethodSelectionScreen();
+          }
+          if (page == null) return;
+      }
 
       if (page != null) {
         Navigator.of(context).pushReplacement(
@@ -1929,26 +2102,29 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
           }
         }
       } else {
-          // If page is null, fallback to auth screen
-          LogService.warning('[INIT_LOAD] Page is null for route $routeName, falling back to auth');
-          if (mounted) {
-            Navigator.of(context).pushReplacement(
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
-                transitionDuration: Duration.zero,
-                reverseTransitionDuration: Duration.zero,
-              ),
-            );
-            // On web, wait for the new screen to paint (prevents blank auth screen)
-            if (kIsWeb) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
-                  if (mounted) {
-                    WebSplashService.removeSplash();
-                  }
-                });
+        // If page is null, fallback to auth screen
+        LogService.warning(
+          '[INIT_LOAD] Page is null for route $routeName, falling back to auth',
+        );
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  const AuthMethodSelectionScreen(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+          );
+          // On web, wait for the new screen to paint (prevents blank auth screen)
+          if (kIsWeb) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
+                if (mounted) {
+                  WebSplashService.removeSplash();
+                }
               });
-            }
+            });
+          }
           setState(() {
             _navigationComplete = true;
           });
@@ -1956,26 +2132,27 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       }
     } catch (e) {
       LogService.error('[INIT_LOAD] Error in _navigateInstant: $e');
-          // Fallback navigation on error
-          if (mounted) {
-            try {
-              Navigator.of(context).pushReplacement(
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => const AuthMethodSelectionScreen(),
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                ),
-              );
-              // On web, wait for the new screen to paint (prevents blank auth screen)
-              if (kIsWeb) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
-                    if (mounted) {
-                      WebSplashService.removeSplash();
-                    }
-                  });
-                });
-              }
+      // Fallback navigation on error
+      if (mounted) {
+        try {
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  const AuthMethodSelectionScreen(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+          );
+          // On web, wait for the new screen to paint (prevents blank auth screen)
+          if (kIsWeb) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              Future.delayed(Duration(milliseconds: kIsWeb ? 600 : 300), () {
+                if (mounted) {
+                  WebSplashService.removeSplash();
+                }
+              });
+            });
+          }
           setState(() {
             _navigationComplete = true;
           });
@@ -2002,10 +2179,7 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
       return const SizedBox.shrink();
     }
     // Match HTML splash (white bg) - no switch to deep blue, consistent loading experience.
-    return Material(
-      color: Colors.white,
-      child: const InitialLoadingScreen(),
-    );
+    return Material(color: Colors.white, child: const InitialLoadingScreen());
   }
 }
 
@@ -2067,7 +2241,9 @@ class _SplashScreenState extends State<SplashScreen> {
       if (mounted) {
         final navService = NavigationService();
         if (navService.isReady && navService.currentRoute == null) {
-          LogService.debug('⏰ [SPLASH] TIMEOUT - Forcing navigation to auth screen');
+          LogService.debug(
+            '⏰ [SPLASH] TIMEOUT - Forcing navigation to auth screen',
+          );
           navService.navigateToRoute('/auth-method-selection', replace: true);
         }
       }
@@ -2156,9 +2332,12 @@ class _SplashScreenState extends State<SplashScreen> {
 
       // Skip email confirmation when this sign-in is from password recovery.
       // The deep link handler navigates to reset-password instead.
-      if (event == AuthChangeEvent.passwordRecovery || _pendingPasswordRecoverySignIn) {
+      if (event == AuthChangeEvent.passwordRecovery ||
+          _pendingPasswordRecoverySignIn) {
         _pendingPasswordRecoverySignIn = false;
-        LogService.debug('🔐 Ignoring signedIn - password recovery flow, reset-password screen will be shown');
+        LogService.debug(
+          '🔐 Ignoring signedIn - password recovery flow, reset-password screen will be shown',
+        );
         return;
       }
 
@@ -2191,7 +2370,9 @@ class _SplashScreenState extends State<SplashScreen> {
         try {
           // Exchange code for session
           await SupabaseService.client.auth.exchangeCodeForSession(code);
-          LogService.success('Email confirmation code verified! Session created.');
+          LogService.success(
+            'Email confirmation code verified! Session created.',
+          );
 
           // The auth state change listener will handle navigation
           // But we can also directly navigate here if needed
@@ -2246,7 +2427,9 @@ class _SplashScreenState extends State<SplashScreen> {
             // For password reset, Supabase creates a temporary session when code is valid
             await SupabaseService.client.auth.exchangeCodeForSession(code);
 
-            LogService.success('Password reset code verified! Session created.');
+            LogService.success(
+              'Password reset code verified! Session created.',
+            );
             // User is now authenticated with a recovery session
             // Navigate to password reset screen to change password
             // Note: ResetPasswordScreen needs to handle email recovery (no OTP needed)

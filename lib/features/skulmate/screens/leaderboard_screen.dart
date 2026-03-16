@@ -9,9 +9,9 @@ import '../models/social_models.dart';
 import '../services/social_service.dart';
 import '../services/games_services_controller.dart';
 import 'package:prepskul/core/widgets/empty_state_widget.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import '../services/character_selection_service.dart';
+import '../models/skulmate_character_model.dart';
 import '../widgets/skulmate_character_widget.dart';
 
 /// Leaderboard screen showing rankings
@@ -140,44 +140,45 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                 color: index == 0
                                     ? Colors.amber.shade700
                                     : index == 1
-                                        ? Colors.grey.shade400!
-                                        : Colors.brown.shade300!,
+                                        ? Colors.grey.shade400
+                                        : Colors.brown.shade300,
                                 width: 2,
                               )
                             : Border.all(color: AppTheme.softBorder),
                       ),
                       child: Row(
                         children: [
-                          // Leading: my SkulMate character for current user, else profile pic or initial
+                          // Leading: SkulMate character for everyone (fallback to initial)
                           SizedBox(
                             width: 52,
                             height: 52,
-                            child: isMe && _myCharacter != null
-                                ? ClipOval(
+                            child: () {
+                              final character = isMe
+                                  ? _myCharacter
+                                  : (entry.userCharacterId != null
+                                      ? SkulMateCharacters.getById(entry.userCharacterId!)
+                                      : null);
+                              if (character != null) {
+                                return ClipOval(
                                     child: Container(
                                       color: AppTheme.primaryColor.withOpacity(0.1),
                                       child: Center(
                                         child: SkulMateCharacterWidget(
-                                          character: _myCharacter,
+                                          character: character,
                                           size: 40,
                                           animated: false,
                                           showName: false,
                                         ),
                                       ),
                                     ),
-                                  )
-                                : CircleAvatar(
+                                  );
+                              }
+                              return CircleAvatar(
                                     radius: 26,
                                     backgroundColor: isTopThree
                                         ? AppTheme.primaryColor.withOpacity(0.12)
                                         : AppTheme.softBorder,
-                                    backgroundImage: entry.userAvatarUrl != null &&
-                                            entry.userAvatarUrl!.isNotEmpty
-                                        ? CachedNetworkImageProvider(entry.userAvatarUrl!)
-                                        : null,
-                                    child: entry.userAvatarUrl == null ||
-                                            entry.userAvatarUrl!.isEmpty
-                                        ? Text(
+                                    child: Text(
                                             initial,
                                             style: GoogleFonts.poppins(
                                               fontSize: 18,
@@ -186,9 +187,9 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                                                   ? AppTheme.primaryColor
                                                   : AppTheme.textMedium,
                                             ),
-                                          )
-                                        : null,
-                                  ),
+                                          ),
+                                  );
+                            }(),
                           ),
                           const SizedBox(width: 10),
                           // Rank badge

@@ -61,18 +61,20 @@ class SkulMateStreakReminderService {
       if (!enabled) return;
 
       final stats = await GameStatsService.getStats();
-      if (stats.currentStreak <= 0) return;
 
       final now = DateTime.now();
       final lastPlayed = stats.lastPlayedDate;
-      final playedToday = lastPlayed != null &&
+      final playedToday =
+          lastPlayed != null &&
           lastPlayed.year == now.year &&
           lastPlayed.month == now.month &&
           lastPlayed.day == now.day;
 
       if (playedToday) {
         await PushNotificationService().cancelSkulMateStreakReminder();
-        LogService.debug('🔥 [StreakReminder] User played today - reminder cancelled');
+        LogService.debug(
+          '🔥 [StreakReminder] User played today - reminder cancelled',
+        );
         return;
       }
 
@@ -80,12 +82,13 @@ class SkulMateStreakReminderService {
       await PushNotificationService().scheduleSkulMateStreakReminder(
         hour: time.hour,
         minute: time.minute,
-        streakCount: stats.currentStreak,
+        streakCount: stats.currentStreak > 0 ? stats.currentStreak : 0,
       );
-      LogService.info('🔥 [StreakReminder] Scheduled for ${time.hour}:${time.minute.toString().padLeft(2, '0')}');
+      LogService.info(
+        '🔥 [StreakReminder] Scheduled for ${time.hour}:${time.minute.toString().padLeft(2, '0')}',
+      );
     } catch (e) {
       LogService.warning('🔥 [StreakReminder] Error rescheduling: $e');
     }
   }
-
 }

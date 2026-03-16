@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
@@ -14,6 +15,8 @@ class TTSService {
   bool _isEnabled = true;
   String _currentLanguage = 'en';
   Completer<void>? _speakCompleter;
+  late final double _defaultSpeechRate = kIsWeb ? 0.8 : 0.55;
+  double _speechRate = kIsWeb ? 0.8 : 0.55;
 
   /// Initialize TTS service
   Future<void> initialize() async {
@@ -25,9 +28,9 @@ class TTSService {
       // Set language based on user preference
       final userLanguage = LanguageService.languageCode;
       _currentLanguage = userLanguage == 'fr' ? 'fr-FR' : 'en-US';
-      
+
       await _flutterTts!.setLanguage(_currentLanguage);
-      await _flutterTts!.setSpeechRate(0.5); // Normal speed (0.5 = platform default, 1.0 = faster)
+      await _flutterTts!.setSpeechRate(_speechRate);
       await _flutterTts!.setVolume(1.0);
       await _flutterTts!.setPitch(1.0);
       
@@ -128,6 +131,23 @@ class TTSService {
     } catch (e) {
       LogService.error('[TTS] Error setting language: $e');
     }
+  }
+
+  /// Set speech rate dynamically (e.g. slower in quiz only).
+  Future<void> setSpeechRate(double rate) async {
+    final clamped = rate.clamp(0.35, 1.0).toDouble();
+    _speechRate = clamped;
+    if (!_isInitialized) return;
+    try {
+      await _flutterTts!.setSpeechRate(clamped);
+    } catch (e) {
+      LogService.error('[TTS] Error setting speech rate: $e');
+    }
+  }
+
+  /// Reset speech rate back to platform default.
+  Future<void> resetSpeechRate() async {
+    await setSpeechRate(_defaultSpeechRate);
   }
 
   /// Enable/disable TTS

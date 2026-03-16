@@ -35,9 +35,14 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
 
   static const List<Map<String, dynamic>> _examOptions = [
     {'value': null, 'label': 'None'},
-    {'value': 'gce', 'label': 'GCE A-Level'},
-    {'value': 'igcse', 'label': 'IGCSE'},
+    // Cameroon-focused exams
+    {'value': 'gce_ol', 'label': 'GCE Ordinary Level (O/L)'},
+    {'value': 'gce_al', 'label': 'GCE Advanced Level (A/L)'},
+    {'value': 'common_fslc', 'label': 'Common Entrance / FSLC'},
+    {'value': 'cam_french', 'label': 'French / Baccalauréat exams'},
+    // Regional & international exams
     {'value': 'waec', 'label': 'WAEC'},
+    {'value': 'igcse', 'label': 'IGCSE'},
     {'value': 'sat', 'label': 'SAT'},
     {'value': 'act', 'label': 'ACT'},
     {'value': 'other', 'label': 'Other'},

@@ -50,7 +50,9 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -65,10 +67,10 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
 
   void _parseGameData() {
     if (widget.game.items.isEmpty) return;
-    
+
     final firstItem = widget.game.items[0];
     _rooms = firstItem.rooms ?? [];
-    
+
     // If rooms not in first item, try to extract from gameData
     if (_rooms == null || _rooms!.isEmpty) {
       final gameData = firstItem.gameData;
@@ -76,14 +78,14 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
         _rooms = List<Map<String, dynamic>>.from(gameData['rooms'] as List);
       }
     }
-    
+
     // Initialize answer controllers for each room
     if (_rooms != null) {
       for (int i = 0; i < _rooms!.length; i++) {
         _answerControllers[i] = TextEditingController();
       }
     }
-    
+
     LogService.debug('Escape room game: Rooms=${_rooms?.length ?? 0}');
   }
 
@@ -118,9 +120,12 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
     final room = _rooms![_currentRoomIndex];
     final puzzle = room['puzzle'] as Map<String, dynamic>? ?? {};
     final solution = puzzle['solution'] as String? ?? '';
-    
-    final isCorrect = answer.toLowerCase().trim() == solution.toLowerCase().trim() ||
-                     answer.toLowerCase().contains(solution.toLowerCase().substring(0, min(5, solution.length)));
+
+    final isCorrect =
+        answer.toLowerCase().trim() == solution.toLowerCase().trim() ||
+        answer.toLowerCase().contains(
+          solution.toLowerCase().substring(0, min(5, solution.length)),
+        );
 
     int baseXP = 20;
     int xpForThisRoom = baseXP;
@@ -190,19 +195,19 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
 
   void _nextRoom() {
     if (_rooms == null) return;
-    
+
     if (_currentRoomIndex < _rooms!.length - 1) {
       safeSetState(() {
         _currentRoomIndex++;
       });
       _progressController.forward(from: 0);
-      _progressAnimation = Tween<double>(
-        begin: 0,
-        end: (_currentRoomIndex + 1) / _rooms!.length,
-      ).animate(CurvedAnimation(
-        parent: _progressController,
-        curve: Curves.easeOut,
-      ));
+      _progressAnimation =
+          Tween<double>(
+            begin: 0,
+            end: (_currentRoomIndex + 1) / _rooms!.length,
+          ).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+          );
       _progressController.forward();
     } else {
       _completeGame();
@@ -217,22 +222,23 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
 
     final totalRooms = _rooms?.length ?? 1;
     final percentage = (_score / totalRooms * 100).round();
-    
-    // Save game stats
+
     if (widget.game.userId.isNotEmpty) {
-      try {
-        await GameStatsService.recordGameCompletion(
+      unawaited(
+        GameStatsService.recordGameCompletion(
           gameId: widget.game.id,
           score: _score,
           totalItems: totalRooms,
           xpEarned: _xpEarned,
           duration: Duration(seconds: duration),
           streak: 0,
-        );
-      } catch (e) {
-        LogService.error('Failed to save game stats: $e');
-      }
+        ).catchError((e) {
+          LogService.error('Failed to save game stats: $e');
+        }),
+      );
     }
+
+    await _soundService.playComplete();
 
     // Navigate to results screen
     if (mounted) {
@@ -268,10 +274,7 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
           ),
         ),
         body: Center(
-          child: Text(
-            'No rooms available',
-            style: GoogleFonts.poppins(),
-          ),
+          child: Text('No rooms available', style: GoogleFonts.poppins()),
         ),
       );
     }
@@ -306,12 +309,14 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
               return LinearProgressIndicator(
                 value: _progressAnimation.value,
                 backgroundColor: AppTheme.textLight.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
                 minHeight: 4,
               );
             },
           ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -327,9 +332,9 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Locked by
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -354,9 +359,9 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Puzzle card
                   Container(
                     width: double.infinity,
@@ -404,7 +409,7 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                       ],
                     ),
                   ),
-                  
+
                   if (!hasAnswered) ...[
                     const SizedBox(height: 24),
                     Text(
@@ -438,7 +443,10 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          final answer = _answerControllers[_currentRoomIndex]?.text.trim() ?? '';
+                          final answer =
+                              _answerControllers[_currentRoomIndex]?.text
+                                  .trim() ??
+                              '';
                           if (answer.isNotEmpty) {
                             _submitPuzzleAnswer(answer);
                           }
@@ -461,21 +469,18 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                       ),
                     ),
                   ],
-                  
+
                   // Show answer feedback
                   if (hasAnswered) ...[
                     const SizedBox(height: 24),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: (isUnlocked
-                            ? AppTheme.accentGreen
-                            : Colors.red).withOpacity(0.1),
+                        color: (isUnlocked ? AppTheme.accentGreen : Colors.red)
+                            .withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isUnlocked
-                              ? AppTheme.accentGreen
-                              : Colors.red,
+                          color: isUnlocked ? AppTheme.accentGreen : Colors.red,
                           width: 1,
                         ),
                       ),
@@ -548,8 +553,8 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
                         child: Text(
                           isUnlocked
                               ? (_currentRoomIndex < _rooms!.length - 1
-                                  ? 'Next Room'
-                                  : 'Complete Escape')
+                                    ? 'Next Room'
+                                    : 'Complete Escape')
                               : 'Try Again',
                           style: GoogleFonts.poppins(
                             fontSize: 16,

@@ -164,6 +164,7 @@ class LeaderboardEntry {
   final DateTime updatedAt;
   final String? userName;
   final String? userAvatarUrl;
+  final String? userCharacterId;
   final int? userLevel;
 
   LeaderboardEntry({
@@ -181,6 +182,7 @@ class LeaderboardEntry {
     required this.updatedAt,
     this.userName,
     this.userAvatarUrl,
+    this.userCharacterId,
     this.userLevel,
   });
 
@@ -202,6 +204,7 @@ class LeaderboardEntry {
       updatedAt: DateTime.parse(json['updated_at'] as String),
       userName: json['user_name'] as String?,
       userAvatarUrl: json['user_avatar_url'] as String?,
+      userCharacterId: json['user_character_id'] as String?,
       userLevel: json['user_level'] as int?,
     );
   }
