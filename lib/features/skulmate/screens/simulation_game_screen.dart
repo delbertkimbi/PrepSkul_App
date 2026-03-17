@@ -50,7 +50,9 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 2),
+    );
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -65,23 +67,27 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
 
   void _parseGameData() {
     if (widget.game.items.isEmpty) return;
-    
+
     final firstItem = widget.game.items[0];
     _role = firstItem.role ?? 'Decision Maker';
     _scenarios = firstItem.scenarios ?? [];
-    
+
     // If scenarios not in first item, try to extract from gameData
     if (_scenarios == null || _scenarios!.isEmpty) {
       final gameData = firstItem.gameData;
       if (gameData != null) {
         _role = gameData['role'] as String? ?? _role;
         if (gameData['scenarios'] != null) {
-          _scenarios = List<Map<String, dynamic>>.from(gameData['scenarios'] as List);
+          _scenarios = List<Map<String, dynamic>>.from(
+            gameData['scenarios'] as List,
+          );
         }
       }
     }
-    
-    LogService.debug('Simulation game: Role=$_role, Scenarios=${_scenarios?.length ?? 0}');
+
+    LogService.debug(
+      'Simulation game: Role=$_role, Scenarios=${_scenarios?.length ?? 0}',
+    );
   }
 
   @override
@@ -108,17 +114,20 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
 
   void _selectAction(String action) {
     if (_selectedActions.containsKey(_currentScenarioIndex)) return;
-    if (_scenarios == null || _currentScenarioIndex >= _scenarios!.length) return;
+    if (_scenarios == null || _currentScenarioIndex >= _scenarios!.length)
+      return;
 
     final scenario = _scenarios![_currentScenarioIndex];
-    final consequences = scenario['consequences'] as Map<String, dynamic>? ?? {};
+    final consequences =
+        scenario['consequences'] as Map<String, dynamic>? ?? {};
     final consequence = consequences[action] as String? ?? 'Action taken.';
-    
+
     // Determine if this is a "good" decision based on consequence
     // Positive consequences indicate good understanding
-    final isGoodDecision = !consequence.toLowerCase().contains('fail') &&
-                          !consequence.toLowerCase().contains('wrong') &&
-                          !consequence.toLowerCase().contains('error');
+    final isGoodDecision =
+        !consequence.toLowerCase().contains('fail') &&
+        !consequence.toLowerCase().contains('wrong') &&
+        !consequence.toLowerCase().contains('error');
 
     int baseXP = 15;
     int streakMultiplier = _currentStreak > 0 ? (1 + (_currentStreak ~/ 3)) : 1;
@@ -160,10 +169,7 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
             color: isGood ? AppTheme.accentGreen : AppTheme.primaryColor,
           ),
         ),
-        content: Text(
-          consequence,
-          style: GoogleFonts.poppins(fontSize: 16),
-        ),
+        content: Text(consequence, style: GoogleFonts.poppins(fontSize: 16)),
         actions: [
           TextButton(
             onPressed: () {
@@ -185,19 +191,19 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
 
   void _nextScenario() {
     if (_scenarios == null) return;
-    
+
     if (_currentScenarioIndex < _scenarios!.length - 1) {
       safeSetState(() {
         _currentScenarioIndex++;
       });
       _progressController.forward(from: 0);
-      _progressAnimation = Tween<double>(
-        begin: 0,
-        end: (_currentScenarioIndex + 1) / _scenarios!.length,
-      ).animate(CurvedAnimation(
-        parent: _progressController,
-        curve: Curves.easeOut,
-      ));
+      _progressAnimation =
+          Tween<double>(
+            begin: 0,
+            end: (_currentScenarioIndex + 1) / _scenarios!.length,
+          ).animate(
+            CurvedAnimation(parent: _progressController, curve: Curves.easeOut),
+          );
       _progressController.forward();
     } else {
       _completeGame();
@@ -213,22 +219,23 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
     // Calculate final score and XP
     final totalScenarios = _scenarios?.length ?? 1;
     final percentage = (_score / totalScenarios * 100).round();
-    
-    // Save game stats
+
     if (widget.game.userId.isNotEmpty) {
-      try {
-        await GameStatsService.recordGameCompletion(
+      unawaited(
+        GameStatsService.recordGameCompletion(
           gameId: widget.game.id,
           score: _score,
           totalItems: totalScenarios,
           xpEarned: _xpEarned,
           duration: Duration(seconds: duration),
           streak: _currentStreak,
-        );
-      } catch (e) {
-        LogService.error('Failed to save game stats: $e');
-      }
+        ).catchError((e) {
+          LogService.error('Failed to save game stats: $e');
+        }),
+      );
     }
+
+    await _soundService.playComplete();
 
     // Navigate to results screen
     if (mounted) {
@@ -264,17 +271,20 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
           ),
         ),
         body: Center(
-          child: Text(
-            'No scenarios available',
-            style: GoogleFonts.poppins(),
-          ),
+          child: Text('No scenarios available', style: GoogleFonts.poppins()),
         ),
       );
     }
 
     final scenario = _scenarios![_currentScenarioIndex];
-    final situation = scenario['situation'] as String? ?? 'A situation requires your decision.';
-    final actions = (scenario['actions'] as List<dynamic>?)?.map((a) => a.toString()).toList() ?? [];
+    final situation =
+        scenario['situation'] as String? ??
+        'A situation requires your decision.';
+    final actions =
+        (scenario['actions'] as List<dynamic>?)
+            ?.map((a) => a.toString())
+            .toList() ??
+        [];
     final hasSelected = _selectedActions.containsKey(_currentScenarioIndex);
 
     return Scaffold(
@@ -298,12 +308,14 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
               return LinearProgressIndicator(
                 value: _progressAnimation.value,
                 backgroundColor: AppTheme.textLight.withOpacity(0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
                 minHeight: 4,
               );
             },
           ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -335,9 +347,9 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                         ],
                       ),
                     ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Scenario number
                   Text(
                     'Scenario ${_currentScenarioIndex + 1} of ${_scenarios!.length}',
@@ -347,9 +359,9 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   // Situation
                   Container(
                     width: double.infinity,
@@ -388,9 +400,9 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Actions
                   Text(
                     'What would you do?',
@@ -400,16 +412,17 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                       color: AppTheme.textDark,
                     ),
                   ),
-                  
+
                   const SizedBox(height: 16),
-                  
+
                   ...actions.asMap().entries.map((entry) {
                     final index = entry.key;
                     final action = entry.value;
-                    final isSelected = _selectedActions[_currentScenarioIndex] == action;
+                    final isSelected =
+                        _selectedActions[_currentScenarioIndex] == action;
                     final consequence = _consequences[_currentScenarioIndex];
                     final isGood = consequence?['isGood'] == true;
-                    
+
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: GestureDetector(
@@ -419,13 +432,15 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? (isGood
-                                    ? AppTheme.accentGreen.withOpacity(0.1)
-                                    : AppTheme.primaryColor.withOpacity(0.1))
+                                      ? AppTheme.accentGreen.withOpacity(0.1)
+                                      : AppTheme.primaryColor.withOpacity(0.1))
                                 : Colors.white,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isSelected
-                                  ? (isGood ? AppTheme.accentGreen : AppTheme.primaryColor)
+                                  ? (isGood
+                                        ? AppTheme.accentGreen
+                                        : AppTheme.primaryColor)
                                   : AppTheme.textLight.withOpacity(0.3),
                               width: 2,
                             ),
@@ -438,14 +453,18 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                                   style: GoogleFonts.poppins(
                                     fontSize: 16,
                                     color: AppTheme.textDark,
-                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
                                   ),
                                 ),
                               ),
                               if (isSelected)
                                 Icon(
                                   isGood ? Icons.check_circle : Icons.info,
-                                  color: isGood ? AppTheme.accentGreen : AppTheme.primaryColor,
+                                  color: isGood
+                                      ? AppTheme.accentGreen
+                                      : AppTheme.primaryColor,
                                 ),
                             ],
                           ),
@@ -453,21 +472,24 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                       ),
                     );
                   }),
-                  
+
                   // Show consequence if selected
                   if (hasSelected) ...[
                     const SizedBox(height: 24),
                     Builder(
                       builder: (context) {
-                        final consequence = _consequences[_currentScenarioIndex];
+                        final consequence =
+                            _consequences[_currentScenarioIndex];
                         if (consequence == null) return const SizedBox.shrink();
                         final isGood = consequence['isGood'] == true;
                         return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: (isGood
-                                ? AppTheme.accentGreen
-                                : AppTheme.primaryColor).withOpacity(0.1),
+                            color:
+                                (isGood
+                                        ? AppTheme.accentGreen
+                                        : AppTheme.primaryColor)
+                                    .withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isGood
@@ -482,9 +504,7 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                               Row(
                                 children: [
                                   Icon(
-                                    isGood
-                                        ? Icons.check_circle
-                                        : Icons.info,
+                                    isGood ? Icons.check_circle : Icons.info,
                                     color: isGood
                                         ? AppTheme.accentGreen
                                         : AppTheme.primaryColor,
@@ -517,9 +537,9 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
                       },
                     ),
                   ],
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Next button
                   if (hasSelected)
                     SizedBox(

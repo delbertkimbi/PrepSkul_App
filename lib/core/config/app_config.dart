@@ -122,15 +122,12 @@ class AppConfig {
     }
   }
   
-  /// Get effective API base URL (with localhost detection for local development)
-  /// 
-  /// Automatically detects when running locally on web and uses localhost:3000
-  /// for the Next.js dev server. This ensures local development works seamlessly
-  /// without requiring environment variable changes.
-  /// 
-  /// IMPORTANT: If isProduction is true, NEVER uses localhost, always uses production API.
-  /// If running on production domains (app.prepskul.com, www.prepskul.com),
-  /// always uses production API regardless of isProduction flag.
+  /// Get effective API base URL.
+  ///
+  /// IMPORTANT:
+  /// - In production, NEVER uses localhost, always uses the deployed API.
+  /// - On web, we default to the deployed API as well, unless the developer
+  ///   explicitly sets API_BASE_URL_DEV to a localhost URL in .env.
   static String get effectiveApiBaseUrl {
     // CRITICAL: If production mode is enabled, NEVER use localhost
     if (isProd) {
@@ -159,10 +156,10 @@ class AppConfig {
         })();
         
         if (hostname.isNotEmpty) {
-          final isProductionDomain = hostname.contains('prepskul.com') || 
+          final isProductionDomain = hostname.contains('prepskul.com') ||
                                      hostname.contains('app.prepskul.com') ||
                                      hostname.contains('www.prepskul.com');
-          
+
           // If on production domain, always use production API
           if (isProductionDomain) {
             if (kDebugMode) {
@@ -170,15 +167,6 @@ class AppConfig {
               print('🌐 Using production API: https://www.prepskul.com/api');
             }
             return 'https://www.prepskul.com/api';
-          }
-          
-          // If on localhost, use localhost API (only in dev mode)
-          if ((hostname == 'localhost' || hostname == '127.0.0.1') && !isProd) {
-            if (kDebugMode) {
-              print('🏠 Local development detected: $hostname');
-              print('🏠 Using localhost API: http://localhost:3000/api');
-            }
-            return 'http://localhost:3000/api';
           }
         }
       } catch (e) {
@@ -189,22 +177,20 @@ class AppConfig {
       }
     }
     
-    // Fallback: If running locally on web in non-production mode, use localhost
-    if (kIsWeb && !isProd) {
-      // Check if API_BASE_URL_DEV is explicitly set to localhost in .env
+    // In dev, allow explicit localhost / emulator API from .env on ALL platforms.
+    if (!isProd) {
       final envApiUrl = _safeEnv('API_BASE_URL_DEV', '');
-      
-      // If not explicitly set to localhost, automatically use localhost for local Next.js dev server
-      if (!url.contains('localhost') && !url.contains('127.0.0.1') && 
-          !envApiUrl.contains('localhost') && !envApiUrl.contains('127.0.0.1')) {
+      final looksLocal = envApiUrl.contains('localhost') ||
+          envApiUrl.contains('127.0.0.1') ||
+          envApiUrl.contains('10.0.2.2');
+      if (envApiUrl.isNotEmpty && looksLocal) {
         if (kDebugMode) {
-          print('🎯 Local development detected. Using localhost:3000 for Next.js API.');
-          print('🎯 To override, set API_BASE_URL_DEV=http://localhost:3000/api in .env');
+          print('🏠 Using explicit dev API from .env: $envApiUrl');
         }
-        return 'http://localhost:3000/api';
+        return envApiUrl;
       }
     }
-    
+
     return url;
   }
   

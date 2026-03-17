@@ -24,6 +24,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
 import 'package:confetti/confetti.dart';
 import 'package:prepskul/features/payment/screens/payment_confirmation_screen.dart';
+import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 
 /// Booking Payment Screen
 ///
@@ -48,7 +49,7 @@ class BookingPaymentScreen extends StatefulWidget {
 class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final PageController _pageController = PageController();
-  
+
   bool _isLoading = true;
   bool _isProcessing = false;
   bool _isPolling = false;
@@ -75,9 +76,21 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   String? _kycFrontFileName;
   String? _kycBackFileName;
 
+  // Confetti controller for success dialog
+  late final ConfettiController _confettiController;
+
+  bool get _isSkulmateTopup {
+    final metadata = (_paymentRequest?['metadata'] as Map?)
+        ?.cast<String, dynamic>();
+    return metadata?['is_skulmate_topup'] == true;
+  }
+
   @override
   void initState() {
     super.initState();
+    _confettiController = ConfettiController(
+      duration: const Duration(seconds: 3),
+    );
     _loadPaymentRequest();
     _loadUserPhone();
     _phoneController.addListener(_onPhoneChanged);
@@ -88,6 +101,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     _phoneController.removeListener(_onPhoneChanged);
     _phoneController.dispose();
     _pageController.dispose();
+    _confettiController.dispose();
     super.dispose();
   }
 
@@ -111,10 +125,13 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Future<void> _loadPaymentRequest() async {
     try {
-      final request = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+      final request = await PaymentRequestService.getPaymentRequest(
+        widget.paymentRequestId,
+      );
       if (request != null && mounted) {
-        final originalAmount = (request['original_amount'] as num?)?.toDouble() ?? 
-                              (request['amount'] as num).toDouble();
+        final originalAmount =
+            (request['original_amount'] as num?)?.toDouble() ??
+            (request['amount'] as num).toDouble();
         final charges = originalAmount * 0.02;
         final total = originalAmount + charges;
         safeSetState(() {
@@ -173,7 +190,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       }
 
       // Fetch latest verification status for current user
-      final latest = await KycVerificationService.getLatestVerificationForCurrentUser();
+      final latest =
+          await KycVerificationService.getLatestVerificationForCurrentUser();
 
       if (!mounted) return;
 
@@ -265,35 +283,40 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       final digitsOnly = phone.replaceAll(RegExp(r'[^\d]'), '');
       if (digitsOnly.startsWith('237')) {
         normalizedPhone = digitsOnly.substring(3);
-      } else if (digitsOnly.startsWith('67') || digitsOnly.startsWith('69') ||
-                 digitsOnly.startsWith('65') || digitsOnly.startsWith('66') ||
-                 digitsOnly.startsWith('68')) {
+      } else if (digitsOnly.startsWith('67') ||
+          digitsOnly.startsWith('69') ||
+          digitsOnly.startsWith('65') ||
+          digitsOnly.startsWith('66') ||
+          digitsOnly.startsWith('68')) {
         normalizedPhone = digitsOnly;
       } else {
         safeSetState(() {
-          _errorMessage = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+          _errorMessage =
+              'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
           _isProcessing = false;
         });
         return;
       }
-      
+
       if (normalizedPhone.length != 9) {
         safeSetState(() {
-          _errorMessage = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+          _errorMessage =
+              'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
           _isProcessing = false;
         });
         return;
       }
     } catch (_) {
       safeSetState(() {
-        _errorMessage = 'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
+        _errorMessage =
+            'Please enter a valid phone number (67XXXXXXX or 69XXXXXXX)';
         _isProcessing = false;
       });
       return;
     }
 
     final provider = FapshiService.detectPhoneProvider(normalizedPhone!);
-    
+
     String? transId;
     try {
       // Use total amount (subtotal + charges) for payment
@@ -304,7 +327,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         phone: normalizedPhone,
         externalId: 'payment_request_${widget.paymentRequestId}',
         userId: _paymentRequest!['student_id'] as String?,
-        message: _paymentRequest!['description'] as String? ?? 'Booking payment',
+        message:
+            _paymentRequest!['description'] as String? ?? 'Booking payment',
       );
 
       transId = paymentResponse.transId;
@@ -318,14 +342,14 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       // Even if payment initiation fails, navigate to confirmation screen
       // The new screen will handle the error and show appropriate message
       LogService.error('Error initiating payment: $e');
-      
+
       // If we got a transaction ID before the error, use it
       // Otherwise, create a placeholder for sandbox mode
       if (transId == null && !FapshiService.isProduction) {
         transId = 'sandbox_error_${DateTime.now().millisecondsSinceEpoch}';
       }
     }
-    
+
     // Navigate to PaymentConfirmationScreen (same flow as recurring: nice UX, logos, confetti)
     if (mounted && transId != null) {
       safeSetState(() {
@@ -360,7 +384,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     } else if (transId == null) {
       // Only show error if we couldn't create a transaction ID at all
       final friendlyMessage = ErrorHandler.getUserFriendlyMessage(
-        Exception('Payments are temporarily unavailable. Please try again later.')
+        Exception(
+          'Payments are temporarily unavailable. Please try again later.',
+        ),
       );
       safeSetState(() {
         _errorMessage = friendlyMessage;
@@ -392,13 +418,16 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             _isPolling = false;
             if (status.isFailed) {
               _paymentStatus = 'failed';
-              _errorMessage = 'Your payment was declined. Please check your mobile money balance and try again.';
+              _errorMessage =
+                  'Your payment was declined. Please check your mobile money balance and try again.';
             } else if (status.isPending) {
               _paymentStatus = 'pending';
-              _errorMessage = 'Payment is still pending. Please check your phone for the payment request and complete it.';
+              _errorMessage =
+                  'Payment is still pending. Please check your phone for the payment request and complete it.';
             } else {
               _paymentStatus = 'pending';
-              _errorMessage = 'Payment status unknown. Please check your phone for the payment request.';
+              _errorMessage =
+                  'Payment status unknown. Please check your phone for the payment request.';
             }
           });
         }
@@ -424,8 +453,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     });
 
     try {
-      final fakeTransId = 'sandbox_manual_${DateTime.now().millisecondsSinceEpoch}';
-      LogService.info('🧪 Sandbox: Simulating payment success with transId: $fakeTransId');
+      final fakeTransId =
+          'sandbox_manual_${DateTime.now().millisecondsSinceEpoch}';
+      LogService.info(
+        '🧪 Sandbox: Simulating payment success with transId: $fakeTransId',
+      );
       await _completePayment(fakeTransId);
     } catch (e) {
       LogService.error('❌ Sandbox completion failed: $e');
@@ -440,14 +472,21 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Future<void> _completePayment(String transId) async {
     try {
-      LogService.info('Completing payment: ${widget.paymentRequestId}, transId: $transId');
-      
+      LogService.info(
+        'Completing payment: ${widget.paymentRequestId}, transId: $transId',
+      );
+
       // Check if payment is already processed (idempotency)
-      final currentPaymentRequest = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+      final currentPaymentRequest =
+          await PaymentRequestService.getPaymentRequest(
+            widget.paymentRequestId,
+          );
       if (currentPaymentRequest != null) {
         final currentStatus = currentPaymentRequest['status'] as String?;
         if (currentStatus == 'paid') {
-          LogService.info('Payment already processed as paid. Triggering webhook handler to ensure sessions are created...');
+          LogService.info(
+            'Payment already processed as paid. Triggering webhook handler to ensure sessions are created...',
+          );
           // Payment already paid, but ensure webhook processing happens
           await FapshiWebhookService.handleWebhook(
             transactionId: transId,
@@ -464,7 +503,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           return;
         }
       }
-      
+
       // Update payment request status
       await PaymentRequestService.updatePaymentRequestStatus(
         widget.paymentRequestId,
@@ -475,67 +514,97 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
       // Trigger webhook handler to process payment and generate sessions
       try {
-        LogService.info('🔄 Triggering webhook handler for payment: ${widget.paymentRequestId}, transId: $transId');
+        LogService.info(
+          '🔄 Triggering webhook handler for payment: ${widget.paymentRequestId}, transId: $transId',
+        );
         await FapshiWebhookService.handleWebhook(
           transactionId: transId,
           status: 'SUCCESS',
           externalId: 'payment_request_${widget.paymentRequestId}',
         );
         LogService.success('✅ Webhook handler completed successfully');
-        
+
         // Wait a moment and verify sessions were created
         await Future.delayed(const Duration(seconds: 3));
-        final paymentRequest = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+        final paymentRequest = await PaymentRequestService.getPaymentRequest(
+          widget.paymentRequestId,
+        );
         if (paymentRequest != null) {
-          final recurringSessionId = paymentRequest['recurring_session_id'] as String?;
+          final recurringSessionId =
+              paymentRequest['recurring_session_id'] as String?;
           if (recurringSessionId != null) {
             final verifySessions = await SupabaseService.client
                 .from('individual_sessions')
                 .select('id, scheduled_date, status')
                 .eq('recurring_session_id', recurringSessionId)
                 .limit(5);
-            LogService.info('🔍 Verification: Found ${verifySessions.length} sessions for recurring_session_id: $recurringSessionId');
+            LogService.info(
+              '🔍 Verification: Found ${verifySessions.length} sessions for recurring_session_id: $recurringSessionId',
+            );
             if (verifySessions.isNotEmpty) {
-              LogService.success('✅ Sample session dates: ${verifySessions.map((s) => '${s['scheduled_date']} (${s['status']})').join(', ')}');
+              LogService.success(
+                '✅ Sample session dates: ${verifySessions.map((s) => '${s['scheduled_date']} (${s['status']})').join(', ')}',
+              );
             } else {
-              LogService.warning('⚠️ No sessions found after generation. This may indicate an issue with session generation.');
+              LogService.warning(
+                '⚠️ No sessions found after generation. This may indicate an issue with session generation.',
+              );
             }
           } else {
-            LogService.warning('⚠️ No recurring_session_id found in payment request. Attempting to create recurring session and generate sessions...');
+            LogService.warning(
+              '⚠️ No recurring_session_id found in payment request. Attempting to create recurring session and generate sessions...',
+            );
             // Fallback: If webhook didn't create recurring session, try to create it now
             try {
-              final paymentRequest = await PaymentRequestService.getPaymentRequest(widget.paymentRequestId);
+              final paymentRequest =
+                  await PaymentRequestService.getPaymentRequest(
+                    widget.paymentRequestId,
+                  );
               if (paymentRequest != null) {
-                final bookingRequestId = paymentRequest['booking_request_id'] as String?;
+                final bookingRequestId =
+                    paymentRequest['booking_request_id'] as String?;
                 if (bookingRequestId != null) {
-                  LogService.info('🔧 Fallback: Creating recurring session from booking request...');
+                  LogService.info(
+                    '🔧 Fallback: Creating recurring session from booking request...',
+                  );
                   final bookingRequestData = await SupabaseService.client
                       .from('booking_requests')
                       .select()
                       .eq('id', bookingRequestId)
                       .maybeSingle();
-                  
+
                   if (bookingRequestData != null) {
-                    final bookingRequest = BookingRequest.fromJson(bookingRequestData);
-                    final recurringSessionData = await RecurringSessionService.createRecurringSessionFromBooking(
-                      bookingRequest,
-                      paymentRequestId: widget.paymentRequestId,
+                    final bookingRequest = BookingRequest.fromJson(
+                      bookingRequestData,
                     );
-                    
-                    final recurringSessionId = recurringSessionData['id'] as String;
-                    LogService.success('✅ Fallback: Created recurring session: $recurringSessionId');
-                    
+                    final recurringSessionData =
+                        await RecurringSessionService.createRecurringSessionFromBooking(
+                          bookingRequest,
+                          paymentRequestId: widget.paymentRequestId,
+                        );
+
+                    final recurringSessionId =
+                        recurringSessionData['id'] as String;
+                    LogService.success(
+                      '✅ Fallback: Created recurring session: $recurringSessionId',
+                    );
+
                     // Generate sessions
-                    final sessionsGenerated = await RecurringSessionService.generateIndividualSessions(
-                      recurringSessionId: recurringSessionId,
-                      weeksAhead: 8,
+                    final sessionsGenerated =
+                        await RecurringSessionService.generateIndividualSessions(
+                          recurringSessionId: recurringSessionId,
+                          weeksAhead: 8,
+                        );
+                    LogService.success(
+                      '✅ Fallback: Generated $sessionsGenerated individual sessions',
                     );
-                    LogService.success('✅ Fallback: Generated $sessionsGenerated individual sessions');
                   }
                 }
               }
             } catch (fallbackError) {
-              LogService.error('❌ Fallback session creation failed: $fallbackError');
+              LogService.error(
+                '❌ Fallback session creation failed: $fallbackError',
+              );
             }
           }
         }
@@ -550,10 +619,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           widget.paymentRequestId,
           _subtotal, // Use subtotal for credits, not total with charges
         );
-        
+
         LogService.success('Payment converted to credits: $credits credits');
       } catch (e) {
-        if (e.toString().contains('already converted') || 
+        if (e.toString().contains('already converted') ||
             e.toString().contains('duplicate')) {
           LogService.info('Credits already converted (likely by webhook)');
         } else {
@@ -578,7 +647,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       LogService.error('Error completing payment: $e');
       if (mounted) {
         safeSetState(() {
-          _errorMessage = 'Payment completed but failed to update status: ${ErrorHandler.getUserFriendlyMessage(e)}';
+          _errorMessage =
+              'Payment completed but failed to update status: ${ErrorHandler.getUserFriendlyMessage(e)}';
           _paymentStatus = 'failed';
         });
       }
@@ -586,17 +656,15 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   }
 
   void _showSuccessDialog() {
-    final confettiController = ConfettiController(duration: const Duration(seconds: 3));
-    
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         // Trigger confetti animation after dialog is built
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          confettiController.play();
+          _confettiController.play();
         });
-        
+
         return Stack(
           children: [
             Dialog(
@@ -625,10 +693,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    
+
                     // Success Title
                     Text(
-                      'Payment Successful!',
+                      _isSkulmateTopup
+                          ? 'Top-up successful!'
+                          : 'Payment Successful!',
                       style: GoogleFonts.poppins(
                         fontSize: 24,
                         fontWeight: FontWeight.w700,
@@ -637,10 +707,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
-                    
+
                     // Success Message
                     Text(
-                      'Your booking payment has been confirmed. Your sessions are now active!',
+                      _isSkulmateTopup
+                          ? 'Your SkulMate credits have been added. You can continue generating games now.'
+                          : 'Your booking payment has been confirmed. Your sessions are now active!',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Colors.grey.shade700,
@@ -649,18 +721,35 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 32),
-                    
+
                     // Close Button
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () async {
-                          confettiController.dispose();
-                          Navigator.pop(context); // Close dialog
-                          Navigator.pop(context, true); // Return to previous screen
-                          
+                          final navigator = Navigator.of(context);
+                          _confettiController.stop();
+                          navigator.pop(); // Close dialog
+
+                          if (_isSkulmateTopup) {
+                            // Close payment screen and go straight to skulMate upload
+                            navigator.pop(true);
+                            navigator.push(
+                              MaterialPageRoute(
+                                builder: (_) => const SkulMateUploadScreen(),
+                              ),
+                            );
+                            return;
+                          }
+
+                          navigator.pop(
+                            true,
+                          ); // Return to previous screen
+
                           // Navigate to sessions screen to show newly created sessions
-                          await Future.delayed(const Duration(milliseconds: 500));
+                          await Future.delayed(
+                            const Duration(milliseconds: 500),
+                          );
                           if (mounted) {
                             Navigator.of(context).pushNamedAndRemoveUntil(
                               '/student-nav',
@@ -738,9 +827,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             ),
           ),
         ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -787,7 +874,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       );
     }
 
-    final paymentPlan = _paymentRequest!['payment_plan'] as String? ?? 'monthly';
+    final paymentPlan =
+        _paymentRequest!['payment_plan'] as String? ?? 'monthly';
     final description = _paymentRequest!['description'] as String?;
     final metadata = _paymentRequest!['metadata'] as Map<String, dynamic>?;
     final tutorName = metadata?['tutor_name'] as String? ?? 'Tutor';
@@ -816,7 +904,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildCombinedPaymentView(String tutorName, String? description, String paymentPlan) {
+  Widget _buildCombinedPaymentView(
+    String tutorName,
+    String? description,
+    String paymentPlan,
+  ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -925,12 +1017,18 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               decoration: BoxDecoration(
                 color: AppTheme.accentOrange.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.accentOrange.withOpacity(0.4)),
+                border: Border.all(
+                  color: AppTheme.accentOrange.withOpacity(0.4),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.hourglass_top, size: 18, color: AppTheme.accentOrange),
+                  Icon(
+                    Icons.hourglass_top,
+                    size: 18,
+                    color: AppTheme.accentOrange,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -957,7 +1055,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.error_outline, size: 18, color: Colors.red.shade700),
+                  Icon(
+                    Icons.error_outline,
+                    size: 18,
+                    color: Colors.red.shade700,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -993,7 +1095,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : Text(
@@ -1073,7 +1177,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        if (_selectedWhoseId == 'parent_guardian' || _selectedWhoseId == 'other_adult')
+        if (_selectedWhoseId == 'parent_guardian' ||
+            _selectedWhoseId == 'other_adult')
           TextField(
             decoration: InputDecoration(
               labelText: 'Relationship (e.g. mother, uncle, guardian)',
@@ -1081,7 +1186,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
             ),
             style: GoogleFonts.poppins(fontSize: 13),
             onChanged: (value) {
@@ -1104,24 +1212,16 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         DropdownButtonFormField<String>(
           value: _selectedDocumentType,
           decoration: InputDecoration(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
           items: const [
-            DropdownMenuItem(
-              value: 'national_id',
-              child: Text('National ID'),
-            ),
-            DropdownMenuItem(
-              value: 'passport',
-              child: Text('Passport'),
-            ),
-            DropdownMenuItem(
-              value: 'voter_card',
-              child: Text('Voter card'),
-            ),
+            DropdownMenuItem(value: 'national_id', child: Text('National ID')),
+            DropdownMenuItem(value: 'passport', child: Text('Passport')),
+            DropdownMenuItem(value: 'voter_card', child: Text('Voter card')),
             DropdownMenuItem(
               value: 'drivers_licence',
               child: Text('Driver’s licence'),
@@ -1159,7 +1259,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                 onPressed: () => _pickKycFile(isFront: true),
                 icon: const Icon(Icons.upload_file, size: 18),
                 label: Text(
-                  _kycFrontFileName != null ? 'ID front selected' : 'Upload ID front',
+                  _kycFrontFileName != null
+                      ? 'ID front selected'
+                      : 'Upload ID front',
                   style: GoogleFonts.poppins(fontSize: 12),
                 ),
               ),
@@ -1170,7 +1272,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                 onPressed: () => _pickKycFile(isFront: false),
                 icon: const Icon(Icons.upload_file, size: 18),
                 label: Text(
-                  _kycBackFileName != null ? 'Back selected' : 'Upload back (optional)',
+                  _kycBackFileName != null
+                      ? 'Back selected'
+                      : 'Upload back (optional)',
                   style: GoogleFonts.poppins(fontSize: 12),
                 ),
               ),
@@ -1180,10 +1284,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
         const SizedBox(height: 4),
         Text(
           'Clear photo of the ID is enough — this is a one-time step.',
-          style: GoogleFonts.poppins(
-            fontSize: 11,
-            color: AppTheme.textMedium,
-          ),
+          style: GoogleFonts.poppins(fontSize: 11, color: AppTheme.textMedium),
         ),
       ],
     );
@@ -1318,7 +1419,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     }
   }
 
-  Widget _buildCompactBookingSummary(String tutorName, String? description, String paymentPlan) {
+  Widget _buildCompactBookingSummary(
+    String tutorName,
+    String? description,
+    String paymentPlan,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1399,12 +1504,19 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               // Provider badge inline
               if (_detectedProvider != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.1),
+                    color: PaymentProviderHelper.getProviderColor(
+                      _detectedProvider,
+                    ).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.3),
+                      color: PaymentProviderHelper.getProviderColor(
+                        _detectedProvider,
+                      ).withOpacity(0.3),
                       width: 1,
                     ),
                   ),
@@ -1412,17 +1524,25 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        PaymentProviderHelper.getProviderIcon(_detectedProvider),
+                        PaymentProviderHelper.getProviderIcon(
+                          _detectedProvider,
+                        ),
                         size: 14,
-                        color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                        color: PaymentProviderHelper.getProviderColor(
+                          _detectedProvider,
+                        ),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        PaymentProviderHelper.getProviderName(_detectedProvider),
+                        PaymentProviderHelper.getProviderName(
+                          _detectedProvider,
+                        ),
                         style: GoogleFonts.poppins(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                          color: PaymentProviderHelper.getProviderColor(
+                            _detectedProvider,
+                          ),
                         ),
                       ),
                     ],
@@ -1436,7 +1556,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
-              prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor, size: 20),
+              prefixIcon: Icon(
+                Icons.phone,
+                color: AppTheme.primaryColor,
+                size: 20,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: AppTheme.softBorder),
@@ -1447,10 +1571,14 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               ),
               filled: true,
               fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
             ),
           ),
-          if (_detectedProvider == null && _phoneController.text.trim().isNotEmpty)
+          if (_detectedProvider == null &&
+              _phoneController.text.trim().isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
@@ -1465,7 +1593,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       ),
     );
   }
-  
+
   // Compact Payment Breakdown
   Widget _buildCompactPaymentBreakdown() {
     return Container(
@@ -1555,7 +1683,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
       ),
     );
   }
-  
+
   // Compact Error Message
   Widget _buildCompactErrorMessage() {
     return Container(
@@ -1624,11 +1752,11 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                   isTotal: false,
                 ),
                 const SizedBox(height: 16),
-                
+
                 // Divider
                 Divider(color: Colors.grey.shade200),
                 const SizedBox(height: 16),
-                
+
                 // Charges
                 _buildSummaryRow(
                   'Payment Charges (2%)',
@@ -1637,7 +1765,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                   isCharges: true,
                 ),
                 const SizedBox(height: 20),
-                
+
                 // Total
                 _buildSummaryRow(
                   'Total Amount',
@@ -1660,8 +1788,8 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             child: Row(
               children: [
                 Icon(
-                  _detectedProvider == 'mtn' 
-                      ? Icons.phone_android 
+                  _detectedProvider == 'mtn'
+                      ? Icons.phone_android
                       : Icons.phone_iphone,
                   color: AppTheme.primaryColor,
                   size: 24,
@@ -1681,7 +1809,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                       const SizedBox(height: 4),
                       Text(
                         _detectedProvider != null
-                            ? PaymentProviderHelper.getProviderName(_detectedProvider)
+                            ? PaymentProviderHelper.getProviderName(
+                                _detectedProvider,
+                              )
                             : 'Mobile Money',
                         style: GoogleFonts.poppins(
                           fontSize: 14,
@@ -1737,7 +1867,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                     ),
             ),
           ),
-          
+
           SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
         ],
       ),
@@ -1763,15 +1893,18 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             ],
           ),
         ),
-        
+
         // Processing Overlay (shown while polling)
-        if (_isPolling)
-          _buildProcessingOverlay(),
+        if (_isPolling) _buildProcessingOverlay(),
       ],
     );
   }
 
-  Widget _buildBookingSummary(String tutorName, String? description, String paymentPlan) {
+  Widget _buildBookingSummary(
+    String tutorName,
+    String? description,
+    String paymentPlan,
+  ) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1855,12 +1988,19 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
             // Provider badge
             if (_detectedProvider != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.1),
+                  color: PaymentProviderHelper.getProviderColor(
+                    _detectedProvider,
+                  ).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: PaymentProviderHelper.getProviderColor(_detectedProvider).withOpacity(0.3),
+                    color: PaymentProviderHelper.getProviderColor(
+                      _detectedProvider,
+                    ).withOpacity(0.3),
                     width: 1,
                   ),
                 ),
@@ -1870,7 +2010,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                     Icon(
                       PaymentProviderHelper.getProviderIcon(_detectedProvider),
                       size: 16,
-                      color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                      color: PaymentProviderHelper.getProviderColor(
+                        _detectedProvider,
+                      ),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -1878,7 +2020,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: PaymentProviderHelper.getProviderColor(_detectedProvider),
+                        color: PaymentProviderHelper.getProviderColor(
+                          _detectedProvider,
+                        ),
                       ),
                     ),
                   ],
@@ -1893,14 +2037,13 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           decoration: InputDecoration(
             hintText: '67XXXXXXX (MTN) or 69XXXXXXX (Orange)',
             prefixIcon: Icon(Icons.phone, color: AppTheme.primaryColor),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             filled: true,
             fillColor: Colors.white,
           ),
         ),
-        if (_detectedProvider == null && _phoneController.text.trim().isNotEmpty)
+        if (_detectedProvider == null &&
+            _phoneController.text.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
@@ -1915,7 +2058,12 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
     );
   }
 
-  Widget _buildSummaryRow(String label, String amount, {bool isTotal = false, bool isCharges = false}) {
+  Widget _buildSummaryRow(
+    String label,
+    String amount, {
+    bool isTotal = false,
+    bool isCharges = false,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1932,7 +2080,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
           style: GoogleFonts.poppins(
             fontSize: isTotal ? 20 : 14,
             fontWeight: isTotal ? FontWeight.w700 : FontWeight.w600,
-            color: isTotal ? AppTheme.primaryColor : (isCharges ? Colors.grey.shade700 : AppTheme.textDark),
+            color: isTotal
+                ? AppTheme.primaryColor
+                : (isCharges ? Colors.grey.shade700 : AppTheme.textDark),
           ),
         ),
       ],
@@ -1957,7 +2107,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                 height: 20,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppTheme.primaryColor,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1990,7 +2142,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Widget _buildProcessingOverlay() {
     return Container(
-      color: Colors.white.withOpacity(0.85), // Increased opacity for better visibility
+      color: Colors.white.withOpacity(
+        0.85,
+      ), // Increased opacity for better visibility
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2000,7 +2154,9 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               height: 50,
               child: CircularProgressIndicator(
                 strokeWidth: 4,
-                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  AppTheme.primaryColor,
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -2020,12 +2176,13 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
 
   Widget _buildErrorMessage() {
     if (_errorMessage == null) return const SizedBox.shrink();
-    final isPaymentFailed = _paymentStatus == 'failed' || 
-                           (_errorMessage != null && 
-                            (_errorMessage!.toLowerCase().contains('failed') ||
-                             _errorMessage!.toLowerCase().contains('error') ||
-                             _errorMessage!.toLowerCase().contains('contact support')));
-    
+    final isPaymentFailed =
+        _paymentStatus == 'failed' ||
+        (_errorMessage != null &&
+            (_errorMessage!.toLowerCase().contains('failed') ||
+                _errorMessage!.toLowerCase().contains('error') ||
+                _errorMessage!.toLowerCase().contains('contact support')));
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -2084,8 +2241,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () async {
                       try {
-                        final amount = _paymentRequest != null 
-                            ? PricingService.formatPrice((_paymentRequest!['amount'] as num).toDouble())
+                        final amount = _paymentRequest != null
+                            ? PricingService.formatPrice(
+                                (_paymentRequest!['amount'] as num).toDouble(),
+                              )
                             : 'N/A';
                         await WhatsAppSupportService.contactSupportForBookingPaymentFailure(
                           paymentId: widget.paymentRequestId,
@@ -2134,22 +2293,23 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
   /// Sandbox testing button - only shown in sandbox mode when payment fails
   Widget _buildSandboxTestingButton() {
     final isSandbox = !FapshiService.isProduction;
-    
+
     // Only show in sandbox mode when payment has failed
     if (!isSandbox || _paymentStatus != 'failed' || _errorMessage == null) {
       return const SizedBox.shrink();
     }
-    
+
     // Only show if error is related to phone validation or payment processing
-    final showButton = _errorMessage!.toLowerCase().contains('phone') ||
-                       _errorMessage!.toLowerCase().contains('valid') ||
-                       _errorMessage!.toLowerCase().contains('declined') ||
-                       _errorMessage!.toLowerCase().contains('failed');
-    
+    final showButton =
+        _errorMessage!.toLowerCase().contains('phone') ||
+        _errorMessage!.toLowerCase().contains('valid') ||
+        _errorMessage!.toLowerCase().contains('declined') ||
+        _errorMessage!.toLowerCase().contains('failed');
+
     if (!showButton) {
       return const SizedBox.shrink();
     }
-    
+
     return Column(
       children: [
         const SizedBox(height: 16),
@@ -2190,7 +2350,10 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               TextButton(
                 onPressed: _isProcessing ? null : _forceCompleteSandbox,
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   backgroundColor: Colors.orange[100],
                 ),
                 child: Text(

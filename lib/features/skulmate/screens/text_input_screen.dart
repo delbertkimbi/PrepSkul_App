@@ -6,9 +6,11 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../services/skulmate_service.dart';
+import '../services/skulmate_access_service.dart';
 import '../widgets/generation_context_sheet.dart';
 import 'game_setup_flow_screen.dart';
 import 'game_generation_screen.dart';
+import 'skulmate_plans_screen.dart';
 
 /// Screen for entering game title and notes text manually
 class TextInputScreen extends StatefulWidget {
@@ -48,9 +50,58 @@ class _TextInputScreenState extends State<TextInputScreen> {
     if (text.length < _minTextLength) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please enter at least $_minTextLength characters (you have ${text.length}). Add more detail for better games!'),
+          content: Text(
+            'Please enter at least $_minTextLength characters (you have ${text.length}). Add more detail for better games!',
+          ),
           backgroundColor: Colors.orange,
           duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
+
+    final access = await SkulmateAccessService.checkGenerationAccess(
+      sourceType: SkulmateSourceType.text,
+    );
+    if (!access.canProceed && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Plan required',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            access.message,
+            style: GoogleFonts.poppins(fontSize: 14, height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Not now', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SkulmatePlansScreen(),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+              ),
+              child: Text(
+                'See plans',
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
+            ),
+          ],
         ),
       );
       return;
@@ -66,9 +117,7 @@ class _TextInputScreenState extends State<TextInputScreen> {
       if (!mounted) return;
       final contextResult = await Navigator.push<GenerationContext?>(
         context,
-        MaterialPageRoute(
-          builder: (context) => const GameSetupFlowScreen(),
-        ),
+        MaterialPageRoute(builder: (context) => const GameSetupFlowScreen()),
       );
       if (!mounted) return;
 
@@ -108,7 +157,11 @@ class _TextInputScreenState extends State<TextInputScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark, size: 20),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppTheme.textDark,
+            size: 20,
+          ),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
@@ -157,9 +210,15 @@ class _TextInputScreenState extends State<TextInputScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
               ),
             ),
 
@@ -177,10 +236,7 @@ class _TextInputScreenState extends State<TextInputScreen> {
             const SizedBox(height: 8),
             Text(
               'At least 50 characters needed for better games.',
-              style: GoogleFonts.poppins(
-                fontSize: 11,
-                color: Colors.grey[600],
-              ),
+              style: GoogleFonts.poppins(fontSize: 11, color: Colors.grey[600]),
             ),
             const SizedBox(height: 4),
             TextField(
@@ -206,7 +262,10 @@ class _TextInputScreenState extends State<TextInputScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppTheme.primaryColor, width: 2),
+                  borderSide: BorderSide(
+                    color: AppTheme.primaryColor,
+                    width: 2,
+                  ),
                 ),
                 contentPadding: const EdgeInsets.all(16),
               ),
@@ -253,7 +312,9 @@ class _TextInputScreenState extends State<TextInputScreen> {
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -288,4 +349,3 @@ class _TextInputScreenState extends State<TextInputScreen> {
     );
   }
 }
-

@@ -209,6 +209,12 @@ class GameSoundService {
   /// Play level complete sound (alias for complete)
   Future<void> playLevelComplete() => _playSound(SoundType.levelComplete);
 
+  /// Play a soft countdown tick (reuse click sound)
+  Future<void> playCountdownTick() => _playSound(SoundType.click);
+
+  /// Play a buzzer-style sound when time runs out (reuse incorrect/haptic)
+  Future<void> playCountdownBuzzer() => _playSound(SoundType.incorrect);
+
   /// Dispose resources
   void dispose() {
     _audioPlayer.dispose();

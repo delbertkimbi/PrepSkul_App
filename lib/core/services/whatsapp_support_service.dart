@@ -117,6 +117,24 @@ class WhatsAppSupportService {
           baseMessage += 'Trial Details: $additionalInfo\n\n';
         }
         break;
+
+      case 'skulmate_first_feedback':
+        baseMessage += 'I just finished my first SkulMate game and I want to share feedback.\n\n';
+        if (additionalInfo != null) {
+          baseMessage += 'My Feedback:\n$additionalInfo\n\n';
+        }
+        break;
+
+      case 'skulmate_generation':
+        baseMessage += 'I am reporting a SkulMate game generation issue.\n\n';
+        baseMessage += 'What happened:\n';
+        if (additionalInfo != null && additionalInfo.trim().isNotEmpty) {
+          baseMessage += '$additionalInfo\n\n';
+        } else {
+          baseMessage += '- Game could not be generated from my content.\n\n';
+        }
+        baseMessage += 'Please help me diagnose and fix this.\n\n';
+        break;
       
       case 'general_support':
       default:

@@ -45,13 +45,15 @@ class GameLibraryScreen extends StatefulWidget {
   final String? childId; // For parents viewing child's games
   final int initialTab; // 0 = Sessions, 1 = My Games, 2 = Upload
 
-  const GameLibraryScreen({Key? key, this.childId, this.initialTab = 1}) : super(key: key);
+  const GameLibraryScreen({Key? key, this.childId, this.initialTab = 1})
+    : super(key: key);
 
   @override
   State<GameLibraryScreen> createState() => _GameLibraryScreenState();
 }
 
-class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTickerProviderStateMixin {
+class _GameLibraryScreenState extends State<GameLibraryScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<GameModel> _games = [];
   bool _isLoading = true;
@@ -63,10 +65,15 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   String? _selectedFilter; // 'quiz', 'flashcards', 'matching', 'fill_blank'
   bool _showFavoritesOnly = false;
   String _sortBy = 'recent'; // 'recent', 'recently_played', 'alphabetical'
-  Map<String, DateTime?> _gameLastPlayedDates = {}; // Cache for last played dates
+  Map<String, DateTime?> _gameLastPlayedDates =
+      {}; // Cache for last played dates
+  Set<String> _favoriteGameIds = {};
   GameStats? _gameStats;
   int _dailyChallengeRefreshKey = 0;
-  bool _swipeHintSeen = true; // After load: true = user has seen/dismissed the hint
+  bool _swipeHintSeen =
+      true; // After load: true = user has seen/dismissed the hint
+  bool _isFetchingGames = false;
+  bool _showOfflineGamesNotice = false;
 
   static const String _prefKeySwipeHint = 'skulmate_swipe_delete_hint_seen';
 
@@ -117,13 +124,14 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
   }
 
   Future<void> _loadGames({bool refresh = false}) async {
+    if (_isFetchingGames) return;
+    _isFetchingGames = true;
     try {
       if (refresh) {
+        // Keep current list visible during refresh to avoid distracting flashes.
         safeSetState(() {
-          _games = [];
           _currentPage = 0;
           _hasMore = true;
-          _isLoading = true;
         });
       } else {
         safeSetState(() => _isLoading = true);
@@ -136,13 +144,33 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       );
 
       final loadedGames = result['games'] as List<GameModel>;
+      final fromCache = (result['fromCache'] as bool?) ?? false;
       LogService.debug('🎮 [GameLibrary] Loaded ${loadedGames.length} games');
+      final favorites = <String>{};
+      for (final game in loadedGames) {
+        if (await SkulMateService.isFavorite(game.id)) {
+          favorites.add(game.id);
+        }
+      }
       safeSetState(() {
         _games = loadedGames;
+        _favoriteGameIds = favorites;
         _hasMore = result['hasMore'] as bool;
         _currentPage = 0;
         _isLoading = false;
+        _showOfflineGamesNotice = fromCache;
       });
+      if (mounted && fromCache) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'You are offline. Showing saved games from this device.',
+            ),
+            backgroundColor: Colors.orange.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
       LogService.error('🎮 [skulMate] Error loading games: $e');
       safeSetState(() => _isLoading = false);
@@ -154,6 +182,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
           ),
         );
       }
+    } finally {
+      _isFetchingGames = false;
     }
   }
 
@@ -171,13 +201,22 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       );
 
       final newGames = result['games'] as List<GameModel>;
+      final fromCache = (result['fromCache'] as bool?) ?? false;
       final hasMore = result['hasMore'] as bool;
+      final favoriteIds = Set<String>.from(_favoriteGameIds);
+      for (final game in newGames) {
+        if (await SkulMateService.isFavorite(game.id)) {
+          favoriteIds.add(game.id);
+        }
+      }
 
       safeSetState(() {
         _games.addAll(newGames);
-        _hasMore = hasMore;
+        _favoriteGameIds = favoriteIds;
+        _hasMore = fromCache ? false : hasMore;
         _currentPage = nextPage;
         _isLoadingMore = false;
+        if (fromCache) _showOfflineGamesNotice = true;
       });
     } catch (e) {
       LogService.error('🎮 [skulMate] Error loading more games: $e');
@@ -194,6 +233,36 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     }
   }
 
+  List<GameModel> _getFilteredGamesSync() {
+    var filtered = List<GameModel>.from(_games);
+
+    if (_showFavoritesOnly) {
+      filtered = filtered
+          .where((g) => _favoriteGameIds.contains(g.id))
+          .toList();
+    }
+
+    if (_selectedFilter != null) {
+      filtered = filtered.where((game) {
+        final gameTypeStr = game.gameType.toString();
+        if (_selectedFilter == 'fill_blank') {
+          return gameTypeStr == 'fillBlank';
+        }
+        return gameTypeStr == _selectedFilter;
+      }).toList();
+    }
+
+    if (_sortBy == 'alphabetical') {
+      filtered.sort(
+        (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+      );
+    } else {
+      filtered.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    }
+
+    return filtered;
+  }
+
   Future<List<GameModel>> _getFilteredGames() async {
     var filtered = _games;
 
@@ -205,7 +274,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
           favoriteIds.add(game.id);
         }
       }
-      filtered = filtered.where((game) => favoriteIds.contains(game.id)).toList();
+      filtered = filtered
+          .where((game) => favoriteIds.contains(game.id))
+          .toList();
     }
 
     // Filter by type
@@ -232,7 +303,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         }
         gamesWithDates.add(MapEntry(game, _gameLastPlayedDates[game.id]));
       }
-      
+
       // Sort by last played (most recent first), then by created date
       gamesWithDates.sort((a, b) {
         if (a.value == null && b.value == null) {
@@ -242,10 +313,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         if (b.value == null) return -1;
         return b.value!.compareTo(a.value!);
       });
-      
+
       filtered = gamesWithDates.map((e) => e.key).toList();
     } else if (_sortBy == 'alphabetical') {
-      filtered.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      filtered.sort(
+        (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+      );
     } else {
       // 'recent' - already sorted by created_at in getGames()
       // No additional sorting needed
@@ -266,7 +339,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         final lastPlayed = stats['lastPlayed'] as DateTime?;
         _gameLastPlayedDates[game.id] = lastPlayed;
       }
-      
+
       final lastPlayed = _gameLastPlayedDates[game.id];
       if (lastPlayed != null && lastPlayed.isAfter(sevenDaysAgo)) {
         recentlyPlayed.add(game);
@@ -290,9 +363,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     await showDialog(
       context: context,
       builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
           padding: const EdgeInsets.all(20),
@@ -322,7 +393,10 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -494,7 +568,10 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
     Widget gameScreen;
     switch (game.gameType) {
       case GameType.quiz:
-        gameScreen = QuizGameScreen(game: game, isDailyChallenge: isDailyChallenge);
+        gameScreen = QuizGameScreen(
+          game: game,
+          isDailyChallenge: isDailyChallenge,
+        );
         break;
       case GameType.flashcards:
         gameScreen = FlashcardGameScreen(game: game);
@@ -661,15 +738,16 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       final stats = await SkulMateService.getGameStats(game.id);
       final timesPlayed = stats['totalPlays'] as int? ?? 0;
       final bestScore = stats['bestScore'] as int? ?? 0;
-      
+
       String shareText = '🎮 Check out my skulMate game: "${game.title}"\n\n';
-      shareText += 'Game Type: ${game.gameType.toString().replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}\n';
+      shareText +=
+          'Game Type: ${game.gameType.toString().replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}\n';
       if (timesPlayed > 0) {
         shareText += 'My best score: $bestScore\n';
         shareText += 'Played $timesPlayed time${timesPlayed == 1 ? '' : 's'}\n';
       }
       shareText += '\nPlay this game in skulMate!';
-      
+
       // TODO: In the future, we can add a deep link like: prepskul://game/${game.id}
       // For now, just share the text
       await Share.share(shareText);
@@ -694,7 +772,11 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textDark, size: 24),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: AppTheme.textDark,
+            size: 24,
+          ),
           onPressed: () async {
             final role = await AuthService.getUserRole();
             final navService = NavigationService();
@@ -719,7 +801,11 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (canShowIcon) ...[
-                    PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill), color: AppTheme.textDark, size: 16),
+                    PhosphorIcon(
+                      PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                      color: AppTheme.textDark,
+                      size: 16,
+                    ),
                     const SizedBox(width: 4),
                   ],
                   Text(
@@ -781,9 +867,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const FriendsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const FriendsScreen()),
               );
             },
           ),
@@ -811,19 +895,27 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ActivityCalendarScreen(childId: widget.childId),
+                      builder: (context) =>
+                          ActivityCalendarScreen(childId: widget.childId),
                     ),
                   );
                 },
                 borderRadius: BorderRadius.circular(20),
                 child: Tooltip(
-                  message: '${_gameStats!.currentStreak} day streak! Tap to view activity',
+                  message:
+                      '${_gameStats!.currentStreak} day streak! Tap to view activity',
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.orange.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.orange.shade400, width: 1),
+                      border: Border.all(
+                        color: Colors.orange.shade400,
+                        width: 1,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -906,7 +998,11 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                Icon(Icons.swipe_left_rounded, color: AppTheme.primaryColor, size: 28),
+                Icon(
+                  Icons.swipe_left_rounded,
+                  color: AppTheme.primaryColor,
+                  size: 28,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -963,7 +1059,9 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
       onSelected: (selected) {
         safeSetState(() {
           _selectedFilter = selected ? value : null;
-          if (selected) _showFavoritesOnly = false; // Deselect Favorites when another tab is chosen
+          if (selected)
+            _showFavoritesOnly =
+                false; // Deselect Favorites when another tab is chosen
         });
       },
       selectedColor: AppTheme.primaryColor, // Deep blue when selected
@@ -1055,6 +1153,25 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
             ],
           ),
         ),
+        if (_showOfflineGamesNotice)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Text(
+              'Offline mode: showing games saved on this device.',
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.orange.shade900,
+              ),
+            ),
+          ),
         // First-time: swipe to delete hint
         if (!_swipeHintSeen) _buildSwipeToDeleteHint(),
         // Games list
@@ -1065,103 +1182,37 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                   itemCount: 5,
                   itemBuilder: (context, index) => ShimmerLoading.gameCard(),
                 )
-              : FutureBuilder<List<GameModel>>(
-                  future: _getFilteredGames(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: 5,
-                        itemBuilder: (context, index) => ShimmerLoading.gameCard(),
-                      );
-                    }
-                    final filteredGames = snapshot.data ?? [];
-                    
-                    if (filteredGames.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
-                    return FutureBuilder<List<GameModel>>(
-                      future: _getRecentlyPlayedGames(),
-                      builder: (context, recentlyPlayedSnapshot) {
-                        final recentlyPlayed = recentlyPlayedSnapshot.data ?? [];
-                        final showRecentlyPlayed = recentlyPlayed.isNotEmpty && 
-                                                   _sortBy != 'recently_played' &&
-                                                   !_showFavoritesOnly &&
-                                                   _selectedFilter == null;
-
-                        return RefreshIndicator(
-                          onRefresh: () async {
-                            _gameLastPlayedDates.clear();
-                            await _loadGames(refresh: true);
-                          },
-                          child: ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-                            itemCount: filteredGames.length + 
-                                      (showRecentlyPlayed ? recentlyPlayed.length + 2 : 0) +
-                                      (_isLoadingMore ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (showRecentlyPlayed && index == 0) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.history, color: AppTheme.primaryColor, size: 20),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Recently Played',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppTheme.textDark,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-
-                              if (showRecentlyPlayed && index > 0 && index <= recentlyPlayed.length) {
-                                final game = recentlyPlayed[index - 1];
-                                return _buildDismissibleGameCard(
-                                  game: game,
-                                  padding: const EdgeInsets.only(bottom: 4),
-                                );
-                              }
-
-                              if (showRecentlyPlayed && index == recentlyPlayed.length + 1) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 6),
-                                  child: Divider(color: Colors.grey[300]),
-                                );
-                              }
-
-                              final gameIndex = showRecentlyPlayed 
-                                  ? index - recentlyPlayed.length - 2
-                                  : index;
-                              
-                              if (gameIndex >= filteredGames.length) {
-                                if (_isLoadingMore) {
-                                  return const Padding(
-                                    padding: EdgeInsets.all(16.0),
-                                    child: Center(child: CircularProgressIndicator()),
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              }
-                              
-                              if (gameIndex < 0) return const SizedBox.shrink();
-                              
-                              final game = filteredGames[gameIndex];
-                              return _buildDismissibleGameCard(
-                                game: game,
-                                padding: const EdgeInsets.only(bottom: 4),
-                              );
-                            },
-                          ),
-                        );
+              : Builder(
+                  builder: (context) {
+                    final filteredGames = _getFilteredGamesSync();
+                    if (filteredGames.isEmpty) return _buildEmptyState();
+                    return RefreshIndicator(
+                      onRefresh: () async {
+                        _gameLastPlayedDates.clear();
+                        await _loadGames(refresh: true);
                       },
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 6,
+                        ),
+                        itemCount:
+                            filteredGames.length + (_isLoadingMore ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (index >= filteredGames.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          final game = filteredGames[index];
+                          return _buildDismissibleGameCard(
+                            game: game,
+                            padding: const EdgeInsets.only(bottom: 4),
+                          );
+                        },
+                      ),
                     );
                   },
                 ),
@@ -1206,9 +1257,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => SkulMateUploadScreen(
-                      childId: widget.childId,
-                    ),
+                    builder: (context) =>
+                        SkulMateUploadScreen(childId: widget.childId),
                   ),
                 ).then((_) => _loadGames(refresh: true));
               },
@@ -1217,7 +1267,10 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -1235,9 +1288,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen> with SingleTicker
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => SkulMateUploadScreen(
-              childId: widget.childId,
-            ),
+            builder: (context) => SkulMateUploadScreen(childId: widget.childId),
           ),
         ).then((_) => _loadGames());
       },
