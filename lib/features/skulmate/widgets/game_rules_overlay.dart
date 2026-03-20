@@ -16,11 +16,13 @@ class GameRulesOverlay extends StatefulWidget {
   }) : super(key: key);
 
   /// Show rules overlay if user hasn't seen them before
-  static Future<void> showIfNeeded(
+  /// Returns `true` when the dialog was shown (first time), otherwise `false`.
+  static Future<bool> showIfNeeded(
     BuildContext context,
     GameType gameType,
-    VoidCallback onContinue,
-  ) async {
+    Future<void> Function(bool isFirstTime) onContinue, {
+    Future<void> Function()? onAfterFirstTimeDialogClosed,
+  }) async {
     final hasSeen = await GameRulesService.hasSeenRules(gameType);
     if (!hasSeen) {
       await showDialog(
@@ -31,12 +33,22 @@ class GameRulesOverlay extends StatefulWidget {
           onGotIt: () async {
             await GameRulesService.markRulesSeen(gameType);
             Navigator.pop(context);
-            onContinue();
+
+            // Ensure the dialog is fully dismissed before showing any bottom sheet.
+            await Future.delayed(Duration.zero);
+
+            if (onAfterFirstTimeDialogClosed != null) {
+              await onAfterFirstTimeDialogClosed();
+            }
+
+            await onContinue(true);
           },
         ),
       );
+      return true;
     } else {
-      onContinue();
+      await onContinue(false);
+      return false;
     }
   }
 

@@ -54,10 +54,12 @@ class GameLibraryScreen extends StatefulWidget {
 
 class _GameLibraryScreenState extends State<GameLibraryScreen>
     with SingleTickerProviderStateMixin {
+  static const Set<GameType> _comingSoonGameTypes = {GameType.diagramLabel};
   late TabController _tabController;
   List<GameModel> _games = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
+  bool _showAllGamesForList = false;
   bool _hasMore = true;
   int _currentPage = 0;
   static const int _pageSize = 20;
@@ -74,6 +76,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
       true; // After load: true = user has seen/dismissed the hint
   bool _isFetchingGames = false;
   bool _showOfflineGamesNotice = false;
+  String _cacheNoticeMessage = 'Showing saved games from this device.';
 
   static const String _prefKeySwipeHint = 'skulmate_swipe_delete_hint_seen';
 
@@ -128,10 +131,12 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
     _isFetchingGames = true;
     try {
       if (refresh) {
-        // Keep current list visible during refresh to avoid distracting flashes.
         safeSetState(() {
           _currentPage = 0;
           _hasMore = true;
+          // Show shimmer while refreshing (instead of spinner-only experience).
+          _isLoading = true;
+          _showAllGamesForList = false;
         });
       } else {
         safeSetState(() => _isLoading = true);
@@ -158,14 +163,16 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
         _hasMore = result['hasMore'] as bool;
         _currentPage = 0;
         _isLoading = false;
+        _showAllGamesForList = false;
         _showOfflineGamesNotice = fromCache;
+        _cacheNoticeMessage = fromCache
+            ? 'Showing saved games from this device. Pull down to refresh.'
+            : _cacheNoticeMessage;
       });
       if (mounted && fromCache) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text(
-              'You are offline. Showing saved games from this device.',
-            ),
+            content: Text(_cacheNoticeMessage),
             backgroundColor: Colors.orange.shade700,
             behavior: SnackBarBehavior.floating,
           ),
@@ -552,11 +559,25 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
   }
 
   void _navigateToGame(GameModel game, {bool isDailyChallenge = false}) {
+    if (_comingSoonGameTypes.contains(game.gameType)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${_getGameTypeLabel(game.gameType)} is coming soon. Choose another game type for now.',
+            style: const TextStyle(fontSize: 14),
+          ),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     if (!game.isPlayable) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'This game doesn\'t have playable content. Try generating a new one or use "Enter Text Manually".',
+            'This game doesn\'t have playable content. Please regenerate this game.',
             style: TextStyle(fontSize: 14),
           ),
           backgroundColor: Colors.orange.shade700,
@@ -636,7 +657,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
   Future<void> _deleteGameImmediate(GameModel game) async {
     try {
       await SkulMateService.deleteGame(game.id);
-      if (mounted) _loadGames(refresh: true);
+      if (mounted) await _loadGames(refresh: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -648,6 +669,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
       }
     } catch (e) {
       if (mounted) {
+        await _loadGames(refresh: true); // restore list if delete fails
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(ErrorHandler.getUserFriendlyMessage(e)),
@@ -969,13 +991,64 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
         child: Icon(Icons.delete_outline, color: Colors.white, size: 28),
       ),
       confirmDismiss: (direction) => _confirmDeleteGame(game),
-      onDismissed: (_) => _deleteGameImmediate(game),
+      onDismissed: (_) async {
+        if (mounted) {
+          // Remove immediately so Flutter won't rebuild a dismissed widget.
+          safeSetState(() {
+            _games.removeWhere((g) => g.id == game.id);
+          });
+        }
+        await _deleteGameImmediate(game);
+      },
       child: Padding(
         padding: padding,
         child: GameCard(
           game: game,
           onTap: () => _navigateToGame(game),
           onShare: () => _shareGame(game),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadPreviousGamesCard({
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Material(
+        color: AppTheme.primaryColor.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.history, color: AppTheme.primaryColor, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Load previous games',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+                Icon(Icons.chevron_right,
+                    color: AppTheme.primaryColor, size: 22),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1062,6 +1135,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
           if (selected)
             _showFavoritesOnly =
                 false; // Deselect Favorites when another tab is chosen
+          _showAllGamesForList = false;
         });
       },
       selectedColor: AppTheme.primaryColor, // Deep blue when selected
@@ -1096,6 +1170,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
       onSelected: (selected) {
         safeSetState(() {
           _showFavoritesOnly = selected;
+          _showAllGamesForList = false;
         });
       },
       selectedColor: AppTheme.primaryColor,
@@ -1164,7 +1239,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
               border: Border.all(color: Colors.orange.shade200),
             ),
             child: Text(
-              'Offline mode: showing games saved on this device.',
+              _cacheNoticeMessage,
               style: GoogleFonts.poppins(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -1193,23 +1268,47 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
                       },
                       child: ListView.builder(
                         controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 6,
+                          horizontal: 16,
+                          vertical: 4,
                         ),
-                        itemCount:
-                            filteredGames.length + (_isLoadingMore ? 1 : 0),
+                        itemCount: (() {
+                          final showLoadMoreCard =
+                              !_showAllGamesForList && filteredGames.length > 6;
+                          final visibleGamesCount =
+                              showLoadMoreCard ? 5 : filteredGames.length;
+                          final baseCount = visibleGamesCount +
+                              (showLoadMoreCard ? 1 : 0);
+                          return baseCount + (_isLoadingMore ? 1 : 0);
+                        })(),
                         itemBuilder: (context, index) {
-                          if (index >= filteredGames.length) {
+                          final showLoadMoreCard =
+                              !_showAllGamesForList && filteredGames.length > 6;
+                          final visibleGamesCount =
+                              showLoadMoreCard ? 5 : filteredGames.length;
+                          final baseCount = visibleGamesCount +
+                              (showLoadMoreCard ? 1 : 0);
+
+                          if (showLoadMoreCard && index == visibleGamesCount) {
+                            return _buildLoadPreviousGamesCard(onTap: () {
+                              safeSetState(() {
+                                _showAllGamesForList = true;
+                              });
+                            });
+                          }
+
+                          if (index >= baseCount) {
                             return const Padding(
                               padding: EdgeInsets.all(16.0),
                               child: Center(child: CircularProgressIndicator()),
                             );
                           }
+
                           final game = filteredGames[index];
                           return _buildDismissibleGameCard(
                             game: game,
-                            padding: const EdgeInsets.only(bottom: 4),
+                            padding: const EdgeInsets.only(bottom: 2),
                           );
                         },
                       ),

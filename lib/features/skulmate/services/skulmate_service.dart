@@ -68,6 +68,7 @@ class SkulMateService {
   static const String _challengeFromSessionEndpoint =
       '/skulmate/challenge/from-session';
   static const String _explainEndpoint = '/skulmate/explain';
+  static const String _pricingUsageEndpoint = '/skulmate/pricing-usage';
 
   /// Make HTTP POST request (web-aware)
   /// On web, uses dart:html for proper CORS handling with credentials
@@ -84,6 +85,42 @@ class SkulMateService {
     } else {
       // Use standard http package for mobile
       return await http.post(Uri.parse(url), headers: headers, body: body);
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchPricingUsage() async {
+    final session = SupabaseService.client.auth.currentSession;
+    final token = session?.accessToken;
+    if (token == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final url = '$_apiBaseUrl$_pricingUsageEndpoint';
+    final httpResponse = await _makePostRequest(
+      url,
+      {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      jsonEncode({}),
+    ).timeout(const Duration(seconds: 20), onTimeout: () {
+      throw Exception('Request timeout. Please try again.');
+    });
+
+    if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
+      final decoded = jsonDecode(httpResponse.body);
+      if (decoded is Map<String, dynamic>) return decoded;
+      return {};
+    }
+
+    try {
+      final decoded = jsonDecode(httpResponse.body);
+      final msg = (decoded is Map && decoded['error'] is String)
+          ? decoded['error'] as String
+          : 'Failed to load pricing';
+      throw Exception(msg);
+    } catch (_) {
+      throw Exception('Failed to load pricing');
     }
   }
 
@@ -650,29 +687,55 @@ class SkulMateService {
           .order('created_at', ascending: false)
           .range(offset, offset + limit - 1);
 
+      dynamic decodeIfJsonString(dynamic value) {
+        if (value is! String) return value;
+        final trimmed = value.trim();
+        if (trimmed.isEmpty) return value;
+        if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value;
+        try {
+          return jsonDecode(trimmed);
+        } catch (_) {
+          return value;
+        }
+      }
+
+      Map<String, dynamic>? asMap(dynamic value) {
+        final decoded = decodeIfJsonString(value);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return decoded.cast<String, dynamic>();
+        return null;
+      }
+
+      List<dynamic>? asList(dynamic value) {
+        final decoded = decodeIfJsonString(value);
+        if (decoded is List<dynamic>) return decoded;
+        if (decoded is List) return decoded.cast<dynamic>();
+        return null;
+      }
+
       final games = <GameModel>[];
       for (final gameData in response) {
-        final gameContent = gameData['skulmate_game_data'] as List<dynamic>?;
-        final List<GameItem> items = gameContent?.isNotEmpty == true
-            ? ((gameContent![0]['game_content'] as List<dynamic>?)
-                      ?.map(
-                        (item) =>
-                            GameItem.fromJson(item as Map<String, dynamic>),
-                      )
-                      .toList() ??
-                  <GameItem>[])
-            : <GameItem>[];
+        final relation = gameData['skulmate_game_data'];
+        final relationList = asList(relation);
+        final relationMap = asMap(relation);
+        final firstDataRow =
+            relationList != null && relationList.isNotEmpty
+            ? asMap(relationList.first)
+            : relationMap;
 
-        final metadata = gameContent?.isNotEmpty == true
-            ? GameMetadata.fromJson(
-                gameContent![0]['metadata'] as Map<String, dynamic>? ?? {},
-              )
-            : GameMetadata(
-                source: 'document',
-                generatedAt: DateTime.now().toIso8601String(),
-                difficulty: 'medium',
-                totalItems: 0,
-              );
+        final rawItems = asList(firstDataRow?['game_content']);
+        final items = <GameItem>[];
+        if (rawItems != null) {
+          for (final item in rawItems) {
+            final itemMap = asMap(item);
+            if (itemMap != null) {
+              items.add(GameItem.fromJson(itemMap));
+            }
+          }
+        }
+
+        final metadataMap = asMap(firstDataRow?['metadata']) ?? const <String, dynamic>{};
+        final metadata = GameMetadata.fromJson(metadataMap);
 
         games.add(
           GameModel(
@@ -805,8 +868,39 @@ class SkulMateService {
       return ExplainResult(explanation: explanation, videos: videos);
     } catch (e) {
       LogService.error('🎮 [skulMate] Error explaining flashcard: $e');
+      final error = e.toString().toLowerCase();
+      final isTransientWebFailure =
+          error.contains('cors') ||
+          error.contains('failed to fetch') ||
+          error.contains('network error') ||
+          error.contains('status: 0');
+      if (isTransientWebFailure) {
+        // Keep "Learn more" usable even when explain API is blocked by browser CORS/network.
+        return ExplainResult(
+          explanation: _buildLocalExplainFallback(
+            term: term,
+            definition: definition,
+          ),
+          videos: const [],
+        );
+      }
       rethrow;
     }
+  }
+
+  static String _buildLocalExplainFallback({
+    required String term,
+    required String definition,
+  }) {
+    final cleanTerm = term.trim().isEmpty ? 'This concept' : term.trim();
+    final cleanDefinition = definition.trim();
+    if (cleanDefinition.isEmpty) {
+      return '$cleanTerm is an important concept in this lesson. '
+          'Review the question context and compare it with related options to understand why this is the correct answer.';
+    }
+    return '$cleanTerm: $cleanDefinition\n\n'
+        'In simple terms, focus on what makes this answer the best fit for the question. '
+        'Look for keywords, contrast it with incorrect options, and connect it to the lesson idea.';
   }
 
   /// Save game session result
@@ -1051,10 +1145,32 @@ class SkulMateService {
       if (raw == null || raw.isEmpty) return const [];
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
-      return decoded
-          .whereType<Map<String, dynamic>>()
-          .map(GameModel.fromJson)
-          .toList();
+      final result = <GameModel>[];
+      for (final entry in decoded) {
+        Map<String, dynamic>? mapEntry;
+        if (entry is Map<String, dynamic>) {
+          mapEntry = entry;
+        } else if (entry is Map) {
+          mapEntry = entry.cast<String, dynamic>();
+        } else if (entry is String) {
+          try {
+            final parsed = jsonDecode(entry);
+            if (parsed is Map<String, dynamic>) {
+              mapEntry = parsed;
+            } else if (parsed is Map) {
+              mapEntry = parsed.cast<String, dynamic>();
+            }
+          } catch (_) {}
+        }
+        if (mapEntry != null) {
+          try {
+            result.add(GameModel.fromJson(mapEntry));
+          } catch (_) {
+            // Skip malformed cached rows and keep loading usable ones.
+          }
+        }
+      }
+      return result;
     } catch (e) {
       LogService.warning('🎮 [skulMate] Could not read cached games: $e');
       return const [];

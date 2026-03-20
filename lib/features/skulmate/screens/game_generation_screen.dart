@@ -1,4 +1,5 @@
 import 'dart:io' show File;
+import 'dart:async' show unawaited;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -19,14 +20,18 @@ import 'quiz_game_screen.dart';
 import 'flashcard_game_screen.dart';
 import 'matching_game_screen.dart';
 import 'fill_blank_game_screen.dart';
-import 'word_guessing_game_screen.dart';
 import 'drag_drop_game_screen.dart';
+import 'match3_game_screen.dart';
+import 'bubble_pop_game_screen.dart';
+import 'word_search_game_screen.dart';
+import 'crossword_game_screen.dart';
 import 'simulation_game_screen.dart';
 import 'mystery_game_screen.dart';
 import 'escape_room_game_screen.dart';
 import 'game_library_screen.dart';
 import 'text_input_screen.dart';
 import 'skulmate_plans_screen.dart';
+import '../services/game_sound_service.dart';
 
 /// Screen showing game generation progress
 /// Accepts either pre-uploaded URLs or files to upload (navigates here first, then uploads)
@@ -74,7 +79,6 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
     with TickerProviderStateMixin {
   bool _isGenerating = true;
   String _status = 'Generating your game...';
-  GameModel? _generatedGame;
   String? _error;
   String? _errorTitle;
   String? _errorDetails;
@@ -87,6 +91,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
   late Animation<double> _rotationAnimation;
   Animation<double>? _pulseAnimation;
   double _progress = 0.0;
+  final GameSoundService _soundService = GameSoundService();
 
   @override
   void initState() {
@@ -115,6 +120,9 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
 
     _simulateProgress();
     _generateGame();
+    // Soft BGM during generation flow.
+    unawaited(_soundService.initialize());
+    unawaited(_soundService.playResultsMusic());
   }
 
   void _simulateProgress() {
@@ -138,6 +146,7 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
 
   @override
   void dispose() {
+    unawaited(_soundService.stopMusic());
     _animationController.dispose();
     _pulseController?.dispose();
     super.dispose();
@@ -281,7 +290,6 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
       }
 
       safeSetState(() {
-        _generatedGame = game;
         _status = 'Game ready!';
       });
 
@@ -312,10 +320,22 @@ class _GameGenerationScreenState extends State<GameGenerationScreen>
             gameScreen = MatchingGameScreen(game: game);
             break;
           case GameType.fillBlank:
-            gameScreen = WordGuessingGameScreen(game: game);
+            gameScreen = FillBlankGameScreen(game: game);
             break;
           case GameType.dragDrop:
             gameScreen = DragDropGameScreen(game: game);
+            break;
+          case GameType.match3:
+            gameScreen = Match3GameScreen(game: game);
+            break;
+          case GameType.bubblePop:
+            gameScreen = BubblePopGameScreen(game: game);
+            break;
+          case GameType.wordSearch:
+            gameScreen = WordSearchGameScreen(game: game);
+            break;
+          case GameType.crossword:
+            gameScreen = CrosswordGameScreen(game: game);
             break;
           case GameType.simulation:
             gameScreen = SimulationGameScreen(game: game);

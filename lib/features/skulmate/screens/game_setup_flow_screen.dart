@@ -17,6 +17,7 @@ class GameSetupFlowScreen extends StatefulWidget {
 
 class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   static const int _totalSteps = 3;
+  static const Set<String> _comingSoonGameTypes = {'diagram_label'};
   int _currentStep = 0;
 
   final TextEditingController _topicController = TextEditingController();
@@ -53,6 +54,15 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
     {'value': 'quiz', 'label': 'Quiz', 'subtitle': 'Multiple choice', 'icon': Icons.quiz},
     {'value': 'flashcards', 'label': 'Flashcards', 'subtitle': 'Flip & learn', 'icon': Icons.style},
     {'value': 'matching', 'label': 'Matching', 'subtitle': 'Match pairs', 'icon': Icons.link},
+    {'value': 'fill_blank', 'label': 'Fill Blank', 'subtitle': 'Type missing words', 'icon': Icons.short_text},
+    {'value': 'drag_drop', 'label': 'Drag & Drop', 'subtitle': 'Move into zones', 'icon': Icons.open_with},
+    {'value': 'match3', 'label': 'Match-3', 'subtitle': 'Match 3 tiles', 'icon': Icons.grid_view},
+    {'value': 'bubble_pop', 'label': 'Bubble Pop', 'subtitle': 'Pop target bubbles', 'icon': Icons.bubble_chart},
+    {'value': 'word_search', 'label': 'Word Search', 'subtitle': 'Find hidden words', 'icon': Icons.search},
+    {'value': 'crossword', 'label': 'Crossword', 'subtitle': 'Solve clues', 'icon': Icons.view_module},
+    {'value': 'simulation', 'label': 'Simulation', 'subtitle': 'Scenario-based', 'icon': Icons.science},
+    {'value': 'mystery', 'label': 'Mystery', 'subtitle': 'Solve clues', 'icon': Icons.search},
+    {'value': 'escape_room', 'label': 'Escape Room', 'subtitle': 'Solve to progress', 'icon': Icons.meeting_room},
   ];
 
   @override
@@ -117,6 +127,32 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
         gameType: _gameType,
       ),
     );
+  }
+
+  void _onSelectGameType(String value) {
+    if (_comingSoonGameTypes.contains(value)) {
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Coming soon',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            'This game type is not ready yet. Please choose another game type.',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    setState(() => _gameType = value);
   }
 
   @override
@@ -371,57 +407,28 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
           style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
         const SizedBox(height: 14),
-        // Two rows of game type cards with icons
-        Row(
-          children: [
-            Expanded(
-              child: _GameTypeCard(
-                value: 'auto',
-                label: 'Auto',
-                subtitle: 'Surprise me',
-                icon: Icons.auto_awesome,
-                isSelected: _gameType == 'auto',
-                onTap: () => setState(() => _gameType = 'auto'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _GameTypeCard(
-                value: 'quiz',
-                label: 'Quiz',
-                subtitle: 'Multiple choice',
-                icon: Icons.quiz,
-                isSelected: _gameType == 'quiz',
-                onTap: () => setState(() => _gameType = 'quiz'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _GameTypeCard(
-                value: 'flashcards',
-                label: 'Flashcards',
-                subtitle: 'Flip & learn',
-                icon: Icons.style,
-                isSelected: _gameType == 'flashcards',
-                onTap: () => setState(() => _gameType = 'flashcards'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _GameTypeCard(
-                value: 'matching',
-                label: 'Matching',
-                subtitle: 'Match pairs',
-                icon: Icons.link,
-                isSelected: _gameType == 'matching',
-                onTap: () => setState(() => _gameType = 'matching'),
-              ),
-            ),
-          ],
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _gameTypeOptions.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.5,
+          ),
+          itemBuilder: (context, index) {
+            final option = _gameTypeOptions[index];
+            final value = option['value'] as String;
+            return _GameTypeCard(
+              value: value,
+              label: option['label'] as String,
+              subtitle: option['subtitle'] as String,
+              icon: option['icon'] as IconData,
+              isSelected: _gameType == value,
+              onTap: () => _onSelectGameType(value),
+            );
+          },
         ),
       ],
     );

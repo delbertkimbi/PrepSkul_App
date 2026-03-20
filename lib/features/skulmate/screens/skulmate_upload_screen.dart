@@ -4,9 +4,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
+import 'package:prepskul/core/services/supabase_service.dart';
 import 'dart:io' show File;
 import 'dart:typed_data';
 import '../services/game_stats_service.dart';
@@ -19,6 +21,7 @@ import 'skulmate_plans_screen.dart';
 import '../widgets/photo_upload_bottom_sheet.dart';
 import '../widgets/generation_context_sheet.dart';
 import 'game_setup_flow_screen.dart';
+import '../services/skulmate_service.dart';
 
 /// Screen for uploading notes/documents to create games
 class SkulMateUploadScreen extends StatefulWidget {
@@ -39,12 +42,18 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   List<String> _selectedFileNames = [];
   GameStats? _gameStats;
   int _creditsBalance = 0;
+  int _todayFreeDocTextUsed = 0;
+  int _todayFreeDocTextLimit = 2;
+  int _todayFreeImageUsed = 0;
+  int _todayFreeImageLimit = 4;
+  bool _hasShownLimitDialogThisSession = false;
 
   @override
   void initState() {
     super.initState();
     _loadGameStats();
     _loadCreditsBalance();
+    _loadPricingUsage();
   }
 
   Future<void> _loadGameStats() async {
@@ -70,12 +79,104 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     }
   }
 
+  Future<void> _loadPricingUsage() async {
+    try {
+      final data = await SkulMateService.fetchPricingUsage();
+      final today = (data['today'] as Map?)?.cast<String, dynamic>() ?? const {};
+      if (!mounted) return;
+      safeSetState(() {
+        _todayFreeDocTextUsed = (today['freeDocTextUsed'] as num?)?.toInt() ?? 0;
+        _todayFreeDocTextLimit =
+            (today['freeDocTextLimit'] as num?)?.toInt() ?? _todayFreeDocTextLimit;
+        _todayFreeImageUsed = (today['freeImageUsed'] as num?)?.toInt() ?? 0;
+        _todayFreeImageLimit =
+            (today['freeImageLimit'] as num?)?.toInt() ?? _todayFreeImageLimit;
+      });
+      await _maybeShowInitialPricingGuide();
+    } catch (_) {
+      // Silent fail; UI can still work with defaults.
+    }
+  }
+
+  Future<void> _maybeShowInitialPricingGuide() async {
+    try {
+      final userId = SupabaseService.client.auth.currentUser?.id;
+      if (userId == null || !mounted) return;
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'skulmate_pricing_intro_seen_$userId';
+      final alreadySeen = prefs.getBool(key) ?? false;
+      if (alreadySeen || !mounted) return;
+      await prefs.setBool(key, true);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'SkulMate credits & free usage',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          content: Text(
+            'You get $_todayFreeDocTextLimit free document/text game(s) and $_todayFreeImageLimit free image game(s) per day. '
+            'After that, generation uses credits. You can view plans any time.',
+            style: GoogleFonts.poppins(fontSize: 14, height: 1.4),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Got it', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _openPlansScreen();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+              ),
+              child: Text(
+                'View plans',
+                style: GoogleFonts.poppins(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {}
+  }
+
+  bool get _isDocTextFreeExhausted => _todayFreeDocTextUsed >= _todayFreeDocTextLimit;
+  bool get _isImageFreeExhausted => _todayFreeImageUsed >= _todayFreeImageLimit;
+
+  SkulmateSourceType? get _currentSelectionSourceType {
+    if (_selectedImages.isNotEmpty) return SkulmateSourceType.image;
+    if (_selectedFiles.isNotEmpty || _selectedFilesWeb.isNotEmpty) {
+      return SkulmateSourceType.text;
+    }
+    return null;
+  }
+
+  bool get _isCurrentSelectionHardBlockedByLimit {
+    final sourceType = _currentSelectionSourceType;
+    if (sourceType == null) return false;
+    final freeExhausted = sourceType == SkulmateSourceType.image
+        ? _isImageFreeExhausted
+        : _isDocTextFreeExhausted;
+    return freeExhausted && _creditsBalance <= 0;
+  }
+
   @override
   void dispose() {
     super.dispose();
   }
 
   Future<void> _pickDocument() async {
+    if (_isDocTextFreeExhausted && _creditsBalance <= 0) {
+      await _showLimitReachedDialog(SkulmateSourceType.text);
+      return;
+    }
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -119,6 +220,10 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   }
 
   Future<void> _showPhotoOptions() async {
+    if (_isImageFreeExhausted && _creditsBalance <= 0) {
+      await _showLimitReachedDialog(SkulmateSourceType.image);
+      return;
+    }
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
       builder: (context) => PhotoUploadBottomSheet(),
@@ -508,6 +613,11 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
     if (!mounted) return;
 
+    // Always refresh latest usage/balance before access gating.
+    await _loadPricingUsage();
+    await _loadCreditsBalance();
+    if (!mounted) return;
+
     final totalBytes = await _getTotalSelectionSizeBytes();
     if (totalBytes > _maxUploadBytes) {
       if (mounted) {
@@ -525,10 +635,19 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
       return;
     }
 
+    final selectedSourceType = _selectedImages.isNotEmpty
+        ? SkulmateSourceType.image
+        : SkulmateSourceType.text;
+    final freeExhausted = selectedSourceType == SkulmateSourceType.image
+        ? _isImageFreeExhausted
+        : _isDocTextFreeExhausted;
+    if (freeExhausted && _creditsBalance <= 0) {
+      await _showLimitReachedDialog(selectedSourceType);
+      return;
+    }
+
     final access = await SkulmateAccessService.checkGenerationAccess(
-      sourceType: _selectedImages.isNotEmpty
-          ? SkulmateSourceType.image
-          : SkulmateSourceType.text,
+      sourceType: selectedSourceType,
     );
     if (!access.canProceed && mounted) {
       await showDialog<void>(
@@ -599,12 +718,58 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         ),
       ),
     );
+
+    // Refresh usage/balance after generation flow returns.
+    await _loadPricingUsage();
+    await _loadCreditsBalance();
   }
 
   Future<void> _openPlansScreen() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const SkulmatePlansScreen()),
+    );
+  }
+
+  Future<void> _showLimitReachedDialog(SkulmateSourceType sourceType) async {
+    if (_hasShownLimitDialogThisSession || !mounted) return;
+    _hasShownLimitDialogThisSession = true;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Daily free limit reached',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          sourceType == SkulmateSourceType.image
+              ? 'You have used all your free image generations for today. Get credits to continue now.'
+              : 'You have used all your free document/text generations for today. Get credits to continue now.',
+          style: GoogleFonts.poppins(fontSize: 14, height: 1.35),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Not now', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _openPlansScreen();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+            ),
+            child: Text(
+              'See plans',
+              style: GoogleFonts.poppins(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -785,7 +950,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Each day includes free games (2 document/text, 4 image). After that, games use your credits.',
+                          'Today: ${_todayFreeDocTextUsed}/${_todayFreeDocTextLimit} doc/text free, '
+                          '${_todayFreeImageUsed}/${_todayFreeImageLimit} image free. '
+                          'After that, games use your credits.',
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             color: AppTheme.textMedium,
@@ -816,6 +983,38 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            if (_isDocTextFreeExhausted || _isImageFreeExhausted)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFF59E0B)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline, color: Color(0xFFB45309), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _isDocTextFreeExhausted && _isImageFreeExhausted
+                            ? 'Your free daily doc/text and image generations are finished. New games will use credits.'
+                            : _isImageFreeExhausted
+                                ? 'Your free daily image generations are finished. New image games will use credits.'
+                                : 'Your free daily document/text generations are finished. New doc/text games will use credits.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.5,
+                          color: const Color(0xFF7C2D12),
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             // Selected files/images - shown first when user has made a selection
             if (hasSelection) ...[
@@ -1176,7 +1375,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _uploadAndGenerate,
+                onPressed: _isCurrentSelectionHardBlockedByLimit
+                    ? null
+                    : _uploadAndGenerate,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
@@ -1196,7 +1397,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Generate Game',
+                      _isCurrentSelectionHardBlockedByLimit
+                          ? 'Daily limit reached'
+                          : 'Generate Game',
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

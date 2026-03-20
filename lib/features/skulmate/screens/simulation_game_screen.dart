@@ -50,6 +50,7 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
     );
@@ -92,6 +93,7 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
 
   @override
   void dispose() {
+    unawaited(_soundService.stopMusic());
     _progressController.dispose();
     _confettiController.dispose();
     super.dispose();
@@ -235,7 +237,8 @@ class _SimulationGameScreenState extends State<SimulationGameScreen>
       );
     }
 
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
 
     // Navigate to results screen
     if (mounted) {

@@ -889,8 +889,8 @@ class PushNotificationService {
         _streakReminderId,
         'Don\'t lose your streak!',
         streakCount > 0
-            ? 'You\'ve got a $streakCount day streak. Play one game to keep it going!'
-            : 'Play a game to keep your streak going!',
+            ? 'You\'ve got a $streakCount day streak. Play your daily challenge, or create a new quiz to unlock one.'
+            : 'Play your daily challenge, or create a new quiz to unlock one.',
         scheduled,
         const NotificationDetails(android: androidDetails, iOS: iosDetails),
         uiLocalNotificationDateInterpretation:

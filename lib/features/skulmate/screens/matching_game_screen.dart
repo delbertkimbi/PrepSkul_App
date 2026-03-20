@@ -77,6 +77,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     _startTime = DateTime.now();
     // Initialize sound and TTS early so they're ready on first flip
     _soundService.ensureInitialized();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _ttsService.ensureInitialized();
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
@@ -153,6 +154,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   @override
   void dispose() {
     _matchFlyerTimer?.cancel();
+    unawaited(_soundService.stopMusic());
     for (final controller in _flipControllers.values) {
       controller.dispose();
     }
@@ -176,7 +178,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _moves++;
       });
       _flipControllers[index]?.forward();
-      _soundService.playCardFlip();
+      _soundService.playFlip();
       // Speak card text
       if (_isTTSEnabled) {
         _ttsService.speak(_cards[index].text);
@@ -189,7 +191,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _isProcessing = true;
       });
       _flipControllers[index]?.forward();
-      _soundService.playCardFlip();
+      _soundService.playFlip();
       // Speak card text
       if (_isTTSEnabled) {
         _ttsService.speak(_cards[index].text);
@@ -222,6 +224,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     if (isMatch) {
       // Correct match!
       _soundService.playCorrect();
+      _soundService.playMatch();
       if (_isTTSEnabled) {
         _ttsService.speak(_buildMatchSentence(card1, card2));
       }
@@ -302,7 +305,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
     _flipControllers[idx1]?.forward();
     _flipControllers[idx2]?.forward();
-    _soundService.playCardFlip();
+    _soundService.playFlip();
     if (_isTTSEnabled) {
       _ttsService.speak('Hint used. Try matching these two cards.');
     }
@@ -481,6 +484,83 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                         if (mounted) safeSetState(() {});
                       },
                     ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SFX volume: ${(_soundService.soundsVolume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _soundService.soundsVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _soundService.soundsEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _soundService.setSoundsVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Music', style: GoogleFonts.poppins()),
+                      value: _soundService.musicEnabled,
+                      onChanged: (v) async {
+                        await _soundService.toggleMusic(v);
+                        if (v) {
+                          await _soundService.playMusicForGame(
+                            widget.game.gameType,
+                          );
+                        }
+                        modalSetState(() {});
+                        if (mounted) safeSetState(() {});
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Music volume: ${(_soundService.musicVolume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _soundService.musicVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _soundService.musicEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _soundService.setMusicVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
@@ -493,6 +573,37 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                         modalSetState(() => _isTTSEnabled = v);
                         if (mounted) safeSetState(() => _isTTSEnabled = v);
                       },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voice volume: ${(_ttsService.volume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _ttsService.volume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _isTTSEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _ttsService.setVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -566,7 +677,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     );
 
     // Play completion sound
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -773,12 +885,14 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                           child: GridView.builder(
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: _cards.length <= 8 ? 2 : 3,
-                                  crossAxisSpacing: 10,
-                                  mainAxisSpacing: 10,
-                                  childAspectRatio: _cards.length <= 8
-                                      ? 0.84
-                                      : 0.88,
+                                  crossAxisCount: _cards.length <= 6
+                                      ? 2
+                                      : (_cards.length <= 12 ? 3 : 4),
+                                  crossAxisSpacing: 6,
+                                  mainAxisSpacing: 6,
+                                  childAspectRatio: _cards.length <= 6
+                                      ? 0.78
+                                      : (_cards.length <= 12 ? 0.85 : 0.92),
                                 ),
                             itemCount: _cards.length,
                             itemBuilder: (context, index) {
@@ -822,7 +936,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 colors: const [
                   AppTheme.accentGreen,
                   AppTheme.primaryColor,
-                  AppTheme.skyBlue,
+                  Color(0xFF0A2D67),
                   AppTheme.softYellow,
                   AppTheme.accentPurple,
                   Colors.white,
@@ -971,22 +1085,31 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       decoration: BoxDecoration(
         gradient: isMatched
             ? const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
                 colors: [Color(0xFF2DBE62), Color(0xFF1E8E4D)],
               )
-            : null,
-        color: isMatched ? null : const Color(0xFF0A2D67),
-        borderRadius: BorderRadius.circular(14),
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFF0C3574),
+                  const Color(0xFF0A2D67),
+                  if (isSelected) const Color(0xFF13458F),
+                ],
+              ),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isMatched
               ? Colors.white
-              : const Color(0xFF1E5AAE).withOpacity(0.95),
-          width: isMatched ? 1.6 : 1.2,
+              : const Color(0xFF275AA2).withOpacity(0.95),
+          width: isMatched ? 1.6 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.26),
-            blurRadius: 12,
-            offset: const Offset(0, 5),
+            color: const Color(0xFF072552).withOpacity(isSelected ? 0.48 : 0.34),
+            blurRadius: isSelected ? 15 : 12,
+            offset: const Offset(4, 6),
           ),
         ],
       ),
@@ -995,7 +1118,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
             ? const Icon(Icons.check_circle, color: Colors.white, size: 36)
             : Icon(
                 isSelected ? Icons.radio_button_checked : Icons.help_outline,
-                color: Colors.white.withOpacity(0.96),
+                color: Colors.white.withOpacity(0.95),
                 size: 34,
               ),
       ),
@@ -1005,29 +1128,35 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   Widget _buildCardFront(CardData card, bool isMatched, double rotationAngle) {
     // Front of the card should stay clean white whether the pair is correct
     // or not. We only vary the border subtlely for matched cards.
-    final showExcitedBlue = false;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        gradient: null,
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFFFFFFF),
+            const Color(0xFFF4F8FF),
+            if (isMatched) const Color(0xFFE9F1FF),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isMatched
-              ? const Color(0xFF0A2D67)
-              : const Color(0xFF69A6FF).withOpacity(0.9),
-          width: isMatched ? 1.8 : 1.35,
+              ? const Color(0xFF0A2D67).withOpacity(0.9)
+              : AppTheme.primaryColor.withOpacity(0.55),
+          width: isMatched ? 1.7 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.9),
-            blurRadius: 7,
-            offset: const Offset(-2, -2),
+            color: Colors.white.withOpacity(0.55),
+            blurRadius: 8,
+            offset: const Offset(-3, -3),
           ),
           BoxShadow(
-            color: const Color(0xFF123F87).withOpacity(0.12),
-            blurRadius: 10,
-            offset: const Offset(2, 4),
+            color: const Color(0xFF9EB7DE).withOpacity(0.22),
+            blurRadius: 11,
+            offset: const Offset(4, 6),
           ),
         ],
       ),
@@ -1040,7 +1169,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           child: Text(
             card.text,
             style: GoogleFonts.poppins(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),

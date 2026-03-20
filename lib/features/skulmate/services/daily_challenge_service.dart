@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_model.dart';
 import '../../../core/services/log_service.dart';
@@ -8,6 +9,9 @@ class DailyChallengeService {
   static const String _keyPrefix = 'daily_challenge_';
   static const String _keyCompletedPrefix = 'daily_completed_';
   static const String _keyStreakPrefix = 'daily_streak_';
+  static const String _keyHiddenPrefix = 'daily_hidden_';
+  static const String _keyRecentChallengesPrefix = 'daily_recent_challenges_';
+  static const String _keyTodayChallengeIdPrefix = 'daily_today_challenge_id_';
 
   /// Storage key for completion (date + childId so parent/child are separate).
   static String _completionKey(String dateYmd, [String? childId]) {
@@ -20,23 +24,107 @@ class DailyChallengeService {
     return '$_keyStreakPrefix$suffix';
   }
 
-  /// Current date as YYYY-MM-DD (UTC) for consistent keys.
+  /// Current date as YYYY-MM-DD in local time (matches user day boundaries).
   static String _todayYmd() {
-    final now = DateTime.now().toUtc();
+    final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
-  /// Pick today's challenge game from [games]. Prefers quiz (playable); deterministic by date.
-  /// Returns null if no playable quiz (or no games).
-  static GameModel? getTodayChallengeGame(List<GameModel> games, {String? childId}) {
+  static String _hiddenKey(String dateYmd, [String? childId]) {
+    final suffix = childId ?? 'me';
+    return '$_keyHiddenPrefix${dateYmd}_$suffix';
+  }
+
+  static String _todayChallengeIdKey([String? childId]) {
+    final suffix = childId ?? 'me';
+    return '$_keyTodayChallengeIdPrefix$suffix';
+  }
+
+  static String _recentChallengesKey([String? childId]) {
+    final suffix = childId ?? 'me';
+    return '$_keyRecentChallengesPrefix$suffix';
+  }
+
+  static DateTime? _parseYmd(String ymd) {
+    final parts = ymd.split('-');
+    if (parts.length != 3) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null) return null;
+    return DateTime(y, m, d);
+  }
+
+  /// Pick today's challenge game from [games], avoiding repeats from last 14 days.
+  /// Returns null if no valid challenge is available, so UI can prompt the user
+  /// to create a new quiz game.
+  static Future<GameModel?> getTodayChallengeGame(
+    List<GameModel> games, {
+    String? childId,
+  }) async {
     final playableQuizzes = games
         .where((g) => g.gameType == GameType.quiz && g.isPlayable && (g.items.length) >= 3)
         .toList();
     if (playableQuizzes.isEmpty) return null;
 
-    final seed = _todayYmd().hashCode + (childId ?? 'me').hashCode;
-    final index = seed.abs() % playableQuizzes.length;
-    return playableQuizzes[index];
+    final today = _todayYmd();
+    final prefs = await SharedPreferences.getInstance();
+    final suffix = childId ?? 'me';
+
+    // Keep today's pick stable once selected.
+    final pinned = prefs.getString(_todayChallengeIdKey(childId));
+    if (pinned != null && pinned.isNotEmpty) {
+      try {
+        final pinnedParts = pinned.split('|');
+        if (pinnedParts.length == 2 && pinnedParts[0] == today) {
+          final pinnedId = pinnedParts[1];
+          for (final game in playableQuizzes) {
+            if (game.id == pinnedId) return game;
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Load and prune recent challenge history (rolling 14 days).
+    final rawHistory = prefs.getString(_recentChallengesKey(childId));
+    final history = <String, String>{};
+    if (rawHistory != null && rawHistory.isNotEmpty) {
+      try {
+        final dynamic decoded = jsonDecode(rawHistory);
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final key = entry.key.toString();
+            final value = entry.value?.toString() ?? '';
+            if (value.isNotEmpty) history[key] = value;
+          }
+        }
+      } catch (_) {}
+    }
+
+    final cutoff = DateTime.now().subtract(const Duration(days: 14));
+    history.removeWhere((k, _) {
+      final parsed = _parseYmd(k);
+      return parsed == null || parsed.isBefore(DateTime(cutoff.year, cutoff.month, cutoff.day));
+    });
+
+    final recentIds = history.values.toSet();
+    final eligible = playableQuizzes.where((g) => !recentIds.contains(g.id)).toList();
+    if (eligible.isEmpty) {
+      await prefs.setString(_recentChallengesKey(childId), jsonEncode(history));
+      await prefs.remove(_todayChallengeIdKey(childId));
+      LogService.info(
+        'Daily challenge: no eligible game for $suffix (all used in last 14 days)',
+      );
+      return null;
+    }
+
+    final seed = today.hashCode + suffix.hashCode;
+    final index = seed.abs() % eligible.length;
+    final selected = eligible[index];
+    history[today] = selected.id;
+    await prefs.setString(_recentChallengesKey(childId), jsonEncode(history));
+    await prefs.setString(_todayChallengeIdKey(childId), '$today|${selected.id}');
+    return selected;
   }
 
   /// Mark today's daily challenge as completed for this user/child.
@@ -66,8 +154,24 @@ class DailyChallengeService {
   }
 
   static String _yesterdayYmd() {
-    final t = DateTime.now().toUtc().subtract(const Duration(days: 1));
+    final t = DateTime.now().subtract(const Duration(days: 1));
     return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+  }
+
+  static Future<void> hideForToday({String? childId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hiddenKey(_todayYmd(), childId), true);
+    } catch (_) {}
+  }
+
+  static Future<bool> isHiddenToday({String? childId}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_hiddenKey(_todayYmd(), childId)) ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Whether the user has completed today's daily challenge.

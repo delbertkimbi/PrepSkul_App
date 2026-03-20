@@ -784,7 +784,7 @@ class _BookingPaymentScreenState extends State<BookingPaymentScreen> {
               child: Align(
                 alignment: Alignment.topCenter,
                 child: ConfettiWidget(
-                  confettiController: confettiController,
+                  confettiController: _confettiController,
                   blastDirection: 3.14 / 2, // Upward
                   maxBlastForce: 8,
                   minBlastForce: 3,

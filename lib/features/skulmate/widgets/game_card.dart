@@ -143,8 +143,9 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+    final accentColor = _accentColorForGameType(widget.game.gameType);
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
         color: AppTheme.softCard,
         borderRadius: BorderRadius.circular(12),
@@ -179,12 +180,12 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(0.08),
+                          color: accentColor.withOpacity(0.08),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
                           _gameIcon,
-                          color: AppTheme.primaryColor,
+                          color: accentColor,
                           size: 20,
                         ),
                       ),
@@ -216,7 +217,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withOpacity(0.08),
+                            color: accentColor.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -224,7 +225,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                             style: GoogleFonts.poppins(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
-                              color: AppTheme.primaryColor,
+                              color: accentColor,
                             ),
                           ),
                         ),
@@ -337,7 +338,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                       child: Icon(
                         _isFavorite ? Icons.favorite : Icons.favorite_border,
                         size: 22,
-                        color: _isFavorite ? AppTheme.primaryColor : AppTheme.textMedium,
+                      color: _isFavorite ? accentColor : AppTheme.textMedium,
                       ),
                     ),
                   ),
@@ -372,6 +373,39 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         return Colors.red;
       default:
         return AppTheme.textMedium;
+    }
+  }
+
+  Color _accentColorForGameType(GameType type) {
+    switch (type) {
+      case GameType.quiz:
+        return AppTheme.accentPurple;
+      case GameType.flashcards:
+        return AppTheme.accentOrange;
+      case GameType.matching:
+        return AppTheme.skyBlue;
+      case GameType.fillBlank:
+        return AppTheme.accentGreen;
+      case GameType.match3:
+        return AppTheme.accentPurple;
+      case GameType.bubblePop:
+        return AppTheme.accentPink;
+      case GameType.wordSearch:
+        return AppTheme.accentBlue;
+      case GameType.crossword:
+        return AppTheme.accentOrange;
+      case GameType.diagramLabel:
+        return AppTheme.accentPink;
+      case GameType.dragDrop:
+        return AppTheme.accentGreen;
+      case GameType.puzzlePieces:
+        return AppTheme.accentOrange;
+      case GameType.simulation:
+        return AppTheme.accentPurple;
+      case GameType.mystery:
+        return AppTheme.accentPink;
+      case GameType.escapeRoom:
+        return AppTheme.skyBlue;
     }
   }
 

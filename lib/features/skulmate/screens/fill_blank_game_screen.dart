@@ -62,6 +62,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
     );
@@ -208,6 +209,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   @override
   void dispose() {
     _questionTimer?.cancel();
+    unawaited(_soundService.stopMusic());
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -430,7 +432,8 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     );
 
     // Play completion sound
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
 
     if (mounted) {
       Navigator.pushReplacement(

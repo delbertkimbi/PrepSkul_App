@@ -45,6 +45,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
   final TextEditingController _topicController = TextEditingController();
   String? _practiceType;
   String _gameType = 'auto';
+  static const Set<String> _comingSoonGameTypes = {'diagram_label'};
 
   static const List<Map<String, String?>> _practiceOptions = [
     {'value': 'easy', 'label': 'Easy – Definitions', 'emoji': '📖'},
@@ -58,6 +59,15 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
     {'value': 'quiz', 'label': 'Quiz', 'emoji': '❓'},
     {'value': 'flashcards', 'label': 'Flashcards', 'emoji': '🃏'},
     {'value': 'matching', 'label': 'Matching', 'emoji': '🔗'},
+    {'value': 'fill_blank', 'label': 'Fill Blank', 'emoji': '✍️'},
+    {'value': 'drag_drop', 'label': 'Drag & Drop', 'emoji': '🧩'},
+    {'value': 'match3', 'label': 'Match-3', 'emoji': '🟦'},
+    {'value': 'bubble_pop', 'label': 'Bubble Pop', 'emoji': '🫧'},
+    {'value': 'word_search', 'label': 'Word Search', 'emoji': '🔎'},
+    {'value': 'crossword', 'label': 'Crossword', 'emoji': '🧠'},
+    {'value': 'simulation', 'label': 'Simulation', 'emoji': '🧪'},
+    {'value': 'mystery', 'label': 'Mystery', 'emoji': '🕵️'},
+    {'value': 'escape_room', 'label': 'Escape Room', 'emoji': '🚪'},
   ];
 
   @override
@@ -111,6 +121,32 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
 
   void _onSkip() {
     Navigator.pop(context, null);
+  }
+
+  void _onSelectGameType(String value) {
+    if (_comingSoonGameTypes.contains(value)) {
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Coming soon',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            'This game type is not ready yet. Please choose another game type.',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    setState(() => _gameType = value);
   }
 
   @override
@@ -283,7 +319,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                       ),
                     ),
                     onSelected: (_) {
-                      setState(() => _gameType = value);
+                      _onSelectGameType(value);
                     },
                     selectedColor: AppTheme.primaryColor,
                     backgroundColor: AppTheme.softBackground,

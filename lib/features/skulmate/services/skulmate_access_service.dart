@@ -1,4 +1,5 @@
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'skulmate_service.dart';
 
 enum SkulmateSourceType { text, image }
 
@@ -30,37 +31,51 @@ class SkulmateAccessService {
       );
     }
 
-    final freeLimit = sourceType == SkulmateSourceType.image
+    int freeLimit = sourceType == SkulmateSourceType.image
         ? _freeImagePerDay
         : _freeDocTextPerDay;
-
-    final nowUtc = DateTime.now().toUtc();
-    final dayStartUtc = DateTime.utc(
-      nowUtc.year,
-      nowUtc.month,
-      nowUtc.day,
-    ).toIso8601String();
-
     int freeUsed = 0;
     try {
-      var query = SupabaseService.client
-          .from('skulmate_usage_events')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('event_type', 'generate_game')
-          .eq('success', true)
-          .gte('created_at', dayStartUtc)
-          .contains('metadata', {'billing_mode': 'free'});
-      if (sourceType == SkulmateSourceType.image) {
-        query = query.eq('source_type', 'image');
-      } else {
-        query = query.inFilter('source_type', ['text', 'pdf', 'docx']);
+      final data = await SkulMateService.fetchPricingUsage();
+      final today = (data['today'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final freeDocLimit = (today['freeDocTextLimit'] as num?)?.toInt();
+      final freeImageLimit = (today['freeImageLimit'] as num?)?.toInt();
+      if (freeDocLimit != null && freeDocLimit >= 0) {
+        freeLimit = freeDocLimit;
       }
-      final rows = await query;
-      freeUsed = (rows as List).length;
+      if (sourceType == SkulmateSourceType.image &&
+          freeImageLimit != null &&
+          freeImageLimit >= 0) {
+        freeLimit = freeImageLimit;
+      }
+      freeUsed = sourceType == SkulmateSourceType.image
+          ? (today['freeImageUsed'] as num?)?.toInt() ?? 0
+          : (today['freeDocTextUsed'] as num?)?.toInt() ?? 0;
     } catch (_) {
-      // Do not block users if telemetry read fails.
-      freeUsed = 0;
+      // Fallback to local counting so access checks still work.
+      final nowUtc = DateTime.now().toUtc();
+      final dayStartUtc = DateTime.utc(
+        nowUtc.year,
+        nowUtc.month,
+        nowUtc.day,
+      ).toIso8601String();
+      try {
+        var query = SupabaseService.client
+            .from('skulmate_games')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('is_deleted', false)
+            .gte('created_at', dayStartUtc);
+        if (sourceType == SkulmateSourceType.image) {
+          query = query.eq('source_type', 'image');
+        } else {
+          query = query.inFilter('source_type', ['text', 'pdf', 'docx']);
+        }
+        final rows = await query;
+        freeUsed = (rows as List).length;
+      } catch (_) {
+        freeUsed = 0;
+      }
     }
 
     if (freeUsed < freeLimit) {
@@ -100,7 +115,7 @@ class SkulmateAccessService {
         canProceed: false,
         needsPlan: true,
         message:
-            'You already used your 4 free image generations today. Choose a plan to continue now.',
+            'You already used your free image generations today. Choose a plan to continue now.',
       );
     }
 
@@ -108,7 +123,7 @@ class SkulmateAccessService {
       canProceed: false,
       needsPlan: true,
       message:
-          'You already used your 2 free document/text generations today. Choose a plan to continue now.',
+          'You already used your free document/text generations today. Choose a plan to continue now.',
     );
   }
 }

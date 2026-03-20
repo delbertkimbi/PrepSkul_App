@@ -1,6 +1,6 @@
+/// Model for skulMate game data
 import 'dart:convert';
 
-/// Model for skulMate game data
 class GameModel {
   final String id;
   final String userId;
@@ -63,7 +63,12 @@ class GameModel {
         }
         return items.any((i) => (i.diagramLabels ?? []).isNotEmpty);
       case GameType.quiz:
-        return items.any((i) => (i.options ?? []).isNotEmpty);
+        return items.any(
+          (i) =>
+              (i.options ?? []).isNotEmpty ||
+              (((i.dragItems ?? []).isNotEmpty) && ((i.dropZones ?? []).isNotEmpty)) ||
+              ((i.blankText ?? '').isNotEmpty),
+        );
       case GameType.flashcards:
         return items.any((i) => ((i.term ?? '').isNotEmpty) && ((i.definition ?? '').isNotEmpty));
       case GameType.matching:
@@ -71,14 +76,53 @@ class GameModel {
       case GameType.fillBlank:
         return items.any((i) => (i.blankText ?? '').isNotEmpty);
       case GameType.dragDrop:
-        // Drag & Drop screen shows "Implementation coming soon" - treat as not playable
-        return false;
+        return items.any(
+          (i) => (i.dragItems ?? []).isNotEmpty && (i.dropZones ?? []).isNotEmpty,
+        );
       case GameType.match3:
+        return items.any((i) => (i.gridData ?? []).isNotEmpty || (i.words ?? []).isNotEmpty);
       case GameType.bubblePop:
+        return items.any((i) => (i.bubbles ?? []).isNotEmpty || (i.words ?? []).isNotEmpty);
       case GameType.wordSearch:
+        return items.any((i) =>
+            (i.words ?? []).isNotEmpty ||
+            (i.gridData ?? []).isNotEmpty ||
+            ((i.gameData?['words'] as List?)?.isNotEmpty ?? false) ||
+            ((i.gameData?['gridData'] as List?)?.isNotEmpty ?? false) ||
+            ((i.gameData?['grid'] as List?)?.isNotEmpty ?? false) ||
+            ((i.gameData?['board'] as List?)?.isNotEmpty ?? false));
       case GameType.crossword:
+        return items.any((i) =>
+            (i.clues ?? []).isNotEmpty ||
+            ((i.gameData?['clues'] as List?)?.isNotEmpty ?? false) ||
+            ((i.gameData?['clueList'] as List?)?.isNotEmpty ?? false));
       case GameType.puzzlePieces:
-        return false;
+        return items.any((i) => (i.puzzlePieces ?? []).isNotEmpty);
+      case GameType.simulation:
+        return items.any(
+          (i) =>
+              (i.scenarios ?? []).isNotEmpty ||
+              (i.gameData != null && i.gameData!.isNotEmpty) ||
+              ((i.question ?? '').trim().isNotEmpty),
+        );
+      case GameType.mystery:
+        return items.any(
+          (i) =>
+              (i.mysteryClues ?? []).isNotEmpty ||
+              ((i.solution ?? '').trim().isNotEmpty) ||
+              (i.gameData != null &&
+                  (((i.gameData!['clues'] as List?)?.isNotEmpty ?? false) ||
+                      ((i.gameData!['solution'] as String?)?.trim().isNotEmpty ??
+                          false))) ||
+              ((i.question ?? '').trim().isNotEmpty),
+        );
+      case GameType.escapeRoom:
+        return items.any(
+          (i) =>
+              (i.rooms ?? []).isNotEmpty ||
+              (i.gameData != null && i.gameData!.isNotEmpty) ||
+              ((i.question ?? '').trim().isNotEmpty),
+        );
       default:
         return items.any((i) => (i.options ?? []).isNotEmpty || ((i.question ?? '').trim().isNotEmpty));
     }
@@ -153,6 +197,9 @@ enum GameType {
       case 'simulation':
         return GameType.simulation;
       case 'mystery':
+      case 'story':
+      case 'story_game':
+      case 'storymode':
         return GameType.mystery;
       case 'escape_room':
       case 'escaperoom':
@@ -258,75 +305,169 @@ class GameItem {
   });
 
   factory GameItem.fromJson(Map<String, dynamic> json) {
+    dynamic decodeIfJsonString(dynamic value) {
+      if (value is! String) return value;
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return value;
+      if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return value;
+      try {
+        return jsonDecode(trimmed);
+      } catch (_) {
+        return value;
+      }
+    }
+
+    List<String>? parseStringList(dynamic raw) {
+      final decoded = decodeIfJsonString(raw);
+      if (decoded == null) return null;
+      if (decoded is! List) return null;
+      final out = <String>[];
+      for (final e in decoded) {
+        if (e == null) continue;
+        if (e is String) {
+          final s = e.trim();
+          if (s.isNotEmpty) out.add(s);
+          continue;
+        }
+        if (e is Map) {
+          final candidate = (e['text'] ?? e['word'] ?? e['value'] ?? '').toString().trim();
+          if (candidate.isNotEmpty) out.add(candidate);
+          continue;
+        }
+        final s = e.toString().trim();
+        if (s.isNotEmpty) out.add(s);
+      }
+      return out.isEmpty ? null : out;
+    }
+
+    List<List<String>>? parseGridData(dynamic raw) {
+      final decoded = decodeIfJsonString(raw);
+      if (decoded == null) return null;
+      if (decoded is! List) return null;
+      try {
+        final grid = decoded
+            .map((row) {
+              if (row is! List) return <String>[];
+              return row
+                  .map((cell) => cell?.toString().trim() ?? '')
+                  .toList();
+            })
+            .toList();
+        return grid;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    List<Map<String, dynamic>>? parseMapList(dynamic raw) {
+      final decoded = decodeIfJsonString(raw);
+      if (decoded == null) return null;
+      if (decoded is! List) return null;
+      final out = <Map<String, dynamic>>[];
+      for (final e in decoded) {
+        if (e is Map) out.add(e.cast<String, dynamic>());
+      }
+      return out.isEmpty ? null : out;
+    }
+
     // Support multiple API key formats for flashcards
-    final term = json['term'] as String? ?? json['front'] as String? ?? json['word'] as String? ?? json['prompt'] as String?;
-    final definition = json['definition'] as String? ?? json['back'] as String? ?? json['meaning'] as String? ?? json['answer'] as String?;
+    final term = json['term'] as String? ??
+        json['front'] as String? ??
+        json['word'] as String? ??
+        json['prompt'] as String?;
+    final definition = json['definition'] as String? ??
+        json['back'] as String? ??
+        json['meaning'] as String? ??
+        json['answer'] as String?;
+
+    final decodedGameData =
+        decodeIfJsonString(json['gameData'] ?? json['game_data']);
+    final gameDataMap = decodedGameData is Map<String, dynamic>
+        ? decodedGameData
+        : (decodedGameData is Map ? decodedGameData.cast<String, dynamic>() : null);
+
     return GameItem(
       question: json['question'] as String?,
       term: term,
       definition: definition,
-      options: json['options'] != null
-          ? List<String>.from(json['options'] as List)
-          : null,
+      options: parseStringList(json['options'] ?? json['choices']),
       correctAnswer: json['correctAnswer'] ?? json['correct_answer'],
       explanation: json['explanation'] as String?,
       leftItem: json['leftItem'] ?? json['left_item'] as String?,
       rightItem: json['rightItem'] ?? json['right_item'] as String?,
       blankText: json['blankText'] ?? json['blank_text'] as String?,
       imageUrl: json['imageUrl'] ?? json['image_url'] as String?,
-      gridData: json['gridData'] != null
-          ? (json['gridData'] as List).map((row) => List<String>.from(row as List)).toList()
-          : json['grid_data'] != null
-              ? (json['grid_data'] as List).map((row) => List<String>.from(row as List)).toList()
-              : null,
-      dragItems: json['dragItems'] != null
-          ? List<Map<String, dynamic>>.from(json['dragItems'] as List)
-          : json['drag_items'] != null
-              ? List<Map<String, dynamic>>.from(json['drag_items'] as List)
-              : null,
-      dropZones: json['dropZones'] != null
-          ? List<Map<String, dynamic>>.from(json['dropZones'] as List)
-          : json['drop_zones'] != null
-              ? List<Map<String, dynamic>>.from(json['drop_zones'] as List)
-              : null,
-      puzzlePieces: json['puzzlePieces'] != null
-          ? List<Map<String, dynamic>>.from(json['puzzlePieces'] as List)
-          : json['puzzle_pieces'] != null
-              ? List<Map<String, dynamic>>.from(json['puzzle_pieces'] as List)
-              : null,
-      diagramLabels: json['diagramLabels'] != null
-          ? List<Map<String, dynamic>>.from(json['diagramLabels'] as List)
-          : json['diagram_labels'] != null
-              ? List<Map<String, dynamic>>.from(json['diagram_labels'] as List)
-              : null,
-      words: json['words'] != null
-          ? List<String>.from(json['words'] as List)
-          : null,
-      clues: json['clues'] != null
-          ? List<Map<String, dynamic>>.from(json['clues'] as List)
-          : null,
-      bubbles: json['bubbles'] != null
-          ? List<Map<String, dynamic>>.from(json['bubbles'] as List)
-          : null,
-      gameData: json['gameData'] != null
-          ? Map<String, dynamic>.from(json['gameData'] as Map)
-          : json['game_data'] != null
-              ? Map<String, dynamic>.from(json['game_data'] as Map)
-              : null,
-      scenarios: json['scenarios'] != null
-          ? List<Map<String, dynamic>>.from(json['scenarios'] as List)
-          : null,
+      gridData: parseGridData(
+        json['gridData'] ??
+            json['grid_data'] ??
+            json['grid'] ??
+            json['board'] ??
+            json['letterGrid'] ??
+            gameDataMap?['gridData'] ??
+            gameDataMap?['grid_data'] ??
+            gameDataMap?['grid'] ??
+            gameDataMap?['board'],
+      ),
+      dragItems: parseMapList(
+        json['dragItems'] ?? json['drag_items'] ?? gameDataMap?['dragItems'] ?? gameDataMap?['drag_items'],
+      ),
+      dropZones: parseMapList(
+        json['dropZones'] ?? json['drop_zones'] ?? gameDataMap?['dropZones'] ?? gameDataMap?['drop_zones'],
+      ),
+      puzzlePieces: parseMapList(
+        json['puzzlePieces'] ??
+            json['puzzle_pieces'] ??
+            gameDataMap?['puzzlePieces'] ??
+            gameDataMap?['puzzle_pieces'],
+      ),
+      diagramLabels: parseMapList(
+        json['diagramLabels'] ??
+            json['diagram_labels'] ??
+            gameDataMap?['diagramLabels'] ??
+            gameDataMap?['diagram_labels'],
+      ),
+      words: parseStringList(
+        json['words'] ??
+            json['wordList'] ??
+            json['word_list'] ??
+            gameDataMap?['words'] ??
+            gameDataMap?['wordList'] ??
+            gameDataMap?['word_list'],
+      ),
+      clues: parseMapList(
+        json['clues'] ??
+            json['clueList'] ??
+            json['clue_list'] ??
+            gameDataMap?['clues'] ??
+            gameDataMap?['clueList'] ??
+            gameDataMap?['clue_list'],
+      ),
+      bubbles: parseMapList(
+        json['bubbles'] ?? gameDataMap?['bubbles'],
+      ),
+      gameData: gameDataMap,
+      scenarios: parseMapList(
+        json['scenarios'] ?? gameDataMap?['scenarios'],
+      ),
       role: json['role'] as String?,
       caseName: json['caseName'] ?? json['case_name'] ?? json['case'] as String?,
-      mysteryClues: json['mysteryClues'] != null
-          ? List<Map<String, dynamic>>.from(json['mysteryClues'] as List)
-          : json['clues'] != null && json['gameType'] == 'mystery'
-              ? List<Map<String, dynamic>>.from(json['clues'] as List)
-              : null,
+      mysteryClues: parseMapList(
+        json['mysteryClues'] ??
+            json['mystery_clues'] ??
+            gameDataMap?['mysteryClues'] ??
+            gameDataMap?['mystery_clues'] ??
+            ((json['clues'] != null &&
+                        (json['gameType'] ?? json['game_type'])
+                            ?.toString()
+                            .toLowerCase() ==
+                            'mystery')
+                    ? json['clues']
+                    : null),
+      ),
       solution: json['solution'] as String?,
-      rooms: json['rooms'] != null
-          ? List<Map<String, dynamic>>.from(json['rooms'] as List)
-          : null,
+      rooms: parseMapList(
+        json['rooms'] ?? gameDataMap?['rooms'],
+      ),
       isBoss: json['isBoss'] as bool? ?? false,
     );
   }

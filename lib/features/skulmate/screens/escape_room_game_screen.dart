@@ -50,6 +50,7 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
     );
@@ -91,6 +92,7 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
 
   @override
   void dispose() {
+    unawaited(_soundService.stopMusic());
     _progressController.dispose();
     _confettiController.dispose();
     for (var controller in _answerControllers.values) {
@@ -238,7 +240,8 @@ class _EscapeRoomGameScreenState extends State<EscapeRoomGameScreen>
       );
     }
 
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
 
     // Navigate to results screen
     if (mounted) {
