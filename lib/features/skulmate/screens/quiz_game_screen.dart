@@ -19,6 +19,7 @@ import '../widgets/skulmate_character_widget.dart';
 import '../widgets/game_roadmap_widget.dart';
 import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/drag_drop_question_widget.dart';
 import '../services/daily_challenge_service.dart';
 import 'game_results_screen.dart';
 import 'game_library_screen.dart';
@@ -73,6 +74,20 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   static const int _countdownSecondsPerQuestion = 15;
   int _countdownRemaining = _countdownSecondsPerQuestion;
   Timer? _countdownTimer;
+  final Map<String, int> _dragAssignments = {};
+  final TextEditingController _fillBlankController = TextEditingController();
+  String? _submittedFillBlankAnswer;
+
+  bool _isDragDropQuestion(GameItem question) {
+    return (question.dragItems ?? []).isNotEmpty &&
+        (question.dropZones ?? []).isNotEmpty;
+  }
+
+  bool _isFillBlankQuestion(GameItem question) {
+    return !_isDragDropQuestion(question) &&
+        (question.blankText ?? '').trim().isNotEmpty &&
+        (question.options ?? []).isEmpty;
+  }
 
   @override
   void initState() {
@@ -99,15 +114,24 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
   Future<void> _showRulesIfNeeded() async {
     if (!_hasShownRules) {
-      await GameRulesOverlay.showIfNeeded(context, widget.game.gameType, () {
-        _hasShownRules = true;
-        _startCountdown();
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted && _isTTSEnabled) {
-            _speakCurrentQuestion();
+      await GameRulesOverlay.showIfNeeded(
+        context,
+        widget.game.gameType,
+        (isFirstTime) async {
+          _hasShownRules = true;
+          if (!isFirstTime) {
+            // Music can start immediately for returning users.
+            unawaited(_soundService.playMusicForGame(widget.game.gameType));
           }
-        });
-      });
+          _startCountdown();
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted && _isTTSEnabled) {
+              _speakCurrentQuestion();
+            }
+          });
+        },
+        onAfterFirstTimeDialogClosed: _openFirstTimeSoundSettingsSheet,
+      );
     } else {
       _startCountdown();
       Future.delayed(const Duration(milliseconds: 500), () {
@@ -121,6 +145,8 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _fillBlankController.dispose();
+    unawaited(_soundService.stopMusic());
     _confettiController.dispose();
     _ttsService.resetSpeechRate();
     _ttsService.dispose();
@@ -150,35 +176,71 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
   /// When timer hits 0 without an answer: show correct answer + explanation and speak "No idea? No worries, let me explain..."
   void _onCountdownExpired() {
-    if (_selectedAnswerIndex != null) return; // Already answered
     final question = _questions[_currentQuestionIndex];
-    final correctAnswerIndex = question.correctAnswer is int
-        ? question.correctAnswer as int
-        : (question.correctAnswer is String
-              ? int.tryParse(question.correctAnswer.toString()) ?? 0
-              : 0);
+    final isDrag = _isDragDropQuestion(question);
+    final isFillBlank = _isFillBlankQuestion(question);
+    if (isDrag && _showWrongAnswerFeedback) return;
+    if (isFillBlank && _showWrongAnswerFeedback) return;
+    if (!isDrag && _selectedAnswerIndex != null) return;
+
     final rawQuestionText = (question.question ?? question.term ?? '').trim();
     if (rawQuestionText.isNotEmpty) {
       _questionBreakdown.add(
         QuestionPerformance(question: rawQuestionText, isCorrect: false),
       );
     }
-    safeSetState(() {
-      _stopCountdown();
-      _showWrongAnswerFeedback = true;
-      // No answer selected; options stay unselected but we show correct + explanation
-    });
+
+    int correctAnswerIndex = 0;
+    if (isDrag) {
+      safeSetState(() {
+        _stopCountdown();
+        _showWrongAnswerFeedback = true;
+      });
+    } else if (isFillBlank) {
+      safeSetState(() {
+        _stopCountdown();
+        _showWrongAnswerFeedback = true;
+      });
+    } else {
+      final shuffled = _getShuffledOptionIndices(question);
+      correctAnswerIndex = question.correctAnswer is int
+          ? question.correctAnswer as int
+          : (question.correctAnswer is String
+                ? int.tryParse(question.correctAnswer.toString()) ?? 0
+                : 0);
+      final correctDisplayIndex = shuffled.indexOf(correctAnswerIndex);
+      safeSetState(() {
+        _stopCountdown();
+        _showWrongAnswerFeedback = true;
+        // Auto-select the correct option so it renders green during explanation mode.
+        _selectedAnswerIndex = correctDisplayIndex >= 0 ? correctDisplayIndex : null;
+      });
+    }
+
     // Stronger feedback when time runs out
     _soundService.playCountdownBuzzer();
-    final correctText =
-        question.options != null &&
-            correctAnswerIndex < question.options!.length
-        ? question.options![correctAnswerIndex]
-        : '';
     final explanation = (question.explanation ?? '').trim();
-    final toSpeak = explanation.isEmpty
-        ? 'No idea? No worries. The correct answer is $correctText.'
-        : 'No idea? No worries, let me explain. The correct answer is $correctText. $explanation';
+    String toSpeak;
+    if (isDrag) {
+      toSpeak = explanation.isEmpty
+          ? 'Time is up. Let us review the correct drag and drop mapping.'
+          : 'Time is up. Let us review the correct drag and drop mapping. $explanation';
+    } else if (isFillBlank) {
+      final correctText = _correctFillBlankText(question);
+      toSpeak = explanation.isEmpty
+          ? 'Time is up. The correct fill in answer is $correctText.'
+          : 'Time is up. The correct fill in answer is $correctText. $explanation';
+    } else {
+      final correctText =
+          question.options != null &&
+              correctAnswerIndex < question.options!.length
+          ? question.options![correctAnswerIndex]
+          : '';
+      toSpeak = explanation.isEmpty
+          ? 'No idea? No worries. The correct answer is $correctText.'
+          : 'No idea? No worries, let me explain. The correct answer is $correctText. $explanation';
+    }
+
     if (_isTTSEnabled && toSpeak.isNotEmpty) {
       _ttsService.speakAndWait(toSpeak);
     }
@@ -221,9 +283,15 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
   /// Build a short round of questions (5–7 where possible) for a tighter game loop
   List<GameItem> _buildQuestionSet(List<GameItem> allItems) {
-    // Prefer only items that actually have options
+    // Keep playable quiz items: MCQ, drag-drop hybrid, or fill-blank hybrid.
     final filtered = allItems
-        .where((q) => (q.options ?? []).isNotEmpty)
+        .where(
+          (q) =>
+              (q.options ?? []).isNotEmpty ||
+              ((q.dragItems ?? []).isNotEmpty &&
+                  (q.dropZones ?? []).isNotEmpty) ||
+              ((q.blankText ?? '').trim().isNotEmpty),
+        )
         .toList();
     if (filtered.isEmpty) return allItems;
 
@@ -302,12 +370,160 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     });
   }
 
+  List<String> _acceptableFillBlankAnswers(GameItem question) {
+    final Set<String> answers = {};
+    final rawPrimary = question.correctAnswer;
+    if (rawPrimary != null) {
+      if (rawPrimary is String) {
+        answers.add(rawPrimary.trim());
+      } else {
+        answers.add(rawPrimary.toString().trim());
+      }
+    }
+    return answers.where((a) => a.isNotEmpty).toList();
+  }
+
+  bool _isFillBlankCorrect(GameItem question, String userAnswer) {
+    final normalizedUser = userAnswer.trim().toLowerCase();
+    if (normalizedUser.isEmpty) return false;
+    for (final answer in _acceptableFillBlankAnswers(question)) {
+      if (normalizedUser == answer.trim().toLowerCase()) return true;
+    }
+    return false;
+  }
+
+  void _submitFillBlankAnswer() {
+    final question = _questions[_currentQuestionIndex];
+    if (!_isFillBlankQuestion(question) || _showWrongAnswerFeedback) return;
+    final answer = _fillBlankController.text.trim();
+    if (answer.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Type your answer before submitting.',
+            style: GoogleFonts.poppins(fontSize: 13),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final isCorrect = _isFillBlankCorrect(question, answer);
+    final rawQuestionText = (question.question ?? question.term ?? '').trim();
+    if (rawQuestionText.isNotEmpty) {
+      _questionBreakdown.add(
+        QuestionPerformance(question: rawQuestionText, isCorrect: isCorrect),
+      );
+    }
+
+    safeSetState(() {
+      _stopCountdown();
+      _submittedFillBlankAnswer = answer;
+      _showWrongAnswerFeedback = true;
+      if (isCorrect) {
+        _score++;
+        _xpEarned += 12;
+        _lastCorrectXp = 12;
+        _xpPopupVisible = true;
+      }
+    });
+
+    if (isCorrect) {
+      _soundService.playCorrect();
+      _confettiController.play();
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (mounted) safeSetState(() => _xpPopupVisible = false);
+      });
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (mounted) {
+          safeSetState(() => _lastCorrectXp = null);
+          _nextQuestion();
+        }
+      });
+    } else {
+      _soundService.playIncorrect();
+    }
+  }
+
+  String _correctFillBlankText(GameItem question) {
+    final answers = _acceptableFillBlankAnswers(question);
+    if (answers.isEmpty) return 'No answer provided';
+    return answers.first;
+  }
+
+  void _submitDragDropAnswer() {
+    final question = _questions[_currentQuestionIndex];
+    if (!_isDragDropQuestion(question) || _showWrongAnswerFeedback) return;
+    final dragItems = question.dragItems ?? [];
+    final dropZones = question.dropZones ?? [];
+    if (_dragAssignments.length < dropZones.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Place all items before submitting.',
+            style: GoogleFonts.poppins(fontSize: 13),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final isCorrect = DragDropQuestionWidget.evaluateAssignments(
+      dragItems: dragItems,
+      dropZones: dropZones,
+      assignments: _dragAssignments,
+    );
+
+    final rawQuestionText = (question.question ?? question.term ?? '').trim();
+    if (rawQuestionText.isNotEmpty) {
+      _questionBreakdown.add(
+        QuestionPerformance(question: rawQuestionText, isCorrect: isCorrect),
+      );
+    }
+
+    safeSetState(() {
+      _stopCountdown();
+      _showWrongAnswerFeedback = true;
+      if (isCorrect) {
+        _score++;
+        _xpEarned += 12;
+        _lastCorrectXp = 12;
+        _xpPopupVisible = true;
+      }
+    });
+
+    if (isCorrect) {
+      _soundService.playCorrect();
+      _confettiController.play();
+      Future.delayed(const Duration(milliseconds: 700), () {
+        if (mounted) safeSetState(() => _xpPopupVisible = false);
+      });
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (mounted) {
+          safeSetState(() => _lastCorrectXp = null);
+          _nextQuestion();
+        }
+      });
+    } else {
+      _soundService.playIncorrect();
+    }
+  }
+
+  String _correctDragMappingText(GameItem question) {
+    return DragDropQuestionWidget.buildMappingText(question.dragItems ?? []);
+  }
+
   void _nextQuestion() {
     safeSetState(() {
       _lastCorrectXp = null;
       _xpPopupVisible = false;
       _showWrongAnswerFeedback = false;
       _stopCountdown();
+      _dragAssignments.clear();
+      _fillBlankController.clear();
+      _submittedFillBlankAnswer = null;
     });
     if (_currentQuestionIndex < _questions.length - 1) {
       safeSetState(() {
@@ -336,7 +552,8 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     if (isPerfectScore) {
       _confettiController.play();
     }
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
     unawaited(
       GameStatsService.addGameResult(
         correctAnswers: _score,
@@ -373,8 +590,181 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     }
   }
 
-  void _openGameSettings() {
-    showModalBottomSheet(
+  void _openLearnMoreSheet({
+    required String term,
+    required String definition,
+  }) {
+    _ttsService.stop();
+    final explainFuture = SkulMateService.explainFlashcard(
+      term: term,
+      definition: definition,
+    );
+
+    bool didAutoSpeak = false;
+    bool isSpeaking = false;
+    String? explanationText;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, modalSetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: SafeArea(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  ),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
+                    child: FutureBuilder<ExplainResult>(
+                      future: explainFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        if (snapshot.hasError || !snapshot.hasData) {
+                          return const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              'Could not load more details right now.',
+                            ),
+                          );
+                        }
+
+                        final result = snapshot.data!;
+                        explanationText = result.explanation;
+
+                        if (_isTTSEnabled && !didAutoSpeak) {
+                          didAutoSpeak = true;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!context.mounted) return;
+                            isSpeaking = true;
+                            modalSetState(() {});
+                            unawaited(_ttsService.speak(result.explanation));
+                          });
+                        }
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 14, 12, 10),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Learn more',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.textDark,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () {
+                                      if (explanationText == null ||
+                                          explanationText!.trim().isEmpty) {
+                                        return;
+                                      }
+
+                                      if (isSpeaking) {
+                                        _ttsService.stop();
+                                        isSpeaking = false;
+                                        modalSetState(() {});
+                                      } else if (_isTTSEnabled) {
+                                        unawaited(_ttsService
+                                            .speak(explanationText!));
+                                        isSpeaking = true;
+                                        modalSetState(() {});
+                                      }
+                                    },
+                                    icon: Icon(
+                                      isSpeaking
+                                          ? Icons.volume_up_rounded
+                                          : Icons.volume_off_rounded,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(16),
+                                child: Text(
+                                  result.explanation,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    height: 1.6,
+                                    color: AppTheme.textDark,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    _ttsService.stop();
+                                    Navigator.of(context).pop();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primaryColor,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: const Text('Done'),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openFirstTimeSoundSettingsSheet() async {
+    // First-time rule: start with effects + voice only (music off).
+    await _soundService.toggleSounds(true);
+    await _soundService.toggleMusic(false);
+    _ttsService.setEnabled(true);
+    if (mounted) safeSetState(() => _isTTSEnabled = true);
+    await _openGameSettingsSheet();
+  }
+
+  Future<void> _openGameSettingsSheet() async {
+    await showModalBottomSheet(
       context: context,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
@@ -409,6 +799,83 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                         if (mounted) safeSetState(() {});
                       },
                     ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SFX volume: ${(_soundService.soundsVolume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _soundService.soundsVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _soundService.soundsEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _soundService.setSoundsVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Music', style: GoogleFonts.poppins()),
+                      value: _soundService.musicEnabled,
+                      onChanged: (v) async {
+                        await _soundService.toggleMusic(v);
+                        if (v) {
+                          await _soundService.playMusicForGame(
+                            widget.game.gameType,
+                          );
+                        }
+                        modalSetState(() {});
+                        if (mounted) safeSetState(() {});
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Music volume: ${(_soundService.musicVolume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _soundService.musicVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _soundService.musicEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _soundService.setMusicVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
@@ -421,6 +888,37 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                         modalSetState(() => _isTTSEnabled = v);
                         if (mounted) safeSetState(() => _isTTSEnabled = v);
                       },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voice volume: ${(_ttsService.volume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _ttsService.volume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _isTTSEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _ttsService.setVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -500,7 +998,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                 padding: const EdgeInsets.only(right: 8, left: 2),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
-                  onTap: _openGameSettings,
+                  onTap: () => unawaited(_openGameSettingsSheet()),
                   child: CircleAvatar(
                     radius: 14,
                     backgroundColor: Colors.white.withOpacity(0.22),
@@ -539,7 +1037,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: AppTheme.textDark.withOpacity(0.04),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -636,7 +1134,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                 child: Container(
                   color: AppTheme.softBackground,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.min,
@@ -695,7 +1193,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                             border: Border.all(color: AppTheme.softBorder),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
+                                color: AppTheme.textDark.withOpacity(0.04),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -706,9 +1204,9 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                 ? 'Question content is loading...'
                                 : (question.question ?? ''),
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
+                              fontSize: 15,
                               fontWeight: FontWeight.w600,
-                              height: 1.35,
+                              height: 1.28,
                               color: AppTheme.textDark,
                             ),
                           ),
@@ -725,8 +1223,10 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                               ),
                             ),
                           ),
-                        const SizedBox(height: 16),
-                        if ((question.options ?? []).isEmpty)
+                        const SizedBox(height: 12),
+                        if (!_isDragDropQuestion(question) &&
+                            !_isFillBlankQuestion(question) &&
+                            (question.options ?? []).isEmpty)
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(20),
@@ -758,7 +1258,105 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                               ],
                             ),
                           ),
-                        if ((question.options ?? []).isNotEmpty)
+                        if (_isDragDropQuestion(question)) ...[
+                          DragDropQuestionWidget(
+                            dragItems: question.dragItems ?? const [],
+                            dropZones: question.dropZones ?? const [],
+                            assignments: _dragAssignments,
+                            showCorrection: _showWrongAnswerFeedback,
+                            onAssignmentsChanged: (next) {
+                              safeSetState(() {
+                                _dragAssignments
+                                  ..clear()
+                                  ..addAll(next);
+                              });
+                            },
+                          ),
+                          if (!_showWrongAnswerFeedback)
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _submitDragDropAnswer,
+                                icon: const Icon(Icons.check, size: 16),
+                                label: const Text('Submit answer'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ] else if (_isFillBlankQuestion(question)) ...[
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.softBorder),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  (question.blankText ?? '').trim().isEmpty
+                                      ? 'Fill in the missing word or phrase'
+                                      : question.blankText!,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textDark,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: _fillBlankController,
+                                  enabled: !_showWrongAnswerFeedback,
+                                  decoration: InputDecoration(
+                                    hintText: 'Type your answer',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
+                                    ),
+                                  ),
+                                  style: GoogleFonts.poppins(fontSize: 14),
+                                  onSubmitted: (_) {
+                                    if (!_showWrongAnswerFeedback) {
+                                      _submitFillBlankAnswer();
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                                if (!_showWrongAnswerFeedback)
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _submitFillBlankAnswer,
+                                      icon: const Icon(Icons.check, size: 16),
+                                      label: const Text('Submit answer'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primaryColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ] else if ((question.options ?? []).isNotEmpty)
                           ..._getShuffledOptionIndices(
                             question,
                           ).asMap().entries.map((entry) {
@@ -782,7 +1380,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                             final showResult = _selectedAnswerIndex != null;
 
                             return Padding(
-                              padding: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.only(bottom: 8),
                               child: Material(
                                 color: Colors.transparent,
                                 child: InkWell(
@@ -799,10 +1397,10 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                     decoration: BoxDecoration(
                                       color: showResult
                                           ? (isCorrect
-                                                ? AppTheme.accentGreen
-                                                : (isSelected
-                                                      ? Colors.red.shade400
-                                                      : Colors.grey.shade200))
+                                              ? AppTheme.accentGreen
+                                              : (isSelected
+                                                  ? Colors.red.shade400
+                                                  : Colors.white))
                                           : (isSelected
                                                 ? AppTheme.primaryColor
                                                 : Colors.white),
@@ -810,12 +1408,10 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                       border: Border.all(
                                         color: showResult
                                             ? (isCorrect
-                                                  ? AppTheme.accentGreen
-                                                  : (isSelected
-                                                        ? Colors.red
-                                                        : Colors
-                                                              .grey
-                                                              .shade300!))
+                                                ? AppTheme.accentGreen
+                                                : (isSelected
+                                                    ? Colors.red
+                                                    : AppTheme.softBorder))
                                             : (isSelected
                                                   ? AppTheme.primaryColor
                                                   : AppTheme.softBorder),
@@ -823,7 +1419,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.06),
+                                          color: AppTheme.textDark.withOpacity(0.06),
                                           blurRadius: 8,
                                           offset: const Offset(0, 2),
                                         ),
@@ -832,7 +1428,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                     child: Text(
                                       option,
                                       style: GoogleFonts.poppins(
-                                        fontSize: 14,
+                                        fontSize: 13,
                                         fontWeight: FontWeight.w500,
                                         color: showResult && isCorrect
                                             ? Colors.white
@@ -869,14 +1465,16 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
                                   children: [
                                     Icon(
                                       Icons.check_circle,
                                       color: AppTheme.accentGreen,
                                       size: 22,
                                     ),
-                                    const SizedBox(width: 8),
                                     Text(
                                       'Correct answer',
                                       style: GoogleFonts.poppins(
@@ -888,14 +1486,45 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  correctAnswerText,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primaryColor,
+                                if (_isDragDropQuestion(question))
+                                  Text(
+                                    _correctDragMappingText(question),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primaryColor,
+                                      height: 1.45,
+                                    ),
+                                  )
+                                else if (_isFillBlankQuestion(question))
+                                  Text(
+                                    _correctFillBlankText(question),
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primaryColor,
+                                    ),
+                                  )
+                                else
+                                  Text(
+                                    correctAnswerText,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.primaryColor,
+                                    ),
                                   ),
-                                ),
+                                if (_isFillBlankQuestion(question) &&
+                                    (_submittedFillBlankAnswer ?? '').trim().isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Your answer: ${_submittedFillBlankAnswer!.trim()}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: AppTheme.textMedium,
+                                    ),
+                                  ),
+                                ],
                                 if ((question.explanation ?? '')
                                     .trim()
                                     .isNotEmpty) ...[
@@ -909,6 +1538,40 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                     ),
                                   ),
                                 ],
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton(
+                                    onPressed: () {
+                                      final term = correctAnswerText.trim();
+                                      if (term.isEmpty) return;
+                                      final definition = (question.explanation ??
+                                              question.question ??
+                                              '')
+                                          .trim();
+
+                                      _soundService.playClick();
+                                      _openLearnMoreSheet(
+                                        term: term,
+                                        definition: definition,
+                                      );
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      'Learn more',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.primaryColor,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                                 const SizedBox(height: 12),
                                 SizedBox(
                                   width: double.infinity,

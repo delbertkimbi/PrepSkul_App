@@ -53,6 +53,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
     );
@@ -98,6 +99,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
 
   @override
   void dispose() {
+    unawaited(_soundService.stopMusic());
     _progressController.dispose();
     _confettiController.dispose();
     _solutionController.dispose();
@@ -296,7 +298,8 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
       );
     }
 
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
 
     // Navigate to results screen
     if (mounted) {
@@ -440,7 +443,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: AppTheme.textDark.withOpacity(0.05),
                           blurRadius: 10,
                           offset: const Offset(0, 2),
                         ),
@@ -707,7 +710,7 @@ class _MysteryGameScreenState extends State<MysteryGameScreen>
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: AppTheme.textDark.withOpacity(0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 2),
                   ),

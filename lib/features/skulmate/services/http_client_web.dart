@@ -2,7 +2,8 @@
 import 'dart:html' as html;
 import 'package:http/http.dart' as http;
 
-/// Web-specific HTTP POST that properly handles CORS with credentials
+/// Web-specific HTTP POST.
+/// Uses browser fetch/XHR semantics on web.
 Future<http.Response> postWeb(
   String url,
   Map<String, String> headers,
@@ -14,7 +15,10 @@ Future<http.Response> postWeb(
       method: 'POST',
       requestHeaders: headers,
       sendData: body,
-      withCredentials: true, // Critical for CORS with Authorization header
+      // Use bearer token Authorization header, not cookies.
+      // withCredentials=true requires stricter CORS headers and can cause blocks
+      // from some environments; keep false for broader compatibility.
+      withCredentials: false,
     );
 
     // Convert html.HttpRequest to http.Response

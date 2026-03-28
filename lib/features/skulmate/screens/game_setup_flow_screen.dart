@@ -17,6 +17,7 @@ class GameSetupFlowScreen extends StatefulWidget {
 
 class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
   static const int _totalSteps = 3;
+  static const Set<String> _comingSoonGameTypes = {'diagram_label'};
   int _currentStep = 0;
 
   final TextEditingController _topicController = TextEditingController();
@@ -53,6 +54,16 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
     {'value': 'quiz', 'label': 'Quiz', 'subtitle': 'Multiple choice', 'icon': Icons.quiz},
     {'value': 'flashcards', 'label': 'Flashcards', 'subtitle': 'Flip & learn', 'icon': Icons.style},
     {'value': 'matching', 'label': 'Matching', 'subtitle': 'Match pairs', 'icon': Icons.link},
+    {'value': 'fill_blank', 'label': 'Fill Blank', 'subtitle': 'Type missing words', 'icon': Icons.short_text},
+    {'value': 'drag_drop', 'label': 'Drag & Drop', 'subtitle': 'Move into zones', 'icon': Icons.open_with},
+    {'value': 'match3', 'label': 'Match-3', 'subtitle': 'Match 3 tiles', 'icon': Icons.grid_view},
+    {'value': 'bubble_pop', 'label': 'Bubble Pop', 'subtitle': 'Pop target bubbles', 'icon': Icons.bubble_chart},
+    {'value': 'word_search', 'label': 'Word Search', 'subtitle': 'Find hidden words', 'icon': Icons.search},
+    {'value': 'crossword', 'label': 'Crossword', 'subtitle': 'Solve clues', 'icon': Icons.view_module},
+    {'value': 'simulation', 'label': 'Simulation', 'subtitle': 'Scenario-based', 'icon': Icons.science},
+    {'value': 'mystery', 'label': 'Mystery', 'subtitle': 'Solve clues', 'icon': Icons.search},
+    {'value': 'escape_room', 'label': 'Escape Room', 'subtitle': 'Solve to progress', 'icon': Icons.meeting_room},
+    {'value': 'diagram_label', 'label': 'Diagram Label', 'subtitle': 'Coming soon', 'icon': Icons.label_important_outline},
   ];
 
   @override
@@ -119,6 +130,72 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
     );
   }
 
+  void _onSelectGameType(String value) {
+    if (_comingSoonGameTypes.contains(value)) {
+      final selected = _gameTypeOptions.firstWhere(
+        (opt) => opt['value'] == value,
+        orElse: () => {'label': 'This game type'},
+      );
+      final label = (selected['label'] as String?) ?? 'This game type';
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Coming soon',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            '$label is not available yet. Please choose another game type.',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    setState(() => _gameType = value);
+  }
+
+  Color _gameTypeIconColor(String value) {
+    switch (value) {
+      case 'auto':
+        return AppTheme.primaryColor;
+      case 'quiz':
+        return const Color(0xFF7E57C2); // purple
+      case 'flashcards':
+        return const Color(0xFFFF9800); // orange
+      case 'matching':
+        return const Color(0xFF29B6F6); // skyBlue
+      case 'fill_blank':
+        return const Color(0xFF43A047); // green
+      case 'drag_drop':
+        return const Color(0xFF4CAF50); // green
+      case 'match3':
+        return const Color(0xFF9C27B0); // purple
+      case 'bubble_pop':
+        return const Color(0xFFE91E63); // pink
+      case 'word_search':
+        return AppTheme.accentBlue;
+      case 'crossword':
+        return const Color(0xFFFF9800); // orange
+      case 'simulation':
+        return const Color(0xFF673AB7); // purple
+      case 'mystery':
+        return const Color(0xFFEC407A); // pink
+      case 'escape_room':
+        return const Color(0xFF03A9F4); // skyBlue
+      case 'diagram_label':
+        return AppTheme.textMedium;
+      default:
+        return AppTheme.primaryColor;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,7 +244,7 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
               height: 4,
               decoration: BoxDecoration(
                 color: isActive ? AppTheme.primaryColor : AppTheme.softBorder,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(4),
               ),
             ),
           );
@@ -371,57 +448,29 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
           style: GoogleFonts.poppins(fontSize: 12, color: AppTheme.textMedium),
         ),
         const SizedBox(height: 14),
-        // Two rows of game type cards with icons
-        Row(
-          children: [
-            Expanded(
-              child: _GameTypeCard(
-                value: 'auto',
-                label: 'Auto',
-                subtitle: 'Surprise me',
-                icon: Icons.auto_awesome,
-                isSelected: _gameType == 'auto',
-                onTap: () => setState(() => _gameType = 'auto'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _GameTypeCard(
-                value: 'quiz',
-                label: 'Quiz',
-                subtitle: 'Multiple choice',
-                icon: Icons.quiz,
-                isSelected: _gameType == 'quiz',
-                onTap: () => setState(() => _gameType = 'quiz'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _GameTypeCard(
-                value: 'flashcards',
-                label: 'Flashcards',
-                subtitle: 'Flip & learn',
-                icon: Icons.style,
-                isSelected: _gameType == 'flashcards',
-                onTap: () => setState(() => _gameType = 'flashcards'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _GameTypeCard(
-                value: 'matching',
-                label: 'Matching',
-                subtitle: 'Match pairs',
-                icon: Icons.link,
-                isSelected: _gameType == 'matching',
-                onTap: () => setState(() => _gameType = 'matching'),
-              ),
-            ),
-          ],
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _gameTypeOptions.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.5,
+          ),
+          itemBuilder: (context, index) {
+            final option = _gameTypeOptions[index];
+            final value = option['value'] as String;
+            return _GameTypeCard(
+              value: value,
+              label: option['label'] as String,
+              subtitle: option['subtitle'] as String,
+              icon: option['icon'] as IconData,
+              iconColor: _gameTypeIconColor(value),
+              isSelected: _gameType == value,
+              onTap: () => _onSelectGameType(value),
+            );
+          },
         ),
       ],
     );
@@ -434,7 +483,7 @@ class _GameSetupFlowScreenState extends State<GameSetupFlowScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: AppTheme.textDark.withOpacity(0.06),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),
@@ -499,6 +548,7 @@ class _GameTypeCard extends StatelessWidget {
   final String label;
   final String subtitle;
   final IconData icon;
+  final Color iconColor;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -507,6 +557,7 @@ class _GameTypeCard extends StatelessWidget {
     required this.label,
     required this.subtitle,
     required this.icon,
+    required this.iconColor,
     required this.isSelected,
     required this.onTap,
   });
@@ -524,7 +575,7 @@ class _GameTypeCard extends StatelessWidget {
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
+              color: isSelected ? iconColor : AppTheme.softBorder,
               width: isSelected ? 2 : 1,
             ),
           ),
@@ -534,7 +585,7 @@ class _GameTypeCard extends StatelessWidget {
               Icon(
                 icon,
                 size: 32,
-                color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+                color: iconColor,
               ),
               const SizedBox(height: 8),
               Text(
@@ -597,7 +648,7 @@ class _SelectableCard extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: AppTheme.textDark.withOpacity(0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),

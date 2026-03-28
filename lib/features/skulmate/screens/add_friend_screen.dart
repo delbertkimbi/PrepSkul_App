@@ -305,7 +305,7 @@ class _AddFriendScreenState extends State<AddFriendScreen> {
         border: Border.all(color: AppTheme.softBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: AppTheme.textDark.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),

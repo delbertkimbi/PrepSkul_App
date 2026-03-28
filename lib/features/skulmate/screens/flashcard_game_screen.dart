@@ -67,6 +67,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     super.initState();
     _startTime = DateTime.now();
     _soundService.initialize();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
     _ttsService.initialize();
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
@@ -114,6 +115,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
   @override
   void dispose() {
     _flipController.dispose();
+    unawaited(_soundService.stopMusic());
     _ttsService.dispose();
     _progressController.dispose();
     _swipeController.dispose();
@@ -273,6 +275,86 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                         if (mounted) safeSetState(() {});
                       },
                     ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SFX volume: ${(_soundService.soundsVolume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _soundService.soundsVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _soundService.soundsEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _soundService.setSoundsVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        _isFrench ? 'Musique' : 'Music',
+                        style: GoogleFonts.poppins(),
+                      ),
+                      value: _soundService.musicEnabled,
+                      onChanged: (v) async {
+                        await _soundService.toggleMusic(v);
+                        if (v) {
+                          await _soundService.playMusicForGame(
+                            widget.game.gameType,
+                          );
+                        }
+                        modalSetState(() {});
+                        if (mounted) safeSetState(() {});
+                      },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Music volume: ${(_soundService.musicVolume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _soundService.musicVolume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _soundService.musicEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _soundService.setMusicVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(
@@ -285,6 +367,37 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
                         modalSetState(() => _isTTSEnabled = v);
                         if (mounted) safeSetState(() => _isTTSEnabled = v);
                       },
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Voice volume: ${(_ttsService.volume * 100).round()}%',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _ttsService.volume,
+                            min: 0,
+                            max: 1,
+                            divisions: 100,
+                            onChanged: _isTTSEnabled
+                                ? (v) {
+                                    unawaited(
+                                      _ttsService.setVolume(v),
+                                    );
+                                    modalSetState(() {});
+                                    if (mounted) safeSetState(() {});
+                                  }
+                                : null,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -475,7 +588,8 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
     );
 
     // Play completion sound
-    await _soundService.playComplete();
+    // Don't block navigation on audio playback.
+    unawaited(_soundService.playComplete());
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -928,7 +1042,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: AppTheme.textDark.withOpacity(0.15),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -960,7 +1074,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         border: Border.all(color: AppTheme.skyBlue.withOpacity(0.4), width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: AppTheme.textDark.withOpacity(0.1),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),

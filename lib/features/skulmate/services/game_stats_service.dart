@@ -70,8 +70,12 @@ class GameStatsService {
       }
       
       // Update streak
-      final today = DateTime.now();
-      final lastPlayed = currentStats.lastPlayedDate;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final lastPlayedRaw = currentStats.lastPlayedDate;
+      final lastPlayed = lastPlayedRaw == null
+          ? null
+          : DateTime(lastPlayedRaw.year, lastPlayedRaw.month, lastPlayedRaw.day);
       int newStreak = currentStats.currentStreak;
       
       if (lastPlayed != null) {
@@ -112,7 +116,7 @@ class GameStatsService {
             : currentStats.perfectScores,
         totalCorrectAnswers: currentStats.totalCorrectAnswers + correctAnswers,
         totalQuestions: currentStats.totalQuestions + totalQuestions,
-        lastPlayedDate: today,
+        lastPlayedDate: now,
       );
       
       // Check for new achievements

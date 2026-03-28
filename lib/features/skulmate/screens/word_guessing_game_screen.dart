@@ -438,7 +438,7 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
                   backgroundColor: Colors.grey[200],
                   valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
                   minHeight: 4,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ],
             ),

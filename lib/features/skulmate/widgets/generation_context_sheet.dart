@@ -45,6 +45,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
   final TextEditingController _topicController = TextEditingController();
   String? _practiceType;
   String _gameType = 'auto';
+  static const Set<String> _comingSoonGameTypes = {'diagram_label'};
 
   static const List<Map<String, String?>> _practiceOptions = [
     {'value': 'easy', 'label': 'Easy – Definitions', 'emoji': '📖'},
@@ -58,6 +59,16 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
     {'value': 'quiz', 'label': 'Quiz', 'emoji': '❓'},
     {'value': 'flashcards', 'label': 'Flashcards', 'emoji': '🃏'},
     {'value': 'matching', 'label': 'Matching', 'emoji': '🔗'},
+    {'value': 'fill_blank', 'label': 'Fill Blank', 'emoji': '✍️'},
+    {'value': 'drag_drop', 'label': 'Drag & Drop', 'emoji': '🧩'},
+    {'value': 'match3', 'label': 'Match-3', 'emoji': '🟦'},
+    {'value': 'bubble_pop', 'label': 'Bubble Pop', 'emoji': '🫧'},
+    {'value': 'word_search', 'label': 'Word Search', 'emoji': '🔎'},
+    {'value': 'crossword', 'label': 'Crossword', 'emoji': '🧠'},
+    {'value': 'simulation', 'label': 'Simulation', 'emoji': '🧪'},
+    {'value': 'mystery', 'label': 'Mystery', 'emoji': '🕵️'},
+    {'value': 'escape_room', 'label': 'Escape Room', 'emoji': '🚪'},
+    {'value': 'diagram_label', 'label': 'Diagram Label (Coming Soon)', 'emoji': '🏷️'},
   ];
 
   @override
@@ -113,24 +124,55 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
     Navigator.pop(context, null);
   }
 
+  void _onSelectGameType(String value) {
+    if (_comingSoonGameTypes.contains(value)) {
+      final selected = _gameTypeOptions.firstWhere(
+        (opt) => opt['value'] == value,
+        orElse: () => const {'value': '', 'label': 'This game type', 'emoji': ''},
+      );
+      final label = selected['label'] ?? 'This game type';
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Coming soon',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            '$label is not available yet. Please choose another game type.',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    setState(() => _gameType = value);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black26,
-            blurRadius: 20,
-            offset: Offset(0, -4),
+            color: AppTheme.primaryColor.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
         top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 22),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
@@ -140,18 +182,18 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
+                    color: AppTheme.softBorder,
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withOpacity(0.1),
+                      color: AppTheme.primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: PhosphorIcon(
@@ -168,15 +210,15 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                         Text(
                           'Quick context (optional)',
                           style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
                             color: AppTheme.textDark,
                           ),
                         ),
                         Text(
                           'Help us create a better game for you',
                           style: GoogleFonts.poppins(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: AppTheme.textMedium,
                           ),
                         ),
@@ -185,7 +227,37 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.07),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      size: 16,
+                      color: AppTheme.primaryColor,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Leave blank to use smart defaults.',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.5,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
               Text(
                 'What topic or subject?',
                 style: GoogleFonts.poppins(
@@ -216,7 +288,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                 ),
                 style: GoogleFonts.poppins(fontSize: 14),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Text(
                 'What do you want to practice?',
                 style: GoogleFonts.poppins(
@@ -255,7 +327,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Text(
                 'Preferred game type?',
                 style: GoogleFonts.poppins(
@@ -283,7 +355,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                       ),
                     ),
                     onSelected: (_) {
-                      setState(() => _gameType = value);
+                      _onSelectGameType(value);
                     },
                     selectedColor: AppTheme.primaryColor,
                     backgroundColor: AppTheme.softBackground,
@@ -294,7 +366,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 18),
               Row(
                 children: [
                   TextButton(

@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
+import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../services/character_selection_service.dart';
+import '../services/game_sound_service.dart';
+import '../services/game_stats_service.dart';
+import '../widgets/game_standard_widgets.dart';
 import 'game_results_screen.dart';
 
 /// Crossword game screen
@@ -18,18 +23,127 @@ class CrosswordGameScreen extends StatefulWidget {
 }
 
 class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
+  final GameSoundService _soundService = GameSoundService();
+  final Set<int> _solved = {};
+  final List<_CrosswordClue> _clues = [];
+  final Map<int, TextEditingController> _controllers = {};
+  DateTime _startTime = DateTime.now();
   int _score = 0;
+  int _xpEarned = 0;
   dynamic _character;
 
   @override
   void initState() {
     super.initState();
+    _startTime = DateTime.now();
+    _soundService.initialize();
+    unawaited(_soundService.playMusicForGame(widget.game.gameType));
+    _buildClues();
     _loadCharacter();
+  }
+
+  void _buildClues() {
+    final item = widget.game.items.isNotEmpty ? widget.game.items.first : null;
+    final raw = item?.clues ?? <Map<String, dynamic>>[];
+    if (raw.isNotEmpty) {
+      for (final c in raw) {
+        final clue = (c['clue'] ?? c['question'] ?? '').toString().trim();
+        final answer = (c['answer'] ?? c['solution'] ?? '').toString().trim();
+        if (clue.isEmpty || answer.isEmpty) continue;
+        _clues.add(_CrosswordClue(clue: clue, answer: answer.toUpperCase()));
+      }
+    }
+    if (_clues.isEmpty) {
+      for (final i in widget.game.items) {
+        final clue = (i.question ?? '').trim();
+        final answer = (i.correctAnswer ?? '').toString().trim();
+        if (clue.isEmpty || answer.isEmpty) continue;
+        _clues.add(_CrosswordClue(clue: clue, answer: answer.toUpperCase()));
+      }
+    }
+    if (_clues.isEmpty) {
+      _clues.addAll(const [
+        _CrosswordClue(clue: 'Learning platform name', answer: 'SKULMATE'),
+        _CrosswordClue(clue: 'What we gain from studying', answer: 'KNOWLEDGE'),
+      ]);
+    }
+    for (var i = 0; i < _clues.length; i++) {
+      _controllers[i] = TextEditingController();
+    }
   }
 
   Future<void> _loadCharacter() async {
     final character = await CharacterSelectionService.getSelectedCharacter();
-    if (mounted) setState(() => _character = character);
+    if (mounted) safeSetState(() => _character = character);
+  }
+
+  @override
+  void dispose() {
+    unawaited(_soundService.stopMusic());
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _checkAnswer(int index) {
+    if (_solved.contains(index)) return;
+    final typed = _controllers[index]?.text.trim().toUpperCase() ?? '';
+    final correct = _clues[index].answer.toUpperCase();
+    if (typed.isEmpty) return;
+    if (typed == correct) {
+      safeSetState(() {
+        _solved.add(index);
+        _score = _solved.length;
+        _xpEarned += 12;
+      });
+      _soundService.playCorrect();
+      if (_solved.length >= _clues.length) {
+        _finishGame();
+      }
+    } else {
+      _soundService.playIncorrect();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Not quite, try again.',
+            style: GoogleFonts.poppins(fontSize: 13),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _finishGame() async {
+    final seconds = DateTime.now().difference(_startTime).inSeconds;
+    final isPerfect = _score >= _clues.length;
+    _xpEarned += 30;
+    unawaited(_soundService.playComplete());
+    unawaited(() async {
+      try {
+        await GameStatsService.addGameResult(
+          correctAnswers: _score,
+          totalQuestions: _clues.length,
+          timeTakenSeconds: seconds,
+          isPerfectScore: isPerfect,
+        );
+      } catch (_) {}
+    }());
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GameResultsScreen(
+          game: widget.game,
+          score: _score,
+          totalQuestions: _clues.length,
+          timeTakenSeconds: seconds,
+          xpEarned: _xpEarned,
+          isPerfectScore: isPerfect,
+        ),
+      ),
+    );
   }
 
   @override
@@ -53,38 +167,98 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
             ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Crossword Game',
-              style: GoogleFonts.poppins(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textDark),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Implementation coming soon',
-              style: GoogleFonts.poppins(fontSize: 14, color: AppTheme.textMedium),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GameResultsScreen(
-                      game: widget.game,
-                      score: _score,
-                      totalQuestions: widget.game.items.length,
+      body: Column(
+        children: [
+          GameStandardsHud(
+            progressText: 'Solved: $_score / ${_clues.length}',
+            progressValue: _clues.isEmpty ? 0 : _score / _clues.length,
+            xpEarned: _xpEarned,
+            gameType: widget.game.gameType,
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _clues.length,
+              itemBuilder: (context, index) {
+                final solved = _solved.contains(index);
+                final controller = _controllers[index]!;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: solved ? AppTheme.accentGreen : AppTheme.softBorder,
+                      width: solved ? 2 : 1,
                     ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${index + 1}. ${_clues[index].clue}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textDark,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: controller,
+                              enabled: !solved,
+                              decoration: InputDecoration(
+                                hintText: 'Answer',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                              ),
+                              onSubmitted: (_) => _checkAnswer(index),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: solved ? null : () => _checkAnswer(index),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: Text(solved ? 'Done' : 'Check'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 );
               },
-              child: Text('Finish Game'),
             ),
-          ],
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: GameStandardsPrimaryButton(
+                label: 'Finish Game',
+                onPressed: _finishGame,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _CrosswordClue {
+  final String clue;
+  final String answer;
+  const _CrosswordClue({required this.clue, required this.answer});
 }

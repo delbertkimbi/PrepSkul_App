@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'game_sound_service.dart';
 
 /// Service for text-to-speech functionality in games
 class TTSService {
@@ -15,6 +17,7 @@ class TTSService {
   bool _isEnabled = true;
   String _currentLanguage = 'en';
   Completer<void>? _speakCompleter;
+  double _ttsVolume = 1.0;
   late final double _defaultSpeechRate = kIsWeb ? 0.8 : 0.55;
   double _speechRate = kIsWeb ? 0.8 : 0.55;
 
@@ -23,6 +26,8 @@ class TTSService {
     if (_isInitialized) return;
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+      _ttsVolume = prefs.getDouble('game_tts_volume') ?? 1.0;
       _flutterTts = FlutterTts();
       
       // Set language based on user preference
@@ -31,7 +36,7 @@ class TTSService {
 
       await _flutterTts!.setLanguage(_currentLanguage);
       await _flutterTts!.setSpeechRate(_speechRate);
-      await _flutterTts!.setVolume(1.0);
+      await _flutterTts!.setVolume(_ttsVolume);
       await _flutterTts!.setPitch(1.0);
       
       // Set completion handler (used by speakAndWait)
@@ -39,6 +44,8 @@ class TTSService {
         LogService.debug('[TTS] Speech completed');
         _speakCompleter?.complete();
         _speakCompleter = null;
+        // TTS often ducks/pauses other audio (especially on iOS); resume game BGM.
+        unawaited(GameSoundService().resumeBgmIfNeeded());
       });
       
       _isInitialized = true;
@@ -160,6 +167,23 @@ class TTSService {
 
   /// Check if TTS is enabled
   bool get isEnabled => _isEnabled;
+
+  double get volume => _ttsVolume;
+
+  /// Set TTS voice volume multiplier (0..1).
+  Future<void> setVolume(double volume) async {
+    final v = volume.clamp(0.0, 1.0).toDouble();
+    _ttsVolume = v;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('game_tts_volume', v);
+      if (_isInitialized) {
+        await _flutterTts?.setVolume(v);
+      }
+    } catch (e) {
+      LogService.error('[TTS] Error saving volume: $e');
+    }
+  }
 
   /// Get current language
   String get currentLanguage => _currentLanguage;

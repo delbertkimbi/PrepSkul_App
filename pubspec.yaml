@@ -153,6 +153,17 @@ flutter:
     - lib/data/
     - assets/images/
     - assets/data/
+    - assets/audio/
+    - assets/audio/music/bgm_focus_loop.ogg
+    - assets/audio/music/bgm_adventure_loop.ogg
+    - assets/audio/music/bgm_results_soft_loop.ogg
+    - assets/audio/music/sfx_card_flip.ogg
+    - assets/audio/music/sfx_correct_chime.ogg
+    - assets/audio/music/sfx_level_up.ogg
+    - assets/audio/music/sfx_streak_ping.ogg
+    - assets/audio/music/sfx_tap_soft.ogg
+    - assets/audio/music/sfx_victory_short.ogg
+    - assets/audio/music/sfx_wrong_mute.ogg
     - assets/sounds/
     - assets/characters/
     - assets/fonts/

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -8,7 +9,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../features/tutor/screens/tutor_home_screen.dart';
-import '../../features/dashboard/screens/student_home_screen.dart' show StudentHomeScreen;
+import '../../features/dashboard/screens/student_home_screen.dart'
+    show StudentHomeScreen;
 import '../../features/tutor/screens/tutor_requests_screen.dart';
 import '../../features/tutor/screens/tutor_sessions_screen.dart';
 import '../../features/discovery/screens/find_tutors_screen.dart';
@@ -18,6 +20,7 @@ import '../../core/services/auth_service.dart' hide LogService;
 import '../../core/services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import '../localization/app_localizations.dart';
+import '../../features/skulmate/services/game_sound_service.dart';
 
 class MainNavigation extends StatefulWidget {
   final String userRole;
@@ -30,15 +33,45 @@ class MainNavigation extends StatefulWidget {
   State<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
+class _MainNavigationState extends State<MainNavigation>
+    with WidgetsBindingObserver {
   late int _selectedIndex;
+
+  void _stopGameMusicIfOnHomeTab() {
+    if (_selectedIndex == 0) {
+      unawaited(GameSoundService().stopMusic());
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Initialize with widget parameter first (available in initState)
     // Route arguments will be read in didChangeDependencies
     _selectedIndex = widget.initialTab ?? 0;
+    _stopGameMusicIfOnHomeTab();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Hot restart / resume can leave native BGM playing while shell shows Home.
+    if (state == AppLifecycleState.resumed) {
+      _stopGameMusicIfOnHomeTab();
+    }
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    // Hot-reload safety: clear any leftover game BGM on Home tab.
+    _stopGameMusicIfOnHomeTab();
   }
 
   @override
@@ -46,12 +79,13 @@ class _MainNavigationState extends State<MainNavigation> {
     super.didChangeDependencies();
     // Now we can safely access inherited widgets like ModalRoute
     // Try to get initialTab from route arguments first, then fall back to widget parameter
-    final routeArgs = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final routeArgs =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final tabFromArgs = routeArgs?['initialTab'] as int?;
-    
+
     // Use route arguments if available, otherwise use widget parameter
     final targetTab = tabFromArgs ?? widget.initialTab ?? 0;
-    
+
     // #region agent log
     try {
       final logData = {
@@ -60,21 +94,31 @@ class _MainNavigationState extends State<MainNavigation> {
         'hypothesisId': 'C',
         'location': 'main_navigation.dart:42',
         'message': 'didChangeDependencies called',
-        'data': {'currentIndex': _selectedIndex, 'targetTab': targetTab, 'tabFromArgs': tabFromArgs, 'widgetInitialTab': widget.initialTab, 'willChange': targetTab != _selectedIndex},
+        'data': {
+          'currentIndex': _selectedIndex,
+          'targetTab': targetTab,
+          'tabFromArgs': tabFromArgs,
+          'widgetInitialTab': widget.initialTab,
+          'willChange': targetTab != _selectedIndex,
+        },
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       };
-      File('/Users/user/Desktop/PrepSkul/.cursor/debug.log').writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
+      File(
+        '/Users/user/Desktop/PrepSkul/.cursor/debug.log',
+      ).writeAsStringSync('${jsonEncode(logData)}\n', mode: FileMode.append);
     } catch (_) {}
     // #endregion
-    
+
     // Only update tab if we have an explicit target from route args or widget parameter
     // Don't update if both are null (which happens when modals open/close)
     final hasExplicitTarget = tabFromArgs != null || widget.initialTab != null;
-    
+
     // Only update tab if we have a valid target tab AND it's different from current
     // AND we have an explicit target (not just defaulting to 0)
     if (targetTab != _selectedIndex && targetTab >= 0 && hasExplicitTarget) {
-      LogService.info('🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})');
+      LogService.info(
+        '🔵 [MAIN_NAV] Setting tab index: $targetTab (from args: $tabFromArgs, from widget: ${widget.initialTab})',
+      );
       safeSetState(() {
         _selectedIndex = targetTab;
       });
@@ -92,15 +136,20 @@ class _MainNavigationState extends State<MainNavigation> {
   // Student screens (4 items)
   List<Widget> _getStudentScreens(String userType) {
     // Get highlightRequestId from route arguments if available
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final highlightRequestId = args?['highlightRequestId'] as String?;
-    
+
     return [
-    const StudentHomeScreen(), // Home Dashboard
-    const FindTutorsScreen(), // Find Tutors
-    MyRequestsScreen(highlightRequestId: highlightRequestId), // My Booking Requests
-      ProfileScreen(userType: userType), // Profile & Settings (student or parent)
-  ];
+      const StudentHomeScreen(), // Home Dashboard
+      const FindTutorsScreen(), // Find Tutors
+      MyRequestsScreen(
+        highlightRequestId: highlightRequestId,
+      ), // My Booking Requests
+      ProfileScreen(
+        userType: userType,
+      ), // Profile & Settings (student or parent)
+    ];
   }
 
   // Tutor navigation items (4 items)
@@ -108,22 +157,34 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     return [
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)), // Thicker for unselected
+        icon: PhosphorIcon(
+          PhosphorIcons.house(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
         activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.bold)), // Thicker for unselected
-        activeIcon: PhosphorIcon(PhosphorIcons.envelope(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(
+          PhosphorIcons.envelope(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
+        activeIcon: PhosphorIcon(
+          PhosphorIcons.envelope(PhosphorIconsStyle.fill),
+        ),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.bold)), // Thicker for unselected
-        activeIcon: PhosphorIcon(PhosphorIcons.graduationCap(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(
+          PhosphorIcons.graduationCap(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
+        activeIcon: PhosphorIcon(
+          PhosphorIcons.graduationCap(PhosphorIconsStyle.fill),
+        ),
         label: t.navSessions,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)), // Thicker for unselected
+        icon: PhosphorIcon(
+          PhosphorIcons.user(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
         activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
         label: t.navProfile,
       ),
@@ -135,22 +196,34 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     return [
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.bold)), // Thicker for unselected
+        icon: PhosphorIcon(
+          PhosphorIcons.house(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
         activeIcon: PhosphorIcon(PhosphorIcons.house(PhosphorIconsStyle.fill)),
         label: t.navHome,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold)), // Thicker for unselected
-        activeIcon: PhosphorIcon(PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(
+          PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
+        activeIcon: PhosphorIcon(
+          PhosphorIcons.magnifyingGlass(PhosphorIconsStyle.fill),
+        ),
         label: t.navFindTutors,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.bold)), // Thicker for unselected
-        activeIcon: PhosphorIcon(PhosphorIcons.clipboardText(PhosphorIconsStyle.fill)),
+        icon: PhosphorIcon(
+          PhosphorIcons.clipboardText(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
+        activeIcon: PhosphorIcon(
+          PhosphorIcons.clipboardText(PhosphorIconsStyle.fill),
+        ),
         label: t.navRequests,
       ),
       BottomNavigationBarItem(
-        icon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.bold)), // Thicker for unselected
+        icon: PhosphorIcon(
+          PhosphorIcons.user(PhosphorIconsStyle.bold),
+        ), // Thicker for unselected
         activeIcon: PhosphorIcon(PhosphorIcons.user(PhosphorIconsStyle.fill)),
         label: t.navProfile,
       ),
@@ -162,7 +235,7 @@ class _MainNavigationState extends State<MainNavigation> {
     final t = AppLocalizations.of(context)!;
     final isTutor = widget.userRole == 'tutor';
     final userType = widget.userRole == 'parent' ? 'parent' : 'student';
-    
+
     final screens = isTutor ? _tutorScreens : _getStudentScreens(userType);
     final items = isTutor ? _getTutorItems(context) : _getStudentItems(context);
 
@@ -173,12 +246,12 @@ class _MainNavigationState extends State<MainNavigation> {
       onPopInvoked: (didPop) async {
         // If pop was already handled (there was a screen to pop), we're done
         if (didPop) return;
-        
+
         // If we reach here, we're at the root and trying to exit the app
         // Check if user is authenticated
         final isAuthenticated = await AuthService.isLoggedIn();
         final hasSupabaseSession = SupabaseService.isAuthenticated;
-        
+
         if (!isAuthenticated && !hasSupabaseSession) {
           // Not authenticated - allow back navigation (shouldn't happen, but safety check)
           if (mounted && Navigator.of(context).canPop()) {
@@ -186,11 +259,11 @@ class _MainNavigationState extends State<MainNavigation> {
           }
           return;
         }
-        
+
         // On web, show confirmation dialog when trying to leave app
         if (kIsWeb) {
           if (!mounted) return;
-          
+
           final shouldExit = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -199,7 +272,11 @@ class _MainNavigationState extends State<MainNavigation> {
               ),
               title: Row(
                 children: [
-                  PhosphorIcon(PhosphorIcons.signOut(), color: AppTheme.primaryColor, size: 24),
+                  PhosphorIcon(
+                    PhosphorIcons.signOut(),
+                    color: AppTheme.primaryColor,
+                    size: 24,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -235,7 +312,7 @@ class _MainNavigationState extends State<MainNavigation> {
               ],
             ),
           );
-          
+
           if (shouldExit == true && mounted) {
             try {
               await AuthService.logout();
@@ -261,28 +338,29 @@ class _MainNavigationState extends State<MainNavigation> {
         }
       },
       child: Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      body: IndexedStack(index: _selectedIndex, children: screens),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          safeSetState(() {
-            _selectedIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppTheme.primaryColor,
-        unselectedItemColor: AppTheme.textMedium,
-        selectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
-        unselectedLabelStyle: GoogleFonts.poppins(
-          fontSize: 11,
-          fontWeight: FontWeight.w400,
-        ),
-        iconSize: 22,
-        items: items,
+        backgroundColor: AppTheme.softBackground,
+        body: IndexedStack(index: _selectedIndex, children: screens),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: (index) {
+            safeSetState(() {
+              _selectedIndex = index;
+            });
+            _stopGameMusicIfOnHomeTab();
+          },
+          type: BottomNavigationBarType.fixed,
+          selectedItemColor: AppTheme.primaryColor,
+          unselectedItemColor: AppTheme.textMedium,
+          selectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+          unselectedLabelStyle: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+          ),
+          iconSize: 22,
+          items: items,
         ),
       ),
     );
