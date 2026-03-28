@@ -169,6 +169,7 @@ class _Match3GameScreenState extends State<Match3GameScreen> {
               progressText: 'Matches: $_score / $_targetMatches',
               progressValue: _targetMatches == 0 ? 0 : _score / _targetMatches,
               xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
             ),
             const SizedBox(height: 12),
             Padding(

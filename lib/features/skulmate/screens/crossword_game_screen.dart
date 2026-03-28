@@ -173,6 +173,7 @@ class _CrosswordGameScreenState extends State<CrosswordGameScreen> {
             progressText: 'Solved: $_score / ${_clues.length}',
             progressValue: _clues.isEmpty ? 0 : _score / _clues.length,
             xpEarned: _xpEarned,
+            gameType: widget.game.gameType,
           ),
           Expanded(
             child: ListView.builder(

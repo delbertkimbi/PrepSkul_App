@@ -280,7 +280,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.16),
+                        color: AppTheme.textDark.withOpacity(0.16),
                         blurRadius: 12,
                         offset: const Offset(0, 8),
                       ),
@@ -363,7 +363,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
+                        color: AppTheme.textDark.withOpacity(0.08),
                         blurRadius: 10,
                         offset: const Offset(0, 6),
                       ),
@@ -652,7 +652,7 @@ class _GameResultsScreenState extends State<GameResultsScreen>
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                       ),
-                      borderRadius: BorderRadius.circular(3),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                     constraints: const BoxConstraints(minHeight: 28),
                   ),

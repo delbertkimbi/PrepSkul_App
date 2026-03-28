@@ -706,7 +706,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                 ],
                               ),
                             ),
-                            const Divider(height: 1),
+                            const SizedBox(height: 8),
                             Expanded(
                               child: SingleChildScrollView(
                                 padding: const EdgeInsets.all(16),
@@ -1037,7 +1037,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: AppTheme.textDark.withOpacity(0.04),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -1193,7 +1193,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                             border: Border.all(color: AppTheme.softBorder),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
+                                color: AppTheme.textDark.withOpacity(0.04),
                                 blurRadius: 8,
                                 offset: const Offset(0, 2),
                               ),
@@ -1419,7 +1419,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.06),
+                                          color: AppTheme.textDark.withOpacity(0.06),
                                           blurRadius: 8,
                                           offset: const Offset(0, 2),
                                         ),

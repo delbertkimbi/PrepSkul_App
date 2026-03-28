@@ -68,6 +68,19 @@ class AppTheme {
     end: Alignment.bottomRight,
   );
 
+  // Stitch color-pair token mapping (deep blue / sky blue / yellow).
+  static const LinearGradient stitchDeepBlueGradient = primaryGradient;
+  static const LinearGradient stitchSkyBlueGradient = LinearGradient(
+    colors: [skyBlue, skyBlueLight],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const LinearGradient stitchYellowGradient = LinearGradient(
+    colors: [softYellow, softYellowLight],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   /// Soft top-to-bottom gradient for app bar / auth headers. Stays close to deep blue for theme-color consistency; subtle neumorphic depth.
   static const LinearGradient headerGradient = LinearGradient(
     colors: [Color(0xFF1B2C4F), Color(0xFF1E3254)],

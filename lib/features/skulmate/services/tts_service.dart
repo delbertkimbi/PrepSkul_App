@@ -4,6 +4,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:prepskul/core/localization/language_service.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'game_sound_service.dart';
 
 /// Service for text-to-speech functionality in games
 class TTSService {
@@ -43,6 +44,8 @@ class TTSService {
         LogService.debug('[TTS] Speech completed');
         _speakCompleter?.complete();
         _speakCompleter = null;
+        // TTS often ducks/pauses other audio (especially on iOS); resume game BGM.
+        unawaited(GameSoundService().resumeBgmIfNeeded());
       });
       
       _isInitialized = true;

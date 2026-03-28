@@ -168,6 +168,7 @@ class _BubblePopGameScreenState extends State<BubblePopGameScreen> {
             progressText: 'Targets: $_score / $_targetTotal',
             progressValue: _targetTotal == 0 ? 0 : _score / _targetTotal,
             xpEarned: _xpEarned,
+            gameType: widget.game.gameType,
           ),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 8),

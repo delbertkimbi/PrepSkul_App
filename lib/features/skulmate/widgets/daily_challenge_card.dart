@@ -208,7 +208,7 @@ class _DailyChallengeCardState extends State<DailyChallengeCard> {
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: AppTheme.primaryColor.withOpacity(0.12),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),

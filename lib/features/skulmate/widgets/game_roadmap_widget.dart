@@ -81,7 +81,7 @@ class GameRoadmapWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: AppTheme.primaryColor.withOpacity(0.12),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -167,7 +167,7 @@ class GameRoadmapWidget extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 8,

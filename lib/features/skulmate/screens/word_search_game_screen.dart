@@ -164,6 +164,7 @@ class _WordSearchGameScreenState extends State<WordSearchGameScreen> {
             progressText: 'Found: $_score / ${_words.length}',
             progressValue: _words.isEmpty ? 0 : _score / _words.length,
             xpEarned: _xpEarned,
+            gameType: widget.game.gameType,
           ),
           const SizedBox(height: 10),
           Expanded(

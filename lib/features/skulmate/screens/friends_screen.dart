@@ -301,7 +301,7 @@ class _FriendsScreenState extends State<FriendsScreen>
         border: Border.all(color: AppTheme.softBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: AppTheme.textDark.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, 3),
           ),
@@ -379,7 +379,7 @@ class _FriendsScreenState extends State<FriendsScreen>
         border: Border.all(color: Colors.orange.shade200, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: AppTheme.textDark.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, 3),
           ),

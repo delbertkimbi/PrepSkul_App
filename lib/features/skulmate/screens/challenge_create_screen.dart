@@ -187,7 +187,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
                 color: isActive
                     ? AppTheme.primaryColor
                     : AppTheme.softBorder,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(4),
               ),
             ),
           );
@@ -281,7 +281,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.04),
+                          color: AppTheme.textDark.withOpacity(0.04),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -365,7 +365,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
             border: Border.all(color: AppTheme.softBorder),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: AppTheme.textDark.withOpacity(0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -431,7 +431,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
             border: Border.all(color: AppTheme.softBorder),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: AppTheme.textDark.withOpacity(0.04),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -522,7 +522,7 @@ class _ChallengeCreateScreenState extends State<ChallengeCreateScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: AppTheme.textDark.withOpacity(0.06),
             blurRadius: 8,
             offset: const Offset(0, -2),
           ),

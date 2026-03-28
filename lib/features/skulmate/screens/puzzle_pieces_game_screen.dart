@@ -364,7 +364,7 @@ class _PuzzlePiecesGameScreenState extends State<PuzzlePiecesGameScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
+                                color: AppTheme.textDark.withOpacity(0.2),
                                 blurRadius: 8,
                                 offset: const Offset(0, 4),
                               ),

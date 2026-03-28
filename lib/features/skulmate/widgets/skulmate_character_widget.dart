@@ -163,7 +163,7 @@ class CompactCharacterWidget extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: AppTheme.primaryColor.withOpacity(0.12),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),

@@ -192,6 +192,7 @@ class PaymentInstructionsWidget extends StatelessWidget {
                       child: Center(
                         child: Text(
                           '${index + 1}',
+                           
                           style: GoogleFonts.poppins(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,

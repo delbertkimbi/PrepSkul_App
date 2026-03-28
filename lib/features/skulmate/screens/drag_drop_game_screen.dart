@@ -193,6 +193,7 @@ class _DragDropGameScreenState extends State<DragDropGameScreen> {
               progressValue:
                   (_currentQuestionIndex + 1) / (_questions.isEmpty ? 1 : _questions.length),
               xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
             ),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 10, 16, 0),

@@ -152,7 +152,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
         border: Border.all(color: AppTheme.softBorder),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: accentColor.withOpacity(0.12),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -180,7 +180,11 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: accentColor.withOpacity(0.08),
+                          color: accentColor.withOpacity(0.14),
+                          border: Border.all(
+                            color: accentColor.withOpacity(0.22),
+                            width: 1,
+                          ),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(
@@ -217,7 +221,7 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: accentColor.withOpacity(0.08),
+                            color: accentColor.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -379,33 +383,33 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
   Color _accentColorForGameType(GameType type) {
     switch (type) {
       case GameType.quiz:
-        return AppTheme.accentPurple;
+        return const Color(0xFF7E57C2);
       case GameType.flashcards:
-        return AppTheme.accentOrange;
+        return const Color(0xFF1E88E5);
       case GameType.matching:
-        return AppTheme.skyBlue;
+        return const Color(0xFF00897B);
       case GameType.fillBlank:
-        return AppTheme.accentGreen;
+        return const Color(0xFF43A047);
       case GameType.match3:
-        return AppTheme.accentPurple;
+        return const Color(0xFFFB8C00);
       case GameType.bubblePop:
-        return AppTheme.accentPink;
+        return const Color(0xFFE91E63);
       case GameType.wordSearch:
-        return AppTheme.accentBlue;
+        return const Color(0xFF00ACC1);
       case GameType.crossword:
-        return AppTheme.accentOrange;
+        return const Color(0xFFF9A825);
       case GameType.diagramLabel:
-        return AppTheme.accentPink;
+        return const Color(0xFF6D4C41);
       case GameType.dragDrop:
-        return AppTheme.accentGreen;
+        return const Color(0xFF3949AB);
       case GameType.puzzlePieces:
-        return AppTheme.accentOrange;
+        return const Color(0xFF8D6E63);
       case GameType.simulation:
-        return AppTheme.accentPurple;
+        return const Color(0xFF5E35B1);
       case GameType.mystery:
-        return AppTheme.accentPink;
+        return const Color(0xFF8E24AA);
       case GameType.escapeRoom:
-        return AppTheme.skyBlue;
+        return const Color(0xFFE53935);
     }
   }
 

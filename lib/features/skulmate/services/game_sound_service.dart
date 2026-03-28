@@ -27,6 +27,7 @@ class GameSoundService {
   bool _isInitialized = false;
   String? _currentMusicPath;
   double _currentMusicBaseVolume = 0.06;
+  GameType? _lastRequestedMusicGameType;
   List<String>? _bundledAudioTracksCache;
   GameType? _pendingMusicForUserGesture;
   bool _gestureHookInstalled = false;
@@ -43,12 +44,12 @@ class GameSoundService {
       _soundsVolume = prefs.getDouble('game_sounds_volume') ?? 1.0;
       _musicVolume = prefs.getDouble('game_music_volume') ?? 1.0;
       _isInitialized = true;
-      
+
       // Preload common sounds for smoother playback
       if (_soundsEnabled) {
         await _preloadSounds();
       }
-      
+
       await _bgmPlayer.setReleaseMode(ReleaseMode.loop);
       // Keep BGM deliberately soft so it doesn't fight TTS/voice.
       _currentMusicBaseVolume = 0.06;
@@ -79,7 +80,7 @@ class GameSoundService {
         SoundType.match,
         SoundType.complete,
       ];
-      
+
       for (final soundType in commonSounds) {
         try {
           final player = AudioPlayer();
@@ -108,7 +109,10 @@ class GameSoundService {
   List<String> _getSoundPathCandidates(SoundType type) {
     switch (type) {
       case SoundType.correct:
-        return const ['sounds/correct.mp3', 'audio/music/sfx_correct_chime.ogg'];
+        return const [
+          'sounds/correct.mp3',
+          'audio/music/sfx_correct_chime.ogg',
+        ];
       case SoundType.incorrect:
         return const ['sounds/incorrect.mp3', 'audio/music/sfx_wrong_mute.ogg'];
       case SoundType.flip:
@@ -120,13 +124,19 @@ class GameSoundService {
       case SoundType.match:
         return const ['sounds/match.mp3', 'audio/music/sfx_streak_ping.ogg'];
       case SoundType.complete:
-        return const ['sounds/complete.mp3', 'audio/music/sfx_victory_short.ogg'];
+        return const [
+          'sounds/complete.mp3',
+          'audio/music/sfx_victory_short.ogg',
+        ];
       case SoundType.click:
         return const ['sounds/click.mp3', 'audio/music/sfx_tap_soft.ogg'];
       case SoundType.pop:
         return const ['sounds/pop.mp3', 'audio/music/sfx_tap_soft.ogg'];
       case SoundType.wordFound:
-        return const ['sounds/wordFound.mp3', 'audio/music/sfx_streak_ping.ogg'];
+        return const [
+          'sounds/wordFound.mp3',
+          'audio/music/sfx_streak_ping.ogg',
+        ];
       case SoundType.piecePlace:
         return const ['sounds/piecePlace.mp3', 'sounds/flip.mp3'];
       case SoundType.cardFlip:
@@ -136,7 +146,10 @@ class GameSoundService {
           'audio/music/flip.mp3', // backward compatibility fallback
         ];
       case SoundType.levelComplete:
-        return const ['sounds/levelComplete.mp3', 'audio/music/sfx_level_up.ogg'];
+        return const [
+          'sounds/levelComplete.mp3',
+          'audio/music/sfx_level_up.ogg',
+        ];
     }
   }
 
@@ -174,7 +187,9 @@ class GameSoundService {
 
   Future<String?> _resolveSoundPath(SoundType type) async {
     if (_resolvedSoundPaths.containsKey(type)) return _resolvedSoundPaths[type];
-    final resolved = await _resolveFirstExistingPath(_getSoundPathCandidates(type));
+    final resolved = await _resolveFirstExistingPath(
+      _getSoundPathCandidates(type),
+    );
     _resolvedSoundPaths[type] = resolved;
     return resolved;
   }
@@ -197,7 +212,9 @@ class GameSoundService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('game_sounds_enabled', enabled);
-      LogService.info('🎵 [GameSound] Sounds ${enabled ? "enabled" : "disabled"}');
+      LogService.info(
+        '🎵 [GameSound] Sounds ${enabled ? "enabled" : "disabled"}',
+      );
     } catch (e) {
       LogService.error('🎵 [GameSound] Error saving preference: $e');
     }
@@ -212,7 +229,9 @@ class GameSoundService {
       if (!enabled) {
         await stopMusic();
       }
-      LogService.info('🎵 [GameSound] Music ${enabled ? "enabled" : "disabled"}');
+      LogService.info(
+        '🎵 [GameSound] Music ${enabled ? "enabled" : "disabled"}',
+      );
     } catch (e) {
       LogService.error('🎵 [GameSound] Error saving music preference: $e');
     }
@@ -341,7 +360,10 @@ class GameSoundService {
     for (final path in candidates) {
       try {
         final normalizedPath = _normalizeAssetRelativePath(path);
-        if (_currentMusicPath == normalizedPath) return true;
+        if (_currentMusicPath == normalizedPath) {
+          final resumed = await _ensureCurrentTrackIsPlaying();
+          if (resumed) return true;
+        }
         await _bgmPlayer.stop();
         // Keep background tracks audible; raise fallback loop volume.
         final isBgm = normalizedPath.contains('/bgm_');
@@ -367,13 +389,16 @@ class GameSoundService {
     if (!_musicEnabled) return;
     if (!_isInitialized) await ensureInitialized();
     if (!_isInitialized) return;
+    _lastRequestedMusicGameType = gameType;
     _pendingMusicForUserGesture = gameType;
 
     final ok = await _playFirstWorkingMusic(
       await _resolvedMusicCandidates(gameType),
     );
     if (!ok) {
-      LogService.error('🎵 [GameSound] Failed to play music loop: no playable asset found');
+      LogService.error(
+        '🎵 [GameSound] Failed to play music loop: no playable asset found',
+      );
       // Keep pending on web/browser autoplay restrictions, so we can retry on next user tap.
       return;
     }
@@ -395,7 +420,9 @@ class GameSoundService {
       ...await _resolvedMusicCandidates(GameType.quiz),
     ]);
     if (!ok) {
-      LogService.error('🎵 [GameSound] Failed to play results music: no playable asset found');
+      LogService.error(
+        '🎵 [GameSound] Failed to play results music: no playable asset found',
+      );
       return;
     }
 
@@ -408,6 +435,36 @@ class GameSoundService {
       _currentMusicPath = null;
       await _bgmPlayer.stop();
     } catch (_) {}
+  }
+
+  /// BGM can be paused/ducked by SFX, TTS, or the OS audio session (especially iOS).
+  /// Call after short non-BGM playback so the loop keeps running during games.
+  Future<void> resumeBgmIfNeeded() async {
+    if (!_musicEnabled || !_isInitialized) return;
+    if (_currentMusicPath == null) return;
+    final resumed = await _ensureCurrentTrackIsPlaying();
+    if (resumed) return;
+    final fallbackGameType = _lastRequestedMusicGameType;
+    if (fallbackGameType != null) {
+      unawaited(playMusicForGame(fallbackGameType));
+    }
+  }
+
+  Future<bool> _ensureCurrentTrackIsPlaying() async {
+    final currentPath = _currentMusicPath;
+    if (currentPath == null) return false;
+    try {
+      if (_bgmPlayer.state == PlayerState.playing) return true;
+      await _bgmPlayer.resume();
+      if (_bgmPlayer.state == PlayerState.playing) return true;
+    } catch (_) {}
+    try {
+      await _setPlayerSourceWithFallback(_bgmPlayer, currentPath);
+      await _bgmPlayer.resume();
+      return _bgmPlayer.state == PlayerState.playing;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Play a sound effect
@@ -427,7 +484,8 @@ class GameSoundService {
       // Use preloaded player if available
       if (_preloadedPlayers.containsKey(type)) {
         final player = _preloadedPlayers[type]!;
-        await player.stop(); // Stop so rapid repeats (e.g. card flips) each play fully
+        await player
+            .stop(); // Stop so rapid repeats (e.g. card flips) each play fully
         await player.seek(Duration.zero);
         await player.setVolume(_volumeFor(type));
         await player.resume();
@@ -451,6 +509,8 @@ class GameSoundService {
     } catch (e) {
       // Fallback: system click/alert when assets are missing
       _playSystemFallback(type);
+    } finally {
+      unawaited(resumeBgmIfNeeded());
     }
   }
 
@@ -572,7 +632,10 @@ class GameSoundService {
     unawaited(playMusicForGame(pending));
   }
 
-  Future<void> _playAssetWithFallback(AudioPlayer player, String relativePath) async {
+  Future<void> _playAssetWithFallback(
+    AudioPlayer player,
+    String relativePath,
+  ) async {
     final normalizedPath = _normalizeAssetRelativePath(relativePath);
     try {
       await player.play(AssetSource(normalizedPath));

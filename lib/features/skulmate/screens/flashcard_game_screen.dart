@@ -1042,7 +1042,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.15),
+            color: AppTheme.textDark.withOpacity(0.15),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -1074,7 +1074,7 @@ class _FlashcardGameScreenState extends State<FlashcardGameScreen>
         border: Border.all(color: AppTheme.skyBlue.withOpacity(0.4), width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: AppTheme.textDark.withOpacity(0.1),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),

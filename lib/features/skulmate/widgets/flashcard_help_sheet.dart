@@ -102,12 +102,12 @@ class _FlashcardHelpSheetState extends State<FlashcardHelpSheet> {
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
       child: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black26,
+            color: AppTheme.primaryColor.withOpacity(0.12),
             blurRadius: 20,
             offset: Offset(0, -4),
           ),
@@ -126,7 +126,7 @@ class _FlashcardHelpSheetState extends State<FlashcardHelpSheet> {
                   height: 4,
                   decoration: BoxDecoration(
                     color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
               ),
@@ -243,11 +243,11 @@ class _VideoCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: Colors.grey[100],
+          color: AppTheme.softCard,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: AppTheme.primaryColor.withOpacity(0.10),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
