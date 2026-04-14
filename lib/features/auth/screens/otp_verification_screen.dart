@@ -14,6 +14,7 @@ import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/core/widgets/branded_snackbar.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 
 class OTPVerificationScreen extends StatefulWidget {
@@ -95,6 +96,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   Future<void> _verifyOTP() async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      _showError(
+        'Phone verification is temporarily unavailable. Please use Email or Google sign-in.',
+      );
+      return;
+    }
     if (_otpCode.length != 6) {
       _showError('Please enter the complete 6-digit code');
       return;
@@ -334,6 +341,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen> {
   }
 
   Future<void> _resendOTP() async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      _showError(
+        'Phone verification is temporarily unavailable. Please use Email or Google sign-in.',
+      );
+      return;
+    }
     safeSetState(() => _isResending = true);
 
     try {

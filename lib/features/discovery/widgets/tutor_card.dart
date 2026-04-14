@@ -23,13 +23,11 @@ class TutorCard extends StatelessWidget {
     
     // Use pre-calculated values from tutor_service (no duplicate calculation)
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
-    final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     final adminApprovedRating = (tutor['admin_approved_rating'] as num?)?.toDouble();
     
     // DEBUG: Log values being used (debug mode only)
     LogService.debug('Tutor Card - Name: $name', {
       'rating': rating,
-      'total_reviews': totalReviews,
       'admin_approved_rating': adminApprovedRating,
     });
 
@@ -184,14 +182,6 @@ class TutorCard extends StatelessWidget {
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   color: Colors.black,
-                                ),
-                              ),
-                              if (rating > 0 && totalReviews >= 3)
-                              Text(
-                                ' ($totalReviews)',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 13,
-                                  color: Colors.grey[600],
                                 ),
                               ),
                             ],

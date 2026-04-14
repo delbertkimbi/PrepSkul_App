@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' show ImageFilter;
 import 'package:google_fonts/google_fonts.dart';
-import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_stats_model.dart';
 import '../services/game_stats_service.dart';
+import 'skulmate_mascot_media_widget.dart';
 
 /// Optional context to pass to game generation for better results
 class GenerationContext {
@@ -45,7 +46,16 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
   final TextEditingController _topicController = TextEditingController();
   String? _practiceType;
   String _gameType = 'auto';
-  static const Set<String> _comingSoonGameTypes = {'diagram_label'};
+  static const Set<String> _comingSoonGameTypes = {
+    'diagram_label',
+    'match3',
+    'bubble_pop',
+    'word_search',
+    'crossword',
+    'simulation',
+    'mystery',
+    'escape_room',
+  };
 
   static const List<Map<String, String?>> _practiceOptions = [
     {'value': 'easy', 'label': 'Easy – Definitions', 'emoji': '📖'},
@@ -157,19 +167,27 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withValues(alpha: 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, -4),
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.softBackground.withValues(alpha: 0.78),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                blurRadius: 18,
+                offset: const Offset(0, -4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: SafeArea(
+          child: SafeArea(
         top: false,
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 22),
@@ -191,15 +209,19 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: PhosphorIcon(
-                      PhosphorIcons.chatCircleText(PhosphorIconsStyle.fill),
-                      color: AppTheme.primaryColor,
-                      size: 24,
+                    child: const SizedBox(
+                      width: 40,
+                      height: 40,
+                      child: SkulMateMascotMediaWidget(
+                        state: SkulMateMascotState.thinking,
+                        useLandscapeFrame: false,
+                        borderRadius: 999,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -343,6 +365,7 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                 children: _gameTypeOptions.map((opt) {
                   final value = opt['value']!;
                   final isSelected = _gameType == value;
+                  final isInactive = _comingSoonGameTypes.contains(value);
                   return FilterChip(
                     selected: isSelected,
                     showCheckmark: false,
@@ -351,16 +374,26 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                       style: GoogleFonts.poppins(
                         fontSize: 13,
                         fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                        color: isSelected ? Colors.white : AppTheme.textDark,
+                        color: isInactive
+                            ? AppTheme.textLight
+                            : (isSelected ? Colors.white : AppTheme.textDark),
                       ),
                     ),
                     onSelected: (_) {
                       _onSelectGameType(value);
                     },
-                    selectedColor: AppTheme.primaryColor,
-                    backgroundColor: AppTheme.softBackground,
+                    selectedColor: isInactive
+                        ? const Color(0xFFE5E7EB)
+                        : AppTheme.primaryColor,
+                    backgroundColor: isInactive
+                        ? const Color(0xFFF3F4F6)
+                        : AppTheme.softBackground,
                     side: BorderSide(
-                      color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
+                      color: isInactive
+                          ? const Color(0xFFD1D5DB)
+                          : (isSelected
+                              ? AppTheme.primaryColor
+                              : AppTheme.softBorder),
                       width: isSelected ? 2 : 1,
                     ),
                   );
@@ -381,34 +414,50 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: _onContinue,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.primaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.stitchDeepBlueGradient,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          PhosphorIcon(
-                            PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
-                            color: Colors.white,
-                            size: 18,
+                      child: ElevatedButton(
+                        onPressed: _onContinue,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          shadowColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Generate Game',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                          elevation: 0,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ClipOval(
+                              child: Container(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                child: const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: SkulMateMascotMediaWidget(
+                                    state: SkulMateMascotState.celebration,
+                                    useLandscapeFrame: false,
+                                    borderRadius: 999,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Text(
+                              'Generate Game',
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -417,6 +466,8 @@ class _GenerationContextSheetState extends State<GenerationContextSheet> {
             ],
           ),
         ),
+      ),
+      ),
       ),
     );
   }

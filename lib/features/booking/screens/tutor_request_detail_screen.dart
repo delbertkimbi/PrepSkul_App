@@ -1442,6 +1442,39 @@ class _TutorRequestDetailScreenState extends State<TutorRequestDetailScreen> {
     );
   }
 
+  Widget _buildLearnerDetailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: AppTheme.primaryColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: GoogleFonts.poppins(
+                  fontSize: 12,
+                  color: AppTheme.textMedium,
+                ),
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textDark,
+                    ),
+                  ),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Build multi-learner group card with per-learner accept/decline actions
   Widget _buildMultiLearnerGroupCard(List learnerLabels) {
     final learnerAcceptanceStatus = widget.request['learner_acceptance_status'] as Map<String, dynamic>?;

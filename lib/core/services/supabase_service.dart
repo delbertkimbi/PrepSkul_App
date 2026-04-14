@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:prepskul/core/services/log_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 
 /// Service class to handle Supabase operations
 class SupabaseService {
@@ -101,6 +102,11 @@ class SupabaseService {
 
   /// Send OTP to phone number
   static Future<void> sendPhoneOTP(String phoneNumber) async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      throw Exception(
+        'Phone verification is temporarily unavailable.\n\nPlease use Email or Google sign-in for now.',
+      );
+    }
     try {
       await client.auth.signInWithOtp(phone: phoneNumber);
       LogService.success('OTP sent successfully to: $phoneNumber');
@@ -115,8 +121,15 @@ class SupabaseService {
     required String phone,
     required String token,
   }) async {
+    if (!AppConfig.enablePhoneOtpVerification) {
+      throw Exception(
+        'Phone verification is temporarily unavailable.\n\nPlease use Email or Google sign-in for now.',
+      );
+    }
     try {
-      LogService.debug('🔐 Verifying OTP for: $phone with code: $token');
+      LogService.debug(
+        '🔐 Verifying OTP (code length: ${token.length}; phone length: ${phone.length})',
+      );
       final response = await client.auth.verifyOTP(
         phone: phone,
         token: token,

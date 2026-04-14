@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/game_model.dart';
+import 'skulmate_mascot_media_widget.dart';
 
 /// Shared Duolingo-style HUD and controls for consistent game UX.
 class GameStandardsHud extends StatelessWidget {
@@ -35,11 +36,19 @@ class GameStandardsHud extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  if (gameType != null)
-                    _GameTypeFeatureIcon(
-                      gameType: gameType!,
+                  if (gameType != null) ...[
+                    SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: SkulMateMascotMediaWidget(
+                        state: SkulMateMascotState.neutral,
+                        useLandscapeFrame: false,
+                        borderRadius: 10,
+                        preferStaticImage: true,
+                      ),
                     ),
-                  if (gameType != null) const SizedBox(width: 8),
+                    const SizedBox(width: 8),
+                  ],
                   Text(
                     progressText,
                     style: GoogleFonts.plusJakartaSans(
@@ -167,86 +176,6 @@ class _TactileProgressBar extends StatelessWidget {
   }
 }
 
-class _GameTypeFeatureIcon extends StatelessWidget {
-  final GameType gameType;
-
-  const _GameTypeFeatureIcon({
-    required this.gameType,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final gradient = _gradientForGameType(gameType);
-
-    final icon = switch (gameType) {
-      GameType.dragDrop => Icons.drag_handle,
-      GameType.fillBlank => Icons.edit,
-      GameType.wordSearch => Icons.search,
-      GameType.crossword => Icons.grid_on,
-      GameType.bubblePop => Icons.circle,
-      GameType.match3 => Icons.auto_awesome,
-      GameType.matching => Icons.extension,
-      GameType.flashcards => Icons.layers,
-      GameType.quiz => Icons.school,
-      GameType.simulation => Icons.memory,
-      GameType.mystery => Icons.help_outline,
-      GameType.escapeRoom => Icons.lock_outline,
-      GameType.diagramLabel => Icons.label,
-      _ => Icons.help_outline,
-    };
-
-    return Container(
-      width: 26,
-      height: 18,
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Center(
-        child: Icon(
-          icon,
-          size: 13,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-
-  LinearGradient _gradientForGameType(GameType type) {
-    switch (type) {
-      case GameType.dragDrop:
-      case GameType.fillBlank:
-        return AppTheme.stitchYellowGradient;
-      case GameType.wordSearch:
-      case GameType.match3:
-      case GameType.matching:
-      case GameType.flashcards:
-      case GameType.quiz:
-        return AppTheme.stitchSkyBlueGradient;
-      case GameType.bubblePop:
-        return LinearGradient(
-          colors: [AppTheme.accentOrange, AppTheme.accentPink],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      case GameType.crossword:
-        return LinearGradient(
-          colors: [AppTheme.accentPurple, AppTheme.skyBlue],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        );
-      case GameType.diagramLabel:
-        return AppTheme.primaryGradient;
-      case GameType.puzzlePieces:
-        return AppTheme.primaryGradient;
-      case GameType.simulation:
-      case GameType.mystery:
-      case GameType.escapeRoom:
-        return AppTheme.primaryGradient;
-    }
-  }
-}
-
 class GameStandardsTipCard extends StatelessWidget {
   final String text;
   const GameStandardsTipCard({super.key, required this.text});
@@ -366,6 +295,119 @@ class _GameStandardsSquishyPrimaryButtonState
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Flat card style used by generation and quiz surfaces.
+class FlatStageCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final Color? borderColor;
+  final Color? backgroundColor;
+  final double radius;
+
+  const FlatStageCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(14),
+    this.borderColor,
+    this.backgroundColor,
+    this.radius = 14,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: backgroundColor ?? Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: borderColor ?? AppTheme.softBorder),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Flat selectable row used for quiz answer options.
+class FlatChoiceTile extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final bool isCorrect;
+  final bool showResult;
+  final VoidCallback? onTap;
+
+  const FlatChoiceTile({
+    super.key,
+    required this.label,
+    required this.isSelected,
+    required this.isCorrect,
+    required this.showResult,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color fill = Colors.white;
+    Color border = AppTheme.softBorder;
+    Color textColor = AppTheme.textDark;
+    IconData? leadingIcon;
+
+    if (showResult) {
+      if (isCorrect) {
+        fill = AppTheme.accentGreen.withValues(alpha: 0.12);
+        border = AppTheme.accentGreen;
+        textColor = AppTheme.textDark;
+        leadingIcon = Icons.check_circle;
+      } else if (isSelected) {
+        fill = const Color(0xFFFEF2F2);
+        border = const Color(0xFFDC2626);
+        textColor = AppTheme.textDark;
+        leadingIcon = Icons.cancel;
+      }
+    } else if (isSelected) {
+      fill = AppTheme.primaryColor.withValues(alpha: 0.09);
+      border = AppTheme.primaryColor;
+      textColor = AppTheme.primaryColor;
+      leadingIcon = Icons.radio_button_checked;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: border, width: 1.5),
+          ),
+          child: Row(
+            children: [
+              if (leadingIcon != null) ...[
+                Icon(leadingIcon, size: 18, color: border),
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Text(
+                  label,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

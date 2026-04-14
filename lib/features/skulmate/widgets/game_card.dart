@@ -147,14 +147,14 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
-        color: AppTheme.softCard,
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.softBorder),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.12),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: AppTheme.textDark.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -177,15 +177,15 @@ class _GameCardState extends State<GameCard> with AutomaticKeepAliveClientMixin 
                     children: [
                       // Game icon
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 42,
+                        height: 42,
                         decoration: BoxDecoration(
-                          color: accentColor.withOpacity(0.14),
+                          color: accentColor.withOpacity(0.12),
                           border: Border.all(
-                            color: accentColor.withOpacity(0.22),
+                            color: accentColor.withOpacity(0.30),
                             width: 1,
                           ),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
                           _gameIcon,

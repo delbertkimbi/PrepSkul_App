@@ -50,6 +50,7 @@ import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/features/skulmate/screens/skulmate_upload_screen.dart';
 import 'package:prepskul/features/skulmate/screens/game_library_screen.dart';
 import 'package:prepskul/features/skulmate/screens/character_selection_screen.dart';
+import 'package:prepskul/features/skulmate/screens/leaderboard_screen.dart';
 import 'package:prepskul/features/discovery/screens/tutor_detail_screen.dart';
 import 'package:prepskul/core/services/tutor_service.dart';
 import 'dart:async';
@@ -230,7 +231,8 @@ void main() async {
 Future<void> _initializePushNotifications() async {
   try {
     await PushNotificationService().initialize(
-      onNotificationTap: (message) {
+      
+            onNotificationTap: (message) {
         // Handle notification tap navigation (deep links).
         // This is critical for message notifications: user expects to land in the DM.
         try {
@@ -588,9 +590,28 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
   Map<String, String> _mergeAuthParams(Uri uri) {
     final merged = Map<String, String>.from(uri.queryParameters);
     if (uri.fragment.isNotEmpty) {
-      final fragmentParams = Uri.splitQueryString(uri.fragment);
-      for (final e in fragmentParams.entries) {
-        merged.putIfAbsent(e.key, () => e.value);
+      // Fragment can be:
+      // - "code=...&type=..."
+      // - "/email-login?code=...&type=..."
+      // - "#access_token=..."
+      var fragment = uri.fragment.trim();
+      if (fragment.startsWith('#')) {
+        fragment = fragment.substring(1);
+      }
+      String fragmentQuery = fragment;
+      final questionIdx = fragment.indexOf('?');
+      if (questionIdx >= 0 && questionIdx < fragment.length - 1) {
+        fragmentQuery = fragment.substring(questionIdx + 1);
+      }
+      if (fragmentQuery.isNotEmpty && fragmentQuery.contains('=')) {
+        try {
+          final fragmentParams = Uri.splitQueryString(fragmentQuery);
+          for (final e in fragmentParams.entries) {
+            merged.putIfAbsent(e.key, () => e.value);
+          }
+        } catch (e) {
+          LogService.debug('🔗 [DEEP_LINK] Unable to parse fragment params: $e');
+        }
       }
     }
     return merged;
@@ -624,8 +645,20 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       path = uri.path;
     }
 
-    final code = params['code'];
-    final type = params['type'];
+    String? code = params['code'];
+    String? type = params['type'];
+    String? provider = params['provider'];
+    // Defensive fallback: some browsers/app-link bridges can reshape callback
+    // payload into mixed query/fragment strings. Parse from raw URI if needed.
+    final rawUri = uri.toString();
+    String? _extractParamFromRaw(String key) {
+      final m = RegExp('(?:[?#&]|^)$key=([^&#]+)').firstMatch(rawUri);
+      if (m == null) return null;
+      return Uri.decodeQueryComponent(m.group(1)!);
+    }
+    code ??= _extractParamFromRaw('code');
+    type ??= _extractParamFromRaw('type');
+    provider ??= _extractParamFromRaw('provider');
     final tutorFromQuery = params['tutor'];
     final error = params['error'];
     final errorCode = params['error_code'];
@@ -805,10 +838,14 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
     // Check if this is a Google OAuth callback
     // Web:   https://app.prepskul.com/?code=...&provider=google
     // Mobile: prepskul://email-login?code=... (PKCE flow, no provider param)
-    final provider = params['provider'];
     final token = params['token'];
+    // Same redirect host (`prepskul://email-login`) is used for Google OAuth, email verification,
+    // and recovery; only treat as Google when the link is not another flow.
     final isGoogleOAuthCallback =
         code != null &&
+        type != 'recovery' &&
+        type != 'signup' &&
+        type != 'email' &&
         (provider == 'google' ||
             uri.host == 'email-login' ||
             path.contains('email-login'));
@@ -818,31 +855,33 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
       LogService.debug('🔐 [DEEP_LINK] Google OAuth callback detected');
 
       try {
-        // Web apps must exchange the code manually.
-        // On mobile, Supabase Flutter already handles exchangeCodeForSession via handleDeeplink.
-        if (kIsWeb && code != null) {
+        // Exchange PKCE code for a session on both web and mobile. Relying only on
+        // supabase_flutter's implicit deeplink handling leaves currentUser null here, which
+        // caused fall-through to navigateToRoute('/email-login') for prepskul://email-login.
+        try {
           await SupabaseService.client.auth.exchangeCodeForSession(code);
           LogService.success(
-            '✅ [DEEP_LINK] Google OAuth code verified! Session created (web).',
+            '✅ [DEEP_LINK] Google OAuth code exchanged for session (${kIsWeb ? 'web' : 'mobile'}).',
           );
-        } else {
+        } catch (e) {
+          // Second exchange can fail if another handler already consumed the code; keep going.
           LogService.debug(
-            '✅ [DEEP_LINK] Assuming Supabase Flutter handled code exchange (mobile PKCE).',
+            '🔐 [DEEP_LINK] exchangeCodeForSession (may be duplicate): $e',
           );
         }
 
-        // Ensure Supabase currentUser is populated (mobile PKCE can be slightly delayed)
+        // Ensure Supabase currentUser is populated (async persistence can lag slightly)
         var user = SupabaseService.currentUser;
         if (user == null) {
           LogService.debug(
-            '🔐 [DEEP_LINK] Supabase currentUser is null after callback, waiting briefly...',
+            '🔐 [DEEP_LINK] Supabase currentUser is null after exchange, waiting...',
           );
-          for (int i = 0; i < 5; i++) {
-            await Future.delayed(const Duration(milliseconds: 200));
+          for (int i = 0; i < 8; i++) {
+            await Future.delayed(const Duration(milliseconds: 120));
             user = SupabaseService.currentUser;
             if (user != null) {
               LogService.debug(
-                '🔐 [DEEP_LINK] Supabase currentUser is now available after wait (attempt ${i + 1})',
+                '🔐 [DEEP_LINK] Supabase currentUser available after wait (attempt ${i + 1})',
               );
               break;
             }
@@ -851,11 +890,19 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
 
         // Check if user has user_type set - if not, navigate to role (user type) selection
         if (user != null) {
-          final profile = await SupabaseService.client
-              .from('profiles')
-              .select('user_type')
-              .eq('id', user.id)
-              .maybeSingle();
+          Map<String, dynamic>? profile;
+          try {
+            profile = await SupabaseService.client
+                .from('profiles')
+                .select('user_type')
+                .eq('id', user.id)
+                .maybeSingle()
+                .timeout(const Duration(milliseconds: 1400));
+          } catch (e) {
+            LogService.warning(
+              '🔐 [DEEP_LINK] Profile role fetch timed out/failed after Google OAuth: $e',
+            );
+          }
 
           final userType = profile?['user_type'] as String?;
 
@@ -894,6 +941,23 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
             return;
           }
         }
+
+        // Session never became available — do not fall through to navigateToRoute(path)
+        // (path is /email-login which wrongly sent users to the email sign-in screen).
+        LogService.error(
+          '❌ [DEEP_LINK] Google OAuth: no session after code exchange; returning to auth',
+        );
+        AuthService.isGoogleSignInInProgress = false;
+        final navService = NavigationService();
+        if (navService.isReady) {
+          await navService.navigateToRoute(
+            '/auth-method-selection',
+            replace: true,
+          );
+        } else {
+          navService.queueDeepLink(Uri.parse('/auth-method-selection'));
+        }
+        return;
       } catch (e) {
         LogService.error(
           '❌ [DEEP_LINK] Error handling Google OAuth callback: $e',
@@ -1294,7 +1358,28 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
           case '/skulmate/library':
             // SkulMate controlled by AppConfig feature flag
             if (AppConfig.enableSkulMate) {
-              return _createFadeRoute(() => GameLibraryScreen());
+              final args = settings.arguments as Map<String, dynamic>?;
+              return _createFadeRoute(
+                () => GameLibraryScreen(
+                  initialTab: (args?['initialTab'] as int?) ?? 1,
+                  initialGameId: args?['initialGameId'] as String?,
+                ),
+              );
+            } else {
+              return _createFadeRoute(
+                () => Scaffold(
+                  appBar: AppBar(title: const Text('SkulMate')),
+                  body: const Center(
+                    child: Text(
+                      'SkulMate is currently unavailable. Please check back later.',
+                    ),
+                  ),
+                ),
+              );
+            }
+          case '/skulmate/leaderboard':
+            if (AppConfig.enableSkulMate) {
+              return _createFadeRoute(() => const LeaderboardScreen());
             } else {
               return _createFadeRoute(
                 () => Scaffold(
@@ -1328,6 +1413,29 @@ class _PrepSkulAppState extends State<PrepSkulApp> {
                 ),
               );
             }
+        }
+
+        if (settings.name != null &&
+            settings.name!.startsWith('/skulmate/game/')) {
+          if (!AppConfig.enableSkulMate) {
+            return _createFadeRoute(
+              () => Scaffold(
+                appBar: AppBar(title: const Text('SkulMate')),
+                body: const Center(
+                  child: Text(
+                    'SkulMate is currently unavailable. Please check back later.',
+                  ),
+                ),
+              ),
+            );
+          }
+          final gameId = settings.name!.replaceFirst('/skulmate/game/', '').trim();
+          return _createFadeRoute(
+            () => GameLibraryScreen(
+              initialTab: 1,
+              initialGameId: gameId.isEmpty ? null : gameId,
+            ),
+          );
         }
 
         // Handle navigation routes with optional initialTab argument
@@ -1693,7 +1801,12 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         }
       }
       final appLinks = AppLinks();
-      final initialUri = await appLinks.getInitialLink();
+      final initialUri = await appLinks
+          .getInitialLink()
+          .timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => null,
+          );
       if (initialUri != null) {
         final path = initialUri.path;
         if (path.startsWith('/tutor/') &&
@@ -1741,11 +1854,32 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         final cachedIsLoggedIn = prefs.getBool('is_logged_in') ?? false;
 
         if (cachedIsLoggedIn && SupabaseService.isAuthenticated) {
-          // User was logged in - proceed with cached session immediately
           LogService.info(
-            '[INIT_LOAD] Cached session found - proceeding offline without network delay',
+            '[INIT_LOAD] Cached session found - navigating offline without waiting on network',
           );
-          // Skip network waits and proceed directly to navigation
+          var waitedMs = 0;
+          while (waitedMs < 4000 && mounted) {
+            final navService = NavigationService();
+            if (navService.isReady) {
+              try {
+                final result = await navService.determineInitialRoute();
+                if (mounted) {
+                  await _navigateInstant(result.route, result.arguments);
+                  setState(() {
+                    _navigationComplete = true;
+                  });
+                }
+                return;
+              } catch (e) {
+                LogService.warning(
+                  '[INIT_LOAD] Offline fast-path navigation failed: $e',
+                );
+                break;
+              }
+            }
+            await Future.delayed(const Duration(milliseconds: 50));
+            waitedMs += 50;
+          }
         } else if (!cachedIsLoggedIn) {
           // No cached session - can't proceed offline, show auth immediately
           LogService.info(
@@ -1794,8 +1928,17 @@ class _InitialLoadingWrapperState extends State<InitialLoadingWrapper> {
         final navService = NavigationService();
         if (navService.isReady) {
           try {
-            // Always use determineInitialRoute which checks onboarding/survey completion
-            final result = await navService.determineInitialRoute();
+            NavigationResult result;
+            try {
+              result = await navService
+                  .determineInitialRoute()
+                  .timeout(const Duration(seconds: 12));
+            } on TimeoutException {
+              LogService.warning(
+                '[INIT_LOAD] determineInitialRoute timed out — using emergency prefs route',
+              );
+              result = await navService.emergencyDashboardFromPrefs();
+            }
             LogService.success('[INIT_LOAD] Determined route: ${result.route}');
             // Navigate to determined route (could be onboarding, survey, or dashboard)
             if (mounted) {

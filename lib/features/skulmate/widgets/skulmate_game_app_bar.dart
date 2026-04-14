@@ -37,7 +37,13 @@ class SkulMateGameAppBar extends StatelessWidget implements PreferredSizeWidget 
         fontWeight: FontWeight.w600,
         fontSize: 16,
       ),
-      systemOverlayStyle: SystemUiOverlayStyle.light,
+      systemOverlayStyle: SystemUiOverlayStyle(
+        statusBarColor: AppTheme.primaryColor,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: AppTheme.softBackground,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
       elevation: 0,
       title: Text(
         title,

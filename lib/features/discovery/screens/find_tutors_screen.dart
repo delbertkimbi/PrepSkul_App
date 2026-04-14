@@ -1011,12 +1011,10 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
     
     // Use pre-calculated values from tutor_service (no duplicate calculation)
     final rating = (tutor['rating'] as num?)?.toDouble() ?? 0.0;
-    final totalReviews = (tutor['total_reviews'] as num?)?.toInt() ?? 0;
     
     // DEBUG: Log values being used (debug mode only)
     LogService.debug('Find Tutors - Tutor: $fullName', {
       'rating': rating,
-      'total_reviews': totalReviews,
     });
     final bio = tutor['bio'] ?? '';
     final completedSessions = tutor['completed_sessions'] ?? 0;
@@ -1140,14 +1138,6 @@ class _FindTutorsScreenState extends State<FindTutorsScreen> {
                                       fontSize: ResponsiveHelper.responsiveBodySize(context),
                                       fontWeight: FontWeight.w600,
                                       color: Colors.black,
-                                    ),
-                                  ),
-                                  if (rating > 0 && totalReviews >= 3)
-                                  Text(
-                                    ' ($totalReviews)',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: ResponsiveHelper.responsiveBodySize(context) - 1,
-                                      color: Colors.grey[600],
                                     ),
                                   ),
                                 ],

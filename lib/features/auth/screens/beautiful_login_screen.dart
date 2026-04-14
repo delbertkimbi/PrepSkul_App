@@ -7,6 +7,7 @@ import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
@@ -42,17 +43,17 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // Curved wave background at top
+          // Simple clean header background (no gradients)
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 205,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
+            child: Container(
+              height: 132,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: AppTheme.softBorder, width: 1),
                 ),
               ),
             ),
@@ -62,20 +63,20 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
+                // Header content
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 14.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       Center(
                         child: Text(
                           t.authLogin,
                           style: GoogleFonts.poppins(
-                            fontSize: 32,
+                            fontSize: 30,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: AppTheme.primaryColor,
                           ),
                         ),
                       ),
@@ -87,7 +88,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
+                            color: AppTheme.textMedium,
                           ),
                         ),
                       ),
@@ -102,7 +103,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 22),
                         // Form
                         Form(
                           key: _formKey,
@@ -437,6 +438,22 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
     safeSetState(() => _isLoading = true);
 
     try {
+      if (!AppConfig.enablePhoneOtpVerification) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Phone sign-in is temporarily unavailable. Please use Email or Google sign-in.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.primaryColor,
+            ),
+          );
+        }
+        safeSetState(() => _isLoading = false);
+        return;
+      }
+
       // Check if user exists in Supabase
       final userProfile = await SupabaseService.getData(
         table: 'profiles',
@@ -482,7 +499,7 @@ class _BeautifulLoginScreenState extends State<BeautifulLoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to send verification code. Please try again.',
+              'Couldn’t start phone sign-in right now. Please use Email or Google sign-in.',
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: Colors.red,

@@ -25,6 +25,9 @@ class NavigationService {
   final NavigationState _state = NavigationState();
   final NavigationAnalytics _analytics = NavigationAnalytics();
 
+  /// Max time to wait on Supabase profile during startup (captive / offline Wi‑Fi).
+  static const Duration _profileFetchTimeout = Duration(seconds: 5);
+
   /// Get current route from navigation state
   String? get currentRoute => _state.currentRoute;
 
@@ -44,6 +47,37 @@ class NavigationService {
 
   /// Get current context
   BuildContext? get context => _navigatorKey?.currentContext;
+
+  /// Minimal profile from SharedPreferences when network is too slow for Supabase.
+  Future<Map<String, dynamic>?> _prefsSyntheticProfile(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedRole = prefs.getString('user_role');
+    final cachedLoggedIn = prefs.getBool('is_logged_in') ?? false;
+    if (!cachedLoggedIn || cachedRole == null || cachedRole.isEmpty) {
+      return null;
+    }
+    return <String, dynamic>{
+      'user_type': cachedRole,
+      'survey_completed': prefs.getBool('survey_completed') ?? false,
+      'full_name': prefs.getString('user_name') ?? '',
+      'phone_number': prefs.getString('user_phone') ?? '',
+      'id': userId,
+    };
+  }
+
+  /// Last-resort route when [determineInitialRoute] exceeds a startup budget.
+  Future<NavigationResult> emergencyDashboardFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString('user_role');
+    final logged = prefs.getBool('is_logged_in') ?? false;
+    if (logged && role != null && role.isNotEmpty) {
+      LogService.warning(
+        '[NAV_SERVICE] Emergency dashboard route from prefs (startup budget)',
+      );
+      return _getDashboardRoute(role);
+    }
+    return NavigationResult('/auth-method-selection');
+  }
 
   /// Determine initial route based on user state
   /// This is the single source of truth for route determination
@@ -77,32 +111,42 @@ class NavigationService {
             LogService.success('[NAV_SERVICE] Using cached profile data (offline mode)');
           }
         }
-        
-        // If online or no cached profile, fetch from Supabase
+
+        // If online or no cached profile, fetch from Supabase (with strict timeout)
         if (profile == null) {
           try {
-            // Verify session is still valid by making a simple query
             profile = await SupabaseService.client
                 .from('profiles')
                 .select('user_type, survey_completed, full_name, phone_number')
                 .eq('id', user.id)
-                .maybeSingle();
-            
-            // Cache profile for offline use
+                .maybeSingle()
+                .timeout(_profileFetchTimeout);
+
             if (profile != null && isOnline) {
               await OfflineCacheService.cacheUserProfile(user.id, profile);
             }
           } catch (e) {
-            // If offline and query fails, try cached profile as fallback
-            if (!isOnline) {
-              final cachedProfile = await OfflineCacheService.getCachedUserProfile(user.id);
+            final isTimeout = e is TimeoutException;
+            if (!isOnline || isTimeout) {
+              final cachedProfile =
+                  await OfflineCacheService.getCachedUserProfile(user.id);
               if (cachedProfile != null) {
                 profile = cachedProfile;
-                LogService.info('[NAV_SERVICE] Using cached profile after query failure (offline)');
+                LogService.info(
+                  '[NAV_SERVICE] Using cached profile after query failure (offline or slow)',
+                );
+              }
+            }
+            if (profile == null && (isTimeout || _isTransientAuthNetworkError(e))) {
+              profile = await _prefsSyntheticProfile(user.id);
+              if (profile != null) {
+                LogService.warning(
+                  '[NAV_SERVICE] Using prefs-only profile (timeout / transient network)',
+                );
               }
             }
             if (profile == null) {
-              throw e; // Re-throw if we can't get profile from cache either
+              throw e;
             }
           }
         }
@@ -457,8 +501,12 @@ class NavigationService {
   }
 
   bool _isTransientAuthNetworkError(dynamic error) {
+    if (error is TimeoutException) return true;
     final s = error.toString().toLowerCase();
-    return s.contains('authretryablefetchexception') ||
+    return s.contains('timeoutexception') ||
+        s.contains('connection timed out') ||
+        s.contains('timed out') ||
+        s.contains('authretryablefetchexception') ||
         s.contains('socketexception') ||
         s.contains('clientexception') ||
         s.contains('failed host lookup') ||

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui' show ImageFilter;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
@@ -101,19 +102,27 @@ class _FlashcardHelpSheetState extends State<FlashcardHelpSheet> {
     final maxHeight = MediaQuery.of(context).size.height * 0.85;
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
-      child: Container(
-        decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.12),
-            blurRadius: 20,
-            offset: Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppTheme.softBackground.withValues(alpha: 0.78),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryColor.withOpacity(0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -149,8 +158,10 @@ class _FlashcardHelpSheetState extends State<FlashcardHelpSheet> {
           ],
         ),
       ),
-    ),
-  );
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildContent() {

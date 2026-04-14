@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/navigation/navigation_service.dart';
 import 'package:prepskul/core/services/auth_service.dart';
@@ -32,6 +34,8 @@ import 'simulation_game_screen.dart';
 import 'mystery_game_screen.dart';
 import 'escape_room_game_screen.dart';
 import 'skulmate_upload_screen.dart';
+import 'game_generation_screen.dart';
+import 'game_setup_flow_screen.dart';
 import 'leaderboard_screen.dart';
 import 'friends_screen.dart';
 import 'challenges_screen.dart';
@@ -44,8 +48,14 @@ import '../widgets/session_summaries_tab.dart';
 class GameLibraryScreen extends StatefulWidget {
   final String? childId; // For parents viewing child's games
   final int initialTab; // 0 = Sessions, 1 = My Games, 2 = Upload
+  final String? initialGameId; // Optional game deep-link target
 
-  const GameLibraryScreen({Key? key, this.childId, this.initialTab = 1})
+  const GameLibraryScreen({
+    Key? key,
+    this.childId,
+    this.initialTab = 1,
+    this.initialGameId,
+  })
     : super(key: key);
 
   @override
@@ -54,7 +64,16 @@ class GameLibraryScreen extends StatefulWidget {
 
 class _GameLibraryScreenState extends State<GameLibraryScreen>
     with SingleTickerProviderStateMixin {
-  static const Set<GameType> _comingSoonGameTypes = {GameType.diagramLabel};
+  static const Set<GameType> _comingSoonGameTypes = {
+    GameType.diagramLabel,
+    GameType.match3,
+    GameType.bubblePop,
+    GameType.wordSearch,
+    GameType.crossword,
+    GameType.simulation,
+    GameType.mystery,
+    GameType.escapeRoom,
+  };
   late TabController _tabController;
   List<GameModel> _games = [];
   bool _isLoading = true;
@@ -77,6 +96,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
   bool _isFetchingGames = false;
   bool _showOfflineGamesNotice = false;
   String _cacheNoticeMessage = 'Showing saved games from this device.';
+  bool _expandUploadHistory = false;
+  bool _initialGameHandled = false;
 
   static const String _prefKeySwipeHint = 'skulmate_swipe_delete_hint_seen';
 
@@ -169,6 +190,7 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
             ? 'Showing saved games from this device. Pull down to refresh.'
             : _cacheNoticeMessage;
       });
+      _openInitialSharedGameIfNeeded();
       if (mounted && fromCache) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -192,6 +214,19 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
     } finally {
       _isFetchingGames = false;
     }
+  }
+
+  void _openInitialSharedGameIfNeeded() {
+    if (_initialGameHandled) return;
+    final targetId = widget.initialGameId?.trim();
+    if (targetId == null || targetId.isEmpty) return;
+    final target = _games.where((g) => g.id == targetId).toList();
+    if (target.isEmpty) return;
+    _initialGameHandled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _navigateToGame(target.first);
+    });
   }
 
   Future<void> _loadMore() async {
@@ -582,6 +617,13 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
           ),
           backgroundColor: Colors.orange.shade700,
           behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Remove',
+            textColor: Colors.white,
+            onPressed: () {
+              _deleteGameImmediate(game);
+            },
+          ),
         ),
       );
       return;
@@ -761,17 +803,17 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
       final timesPlayed = stats['totalPlays'] as int? ?? 0;
       final bestScore = stats['bestScore'] as int? ?? 0;
 
-      String shareText = '🎮 Check out my skulMate game: "${game.title}"\n\n';
+      final appDeepLink = 'prepskul://skulmate/game/${game.id}';
+      final webDeepLink = 'https://www.prepskul.com/skulmate/game/${game.id}';
+      String shareText = 'Check out my skulMate game: "${game.title}"\n\n';
       shareText +=
           'Game Type: ${game.gameType.toString().replaceAll('_', ' ').split(' ').map((w) => w[0].toUpperCase() + w.substring(1)).join(' ')}\n';
       if (timesPlayed > 0) {
         shareText += 'My best score: $bestScore\n';
         shareText += 'Played $timesPlayed time${timesPlayed == 1 ? '' : 's'}\n';
       }
-      shareText += '\nPlay this game in skulMate!';
-
-      // TODO: In the future, we can add a deep link like: prepskul://game/${game.id}
-      // For now, just share the text
+      shareText += '\nOpen in app: $appDeepLink';
+      shareText += '\nWeb fallback: $webDeepLink';
       await Share.share(shareText);
     } catch (e) {
       if (mounted) {
@@ -867,8 +909,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
             icon: const Icon(Icons.emoji_events_outlined, size: 20),
             tooltip: 'Leaderboard',
             iconSize: 20,
-            padding: const EdgeInsets.all(1),
-            constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+            constraints: const BoxConstraints(minWidth: 20, minHeight: 28),
             visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
@@ -883,8 +925,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
             icon: const Icon(Icons.people_outline, size: 20),
             tooltip: 'Friends',
             iconSize: 20,
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 4),
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
@@ -897,8 +939,8 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
             icon: const Icon(Icons.sports_esports_outlined, size: 20),
             tooltip: 'Challenges',
             iconSize: 20,
-            padding: const EdgeInsets.all(8),
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 4),
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             visualDensity: VisualDensity.compact,
             onPressed: () {
               Navigator.push(
@@ -909,55 +951,58 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
               );
             },
           ),
-          if (_gameStats != null && _gameStats!.currentStreak > 0)
-            Padding(
-              padding: const EdgeInsets.only(right: 4, left: 0, top: 8),
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ActivityCalendarScreen(childId: widget.childId),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Tooltip(
-                  message:
-                      '${_gameStats!.currentStreak} day streak! Tap to view activity',
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: Colors.orange.shade400,
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('🔥', style: TextStyle(fontSize: 14)),
-                        const SizedBox(width: 2),
-                        Text(
-                          '${_gameStats!.currentStreak}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.orange.shade800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          SizedBox(width: 8),
+          // if (_gameStats != null && _gameStats!.currentStreak > 0)
+          //   Padding(
+          //     padding: const EdgeInsets.only(right: 8, left: 0, top: 8),
+          //     child: InkWell(
+          //       onTap: () {
+          //         Navigator.push(
+          //           context,
+          //           MaterialPageRoute(
+          //             builder: (context) =>
+          //                 ActivityCalendarScreen(childId: widget.childId),
+          //           ),
+          //         );
+          //       },
+          //       borderRadius: BorderRadius.circular(20),
+          //       child: Tooltip(
+          //         message:
+          //             '${_gameStats!.currentStreak} day streak! Tap to view activity',
+          //         child: Container(
+          //           padding: const EdgeInsets.symmetric(
+          //             horizontal: 6,
+          //             vertical: 4,
+          //           ),
+          //           decoration: BoxDecoration(
+          //             color: Colors.orange.withOpacity(0.12),
+          //             borderRadius: BorderRadius.circular(20),
+          //             border: Border.all(
+          //               color: Colors.orange.shade400,
+          //               width: 1,
+          //             ),
+          //           ),
+          //           child: Row(
+          //             mainAxisSize: MainAxisSize.min,
+          //             children: [
+          //               const Text('🔥', style: TextStyle(fontSize: 10)),
+          //               const SizedBox(width: 2),
+          //               Text(
+          //                 '${_gameStats!.currentStreak}',
+          //                 style: GoogleFonts.poppins(
+          //                   fontSize: 10,
+          //                   fontWeight: FontWeight.w700,
+          //                   color: Colors.orange.shade800,
+          //                 ),
+          //               ),
+          //             ],
+          //           ),
+          //         ),
+          //       ),
+          //     ),
+          //   ),
+        
+        
         ],
       ),
       body: TabBarView(
@@ -1015,37 +1060,37 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
     required VoidCallback onTap,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Material(
-        color: AppTheme.primaryColor.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(14),
+        color: AppTheme.primaryColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(10),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
+              horizontal: 12,
+              vertical: 10,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    Icon(Icons.history, color: AppTheme.primaryColor, size: 22),
-                    const SizedBox(width: 10),
+                    Icon(Icons.history, color: AppTheme.primaryColor, size: 18),
+                    const SizedBox(width: 8),
                     Text(
-                      'Load previous games',
+                      'Show more games',
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                         color: AppTheme.primaryColor,
                       ),
                     ),
                   ],
                 ),
                 Icon(Icons.chevron_right,
-                    color: AppTheme.primaryColor, size: 22),
+                    color: AppTheme.primaryColor, size: 18),
               ],
             ),
           ),
@@ -1320,63 +1365,586 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
     );
   }
 
-  Widget _buildUploadTab() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.upload_file_rounded,
-              size: 80,
-              color: AppTheme.primaryColor.withOpacity(0.3),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Create New Game',
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textDark,
+  List<GameModel> get _gamesFromUserUploads {
+    final uploads = _games.where((g) {
+      final source = (g.sourceType ?? '').toLowerCase();
+      return source == 'text' ||
+          source == 'image' ||
+          source == 'pdf' ||
+          source == 'docx' ||
+          source == 'document' ||
+          (g.sourceTextSnapshot ?? '').trim().isNotEmpty ||
+          (g.documentUrl ?? '').trim().isNotEmpty ||
+          (g.sourceFileName ?? '').trim().isNotEmpty;
+    }).toList();
+    uploads.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    // Keep one recent row per source document/text to avoid duplicate instances.
+    final bySource = <String, GameModel>{};
+    for (final game in uploads) {
+      final key = _uploadIdentityKey(game);
+      bySource.putIfAbsent(key, () => game);
+    }
+    final deduped = bySource.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return deduped;
+  }
+
+  String _uploadIdentityKey(GameModel game) {
+    final doc = (game.documentUrl ?? '').trim();
+    if (doc.isNotEmpty) return 'doc:$doc';
+    final text = (game.sourceTextSnapshot ?? '').trim();
+    if (text.isNotEmpty) {
+      final seed = text.length > 72 ? text.substring(0, 72) : text;
+      return 'text:${seed.toLowerCase()}';
+    }
+    final name = (game.sourceFileName ?? '').trim().toLowerCase();
+    if (name.isNotEmpty) return 'name:$name';
+    return 'game:${game.id}';
+  }
+
+  String _uploadDisplayTitle(GameModel game) {
+    final representative = _bestRepresentativeForUpload(game);
+    final sourceName = (representative.sourceFileName ?? '').trim();
+    if (sourceName.isNotEmpty) {
+      final dot = sourceName.lastIndexOf('.');
+      final base = dot > 0 ? sourceName.substring(0, dot) : sourceName;
+      final candidate = base.trim().isEmpty ? sourceName : base.trim();
+      if (!_isGenericUploadName(candidate)) return candidate;
+    }
+    final inferredFromText = _titleFromSourceText(
+      (representative.sourceTextSnapshot ?? '').trim(),
+    );
+    if (inferredFromText != null) return inferredFromText;
+
+    final url = (representative.documentUrl ?? '').trim();
+    if (url.isNotEmpty) {
+      final uri = Uri.tryParse(url);
+      final seg = uri?.pathSegments.isNotEmpty == true ? uri!.pathSegments.last : '';
+      if (seg.isNotEmpty) {
+        final cleaned = seg.split('?').first;
+        final dot = cleaned.lastIndexOf('.');
+        final base = dot > 0 ? cleaned.substring(0, dot) : cleaned;
+        if (base.trim().isNotEmpty && !_isGenericUploadName(base.trim())) {
+          return base.trim();
+        }
+      }
+    }
+    if ((representative.sourceTextSnapshot ?? '').trim().isNotEmpty) {
+      return 'Uploaded notes';
+    }
+    return 'Uploaded source';
+  }
+
+  IconData _uploadSourceIcon(GameModel game) {
+    final source = (game.sourceType ?? '').toLowerCase();
+    if (source == 'image') return Icons.photo_library_outlined;
+    if (source == 'text') return Icons.text_snippet_outlined;
+    if (source == 'pdf' || source == 'docx' || source == 'document') {
+      return Icons.picture_as_pdf_outlined;
+    }
+    return Icons.description_outlined;
+  }
+
+  String _uploadSourceLabel(GameModel game) {
+    final source = (game.sourceType ?? '').toLowerCase();
+    if (source == 'image') return 'Image';
+    if (source == 'text') return 'Text';
+    if (source == 'pdf') return 'PDF';
+    if (source == 'docx') return 'DOCX';
+    if (source == 'document') return 'Document';
+    if ((game.sourceTextSnapshot ?? '').trim().isNotEmpty) return 'Text';
+    return 'Source';
+  }
+
+  Color _uploadRowAccent(GameModel game) {
+    final source = (game.sourceType ?? '').toLowerCase();
+    if (source == 'image') return const Color(0xFF0EA5E9);
+    if (source == 'text') return const Color(0xFF8B5CF6);
+    return AppTheme.primaryColor;
+  }
+
+  Future<void> _openStoredUploadSource(GameModel game) async {
+    final representative = _bestRepresentativeForUpload(game);
+    final snapshot = (representative.sourceTextSnapshot ?? '').trim();
+    if (snapshot.isNotEmpty && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(
+            _uploadDisplayTitle(representative),
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                snapshot,
+                style: GoogleFonts.poppins(fontSize: 13, height: 1.45),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Upload your notes, documents, or photos to generate interactive revision games.',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: AppTheme.textMedium,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        SkulMateUploadScreen(childId: widget.childId),
-                  ),
-                ).then((_) => _loadGames(refresh: true));
-              },
-              icon: const Icon(Icons.add_circle_outline),
-              label: const Text('Upload Content'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Close', style: GoogleFonts.poppins()),
             ),
           ],
         ),
+      );
+      return;
+    }
+
+    final urlRaw = (representative.documentUrl ?? '').trim();
+    if (urlRaw.isNotEmpty) {
+      final uri = Uri.tryParse(urlRaw);
+      if (uri != null) {
+        final ok = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication,
+        );
+        if (ok) return;
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'No stored source found for this upload.',
+          style: GoogleFonts.poppins(fontSize: 13),
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  GameModel _bestRepresentativeForUpload(GameModel game) {
+    final targetKey = _uploadIdentityKey(game);
+    final matches = _games
+        .where((g) => !g.isDeleted && _uploadIdentityKey(g) == targetKey)
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (matches.isEmpty) return game;
+
+    // Prefer records that carry source text for preview and context naming.
+    for (final g in matches) {
+      if ((g.sourceTextSnapshot ?? '').trim().isNotEmpty) return g;
+    }
+    // Then prefer a non-generic uploaded filename.
+    for (final g in matches) {
+      final name = (g.sourceFileName ?? '').trim();
+      if (name.isNotEmpty && !_isGenericUploadName(name)) return g;
+    }
+    return matches.first;
+  }
+
+  bool _isGenericUploadName(String value) {
+    final raw = value.trim().toLowerCase();
+    if (raw.isEmpty) return true;
+    final base = raw.contains('.') ? raw.split('.').first : raw;
+    return base == 'skulmate_notes' ||
+        base == 'upload' ||
+        base == 'document' ||
+        base == 'notes';
+  }
+
+  String? _titleFromSourceText(String text) {
+    if (text.isEmpty) return null;
+    final compact = text
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), ' ')
+        .trim();
+    if (compact.isEmpty) return null;
+
+    final words = compact
+        .split(' ')
+        .where((w) => w.trim().length >= 3)
+        .take(6)
+        .toList();
+    if (words.isEmpty) return null;
+
+    var title = words.join(' ');
+    if (title.length > 42) {
+      title = title.substring(0, 42).trimRight();
+    }
+    return title;
+  }
+
+  Future<void> _regenerateFromStoredSource(GameModel game) async {
+    final representative = _bestRepresentativeForUpload(game);
+    final existing = _games
+        .where(
+          (g) =>
+              g.id != game.id &&
+              !g.isDeleted &&
+              _uploadIdentityKey(g) == _uploadIdentityKey(game),
+        )
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (existing.isNotEmpty) {
+      _navigateToGame(existing.first);
+      return;
+    }
+
+    final contextSelection = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const GameSetupFlowScreen()),
+    );
+    if (!mounted) return;
+
+    String? selectedGameType;
+    String? selectedDifficulty;
+    String? selectedTopic;
+    if (contextSelection != null) {
+      try {
+        final dynamic c = contextSelection;
+        selectedGameType = c.gameType as String?;
+        selectedDifficulty = c.difficulty as String?;
+        selectedTopic = c.topic as String?;
+      } catch (_) {}
+    }
+
+    final snapshot = (representative.sourceTextSnapshot ?? '').trim();
+    if (snapshot.isNotEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameGenerationScreen(
+            text: snapshot,
+            childId: widget.childId,
+            gameType: selectedGameType,
+            difficulty: selectedDifficulty,
+            topic: selectedTopic,
+          ),
+        ),
+      );
+      if (mounted) await _loadGames(refresh: true);
+      return;
+    }
+
+    final source = (representative.sourceType ?? '').toLowerCase();
+    final url = (representative.documentUrl ?? '').trim();
+    if (url.isNotEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameGenerationScreen(
+            fileUrl: source == 'image' ? null : url,
+            imageUrl: source == 'image' ? url : null,
+            childId: widget.childId,
+            gameType: selectedGameType,
+            difficulty: selectedDifficulty,
+            topic: selectedTopic,
+          ),
+        ),
+      );
+      if (mounted) await _loadGames(refresh: true);
+      return;
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'No stored file or text for this upload.',
+          style: GoogleFonts.poppins(fontSize: 13),
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildUploadTab() {
+    const kUploadRecentCap = 3;
+    final uploads = _gamesFromUserUploads;
+    final history = _expandUploadHistory
+        ? uploads
+        : uploads.take(kUploadRecentCap).toList();
+    final dateFmt = DateFormat.MMMd();
+
+    return RefreshIndicator(
+      color: AppTheme.primaryColor,
+      onRefresh: () async => _loadGames(refresh: true),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+        children: [
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            elevation: 0.8,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: AppTheme.primaryColor.withValues(alpha: 0.18),
+                width: 1.1,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.upload_file_rounded,
+                        color: AppTheme.primaryColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Create New Game',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Upload notes, documents, or photos to generate interactive revision games.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12.5,
+                      color: AppTheme.textMedium,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                SkulMateUploadScreen(childId: widget.childId),
+                          ),
+                        ).then((_) => _loadGames(refresh: true));
+                      },
+                      icon: const Icon(Icons.add_circle_outline, size: 18),
+                      label: Text(
+                        'Upload content',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isLoading && _games.isEmpty) ...[
+            _buildUploadStatusCard(
+              title: 'Loading uploads',
+              message:
+                  'We are fetching your upload history. This can take a few seconds.',
+              leading: const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildUploadStatusCard(
+              title: 'Tip',
+              message:
+                  'Pull down or tap refresh if your list does not appear immediately.',
+              leading: const Icon(
+                Icons.info_outline_rounded,
+                size: 20,
+                color: AppTheme.primaryColor,
+              ),
+              trailing: TextButton(
+                onPressed: () => _loadGames(refresh: true),
+                child: Text(
+                  'Refresh',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+              ),
+            ),
+          ] else if (history.isEmpty) ...[
+            _buildUploadStatusCard(
+              title: 'No uploads yet',
+              message:
+                  'Recent uploads will appear here after you generate a game from notes, docs, or photos.',
+              leading: const Icon(
+                Icons.upload_file_outlined,
+                size: 20,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 8),
+              child: Text(
+                'Recent upload items',
+                style: GoogleFonts.poppins(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+            ...history.asMap().entries.map((entry) {
+              final i = entry.key;
+              final game = entry.value;
+              final accent = _uploadRowAccent(game);
+              final displayTitle = _uploadDisplayTitle(game);
+              final rowBg = i.isEven
+                  ? Colors.white
+                  : AppTheme.skyBlueLight.withValues(alpha: 0.4);
+              const titleStyle = TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF111827),
+                height: 1.2,
+              );
+              const subtitleStyle = TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF6B7280),
+                height: 1.25,
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: rowBg,
+                  elevation: 0.6,
+                  shadowColor: Colors.black26,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _openStoredUploadSource(game),
+                    child: SizedBox(
+                      height: 72,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Container(
+                            width: 5,
+                            decoration: BoxDecoration(
+                              color: accent,
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(12),
+                                bottomLeft: Radius.circular(12),
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _uploadSourceIcon(game),
+                                    size: 22,
+                                    color: accent,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayTitle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: titleStyle,
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          '${dateFmt.format(game.createdAt)} · ${_uploadSourceLabel(game)}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: subtitleStyle,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuButton<String>(
+                                    padding: EdgeInsets.zero,
+                                    tooltip: 'Upload actions',
+                                    icon: Icon(
+                                      Icons.more_horiz_rounded,
+                                      color: AppTheme.primaryColor,
+                                      size: 26,
+                                    ),
+                                    onSelected: (value) {
+                                      if (value == 'open') {
+                                        _openStoredUploadSource(game);
+                                      } else if (value == 'regen') {
+                                        _regenerateFromStoredSource(game);
+                                      }
+                                    },
+                                    itemBuilder: (ctx) => [
+                                      const PopupMenuItem(
+                                        value: 'open',
+                                        child: Text('View content'),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'regen',
+                                        child: Text('Create another game'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+            if (uploads.length > kUploadRecentCap)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => safeSetState(
+                    () => _expandUploadHistory = !_expandUploadHistory,
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    _expandUploadHistory
+                        ? 'Show fewer uploads'
+                        : 'See more uploads (${uploads.length - kUploadRecentCap} more)',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -1391,6 +1959,68 @@ class _GameLibraryScreenState extends State<GameLibraryScreen>
           ),
         ).then((_) => _loadGames());
       },
+    );
+  }
+
+  Widget _buildUploadStatusCard({
+    required String title,
+    required String message,
+    required Widget leading,
+    Widget? trailing,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(
+          color: AppTheme.primaryColor.withValues(alpha: 0.2),
+          width: 1.1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.textDark.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: leading,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.8,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  message,
+                  style: GoogleFonts.poppins(
+                    fontSize: 11.7,
+                    color: AppTheme.textMedium,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) trailing,
+        ],
+      ),
     );
   }
 }

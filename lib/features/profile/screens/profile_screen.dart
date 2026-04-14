@@ -38,6 +38,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _profilePhotoUrl;
   bool _isLoading = true;
   Map<String, dynamic>? _surveyData;
+  bool _isLoadingProfile = false;
 
   @override
   void initState() {
@@ -58,9 +59,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadUserInfo() async {
+    if (_isLoadingProfile) return;
+    _isLoadingProfile = true;
     try {
       final user = await AuthService.getCurrentUser();
       final userId = user['userId'] as String;
+      final prefs = await SharedPreferences.getInstance();
+
+      // Show local data immediately so opening Profile stays fast offline.
+      if (mounted) {
+        final cachedName =
+            (user['fullName']?.toString().trim().isNotEmpty == true)
+            ? user['fullName'].toString().trim()
+            : (widget.userType == 'parent'
+                  ? 'Parent'
+                  : widget.userType == 'tutor'
+                  ? 'Tutor'
+                  : 'Student');
+        final cachedEmail =
+            SupabaseService.client.auth.currentUser?.email ??
+            prefs.getString('signup_email') ??
+            'Not set';
+        safeSetState(() {
+          _userInfo = {
+            ...user,
+            'fullName': cachedName,
+            'email': cachedEmail,
+            'phone': user['phone']?.toString() ?? 'Not set',
+            'surveyCompleted': prefs.getBool('survey_completed') ?? false,
+          };
+          _isLoading = false;
+        });
+      }
 
       // Get email from Supabase Auth (most reliable source)
       final authUser = SupabaseService.client.auth.currentUser;
@@ -71,14 +101,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .from('profiles')
           .select('avatar_url, full_name, email, phone_number')
           .eq('id', userId)
-          .maybeSingle();
+          .maybeSingle()
+          .timeout(const Duration(seconds: 6));
 
       // If profile doesn't exist, try to create it from stored signup data or auth user
       if (profileResponse == null) {
         LogService.warning('Profile not found for user $userId, attempting to create...');
         try {
           // Get stored signup data as fallback
-          final prefs = await SharedPreferences.getInstance();
           final storedName = prefs.getString('signup_full_name');
           final storedEmail = prefs.getString('signup_email');
 
@@ -139,7 +169,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .from('profiles')
               .select('avatar_url, full_name, email, phone_number')
               .eq('id', userId)
-              .maybeSingle();
+              .maybeSingle()
+              .timeout(const Duration(seconds: 6));
 
           LogService.success('Profile created for user: $userId');
         } catch (e) {
@@ -158,7 +189,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             .from('tutor_profiles')
             .select()
             .eq('user_id', userId)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(const Duration(seconds: 5));
         photoUrl = tutorProfileData?['profile_photo_url']?.toString();
       }
       // For all users, also check avatar_url in profiles table
@@ -173,7 +205,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'Not set';
 
       // Get email with priority: Auth email > profiles.email > stored signup email > onboarding progress > 'Not set'
-      final prefs = await SharedPreferences.getInstance();
       final storedEmail = prefs.getString('signup_email');
       
       // Check if email exists in auth but not in profiles - sync it if needed
@@ -226,7 +257,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               .from('profiles')
               .select('avatar_url, full_name, email, phone_number')
               .eq('id', userId)
-              .maybeSingle();
+              .maybeSingle()
+              .timeout(const Duration(seconds: 5));
           // Use the synced email
           email = profileResponse?['email']?.toString() ?? email;
         } catch (e) {
@@ -321,9 +353,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       Map<String, dynamic>? surveyData;
       try {
         if (widget.userType == 'student' || widget.userType == 'learner') {
-          surveyData = await SurveyRepository.getStudentSurvey(userId);
+          surveyData = await SurveyRepository.getStudentSurvey(userId).timeout(
+            const Duration(seconds: 5),
+          );
         } else if (widget.userType == 'parent') {
-          surveyData = await SurveyRepository.getParentSurvey(userId);
+          surveyData = await SurveyRepository.getParentSurvey(userId).timeout(
+            const Duration(seconds: 5),
+          );
         }
       } catch (surveyError, stackTrace) {
         LogService.warning('Error loading survey data: $surveyError');
@@ -369,6 +405,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         };
         _surveyData = null;
       });
+    } finally {
+      _isLoadingProfile = false;
     }
   }
 

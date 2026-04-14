@@ -9,7 +9,9 @@ import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'dart:async' show Timer;
 import 'dart:io' show File;
+import 'dart:math';
 import 'dart:typed_data';
 import '../services/game_stats_service.dart';
 import '../services/skulmate_access_service.dart';
@@ -24,6 +26,7 @@ import 'game_setup_flow_screen.dart';
 import '../services/skulmate_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_companion_banner.dart';
+import '../widgets/skulmate_surface_styles.dart';
 
 /// Screen for uploading notes/documents to create games
 class SkulMateUploadScreen extends StatefulWidget {
@@ -48,8 +51,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   int _todayFreeDocTextLimit = 2;
   int _todayFreeImageUsed = 0;
   int _todayFreeImageLimit = 4;
-  bool _hasShownLimitDialogThisSession = false;
   bool _isLaunchingGeneration = false;
+  bool _showUploadTipBanner = true;
+  Timer? _uploadTipTimer;
 
   @override
   void initState() {
@@ -57,6 +61,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     _loadGameStats();
     _loadCreditsBalance();
     _loadPricingUsage();
+    _uploadTipTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) safeSetState(() => _showUploadTipBanner = false);
+    });
   }
 
   Future<void> _loadGameStats() async {
@@ -85,12 +92,15 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   Future<void> _loadPricingUsage() async {
     try {
       final data = await SkulMateService.fetchPricingUsage();
-      final today = (data['today'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final today =
+          (data['today'] as Map?)?.cast<String, dynamic>() ?? const {};
       if (!mounted) return;
       safeSetState(() {
-        _todayFreeDocTextUsed = (today['freeDocTextUsed'] as num?)?.toInt() ?? 0;
+        _todayFreeDocTextUsed =
+            (today['freeDocTextUsed'] as num?)?.toInt() ?? 0;
         _todayFreeDocTextLimit =
-            (today['freeDocTextLimit'] as num?)?.toInt() ?? _todayFreeDocTextLimit;
+            (today['freeDocTextLimit'] as num?)?.toInt() ??
+            _todayFreeDocTextLimit;
         _todayFreeImageUsed = (today['freeImageUsed'] as num?)?.toInt() ?? 0;
         _todayFreeImageLimit =
             (today['freeImageLimit'] as num?)?.toInt() ?? _todayFreeImageLimit;
@@ -150,8 +160,13 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     } catch (_) {}
   }
 
-  bool get _isDocTextFreeExhausted => _todayFreeDocTextUsed >= _todayFreeDocTextLimit;
+  bool get _isDocTextFreeExhausted =>
+      _todayFreeDocTextUsed >= _todayFreeDocTextLimit;
   bool get _isImageFreeExhausted => _todayFreeImageUsed >= _todayFreeImageLimit;
+  int get _remainingDocTextFree =>
+      max(0, _todayFreeDocTextLimit - _todayFreeDocTextUsed);
+  int get _remainingImageFree =>
+      max(0, _todayFreeImageLimit - _todayFreeImageUsed);
 
   SkulmateSourceType? get _currentSelectionSourceType {
     if (_selectedImages.isNotEmpty) return SkulmateSourceType.image;
@@ -172,6 +187,7 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
   @override
   void dispose() {
+    _uploadTipTimer?.cancel();
     super.dispose();
   }
 
@@ -619,7 +635,6 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     if (!mounted) return;
     safeSetState(() => _isLaunchingGeneration = true);
     try {
-
       // Always refresh latest usage/balance before access gating.
       await _loadPricingUsage();
       await _loadCreditsBalance();
@@ -705,7 +720,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
 
       final document = kIsWeb && _selectedFilesWeb.isNotEmpty
           ? _selectedFilesWeb.first
-          : (!kIsWeb && _selectedFiles.isNotEmpty ? _selectedFiles.first : null);
+          : (!kIsWeb && _selectedFiles.isNotEmpty
+                ? _selectedFiles.first
+                : null);
       final images = _selectedImages.isNotEmpty
           ? List<XFile>.from(_selectedImages)
           : null;
@@ -747,43 +764,103 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
   }
 
   Future<void> _showLimitReachedDialog(SkulmateSourceType sourceType) async {
-    if (_hasShownLimitDialogThisSession || !mounted) return;
-    _hasShownLimitDialogThisSession = true;
+    if (!mounted) return;
+    final used = sourceType == SkulmateSourceType.image
+        ? _todayFreeImageUsed
+        : _todayFreeDocTextUsed;
+    final limit = sourceType == SkulmateSourceType.image
+        ? _todayFreeImageLimit
+        : _todayFreeDocTextLimit;
+    final label = sourceType == SkulmateSourceType.image
+        ? 'image'
+        : 'document/text';
+
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Daily free limit reached',
-          style: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFFEE2E2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.lock_rounded,
+                      color: Color(0xFFDC2626),
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Daily Limit Reached',
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'You used $used of $limit free $label generation${limit == 1 ? '' : 's'} today.',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textMedium,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Upgrade or add credits to continue now, or wait until tomorrow.',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.textMedium,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _openPlansScreen();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Go Premium',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'Wait until tomorrow',
+                  style: GoogleFonts.poppins(
+                    color: AppTheme.textMedium,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        content: Text(
-          sourceType == SkulmateSourceType.image
-              ? 'You have used all your free image generations for today. Get credits to continue now.'
-              : 'You have used all your free document/text generations for today. Get credits to continue now.',
-          style: GoogleFonts.poppins(fontSize: 14, height: 1.35),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Not now', style: GoogleFonts.poppins()),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _openPlansScreen();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-            ),
-            child: Text(
-              'See plans',
-              style: GoogleFonts.poppins(color: Colors.white),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -796,7 +873,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         _selectedImages.isNotEmpty;
     final hasPaidCredits = _creditsBalance > 0;
     final isGenerateDisabled =
-        !hasSelection || _isCurrentSelectionHardBlockedByLimit || _isLaunchingGeneration;
+        !hasSelection ||
+        _isCurrentSelectionHardBlockedByLimit ||
+        _isLaunchingGeneration;
 
     return Scaffold(
       backgroundColor: AppTheme.softBackground,
@@ -829,91 +908,109 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Compact hero banner
+            // Hero gradient card (same language as weekly leaderboard / dashboard highlights)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
+              padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+              decoration: SkulMateSurfaceStyles.heroGradient(radius: 22),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_gameStats != null && _gameStats!.currentStreak > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: Colors.orange.shade200,
-                                width: 1,
-                              ),
-                            ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_gameStats != null && _gameStats!.currentStreak > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
                             child: Row(
-                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Text(
-                                  '🔥',
-                                  style: TextStyle(fontSize: 14),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${_gameStats!.currentStreak} day streak',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.22),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.35,
+                                      ),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text(
+                                        '🔥',
+                                        style: TextStyle(fontSize: 14),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '${_gameStats!.currentStreak} day streak',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  Text(
-                    'Turn Your Notes Into Games',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                        Text(
+                          'Turn Your Notes Into Games',
+                          style: GoogleFonts.poppins(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Upload notes or photos to generate interactive games.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            color: Colors.white.withValues(alpha: 0.92),
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Upload notes or photos to generate interactive games.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.92),
-                      height: 1.35,
-                    ),
+                  const SizedBox(width: 12),
+                  PhosphorIcon(
+                    PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                    color: Colors.white,
+                    size: 40,
                   ),
                 ],
               ),
             ),
 
             const SizedBox(height: 14),
-            SkulMateCompanionBanner(
-              tone: CompanionTone.tip,
-              message: 'For best results, include key terms and short definitions.',
-              showLabelMascotIcon: true,
-            ),
-            const SizedBox(height: 12),
+            if (_showUploadTipBanner) ...[
+              SkulMateCompanionBanner(
+                tone: CompanionTone.tip,
+                message:
+                    'For best results, include key terms and short definitions.',
+              ),
+              const SizedBox(height: 12),
+            ],
             if ((_isDocTextFreeExhausted || _isImageFreeExhausted) &&
                 !hasPaidCredits)
               Container(
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF7ED),
                   borderRadius: BorderRadius.circular(10),
@@ -922,15 +1019,19 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info_outline, color: Color(0xFFB45309), size: 18),
+                    const Icon(
+                      Icons.info_outline,
+                      color: Color(0xFFB45309),
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _isDocTextFreeExhausted && _isImageFreeExhausted
                             ? 'Your free daily doc/text and image generations are finished. New games will use credits.'
                             : _isImageFreeExhausted
-                                ? 'Your free daily image generations are finished. New image games will use credits.'
-                                : 'Your free daily document/text generations are finished. New doc/text games will use credits.',
+                            ? 'Your free daily image generations are finished. New image games will use credits.'
+                            : 'Your free daily document/text generations are finished. New doc/text games will use credits.',
                         style: GoogleFonts.poppins(
                           fontSize: 11.5,
                           color: const Color(0xFF7C2D12),
@@ -1033,10 +1134,14 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                                color: AppTheme.primaryColor.withValues(
+                                  alpha: 0.1,
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                                  color: AppTheme.primaryColor.withValues(
+                                    alpha: 0.3,
+                                  ),
                                 ),
                               ),
                               child: Row(
@@ -1109,19 +1214,20 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                           double cellExtent;
                           if (count == 1) {
                             crossAxisCount = 1;
-                            cellExtent = (width - 8).clamp(120.0, 200.0);
+                            // Compact single preview — avoid a huge tile on wide phones.
+                            cellExtent = (width * 0.36).clamp(88.0, 118.0);
                           } else if (count == 2) {
                             crossAxisCount = 2;
-                            cellExtent = (width - 8) / 2;
+                            cellExtent = ((width - 8) / 2).clamp(72.0, 108.0);
                           } else if (count <= 4) {
                             crossAxisCount = 2;
-                            cellExtent = (width - 8) / 2;
+                            cellExtent = ((width - 8) / 2).clamp(72.0, 130.0);
                           } else if (count <= 9) {
                             crossAxisCount = 3;
-                            cellExtent = (width - 16) / 3;
+                            cellExtent = ((width - 16) / 3).clamp(64.0, 140.0);
                           } else {
                             crossAxisCount = 4;
-                            cellExtent = (width - 24) / 4;
+                            cellExtent = ((width - 24) / 4).clamp(56.0, 160.0);
                           }
                           cellExtent = cellExtent.clamp(56.0, 200.0);
                           final rows = (count / crossAxisCount).ceil();
@@ -1276,24 +1382,24 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
               title: 'PDF/Document',
               subtitle: hasPaidCredits
                   ? 'PDF/DOCX/TXT, generate with credits'
-                  : 'PDF/DOCX/TXT, free up to 2/day',
+                  : 'Today: $_todayFreeDocTextUsed/$_todayFreeDocTextLimit used • $_remainingDocTextFree left',
               onTap: _pickDocument,
               isSelected: kIsWeb
                   ? _selectedFilesWeb.isNotEmpty
                   : _selectedFiles.isNotEmpty,
+              isBlocked: _isDocTextFreeExhausted && !hasPaidCredits,
             ),
-            const SizedBox(height: 8),
             _buildUploadCard(
               icon: Icons.photo_library_rounded,
               iconTint: const Color(0xFF0EA5E9),
               title: 'Photo/Image',
               subtitle: hasPaidCredits
                   ? 'Generate with credits'
-                  : 'Free up to 4/day, then plan required',
+                  : 'Today: $_todayFreeImageUsed/$_todayFreeImageLimit used • $_remainingImageFree left',
               onTap: _showPhotoOptions,
               isSelected: _selectedImages.isNotEmpty,
+              isBlocked: _isImageFreeExhausted && !hasPaidCredits,
             ),
-            const SizedBox(height: 8),
             _buildUploadCard(
               icon: Icons.text_fields_rounded,
               iconTint: const Color(0xFF8B5CF6),
@@ -1312,9 +1418,9 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primaryColor,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   elevation: 0,
                 ),
@@ -1357,69 +1463,85 @@ class _SkulMateUploadScreenState extends State<SkulMateUploadScreen> {
     required String subtitle,
     required VoidCallback onTap,
     required bool isSelected,
+    bool isBlocked = false,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.primaryColor.withValues(alpha: 0.08)
-              : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
-            width: isSelected ? 2 : 1,
-          ),
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      color: isSelected
+          ? AppTheme.primaryColor.withValues(alpha: 0.04)
+          : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: isSelected ? AppTheme.primaryColor : AppTheme.softBorder,
+          width: isSelected ? 2 : 1,
         ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? iconTint
-                    : iconTint.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                icon,
-                color: isSelected ? Colors.white : iconTint,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textDark,
+      ),
+      child: InkWell(
+        onTap: isBlocked ? null : onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: iconTint, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textDark,
+                      ),
                     ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        color: AppTheme.textMedium,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isBlocked)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Limit reached',
                     style: GoogleFonts.poppins(
                       fontSize: 11,
-                      color: AppTheme.textMedium,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFFB91C1C),
                     ),
                   ),
-                ],
-              ),
-            ),
-            if (isSelected)
-              Icon(
-                Icons.check_circle_rounded,
-                color: AppTheme.primaryColor,
-                size: 20,
-              ),
-          ],
+                )
+              else if (isSelected)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: AppTheme.accentGreen,
+                    size: 22,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

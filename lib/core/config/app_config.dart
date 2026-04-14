@@ -46,6 +46,24 @@ class AppConfig {
   /// Set to `false` until phone verification is fully tested and ready.
   /// Phone login requires additional backend setup for SMS verification.
   static const bool enablePhoneSignIn = true; // ← Enabled for phone OTP authentication
+
+  /// Enable/disable Phone OTP verification flows.
+  ///
+  /// When `false`, the app will not send or verify SMS OTP codes (login/signup/reset),
+  /// and will show a friendly message instead of surfacing backend/provider errors.
+  ///
+  /// Use `.env` override (optional):
+  /// - `PHONE_OTP_VERIFICATION_ENABLED=true|false`
+  static bool get enablePhoneOtpVerification {
+    if (!enablePhoneSignIn) return false;
+    try {
+      final v = dotenv.env['PHONE_OTP_VERIFICATION_ENABLED']?.toLowerCase();
+      if (v == 'true' || v == '1' || v == 'yes') return true;
+      if (v == 'false' || v == '0' || v == 'no') return false;
+    } catch (_) {}
+    // Default OFF (credits/availability risk); flip to true when stable.
+    return false;
+  }
   
   /// Enable/disable SkulMate feature
   /// 
@@ -192,6 +210,38 @@ class AppConfig {
     }
 
     return url;
+  }
+
+  /// Base URL for Next.js SkulMate HTTP routes (`/api/skulmate/*`).
+  ///
+  /// Flutter web calls to `https://app.prepskul.com/api/...` can hit a different
+  /// edge deployment than `https://www.prepskul.com/api`, where SkulMate `POST`/`OPTIONS`
+  /// CORS is implemented. On web we therefore normalize `app.prepskul.com` → `www.prepskul.com`.
+  ///
+  /// Override with env **`SKULMATE_HTTP_API_BASE`** (e.g. `http://localhost:3000/api`) for local Next.
+  static String get skulMateHttpApiBase {
+    try {
+      final o = _safeEnv('SKULMATE_HTTP_API_BASE', '').trim();
+      if (o.isNotEmpty) {
+        return o.endsWith('/') ? o.substring(0, o.length - 1) : o;
+      }
+    } catch (_) {}
+    var base = effectiveApiBaseUrl;
+    if (kIsWeb) {
+      base = _normalizeSkulMateApiHostForWeb(base);
+    }
+    return base;
+  }
+
+  /// Flutter web on `app.prepskul.com` must call SkulMate on `www` where CORS + routes are aligned.
+  static String _normalizeSkulMateApiHostForWeb(String base) {
+    try {
+      final uri = Uri.parse(base);
+      if (uri.hasScheme && uri.host == 'app.prepskul.com') {
+        return uri.replace(host: 'www.prepskul.com').toString();
+      }
+    } catch (_) {}
+    return base.replaceAll('://app.prepskul.com', '://www.prepskul.com');
   }
   
   /// App Base URL

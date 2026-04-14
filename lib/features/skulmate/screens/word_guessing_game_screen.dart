@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:confetti/confetti.dart';
+import 'dart:async' show Timer, unawaited;
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import '../models/game_model.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/game_standard_widgets.dart';
+import '../widgets/skulmate_companion_banner.dart';
 import '../services/character_selection_service.dart';
 import '../services/tts_service.dart';
-import '../services/sound_service.dart';
+import '../services/game_sound_service.dart';
 import 'dart:math' as math;
+import 'game_results_screen.dart';
 
 /// Interactive word guessing game screen
 class WordGuessingGameScreen extends StatefulWidget {
@@ -23,6 +27,8 @@ class WordGuessingGameScreen extends StatefulWidget {
 
 class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
   int _currentIndex = 0;
+  int _xpEarned = 0;
+  DateTime? _startTime;
   List<WordGuessItem> _wordItems = [];
   Map<int, String> _userGuesses = {}; // position -> letter
   Map<String, int> _availableLetters = {}; // letter -> count
@@ -30,14 +36,21 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
   bool _showDefinition = false;
   bool _isTTSEnabled = true;
   dynamic _character;
+  final GameSoundService _gameSound = GameSoundService();
+  String? _mascotReaction;
+  CompanionTone _mascotReactionTone = CompanionTone.neutral;
+  bool _mascotCelebrate = false;
+  Timer? _mascotReactionTimer;
 
   @override
   void initState() {
     super.initState();
+    _startTime = DateTime.now();
     _initializeGame();
     _loadCharacter();
     TTSService().initialize();
-    SoundService().initialize();
+    unawaited(_gameSound.initialize());
+    unawaited(_gameSound.playMusicForGame(widget.game.gameType));
   }
 
   Future<void> _loadCharacter() async {
@@ -47,9 +60,10 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
 
   @override
   void dispose() {
+    _mascotReactionTimer?.cancel();
     _confettiController?.dispose();
     TTSService().dispose();
-    SoundService().dispose();
+    unawaited(_gameSound.stopMusic(force: true));
     super.dispose();
   }
 
@@ -130,7 +144,11 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
 
   void _onLetterTap(String letter) {
     if (!_availableLetters.containsKey(letter) || _availableLetters[letter]! <= 0) {
-      SoundService().playIncorrect();
+      _gameSound.playIncorrect();
+      _showMascotReaction(
+        'That letter is not available now.',
+        tone: CompanionTone.warning,
+      );
       return;
     }
 
@@ -155,10 +173,14 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
         }
       });
 
-      SoundService().playClick();
+      _gameSound.playClick();
       _checkWordComplete();
     } else {
-      SoundService().playIncorrect();
+      _gameSound.playIncorrect();
+      _showMascotReaction(
+        'No empty slots left. Tap a filled slot to edit.',
+        tone: CompanionTone.tip,
+      );
     }
   }
 
@@ -169,7 +191,7 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
         _userGuesses.remove(position);
         _availableLetters[letter] = (_availableLetters[letter] ?? 0) + 1;
       });
-      SoundService().playClick();
+      _gameSound.playClick();
     }
   }
 
@@ -182,8 +204,16 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
 
     if (guessedWord == currentItem.word) {
       // Word is correct!
-      SoundService().playWordComplete();
-      SoundService().playCelebration();
+      safeSetState(() {
+        _xpEarned += 10;
+      });
+      _gameSound.playCorrect();
+      _gameSound.playComplete();
+      _showMascotReaction(
+        'Excellent word solved.',
+        tone: CompanionTone.success,
+        celebrate: true,
+      );
       
       if (_isTTSEnabled) {
         TTSService().speak('Correct! ${currentItem.word}');
@@ -345,7 +375,23 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              Navigator.pop(context);
+              if (!mounted) return;
+              final timeTaken = _startTime == null
+                  ? null
+                  : DateTime.now().difference(_startTime!).inSeconds;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GameResultsScreen(
+                    game: widget.game,
+                    score: _wordItems.length,
+                    totalQuestions: _wordItems.length,
+                    timeTakenSeconds: timeTaken,
+                    xpEarned: _xpEarned + 25,
+                    isPerfectScore: true,
+                  ),
+                ),
+              );
             },
             child: Text(
               'Done',
@@ -378,18 +424,6 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
       appBar: SkulMateGameAppBar(
         title: widget.game.title,
         actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
-                ),
-              ),
-            ),
           IconButton(
             icon: Icon(
               _isTTSEnabled ? Icons.volume_up : Icons.volume_off,
@@ -403,46 +437,48 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
               });
             },
           ),
+          if (_character != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4, left: 0),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: ClipOval(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: SkulMateCharacterWidget(
+                      character: _character,
+                      size: 24,
+                      animated: false,
+                      showName: false,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
       body: Column(
         children: [
-          // Progress bar
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Word ${_currentIndex + 1} of ${_wordItems.length}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.textMedium,
-                      ),
-                    ),
-                    Text(
-                      '${(progress * 100).toInt()}%',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        color: AppTheme.textMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: progress,
-                  backgroundColor: Colors.grey[200],
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryColor),
-                  minHeight: 4,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+            child: GameStandardsHud(
+              progressText: 'Word ${_currentIndex + 1} of ${_wordItems.length}',
+              progressValue: progress,
+              xpEarned: _xpEarned,
+              gameType: widget.game.gameType,
             ),
           ),
+          if (_mascotReaction != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: SkulMateCompanionBanner(
+                tone: _mascotReactionTone,
+                message: _mascotReaction!,
+                celebrate: _mascotCelebrate,
+              ),
+            ),
 
           Expanded(
             child: SingleChildScrollView(
@@ -581,6 +617,28 @@ class _WordGuessingGameScreenState extends State<WordGuessingGameScreen> {
         ),
       ),
     );
+  }
+
+  void _showMascotReaction(
+    String message, {
+    CompanionTone tone = CompanionTone.neutral,
+    bool celebrate = false,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    _mascotReactionTimer?.cancel();
+    if (!mounted) return;
+    safeSetState(() {
+      _mascotReaction = message;
+      _mascotReactionTone = tone;
+      _mascotCelebrate = celebrate;
+    });
+    _mascotReactionTimer = Timer(duration, () {
+      if (!mounted) return;
+      safeSetState(() {
+        _mascotReaction = null;
+        _mascotCelebrate = false;
+      });
+    });
   }
 
   Widget _buildAvailableLetter(String letter, int count) {

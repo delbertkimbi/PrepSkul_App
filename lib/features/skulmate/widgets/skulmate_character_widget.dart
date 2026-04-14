@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import '../models/skulmate_character_model.dart';
-import 'dart:math';
 
 /// Widget for displaying skulMate character with animations
 class SkulMateCharacterWidget extends StatefulWidget {
@@ -17,7 +16,9 @@ class SkulMateCharacterWidget extends StatefulWidget {
     required this.character,
     this.size = 120,
     this.showName = false,
-    this.animated = true,
+
+    /// Bounce/scale loop — use sparingly (e.g. character picker). HUD avatars stay static.
+    this.animated = false,
     this.onTap,
   }) : super(key: key);
 
@@ -74,18 +75,24 @@ class _SkulMateCharacterWidgetState extends State<SkulMateCharacterWidget>
       height: widget.size,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) {
-        // Fallback to icon if image not found
-        return Container(
+        // Keep avatar fallback on-brand instead of generic school icon.
+        return Image.asset(
+          'assets/characters/mascots/default.png',
           width: widget.size,
           height: widget.size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppTheme.accentBlue.withOpacity(0.1),
-          ),
-          child: Icon(
-            Icons.school,
-            size: widget.size * 0.5,
-            color: AppTheme.accentBlue,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => Container(
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.accentBlue.withOpacity(0.12),
+            ),
+            child: Icon(
+              Icons.person_rounded,
+              size: widget.size * 0.5,
+              color: AppTheme.accentBlue,
+            ),
           ),
         );
       },
@@ -184,7 +191,7 @@ class CompactCharacterWidget extends StatelessWidget {
         SkulMateCharacterWidget(
           character: character,
           size: 60,
-          animated: true,
+          animated: false,
         ),
       ],
     );

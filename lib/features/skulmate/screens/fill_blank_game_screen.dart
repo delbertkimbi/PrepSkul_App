@@ -8,13 +8,19 @@ import 'dart:async';
 import 'dart:math';
 import '../models/game_model.dart';
 import '../models/game_stats_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/character_selection_service.dart';
+import '../services/tts_service.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/skulmate_character_widget.dart';
+import '../widgets/game_standard_widgets.dart';
+import '../widgets/game_settings_sheet.dart';
+import '../widgets/skulmate_companion_banner.dart';
 import 'game_results_screen.dart';
+import 'game_library_screen.dart';
 
 /// Fill-in-the-blank game screen
 class FillBlankGameScreen extends StatefulWidget {
@@ -27,7 +33,7 @@ class FillBlankGameScreen extends StatefulWidget {
 }
 
 class _FillBlankGameScreenState extends State<FillBlankGameScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _currentQuestionIndex = 0;
   final Map<int, TextEditingController> _controllers = {};
   final Map<int, String> _userAnswers = {}; // questionIndex -> answer
@@ -37,6 +43,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   int _xpEarned = 0;
   DateTime? _startTime;
   final GameSoundService _soundService = GameSoundService();
+  final TTSService _ttsService = TTSService();
   late ConfettiController _confettiController;
   late AnimationController _progressController;
   late Animation<double> _progressAnimation;
@@ -45,24 +52,33 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   late AnimationController _typingController;
   dynamic _character;
   GameStats? _currentStats;
+  bool _ttsEnabled = true;
 
   // Typing game mechanics
   int _timePerQuestion = 45; // seconds
   int _remainingTime = 45;
   Timer? _questionTimer;
+  Timer? _autoAdvanceTimer;
+  Timer? _bgmKeepAliveTimer;
   bool _isTimerRunning = false;
+  bool _isFinishingGame = false;
   List<String> _hints = []; // Auto-complete hints
   bool _hintShown = false;
   int _typingSpeed = 0; // Characters per second
   DateTime? _typingStartTime;
   int _charactersTyped = 0;
+  String? _mascotReaction;
+  CompanionTone _mascotReactionTone = CompanionTone.neutral;
+  bool _mascotCelebrate = false;
+  Timer? _mascotReactionTimer;
+  final Map<int, List<String>> _displayOptionsCache = {};
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startTime = DateTime.now();
-    _soundService.initialize();
-    unawaited(_soundService.playMusicForGame(widget.game.gameType));
+    unawaited(_initAudio());
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
     );
@@ -93,6 +109,43 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     _loadCharacter();
     _loadStats();
     _startQuestionTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_speakCurrentPrompt());
+    });
+  }
+
+  Future<void> _initAudio() async {
+    await _soundService.ensureInitialized();
+    await _soundService.playMusicForGame(widget.game.gameType);
+    // Retry once shortly after mount for devices where first start is delayed.
+    unawaited(
+      Future<void>.delayed(
+        const Duration(milliseconds: 250),
+        () => _soundService.playMusicForGame(widget.game.gameType),
+      ),
+    );
+    await _ttsService.ensureInitialized();
+    _ttsEnabled = _ttsService.isEnabled;
+    _bgmKeepAliveTimer?.cancel();
+    _bgmKeepAliveTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      if (!mounted) return;
+      unawaited(_soundService.ensureMusicForGame(widget.game.gameType));
+    });
+    safeSetState(() {});
+  }
+
+  Future<void> _speakCurrentPrompt() async {
+    if (!_ttsEnabled || !mounted) return;
+    await _ttsService.stop();
+    final current = widget.game.items[_currentQuestionIndex];
+    final prompt = (current.blankText ?? '').trim();
+    if (prompt.isEmpty) return;
+    final spokenPrompt = prompt
+        .replaceAll(RegExp(r'(_{2,}|-{2,}|\.{3,})'), ' dash ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    await _ttsService.speak('Fill in the blank. $spokenPrompt');
   }
 
   void _onTextChanged(int index) {
@@ -167,6 +220,10 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         _remainingTime--;
       });
 
+      if (_remainingTime <= 10 && _remainingTime > 0) {
+        unawaited(_soundService.playCountdownTick());
+      }
+
       if (_remainingTime <= 0) {
         timer.cancel();
         _isTimerRunning = false;
@@ -182,34 +239,66 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     if (answer.isNotEmpty) {
       _submitAnswer();
     } else {
+      final question = widget.game.items[_currentQuestionIndex];
+      final correctAnswer = _formatRangeAnswer(
+        (question.correctAnswer ?? '').toString(),
+      );
+      final explanation = (question.explanation ?? '').trim();
       // Time's up - mark as incorrect
       safeSetState(() {
+        _userAnswers[_currentQuestionIndex] = '';
         _answeredQuestions[_currentQuestionIndex] = false;
         _currentStreak = 0;
       });
       _soundService.playIncorrect();
+      _showMascotReaction(
+        'Time up. Correct answer shown. Read the explanation and continue.',
+        tone: CompanionTone.warning,
+      );
+      if (_ttsEnabled) {
+        unawaited(_ttsService.stop());
+        final explanationSpeech = explanation.isEmpty ? '' : ' Explanation: $explanation';
+        _autoAdvanceTimer?.cancel();
+        unawaited(() async {
+          await _ttsService.speakAndWait(
+            'Time is up. The correct answer is $correctAnswer.$explanationSpeech',
+            timeout: const Duration(milliseconds: 3800),
+          );
+          await _soundService.resumeBgmIfNeeded();
+          if (mounted) _nextQuestion();
+        }());
+      } else {
+        _autoAdvanceTimer?.cancel();
+        _autoAdvanceTimer = Timer(const Duration(milliseconds: 2600), () {
+          if (mounted) _nextQuestion();
+        });
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '⏰ Time\'s up!',
+            explanation.isEmpty
+                ? '⏰ Time\'s up! Correct answer: $correctAnswer'
+                : '⏰ Time\'s up! Correct: $correctAnswer • ${explanation.length > 90 ? '${explanation.substring(0, 90)}...' : explanation}',
             style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
           ),
           backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 1),
+          duration: const Duration(seconds: 3),
         ),
       );
 
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) _nextQuestion();
-      });
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _mascotReactionTimer?.cancel();
     _questionTimer?.cancel();
-    unawaited(_soundService.stopMusic());
+    _autoAdvanceTimer?.cancel();
+    _bgmKeepAliveTimer?.cancel();
+    unawaited(_ttsService.stop());
+    unawaited(_soundService.stopMusic(force: true));
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -218,6 +307,13 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     _typingController.dispose();
     _confettiController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_soundService.resumeBgmIfNeeded());
+    }
   }
 
   Future<void> _loadStats() async {
@@ -235,7 +331,118 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     });
   }
 
+  void _openGameSettingsSheet() {
+    GameSettingsSheet.show(
+      context: context,
+      soundService: _soundService,
+      gameType: widget.game.gameType,
+      musicGameTypeOverride: widget.game.gameType,
+      ttsService: _ttsService,
+      isTTSEnabled: _ttsEnabled,
+      onTTSToggled: (enabled) {
+        _ttsEnabled = enabled;
+        safeSetState(() {});
+      },
+    );
+  }
+
+  List<String> _currentOptions(GameItem question) {
+    final raw = question.options ?? const <String>[];
+    return raw
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<String> _displayOptionsForQuestion(GameItem question) {
+    final cacheKey = _currentQuestionIndex;
+    final cached = _displayOptionsCache[cacheKey];
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    final direct = _currentOptions(question);
+    if (direct.isNotEmpty) {
+      _displayOptionsCache[cacheKey] = direct;
+      return direct;
+    }
+
+    final correct = (question.correctAnswer ?? '').toString().trim();
+    final pool = <String>{};
+    if (correct.isNotEmpty) pool.add(correct);
+
+    for (final item in widget.game.items) {
+      final candidate = (item.correctAnswer ?? '').toString().trim();
+      if (candidate.isNotEmpty && candidate.toLowerCase() != correct.toLowerCase()) {
+        pool.add(candidate);
+      }
+      if (pool.length >= 6) break;
+    }
+
+    final options = pool.toList()..shuffle();
+    if (correct.isNotEmpty && !options.any((e) => e.toLowerCase() == correct.toLowerCase())) {
+      options.insert(0, correct);
+    }
+    final bounded = options.take(6).toList(growable: false);
+    _displayOptionsCache[cacheKey] = bounded;
+    return bounded;
+  }
+
+  String _formatRangeAnswer(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return value;
+    final match = RegExp(
+      r'^\s*([^-\u2013\u2014]+)\s*[-\u2013\u2014]\s*([^-\u2013\u2014]+)\s*$',
+    ).firstMatch(value);
+    if (match == null) return value;
+    final left = (match.group(1) ?? '').trim();
+    final right = (match.group(2) ?? '').trim();
+    if (left.isEmpty || right.isEmpty) return value;
+    return '$left to $right';
+  }
+
+  Widget _buildQuestionPrompt(GameItem question, bool isAnswered, bool isCorrect) {
+    final text = question.blankText ?? '';
+    final blankMatches = RegExp(r'(_{2,}|-{2,}|\.{3,})').allMatches(text).toList();
+    if (blankMatches.isEmpty || !isAnswered) {
+      return Text(
+        text,
+        style: GoogleFonts.poppins(fontSize: 18, color: AppTheme.textDark),
+      );
+    }
+    final userAnswer = (_userAnswers[_currentQuestionIndex] ?? '').trim();
+    final correctAnswer = (question.correctAnswer ?? '').toString().trim();
+    final answerToShow = _formatRangeAnswer(
+      isCorrect ? userAnswer : correctAnswer,
+    );
+    final isRangeAnswer = answerToShow.toLowerCase().contains(' to ');
+    final first = blankMatches.first;
+    final second = blankMatches.length > 1 ? blankMatches[1] : null;
+    final useCombinedRangeSlot = isRangeAnswer && second != null;
+    final replaceStart = first.start;
+    final replaceEnd = useCombinedRangeSlot ? second!.end : first.end;
+    final before = text.substring(0, replaceStart);
+    final after = text.substring(replaceEnd);
+    final answerColor = isCorrect ? AppTheme.accentGreen : const Color(0xFF1D4ED8);
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: before),
+          TextSpan(
+            text: answerToShow,
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: answerColor,
+            ),
+          ),
+          TextSpan(text: after),
+        ],
+      ),
+      style: GoogleFonts.poppins(fontSize: 18, color: AppTheme.textDark),
+    );
+  }
+
   void _submitAnswer() {
+    _autoAdvanceTimer?.cancel();
     _questionTimer?.cancel();
     _isTimerRunning = false;
 
@@ -249,6 +456,9 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         .trim();
     final userAnswer = answer.toLowerCase().trim();
     final isCorrect = userAnswer == correctAnswer;
+    if (_ttsEnabled) {
+      unawaited(_ttsService.stop());
+    }
 
     // Calculate typing speed bonus
     int speedBonus = 0;
@@ -266,6 +476,22 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     int timeBonus = _remainingTime > 30 ? 5 : 0; // Quick answer bonus
     int xpForThisAnswer = (baseXP * streakMultiplier) + speedBonus + timeBonus;
 
+    // Play success/fail audio outside setState so it starts immediately.
+    if (isCorrect) {
+      unawaited(_soundService.registerUserGesture());
+      unawaited(_soundService.playCorrect());
+      // Layer a soft match ping for clearer "correct" feedback on device speakers.
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 110),
+          _soundService.playMatch,
+        ),
+      );
+    } else {
+      unawaited(_soundService.registerUserGesture());
+      unawaited(_soundService.playIncorrect());
+    }
+
     safeSetState(() {
       _userAnswers[_currentQuestionIndex] = answer;
       _answeredQuestions[_currentQuestionIndex] = isCorrect;
@@ -273,12 +499,37 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         _score++;
         _currentStreak++;
         _xpEarned += xpForThisAnswer;
-        _soundService.playCorrect();
+        _showMascotReaction(
+          'Great typing! Strong accuracy.',
+          tone: CompanionTone.success,
+          celebrate: true,
+        );
+        if (_ttsEnabled) {
+          unawaited(
+            Future<void>.delayed(
+              const Duration(milliseconds: 320),
+              () => _ttsService.speak('Correct. Nice work.'),
+            ),
+          );
+        }
         // Trigger confetti
         _confettiController.play();
       } else {
         _currentStreak = 0; // Reset streak on wrong answer
-        _soundService.playIncorrect();
+        _showMascotReaction(
+          'Almost there. Check spelling and try next.',
+          tone: CompanionTone.tip,
+        );
+        if (_ttsEnabled) {
+          unawaited(
+            Future<void>.delayed(
+              const Duration(milliseconds: 200),
+              () => _ttsService.speak(
+                'Not quite. The correct answer is ${_formatRangeAnswer((question.correctAnswer ?? '').toString())}.',
+              ),
+            ),
+          );
+        }
       }
       _hints = [];
       _hintShown = false;
@@ -295,64 +546,26 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
         );
     _progressController.forward(from: 0);
 
-    // Show feedback with XP
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Expanded(
-              child: Text(
-                isCorrect
-                    ? 'Correct! 🎉'
-                    : 'Incorrect. The answer is: ${question.correctAnswer}',
-                style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-              ),
-            ),
-            if (isCorrect) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '+10 XP',
-                  style: GoogleFonts.poppins(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              if (_currentStreak > 1) ...[
-                const SizedBox(width: 4),
-                Text(
-                  '🔥 $_currentStreak',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ],
-          ],
+    // Keep successful path clean; only show snackbar on incorrect answers.
+    if (!isCorrect) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Incorrect. The answer is: ${_formatRangeAnswer((question.correctAnswer ?? '').toString())}',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
         ),
-        backgroundColor: isCorrect ? AppTheme.accentGreen : Colors.red,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+      );
+    }
 
-    // Move to next question after delay
-    Future.delayed(const Duration(milliseconds: 2000), () {
-      if (mounted) {
-        _nextQuestion();
-      }
-    });
+    // Keep flow deterministic: user explicitly moves with Next button.
   }
 
   void _nextQuestion() {
+    _autoAdvanceTimer?.cancel();
+    unawaited(_ttsService.stop());
     _soundService.playClick();
     _questionTimer?.cancel();
     _isTimerRunning = false;
@@ -377,12 +590,37 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
           );
       _progressController.forward(from: 0);
       _startQuestionTimer(); // Start timer for next question
+      unawaited(_speakCurrentPrompt());
     } else {
       _finishGame();
     }
   }
 
+  void _showMascotReaction(
+    String message, {
+    CompanionTone tone = CompanionTone.neutral,
+    bool celebrate = false,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    _mascotReactionTimer?.cancel();
+    if (!mounted) return;
+    safeSetState(() {
+      _mascotReaction = message;
+      _mascotReactionTone = tone;
+      _mascotCelebrate = celebrate;
+    });
+    _mascotReactionTimer = Timer(duration, () {
+      if (!mounted) return;
+      safeSetState(() {
+        _mascotReaction = null;
+        _mascotCelebrate = false;
+      });
+    });
+  }
+
   void _previousQuestion() {
+    _autoAdvanceTimer?.cancel();
+    unawaited(_ttsService.stop());
     _soundService.playClick();
     if (_currentQuestionIndex > 0) {
       safeSetState(() {
@@ -392,6 +630,13 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
   }
 
   Future<void> _finishGame() async {
+    if (_isFinishingGame) return;
+    _isFinishingGame = true;
+    _autoAdvanceTimer?.cancel();
+    _questionTimer?.cancel();
+    await _ttsService.stop();
+    await _soundService.stopMusic(force: true);
+
     final endTime = DateTime.now();
     final timeTaken = _startTime != null
         ? endTime.difference(_startTime!).inSeconds
@@ -405,16 +650,18 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     if (timeTaken != null && timeTaken < 120) bonusXP += 25;
     final totalXP = _xpEarned + bonusXP;
 
-    unawaited(
-      GameStatsService.addGameResult(
-        correctAnswers: _score,
-        totalQuestions: widget.game.items.length,
-        timeTakenSeconds: timeTaken ?? 0,
-        isPerfectScore: isPerfectScore,
-      ).catchError((e) {
+    unawaited(() async {
+      try {
+        await GameStatsService.addGameResult(
+          correctAnswers: _score,
+          totalQuestions: widget.game.items.length,
+          timeTakenSeconds: timeTaken ?? 0,
+          isPerfectScore: isPerfectScore,
+        );
+      } catch (e) {
         LogService.error('🎮 [FillBlank] Error updating game stats: $e');
-      }),
-    );
+      }
+    }());
 
     unawaited(
       SkulMateService.saveGameSession(
@@ -452,101 +699,92 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
     }
   }
 
+  Future<void> _exitGame() async {
+    _autoAdvanceTimer?.cancel();
+    _questionTimer?.cancel();
+    await _ttsService.stop();
+    await _soundService.stopMusic(force: true);
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => GameLibraryScreen(childId: widget.game.childId),
+        ),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final question = widget.game.items[_currentQuestionIndex];
     final isAnswered = _answeredQuestions.containsKey(_currentQuestionIndex);
     final isCorrect = _answeredQuestions[_currentQuestionIndex] ?? false;
+    final options = _displayOptionsForQuestion(question);
+    final hasSuggestedAnswers = options.isNotEmpty;
 
-    return Scaffold(
-      backgroundColor: AppTheme.softBackground,
-      appBar: SkulMateGameAppBar(
-        title: widget.game.title,
-        actions: [
-          if (_character != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(
-                child: SkulMateCharacterWidget(
-                  character: _character,
-                  size: 40,
-                  animated: false,
-                  showName: false,
-                ),
-              ),
-            ),
-          if (_currentStreak > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.orange, width: 1.5),
-                ),
-                child: Row(
-                  children: [
-                    const Text('🔥', style: TextStyle(fontSize: 16)),
-                    const SizedBox(width: 4),
-                    Text(
-                      '$_currentStreak',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.orange[800],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          unawaited(_exitGame());
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.softBackground,
+        appBar: SkulMateGameAppBar(
+          title: widget.game.title,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => unawaited(_exitGame()),
+          ),
+          actions: [
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Score: $_score/${widget.game.items.length}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                if (_xpEarned > 0)
-                  Text(
-                    '$_xpEarned XP',
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withOpacity(0.9),
+            padding: const EdgeInsets.only(right: 4, left: 0),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: _openGameSettingsSheet,
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.white.withOpacity(0.22),
+                child: ClipOval(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: const SkulMateCharacterWidget(
+                      character: SkulMateCharacters.middleMale,
+                      size: 24,
+                      animated: false,
+                      showName: false,
                     ),
                   ),
-              ],
+                ),
+              ),
             ),
           ),
-        ],
-      ),
-      body: Stack(
+          ],
+        ),
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => unawaited(_soundService.registerUserGesture()),
+          child: Stack(
         children: [
           Column(
             children: [
-              // Animated Progress bar
               AnimatedBuilder(
                 animation: _progressAnimation,
                 builder: (context, child) {
-                  return LinearProgressIndicator(
-                    value: _progressAnimation.value,
-                    backgroundColor: Colors.grey[200],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppTheme.primaryColor,
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: GameStandardsHud(
+                      progressText:
+                          'Question ${_currentQuestionIndex + 1} of ${widget.game.items.length}',
+                      progressValue:
+                          ((_currentQuestionIndex + 1) / widget.game.items.length)
+                              .clamp(0.0, 1.0),
+                      xpEarned: _xpEarned,
+                      gameType: widget.game.gameType,
                     ),
-                    minHeight: 6,
                   );
                 },
               ),
@@ -578,23 +816,17 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                         children: [
                           // Timer
                           Expanded(
-                            child: Container(
+                            child: FlatStageCard(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                                 vertical: 12,
                               ),
-                              decoration: BoxDecoration(
-                                color: _remainingTime <= 10
-                                    ? Colors.red.withOpacity(0.1)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: _remainingTime <= 10
-                                      ? Colors.red
-                                      : AppTheme.accentGreen,
-                                  width: 2,
-                                ),
-                              ),
+                              backgroundColor: _remainingTime <= 10
+                                  ? Colors.red.withOpacity(0.08)
+                                  : Colors.white,
+                              borderColor: _remainingTime <= 10
+                                  ? Colors.red
+                                  : AppTheme.accentGreen,
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -648,160 +880,74 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                         ],
                       ),
                       const SizedBox(height: 16),
+                      const SizedBox(height: 4),
                       // Question with blank
-                      Container(
+                      FlatStageCard(
                         padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.textDark.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
+                        radius: 16,
+                        backgroundColor: Colors.white,
+                        borderColor: AppTheme.primaryColor.withOpacity(0.16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              question.blankText ?? '',
-                              style: GoogleFonts.poppins(
-                                fontSize: 18,
-                                color: AppTheme.textDark,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Answer input with auto-complete
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TextField(
-                                  controller:
-                                      _controllers[_currentQuestionIndex],
-                                  enabled: !isAnswered,
-                                  autofocus: !isAnswered,
-                                  decoration: InputDecoration(
-                                    hintText: 'Type your answer...',
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    filled: true,
-                                    fillColor: isAnswered
-                                        ? (isCorrect
-                                              ? AppTheme.accentGreen
-                                                    .withOpacity(0.1)
-                                              : Colors.red.withOpacity(0.1))
-                                        : Colors.grey[50],
-                                    suffixIcon: isAnswered
-                                        ? Icon(
-                                            isCorrect
-                                                ? Icons.check_circle
-                                                : Icons.cancel,
-                                            color: isCorrect
-                                                ? AppTheme.accentGreen
-                                                : Colors.red,
-                                          )
-                                        : _hintShown && _hints.isNotEmpty
-                                        ? IconButton(
-                                            icon: const Icon(
-                                              Icons.lightbulb_outline,
-                                              color: Colors.amber,
-                                            ),
-                                            onPressed: () {
-                                              _soundService.playClick();
-                                              final currentText =
-                                                  _controllers[_currentQuestionIndex]
-                                                      ?.text ??
-                                                  '';
-                                              _controllers[_currentQuestionIndex]
-                                                      ?.text =
-                                                  currentText + _hints[0];
-                                              _generateHints(
-                                                _controllers[_currentQuestionIndex]!
-                                                    .text,
-                                              );
-                                            },
-                                            tooltip: 'Use hint',
-                                          )
-                                        : null,
-                                  ),
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppTheme.textDark,
-                                  ),
-                                  onSubmitted: (_) {
-                                    if (!isAnswered) {
-                                      _submitAnswer();
-                                    }
-                                  },
+                            _buildQuestionPrompt(question, isAnswered, isCorrect),
+                            if (!isAnswered && hasSuggestedAnswers) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                'Suggested answers',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textMedium,
                                 ),
-                                // Auto-complete hint
-                                if (_hintShown &&
-                                    _hints.isNotEmpty &&
-                                    !isAnswered)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(
-                                          color: Colors.amber,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.lightbulb,
-                                            color: Colors.amber,
-                                            size: 20,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              'Hint: Continue with "${_hints[0]}"',
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 13,
-                                                color: Colors.amber[900],
-                                                fontStyle: FontStyle.italic,
-                                              ),
-                                            ),
-                                          ),
-                                          TextButton(
-                                            onPressed: () {
-                                              _soundService.playClick();
-                                              final currentText =
-                                                  _controllers[_currentQuestionIndex]
-                                                      ?.text ??
-                                                  '';
-                                              _controllers[_currentQuestionIndex]
-                                                      ?.text =
-                                                  currentText + _hints[0];
-                                              _generateHints(
-                                                _controllers[_currentQuestionIndex]!
-                                                    .text,
-                                              );
-                                            },
-                                            child: Text(
-                                              'Use',
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.amber[900],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                              ),
+                              const SizedBox(height: 8),
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: options.length,
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 2,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                      childAspectRatio: 2.4,
+                                    ),
+                                itemBuilder: (context, index) {
+                                  final option = options[index];
+                                  final selected =
+                                      (_controllers[_currentQuestionIndex]?.text.trim() ?? '') ==
+                                      option;
+                                  return FlatChoiceTile(
+                                    label: option,
+                                    isSelected: selected,
+                                    isCorrect: false,
+                                    showResult: false,
+                                    onTap: () {
+                                      _controllers[_currentQuestionIndex]?.text = option;
+                                      unawaited(_soundService.registerUserGesture());
+                                      unawaited(_soundService.playClick());
+                                      safeSetState(() {});
+                                    },
+                                  );
+                                },
+                              ),
+                            ],
+                            if (!isAnswered && hasSuggestedAnswers) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Tap one answer then submit.',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppTheme.textMedium,
                                     ),
                                   ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                             if (isAnswered && !isCorrect) ...[
                               const SizedBox(height: 12),
                               Container(
@@ -820,7 +966,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Correct answer: ${question.correctAnswer}',
+                                        'Correct answer: ${_formatRangeAnswer((question.correctAnswer ?? '').toString())}',
                                         style: GoogleFonts.poppins(
                                           fontSize: 14,
                                           color: Colors.blue[900],
@@ -846,7 +992,7 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
                             if (answer.isEmpty) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Please enter an answer'),
+                                  content: Text('Please select an answer'),
                                   backgroundColor: Colors.orange,
                                 ),
                               );
@@ -958,6 +1104,8 @@ class _FillBlankGameScreenState extends State<FillBlankGameScreen>
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
   }

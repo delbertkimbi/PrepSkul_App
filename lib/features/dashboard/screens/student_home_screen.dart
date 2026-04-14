@@ -101,148 +101,89 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
   }
 
   Future<void> _loadUserData() async {
+    String? extractFirstName(String? fullName) {
+      if (fullName == null || fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
+        return null;
+      }
+      final parts = fullName.trim().split(' ');
+      final firstName = parts.isNotEmpty ? parts[0] : fullName;
+      if (firstName.isEmpty || firstName == 'Student' || firstName == 'User') {
+        return null;
+      }
+      return firstName;
+    }
+
     try {
-      final userProfile = await AuthService.getUserProfile();
       final prefs = await SharedPreferences.getInstance();
+
+      // Fast first paint from local cache so offline startup is instant.
+      final cachedName = extractFirstName(prefs.getString('user_name')) ??
+          extractFirstName(prefs.getString('signup_full_name')) ??
+          'Student';
+      final cachedUserRole = prefs.getString('user_role');
+      final cachedSurveyCompleted = prefs.getBool('survey_completed') ?? false;
       final hasVisitedHome = prefs.getBool('has_visited_home') ?? false;
+      final cachedActiveTutors = prefs.getInt('home_active_tutors_count') ?? 0;
+      final cachedUpcomingSessions = prefs.getInt('home_upcoming_sessions_count') ?? 0;
 
-      // Get user name with priority: profile > direct Supabase query > stored signup data > session > auth metadata > default
-      // Extract first name from full_name if available
-      String? extractFirstName(String? fullName) {
-        if (fullName == null || fullName.isEmpty || fullName == 'User' || fullName == 'Student') {
-          return null;
-        }
-        // Split by space and take first part
-        final parts = fullName.trim().split(' ');
-        final firstName = parts.isNotEmpty ? parts[0] : fullName;
-        // Return null if it's still "Student" or empty
-        if (firstName.isEmpty || firstName == 'Student' || firstName == 'User') {
-          return null;
-        }
-        return firstName;
+      if (mounted) {
+        safeSetState(() {
+          _userName = cachedName;
+          _userType = cachedUserRole == 'parent' ? 'parent' : 'student';
+          _surveyCompleted = cachedSurveyCompleted;
+          _isFirstVisit = !hasVisitedHome;
+          _activeTutorsCount = cachedActiveTutors;
+          _upcomingSessionsCount = cachedUpcomingSessions;
+          _isLoading = false;
+        });
       }
 
-      var userName = extractFirstName(userProfile?['full_name']?.toString());
-      LogService.debug('[HOME] Name from getUserProfile: ${userProfile?['full_name']} -> $userName');
-      
-      // If still no name, try direct Supabase query as fallback
-      if (userName == null || userName.isEmpty) {
-        try {
-          final authUser = SupabaseService.currentUser;
-          if (authUser != null) {
-            final directProfile = await SupabaseService.client
-                .from('profiles')
-                .select('full_name')
-                .eq('id', authUser.id)
-                .maybeSingle();
-            
-            final directName = directProfile?['full_name']?.toString();
-            LogService.debug('[HOME] Name from direct Supabase query: $directName');
-            userName = extractFirstName(directName);
-          }
-        } catch (e) {
-          LogService.debug('[HOME] Error querying Supabase directly: $e');
-        }
+      // If offline, keep cached UI and skip remote roundtrips.
+      final isOnline = await _connectivity
+          .checkConnectivity()
+          .timeout(const Duration(milliseconds: 900), onTimeout: () => false);
+      if (!isOnline) {
+        LogService.info('🌐 [HOME] Offline startup: using cached home data');
+        return;
       }
-      
-      if (userName == null || userName.isEmpty) {
-        // Try stored signup data
-        final storedName = prefs.getString('signup_full_name');
-        LogService.debug('[HOME] Name from SharedPreferences: $storedName');
-        if (storedName != null && storedName.isNotEmpty && storedName != 'User' && storedName != 'Student') {
-          userName = extractFirstName(storedName);
-          // If we found a name from signup but database doesn't have it, update the database
-          try {
-            final authUser = SupabaseService.currentUser;
-            if (authUser != null) {
-              await SupabaseService.client
-                  .from('profiles')
-                  .update({'full_name': storedName})
-                  .eq('id', authUser.id);
-              LogService.info('[HOME] Updated profile with signup name: $storedName');
-            }
-          } catch (e) {
-            LogService.warning('[HOME] Failed to update profile with signup name: $e');
-          }
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Try session data
-        final currentUser = await AuthService.getCurrentUser();
-        final sessionName = currentUser['fullName']?.toString();
-        LogService.debug('[HOME] Name from session: $sessionName');
-        if (sessionName != null && sessionName.isNotEmpty && sessionName != 'User') {
-          userName = extractFirstName(sessionName);
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Try auth user metadata
-        final authUser = SupabaseService.currentUser;
-        if (authUser != null && authUser.userMetadata?['full_name'] != null) {
-          final metadataName = authUser.userMetadata!['full_name']?.toString();
-          LogService.debug('[HOME] Name from auth metadata: $metadataName');
-          if (metadataName != null && metadataName.isNotEmpty) {
-            userName = extractFirstName(metadataName);
-          }
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Last resort: try email username
-        final authUser = SupabaseService.currentUser;
-        if (authUser?.email != null) {
-          final email = authUser!.email!;
-          final emailName = email.split('@')[0];
-          // Capitalize first letter
-          if (emailName.isNotEmpty && emailName.length > 1) {
-            userName = emailName[0].toUpperCase() + emailName.substring(1);
-            LogService.debug('[HOME] Using email username: $userName');
-          }
-        }
-      }
-      if (userName == null || userName.isEmpty) {
-        // Default fallback
-        userName = 'Student';
-        LogService.warning('[HOME] All name sources failed, using default: Student');
-      }
-      
-      LogService.success('[HOME] Final userName: $userName');
 
-      _userName = userName;
-      _userType = userProfile?['user_type'] ?? 'student';
-      _isFirstVisit = !hasVisitedHome;
-      _surveyCompleted = userProfile?['survey_completed'] ?? false;
+      // Refresh in background when online.
+      final userProfile = await AuthService.getUserProfile()
+          .timeout(const Duration(seconds: 4), onTimeout: () => null);
 
-      // Load survey data for personalization
+      var userName = extractFirstName(userProfile?['full_name']?.toString()) ?? cachedName;
+      _userType = userProfile?['user_type'] ?? _userType;
+      _surveyCompleted = userProfile?['survey_completed'] ?? _surveyCompleted;
+
       if (_userType == 'student') {
-        _surveyData = await SurveyRepository.getStudentSurvey(
-          userProfile?['id'],
-        );
+        _surveyData = await SurveyRepository.getStudentSurvey(userProfile?['id'])
+            .timeout(const Duration(seconds: 3), onTimeout: () => _surveyData);
       } else if (_userType == 'parent') {
-        _surveyData = await SurveyRepository.getParentSurvey(
-          userProfile?['id'],
-        );
+        _surveyData = await SurveyRepository.getParentSurvey(userProfile?['id'])
+            .timeout(const Duration(seconds: 3), onTimeout: () => _surveyData);
       }
 
-      // Check if reminder card should be shown
       if (!_surveyCompleted) {
-        _showReminderCard = await SurveyReminderCard.shouldShow();
+        _showReminderCard = await SurveyReminderCard.shouldShow()
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
       }
 
-      // Load active tutors and upcoming sessions counts
-      int activeTutors = 0;
-      int upcomingSessions = 0;
+      int activeTutors = _activeTutorsCount;
+      int upcomingSessions = _upcomingSessionsCount;
       try {
-        final indUpcoming =
-            await IndividualSessionService.getStudentUpcomingSessions(limit: 50);
+        final indUpcoming = await IndividualSessionService
+            .getStudentUpcomingSessions(limit: 50)
+            .timeout(const Duration(seconds: 4), onTimeout: () => const []);
         final tutorIds = <String>{};
         for (final s in indUpcoming) {
           final recurring = s['recurring_sessions'] as Map<String, dynamic>?;
           final tid = recurring?['tutor_id'] as String?;
           if (tid != null && tid.isNotEmpty) tutorIds.add(tid);
         }
-        upcomingSessions += indUpcoming.length;
+        upcomingSessions = indUpcoming.length;
 
-        final trials = await TrialSessionService.getStudentTrialSessions();
+        final trials = await TrialSessionService.getStudentTrialSessions()
+            .timeout(const Duration(seconds: 4), onTimeout: () => const []);
         for (final t in trials) {
           if ((t.status == 'approved' || t.status == 'scheduled') &&
               !SessionDateUtils.isSessionExpired(t)) {
@@ -252,53 +193,48 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
         }
         activeTutors = tutorIds.length;
       } catch (e) {
-        LogService.debug('Student home stats load: $e');
+        LogService.debug('Student home stats load (background): $e');
       }
+
+      // Persist latest good values for fast offline startup.
+      await prefs.setString('user_name', userName);
+      await prefs.setInt('home_active_tutors_count', activeTutors);
+      await prefs.setInt('home_upcoming_sessions_count', upcomingSessions);
 
       if (mounted) {
         safeSetState(() {
+          _userName = userName;
           _activeTutorsCount = activeTutors;
           _upcomingSessionsCount = upcomingSessions;
-          _isLoading = false;
         });
       }
 
-      // LinkedIn-style nudge: ask after user has value context (home loaded).
       if (mounted && !_isFirstVisit) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          // Small delay so it doesn't feel "instant" on screen load.
           Future.delayed(const Duration(seconds: 2), () {
             if (!mounted) return;
-            NotificationPermissionNudgeService.maybeShow(
-              context,
-              trigger: 'home',
-            );
+            NotificationPermissionNudgeService.maybeShow(context, trigger: 'home');
           });
         });
       }
 
-      // First-time user? Auto-navigate to Find Tutors
       if (_isFirstVisit && mounted) {
         await prefs.setBool('has_visited_home', true);
-        // Small delay for smooth transition
         Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted) {
-            // Navigate to Find Tutors tab (index 1)
-            Navigator.pushReplacementNamed(
-              context,
-              _userType == 'parent' ? '/parent-nav' : '/student-nav',
-              arguments: {'initialTab': 1},
-            );
-          }
+          if (!mounted) return;
+          Navigator.pushReplacementNamed(
+            context,
+            _userType == 'parent' ? '/parent-nav' : '/student-nav',
+            arguments: {'initialTab': 1},
+          );
         });
       }
     } catch (e) {
       LogService.debug('Error loading user data: $e');
       if (!mounted) return;
-
       safeSetState(() {
-        _userName = 'Student';
+        _userName = _userName.isEmpty ? 'Student' : _userName;
         _isLoading = false;
       });
     }
@@ -341,6 +277,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const SkulMateOnboardingScreen(),
+                ),
+              );
+              return;
+            }
+
+            final isOnline = await _connectivity.checkConnectivity();
+            if (!isOnline) {
+              // Offline: avoid remote game existence checks that can hang.
+              if (!mounted) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const GameLibraryScreen(initialTab: 1),
                 ),
               );
               return;

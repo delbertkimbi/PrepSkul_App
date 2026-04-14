@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:prepskul/core/theme/app_theme.dart';
 import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
-import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/web_splash_service.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,15 +26,11 @@ class AuthMethodSelectionScreen extends StatefulWidget {
 
 class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
   late bool _isLogin;
-  bool _isGoogleSigningIn = false;
 
   @override
   void initState() {
     super.initState();
     _isLogin = widget.isLogin;
-    // If we are returning from a Google OAuth deep link, keep showing
-    // the blocking loader so users don't tap other auth methods.
-    _isGoogleSigningIn = AuthService.isGoogleSignInInProgress;
     // On web: remove HTML splash only after this screen has painted (prevents blank auth screen)
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -150,14 +145,12 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                             label: t.authContinueWithGoogle,
                             isPrimary: false, // Changed to false to keep outlined style but distinct
                             onTap: () async {
-                              if (_isGoogleSigningIn) return;
-                              safeSetState(() {
-                                _isGoogleSigningIn = true;
-                              });
+                              if (AuthService.isGoogleSignInInProgress) return;
                               AuthService.isGoogleSignInInProgress = true;
                               try {
                                 await AuthService.signInWithGoogle();
                               } catch (e) {
+                                AuthService.isGoogleSignInInProgress = false;
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -165,13 +158,6 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
                                       backgroundColor: Colors.red,
                                     ),
                                   );
-                                }
-                                // On error, remove the loading overlay so user can try again
-                                if (mounted) {
-                                  safeSetState(() {
-                                    _isGoogleSigningIn = false;
-                                    AuthService.isGoogleSignInInProgress = false;
-                                  });
                                 }
                               }
                             },
@@ -344,31 +330,37 @@ class _AuthMethodSelectionScreenState extends State<AuthMethodSelectionScreen> {
               ],
             ),
           ),
-          if (_isGoogleSigningIn)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withOpacity(0.35),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Completing Google sign-in…',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+          ValueListenableBuilder<bool>(
+            valueListenable: AuthService.googleSignInInProgressNotifier,
+            builder: (context, loading, _) {
+              if (!loading) return const SizedBox.shrink();
+              return Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.35),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        Text(
+                          'Completing Google sign-in…',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
+          ),
         ],
       ),
     ),

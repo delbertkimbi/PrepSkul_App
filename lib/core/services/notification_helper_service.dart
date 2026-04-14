@@ -158,8 +158,11 @@ class NotificationHelperService {
     }
   }
 
-  /// Send SkulMate social notification (friend request, challenge, etc.) — in-app + push via API.
-  /// Same flow as friend requests: challengee gets in-app and push when challenged.
+  /// SkulMate **real-time** notifications (friend request, challenge, streak-adjacent social, etc.).
+  ///
+  /// **Policy:** Always **in-app** + **push**; **never email** for routine SkulMate social/game
+  /// events. Email is reserved for the **weekly** learning/gaming digest
+  /// ([sendSkulMateWeeklyLearningDigest]), sent ~1×/week from a server job.
   static Future<void> sendSkulmateNotification({
     required String userId,
     required String type,
@@ -179,6 +182,38 @@ class NotificationHelperService {
       metadata: data,
       sendEmail: false,
       sendPush: true,
+    );
+  }
+
+  /// Weekly SkulMate **learning + gaming progress** summary.
+  ///
+  /// **Policy:** Intended to run **at most once per week** per user (e.g. Sunday cron on
+  /// the Next.js API). Sends **email** (branded report) + **in-app** notification record.
+  /// Push is **off** by default so the channel isn’t noisy; set [sendPush] to `true` if you
+  /// want a single “Your weekly report is ready” system notification.
+  ///
+  /// The Flutter app does not schedule this; a backend job should call the same
+  /// `/api/notifications/send` payload or invoke this from tooling.
+  static Future<void> sendSkulMateWeeklyLearningDigest({
+    required String userId,
+    required String title,
+    required String message,
+    String? actionUrl,
+    String? actionText,
+    Map<String, dynamic>? metadata,
+    bool sendPush = false,
+  }) async {
+    await _sendNotificationViaAPI(
+      userId: userId,
+      type: 'skulmate_weekly_digest',
+      title: title,
+      message: message,
+      priority: 'normal',
+      actionUrl: actionUrl ?? '/skulmate',
+      actionText: actionText ?? 'View progress',
+      metadata: metadata,
+      sendEmail: true,
+      sendPush: sendPush,
     );
   }
 

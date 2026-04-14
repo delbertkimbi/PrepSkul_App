@@ -5,6 +5,7 @@ import 'package:prepskul/core/utils/safe_set_state.dart';
 import 'package:prepskul/core/utils/status_bar_utils.dart';
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:prepskul/core/localization/app_localizations.dart';
 import 'package:prepskul/features/auth/screens/otp_verification_screen.dart';
 
@@ -35,17 +36,17 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // Curved wave background at top
+          // Simple clean header background (no gradients)
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            child: ClipPath(
-              clipper: WaveClipper(),
-              child: Container(
-                height: 200,
-                decoration: const BoxDecoration(
-                  gradient: AppTheme.headerGradient,
+            child: Container(
+              height: 132,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: AppTheme.softBorder, width: 1),
                 ),
               ),
             ),
@@ -55,20 +56,20 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Header content inside the wave
+                // Header content
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 20.0),
+                  padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 14.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 15),
+                      const SizedBox(height: 4),
                       Center(
                         child: Text(
                           t.authSignUpTitle,
                           style: GoogleFonts.poppins(
-                            fontSize: 32,
+                            fontSize: 30,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: AppTheme.primaryColor,
                           ),
                         ),
                       ),
@@ -80,7 +81,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                           style: GoogleFonts.poppins(
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.95),
+                            color: AppTheme.textMedium,
                           ),
                         ),
                       ),
@@ -95,7 +96,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 50),
+                        const SizedBox(height: 22),
                         // Form
                         Form(
                           key: _formKey,
@@ -629,6 +630,22 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
     safeSetState(() => _isLoading = true);
 
     try {
+      if (!AppConfig.enablePhoneOtpVerification) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Phone sign-up is temporarily unavailable. Please use Email or Google sign-in.',
+                style: GoogleFonts.poppins(),
+              ),
+              backgroundColor: AppTheme.primaryColor,
+            ),
+          );
+        }
+        safeSetState(() => _isLoading = false);
+        return;
+      }
+
       // Send OTP via Supabase
       await SupabaseService.sendPhoneOTP(phoneNumber);
 
@@ -650,7 +667,7 @@ class _BeautifulSignupScreenState extends State<BeautifulSignupScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Failed to send verification code. Please check your phone number.',
+              'Couldn’t start phone sign-up right now. Please use Email or Google sign-in.',
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: AppTheme.primaryColor,

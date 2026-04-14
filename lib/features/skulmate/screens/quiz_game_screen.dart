@@ -20,6 +20,9 @@ import '../widgets/game_roadmap_widget.dart';
 import '../widgets/game_rules_overlay.dart';
 import '../widgets/skulmate_game_app_bar.dart';
 import '../widgets/drag_drop_question_widget.dart';
+import '../widgets/game_standard_widgets.dart';
+import '../widgets/game_settings_sheet.dart';
+import '../widgets/skulmate_companion_banner.dart';
 import '../services/daily_challenge_service.dart';
 import 'game_results_screen.dart';
 import 'game_library_screen.dart';
@@ -66,11 +69,16 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   int? _lastCorrectXp; // +10 or +15 for boss – show pop-up briefly
   bool _xpPopupVisible = false; // drives fade-out before advancing
   final List<QuestionPerformance> _questionBreakdown = [];
+  String? _mascotReaction;
+  CompanionTone _mascotReactionTone = CompanionTone.neutral;
+  bool _mascotCelebrate = false;
+  Timer? _mascotReactionTimer;
 
   bool _hasShownRules = false;
 
   /// When true, show correct answer + explanation and "Next" instead of auto-advancing.
   bool _showWrongAnswerFeedback = false;
+  bool _quizMusicStarted = false;
   static const int _countdownSecondsPerQuestion = 15;
   int _countdownRemaining = _countdownSecondsPerQuestion;
   Timer? _countdownTimer;
@@ -102,8 +110,16 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     );
     _loadCharacter();
     _loadStats();
+    _startQuizMusicOnce();
     // Show rules overlay if first time
     _showRulesIfNeeded();
+  }
+
+  void _startQuizMusicOnce() {
+    if (_quizMusicStarted) return;
+    _quizMusicStarted = true;
+    // Keep quiz on the mystery ambient track consistently.
+    unawaited(_soundService.playMusicForGame(GameType.mystery));
   }
 
   Future<void> _configureQuizTts() async {
@@ -120,8 +136,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         (isFirstTime) async {
           _hasShownRules = true;
           if (!isFirstTime) {
-            // Music can start immediately for returning users.
-            unawaited(_soundService.playMusicForGame(widget.game.gameType));
+            _startQuizMusicOnce();
           }
           _startCountdown();
           Future.delayed(const Duration(milliseconds: 500), () {
@@ -142,11 +157,17 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     }
   }
 
+  Future<void> _stopVoiceAndMusic() async {
+    await _ttsService.stop();
+    await _soundService.stopMusic(force: true);
+  }
+
   @override
   void dispose() {
+    _mascotReactionTimer?.cancel();
     _countdownTimer?.cancel();
     _fillBlankController.dispose();
-    unawaited(_soundService.stopMusic());
+    unawaited(_stopVoiceAndMusic());
     _confettiController.dispose();
     _ttsService.resetSpeechRate();
     _ttsService.dispose();
@@ -219,6 +240,10 @@ class _QuizGameScreenState extends State<QuizGameScreen>
 
     // Stronger feedback when time runs out
     _soundService.playCountdownBuzzer();
+    _showMascotReaction(
+      'Time is up. No stress, review this one and keep going.',
+      tone: CompanionTone.warning,
+    );
     final explanation = (question.explanation ?? '').trim();
     String toSpeak;
     if (isDrag) {
@@ -338,6 +363,11 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         _xpPopupVisible = true;
         _soundService.playCorrect();
         _confettiController.play();
+        _showMascotReaction(
+          'Great answer! Keep this momentum.',
+          tone: CompanionTone.success,
+          celebrate: true,
+        );
         if (_isTTSEnabled) {
           _ttsService.speak('Correct!');
         }
@@ -352,8 +382,13 @@ class _QuizGameScreenState extends State<QuizGameScreen>
           }
         });
       } else {
-        _soundService.playIncorrect();
+        unawaited(_soundService.registerUserGesture());
+        unawaited(_soundService.playIncorrect());
         _showWrongAnswerFeedback = true;
+        _showMascotReaction(
+          'Close one. Read the explanation and bounce back.',
+          tone: CompanionTone.tip,
+        );
         final correctText =
             question.options != null &&
                 correctAnswerIndex < question.options!.length
@@ -364,7 +399,12 @@ class _QuizGameScreenState extends State<QuizGameScreen>
             ? 'Incorrect. The correct answer is $correctText.'
             : 'Incorrect. The correct answer is $correctText. $explanation';
         if (_isTTSEnabled && toSpeak.isNotEmpty) {
-          _ttsService.speakAndWait(toSpeak);
+          unawaited(
+            Future<void>.delayed(
+              const Duration(milliseconds: 180),
+              () => _ttsService.speakAndWait(toSpeak),
+            ),
+          );
         }
       }
     });
@@ -432,6 +472,11 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     if (isCorrect) {
       _soundService.playCorrect();
       _confettiController.play();
+      _showMascotReaction(
+        'Perfect fill. You are locked in.',
+        tone: CompanionTone.success,
+        celebrate: true,
+      );
       Future.delayed(const Duration(milliseconds: 700), () {
         if (mounted) safeSetState(() => _xpPopupVisible = false);
       });
@@ -442,7 +487,12 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         }
       });
     } else {
-      _soundService.playIncorrect();
+      unawaited(_soundService.registerUserGesture());
+      unawaited(_soundService.playIncorrect());
+      _showMascotReaction(
+        'Not quite. Let us use the hint and next one is yours.',
+        tone: CompanionTone.tip,
+      );
     }
   }
 
@@ -497,6 +547,11 @@ class _QuizGameScreenState extends State<QuizGameScreen>
     if (isCorrect) {
       _soundService.playCorrect();
       _confettiController.play();
+      _showMascotReaction(
+        'Nice match mapping. Excellent.',
+        tone: CompanionTone.success,
+        celebrate: true,
+      );
       Future.delayed(const Duration(milliseconds: 700), () {
         if (mounted) safeSetState(() => _xpPopupVisible = false);
       });
@@ -507,8 +562,35 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         }
       });
     } else {
-      _soundService.playIncorrect();
+      unawaited(_soundService.registerUserGesture());
+      unawaited(_soundService.playIncorrect());
+      _showMascotReaction(
+        'Good attempt. Check the mapping and retry the next.',
+        tone: CompanionTone.tip,
+      );
     }
+  }
+
+  void _showMascotReaction(
+    String message, {
+    CompanionTone tone = CompanionTone.neutral,
+    bool celebrate = false,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    _mascotReactionTimer?.cancel();
+    if (!mounted) return;
+    safeSetState(() {
+      _mascotReaction = message;
+      _mascotReactionTone = tone;
+      _mascotCelebrate = celebrate;
+    });
+    _mascotReactionTimer = Timer(duration, () {
+      if (!mounted) return;
+      safeSetState(() {
+        _mascotReaction = null;
+        _mascotCelebrate = false;
+      });
+    });
   }
 
   String _correctDragMappingText(GameItem question) {
@@ -755,178 +837,69 @@ class _QuizGameScreenState extends State<QuizGameScreen>
   }
 
   Future<void> _openFirstTimeSoundSettingsSheet() async {
-    // First-time rule: start with effects + voice only (music off).
+    // Keep user preference intact; do not force-disable global music.
     await _soundService.toggleSounds(true);
-    await _soundService.toggleMusic(false);
     _ttsService.setEnabled(true);
     if (mounted) safeSetState(() => _isTTSEnabled = true);
     await _openGameSettingsSheet();
   }
 
   Future<void> _openGameSettingsSheet() async {
-    await showModalBottomSheet(
+    await GameSettingsSheet.show(
       context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, modalSetState) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Game settings',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('Game sounds', style: GoogleFonts.poppins()),
-                      value: _soundService.soundsEnabled,
-                      onChanged: (v) async {
-                        await _soundService.toggleSounds(v);
-                        modalSetState(() {});
-                        if (mounted) safeSetState(() {});
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SFX volume: ${(_soundService.soundsVolume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _soundService.soundsVolume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _soundService.soundsEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _soundService.setSoundsVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('Music', style: GoogleFonts.poppins()),
-                      value: _soundService.musicEnabled,
-                      onChanged: (v) async {
-                        await _soundService.toggleMusic(v);
-                        if (v) {
-                          await _soundService.playMusicForGame(
-                            widget.game.gameType,
-                          );
-                        }
-                        modalSetState(() {});
-                        if (mounted) safeSetState(() {});
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Music volume: ${(_soundService.musicVolume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _soundService.musicVolume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _soundService.musicEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _soundService.setMusicVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Read aloud (TTS)',
-                        style: GoogleFonts.poppins(),
-                      ),
-                      value: _isTTSEnabled,
-                      onChanged: (v) {
-                        _ttsService.setEnabled(v);
-                        modalSetState(() => _isTTSEnabled = v);
-                        if (mounted) safeSetState(() => _isTTSEnabled = v);
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Voice volume: ${(_ttsService.volume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _ttsService.volume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _isTTSEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _ttsService.setVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+      soundService: _soundService,
+      gameType: widget.game.gameType,
+      musicGameTypeOverride: GameType.mystery,
+      ttsService: _ttsService,
+      isTTSEnabled: _isTTSEnabled,
+      onTTSToggled: (v) {
+        safeSetState(() => _isTTSEnabled = v);
       },
+    );
+  }
+
+  Widget _buildCountdownBadge() {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.14),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+      child: Stack(
+        alignment: Alignment.center,
+                        children: [
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              value: _countdownRemaining / _countdownSecondsPerQuestion,
+              strokeWidth: 3.2,
+              backgroundColor: AppTheme.softBorder,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _countdownRemaining <= 5
+                    ? Colors.red
+                    : AppTheme.primaryColor,
+              ),
+            ),
+          ),
+                          Text(
+            '${_countdownRemaining}s',
+                            style: GoogleFonts.poppins(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _countdownRemaining <= 5 ? Colors.red : AppTheme.textDark,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -950,66 +923,53 @@ class _QuizGameScreenState extends State<QuizGameScreen>
         ? question.options![correctAnswerIdx]
         : '';
 
-    return Stack(
-      children: [
-        Scaffold(
-          appBar: SkulMateGameAppBar(
-            title: widget.game.title,
-            leading: widget.fromGenerationFlow
-                ? IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              const GameLibraryScreen(initialTab: 1),
-                        ),
-                        (route) => false,
-                      );
-                    },
-                  )
-                : null,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) return;
+        await _stopVoiceAndMusic();
+        if (!context.mounted) return;
+        Navigator.of(context).pop(result);
+      },
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: SkulMateGameAppBar(
+              title: widget.game.title,
+              leading: widget.fromGenerationFlow
+                  ? IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: () async {
+                        await _stopVoiceAndMusic();
+                        if (!context.mounted) return;
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const GameLibraryScreen(initialTab: 1),
+                          ),
+                          (route) => false,
+                        );
+                      },
+                    )
+                  : null,
             actions: [
               Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '$_xpEarned XP',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 8, left: 2),
+                padding: const EdgeInsets.only(right: 4, left: 0),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () => unawaited(_openGameSettingsSheet()),
                   child: CircleAvatar(
-                    radius: 14,
+                    radius: 16,
                     backgroundColor: Colors.white.withOpacity(0.22),
                     child: _character != null
                         ? ClipOval(
                             child: SizedBox(
-                              width: 22,
-                              height: 22,
+                              width: 28,
+                              height: 28,
                               child: SkulMateCharacterWidget(
                                 character: _character,
-                                size: 20,
+                                size: 24,
                                 animated: false,
                                 showName: false,
                               ),
@@ -1027,107 +987,31 @@ class _QuizGameScreenState extends State<QuizGameScreen>
           ),
           body: Column(
             children: [
-              // Progress + countdown (nkwa-style: clear percentage and time)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.textDark.withOpacity(0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
+                    Expanded(
+                      child: GameStandardsHud(
+                        progressText:
                           'Question ${_currentQuestionIndex + 1} of ${_questions.length}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textDark,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Icon(Icons.star, color: Colors.amber, size: 16),
-                            const SizedBox(width: 4),
-                            Text(
-                              '$_xpEarned XP',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.amber.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                        progressValue: progress,
+                        xpEarned: _xpEarned,
+                        gameType: widget.game.gameType,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LinearProgressIndicator(
-                              value: progress,
-                              minHeight: 6,
-                              backgroundColor: AppTheme.softBorder,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppTheme.primaryColor,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Circular countdown (Nkwa-style: dot-like ring that depletes to zero)
-                        SizedBox(
-                          width: 44,
-                          height: 44,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              SizedBox(
-                                width: 44,
-                                height: 44,
-                                child: CircularProgressIndicator(
-                                  value:
-                                      _countdownRemaining /
-                                      _countdownSecondsPerQuestion,
-                                  strokeWidth: 3,
-                                  backgroundColor: AppTheme.softBorder,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    _countdownRemaining <= 5
-                                        ? Colors.red
-                                        : AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                '${_countdownRemaining}s',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: _countdownRemaining <= 5
-                                      ? Colors.red
-                                      : AppTheme.textDark,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(width: 10),
+                    _buildCountdownBadge(),
                   ],
+                ),
+              ),
+              if (_mascotReaction != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                  child: SkulMateCompanionBanner(
+                    tone: _mascotReactionTone,
+                    message: _mascotReaction!,
+                    celebrate: _mascotCelebrate,
                 ),
               ),
               Expanded(
@@ -1173,33 +1057,18 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                               ],
                             ),
                           ),
-                        // Question card (compact: no redundant label, smaller text)
-                        Container(
-                          width: double.infinity,
+                        // One unified gameplay card: question + interaction area.
+                        FlatStageCard(
+                          backgroundColor: const Color(0xFFF8FAFF),
+                          borderColor: AppTheme.primaryColor.withOpacity(0.25),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
                             vertical: 14,
                           ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                AppTheme.primaryColor.withOpacity(0.06),
-                                AppTheme.accentPurple.withOpacity(0.04),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppTheme.softBorder),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.textDark.withOpacity(0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Text(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
                             (question.question ?? '').trim().isEmpty
                                 ? 'Question content is loading...'
                                 : (question.question ?? ''),
@@ -1208,7 +1077,6 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                               fontWeight: FontWeight.w600,
                               height: 1.28,
                               color: AppTheme.textDark,
-                            ),
                           ),
                         ),
                         if ((question.question ?? '').trim().isEmpty)
@@ -1229,8 +1097,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                             (question.options ?? []).isEmpty)
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.all(20),
-                            margin: const EdgeInsets.only(top: 8),
+                                  padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: Colors.amber.shade50,
                               borderRadius: BorderRadius.circular(12),
@@ -1253,7 +1120,46 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                   style: GoogleFonts.poppins(
                                     fontSize: 13,
                                     color: AppTheme.textMedium,
-                                  ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: OutlinedButton(
+                                              onPressed: _nextQuestion,
+                                              style: OutlinedButton.styleFrom(
+                                                foregroundColor: AppTheme.primaryColor,
+                                                side: const BorderSide(
+                                                  color: AppTheme.primaryColor,
+                                                ),
+                                              ),
+                                              child: const Text('Skip question'),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: ElevatedButton(
+                                              onPressed: () {
+                                                Navigator.pushAndRemoveUntil(
+                                                  context,
+                                                  MaterialPageRoute(
+                                                    builder: (context) =>
+                                                        const GameLibraryScreen(
+                                                          initialTab: 1,
+                                                        ),
+                                                  ),
+                                                  (route) => false,
+                                                );
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: AppTheme.primaryColor,
+                                                foregroundColor: Colors.white,
+                                              ),
+                                              child: const Text('Dashboard'),
+                                            ),
+                                          ),
+                                        ],
                                 ),
                               ],
                             ),
@@ -1272,7 +1178,8 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                               });
                             },
                           ),
-                          if (!_showWrongAnswerFeedback)
+                                if (!_showWrongAnswerFeedback) ...[
+                                  const SizedBox(height: 10),
                             SizedBox(
                               width: double.infinity,
                               child: ElevatedButton.icon(
@@ -1291,6 +1198,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                 ),
                               ),
                             ),
+                                ],
                         ] else if (_isFillBlankQuestion(question)) ...[
                           Container(
                             padding: const EdgeInsets.all(14),
@@ -1362,8 +1270,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                           ).asMap().entries.map((entry) {
                             final displayIndex = entry.key;
                             final originalIndex = entry.value;
-                            final option =
-                                (question.options ?? [])[originalIndex];
+                                  final option = (question.options ?? [])[originalIndex];
                             final isSelected =
                                 _selectedAnswerIndex == displayIndex;
                             final correctAnswerIndex =
@@ -1375,93 +1282,32 @@ class _QuizGameScreenState extends State<QuizGameScreen>
                                             ) ??
                                             0
                                       : 0);
-                            final isCorrect =
-                                originalIndex == correctAnswerIndex;
+                                  final isCorrect = originalIndex == correctAnswerIndex;
                             final showResult = _selectedAnswerIndex != null;
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 8),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
+                                    child: FlatChoiceTile(
+                                      label: option,
+                                      isSelected: isSelected,
+                                      isCorrect: isCorrect,
+                                      showResult: showResult,
                                   onTap: _showWrongAnswerFeedback
                                       ? null
                                       : () => _selectAnswer(displayIndex),
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                      horizontal: 16,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: showResult
-                                          ? (isCorrect
-                                              ? AppTheme.accentGreen
-                                              : (isSelected
-                                                  ? Colors.red.shade400
-                                                  : Colors.white))
-                                          : (isSelected
-                                                ? AppTheme.primaryColor
-                                                : Colors.white),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(
-                                        color: showResult
-                                            ? (isCorrect
-                                                ? AppTheme.accentGreen
-                                                : (isSelected
-                                                    ? Colors.red
-                                                    : AppTheme.softBorder))
-                                            : (isSelected
-                                                  ? AppTheme.primaryColor
-                                                  : AppTheme.softBorder),
-                                        width: 2,
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppTheme.textDark.withOpacity(0.06),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Text(
-                                      option,
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w500,
-                                        color: showResult && isCorrect
-                                            ? Colors.white
-                                            : (isSelected && !isCorrect
-                                                  ? Colors.white
-                                                  : AppTheme.textDark),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
+                                  );
+                                }),
+                            ],
+                          ),
+                        ),
                         if (_showWrongAnswerFeedback) ...[
                           const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
+                          FlatStageCard(
+                            backgroundColor: AppTheme.accentLightGreen.withOpacity(0.6),
+                            borderColor: AppTheme.accentGreen,
+                            radius: 14,
                             padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentLightGreen.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: AppTheme.accentGreen,
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.accentGreen.withOpacity(0.15),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1665,6 +1511,7 @@ class _QuizGameScreenState extends State<QuizGameScreen>
           ),
         ),
       ],
+    ),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:prepskul/core/services/log_service.dart';
 import 'dart:async';
 import 'dart:math';
 import '../models/game_model.dart';
+import '../models/skulmate_character_model.dart';
 import '../models/game_stats_model.dart';
 import '../services/skulmate_service.dart';
 import '../services/game_sound_service.dart';
@@ -14,8 +15,11 @@ import '../services/tts_service.dart';
 import '../services/game_stats_service.dart';
 import '../services/game_rules_service.dart';
 import '../services/character_selection_service.dart';
+import '../widgets/game_settings_sheet.dart';
 import '../widgets/skulmate_character_widget.dart';
 import '../widgets/skulmate_game_app_bar.dart';
+import '../widgets/skulmate_companion_banner.dart';
+import '../widgets/game_standard_widgets.dart';
 import 'game_results_screen.dart';
 import 'game_library_screen.dart';
 
@@ -44,7 +48,7 @@ class MatchingGameScreen extends StatefulWidget {
 }
 
 class _MatchingGameScreenState extends State<MatchingGameScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   // Memory game: All cards face down, flip to find pairs
   late List<CardData> _cards;
   final Set<int> _flippedCards = {}; // Currently flipped card indices
@@ -70,15 +74,30 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   int _hintsRemaining = 3; // Peek at a pair (limited uses)
   Timer? _matchFlyerTimer;
   String? _matchFlyerText;
+  String? _mascotReaction;
+  CompanionTone _mascotReactionTone = CompanionTone.neutral;
+  bool _mascotCelebrate = false;
+  Timer? _mascotReactionTimer;
+  static const int _maxPairsPerScreen = 5;
+  final List<GameItem> _allPairs = [];
+  List<GameItem> _currentRoundPairs = [];
+  final Map<int, int> _roundAssignments = {};
+  final Set<int> _roundCorrectPairIds = {};
+  List<int> _rightColumnPairIds = [];
+  int? _activeLeftPairId;
+  int _currentRoundStart = 0;
+  int _completedPairs = 0;
+  bool _showRoundResult = false;
+  static const int _roundCountdownSeconds = 50;
+  int _roundRemainingSeconds = _roundCountdownSeconds;
+  Timer? _roundTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startTime = DateTime.now();
-    // Initialize sound and TTS early so they're ready on first flip
-    _soundService.ensureInitialized();
-    unawaited(_soundService.playMusicForGame(widget.game.gameType));
-    _ttsService.ensureInitialized();
+    unawaited(_initializeAudio());
     _confettiController = ConfettiController(
       duration: const Duration(seconds: 2),
     );
@@ -97,6 +116,26 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
   }
 
+  Future<void> _initializeAudio() async {
+    // Ensure engines are actually ready before first tap/check sounds.
+    await _soundService.ensureInitialized();
+    await _ttsService.ensureInitialized();
+    _isTTSEnabled = _ttsService.isEnabled;
+    // Recover from sessions where SFX was left disabled, while music is on.
+    if (!_soundService.soundsEnabled) {
+      await _soundService.toggleSounds(true);
+    }
+    // Use the Mystery ambient track for a stronger premium vibe.
+    await _soundService.playMusicForGame(GameType.mystery);
+    if (_isTTSEnabled && _currentRoundPairs.isNotEmpty) {
+      unawaited(
+        _ttsService.speak(
+          'Section 1. Match each term on the left to the correct meaning on the right.',
+        ),
+      );
+    }
+  }
+
   Future<void> _loadStats() async {
     final stats = await GameStatsService.getStats();
     safeSetState(() {
@@ -113,48 +152,497 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   void _initializeItems() {
-    // Create pairs from game items
-    final pairs = <CardData>[];
-    for (int i = 0; i < widget.game.items.length; i++) {
-      final item = widget.game.items[i];
-      if (item.leftItem != null && item.leftItem!.isNotEmpty) {
-        pairs.add(
-          CardData(id: i * 2, text: item.leftItem!, pairId: i, isLeft: true),
-        );
-      }
-      if (item.rightItem != null && item.rightItem!.isNotEmpty) {
-        pairs.add(
-          CardData(
-            id: i * 2 + 1,
-            text: item.rightItem!,
-            pairId: i,
-            isLeft: false,
+    _allPairs
+      ..clear()
+      ..addAll(
+        widget.game.items.where(
+          (item) =>
+              (item.leftItem ?? '').trim().isNotEmpty &&
+              (item.rightItem ?? '').trim().isNotEmpty,
+        ),
+      );
+    _cards = const <CardData>[];
+    if (_allPairs.isEmpty) {
+      _currentRoundPairs = const [];
+      return;
+    }
+    _currentRoundStart = 0;
+    _loadCurrentRound();
+  }
+
+  void _loadCurrentRound() {
+    final end = min(_currentRoundStart + _maxPairsPerScreen, _allPairs.length);
+    _currentRoundPairs = _allPairs.sublist(_currentRoundStart, end);
+    _rightColumnPairIds = List<int>.generate(
+      _currentRoundPairs.length,
+      (i) => _currentRoundStart + i,
+    )..shuffle(Random());
+    _roundAssignments.clear();
+    _roundCorrectPairIds.clear();
+    _activeLeftPairId = null;
+    _showRoundResult = false;
+    _startRoundCountdown();
+    unawaited(_soundService.ensureMusicForGame(GameType.mystery));
+    if (_isTTSEnabled && _currentRoundPairs.isNotEmpty) {
+      unawaited(_ttsService.stop());
+      final section = _roundNumber();
+      unawaited(
+        _ttsService.speak(
+          'Section $section. Tap a term on the left, then tap its correct match on the right.',
           ),
         );
       }
     }
 
-    // Shuffle cards
-    _cards = pairs..shuffle(Random());
-
-    // Initialize flip animations for each card
-    for (int i = 0; i < _cards.length; i++) {
-      final controller = AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 300),
-      );
-      _flipControllers[i] = controller;
-      _flipAnimations[i] = Tween<double>(
-        begin: 0,
-        end: 1,
-      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut));
+  void _onSelectLeft(int pairId) {
+    if (_showRoundResult) return;
+    if (_isTTSEnabled) {
+      unawaited(_ttsService.stop());
     }
+    unawaited(_soundService.registerUserGesture());
+    unawaited(_soundService.playMatchingTap());
+    unawaited(_soundService.ensureMusicForGame(GameType.mystery));
+    safeSetState(() {
+      _activeLeftPairId = pairId;
+    });
+  }
+
+  void _onSelectRight(int rightPairId) {
+    if (_showRoundResult || _activeLeftPairId == null) return;
+    if (_isTTSEnabled) {
+      unawaited(_ttsService.stop());
+    }
+    unawaited(_soundService.registerUserGesture());
+    unawaited(_soundService.playMatchingTap());
+    unawaited(_soundService.ensureMusicForGame(GameType.mystery));
+    safeSetState(() {
+      final leftPairId = _activeLeftPairId!;
+      final previousLeftForRight = _roundAssignments.entries
+          .where((e) => e.value == rightPairId)
+          .map((e) => e.key)
+          .toList();
+      for (final prevLeft in previousLeftForRight) {
+        _roundAssignments.remove(prevLeft);
+      }
+      _roundAssignments[leftPairId] = rightPairId;
+      _moves++;
+      _activeLeftPairId = null;
+    });
+  }
+
+  void _checkCurrentRound() {
+    _roundTimer?.cancel();
+    if (_isTTSEnabled) {
+      unawaited(_ttsService.stop());
+    }
+    unawaited(_soundService.registerUserGesture());
+    unawaited(_soundService.playClick());
+    if (_roundAssignments.length < _currentRoundPairs.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Match all left items with right outcomes first.',
+            style: GoogleFonts.poppins(fontSize: 13),
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _roundCorrectPairIds.clear();
+    for (final pairId in _roundAssignments.keys) {
+      if (_roundAssignments[pairId] == pairId) {
+        _roundCorrectPairIds.add(pairId);
+      }
+    }
+    final allCorrect = _roundCorrectPairIds.length == _currentRoundPairs.length;
+    safeSetState(() {
+      _showRoundResult = true;
+    });
+    final originalCorrectCount = _roundCorrectPairIds.length;
+    _score += originalCorrectCount;
+    _xpEarned += originalCorrectCount * 15;
+    _completedPairs += _currentRoundPairs.length;
+
+    if (!allCorrect) {
+      // Show corrections inline on each matched card.
+      for (final pairId in List<int>.from(_roundAssignments.keys)) {
+        _roundAssignments[pairId] = pairId;
+      }
+    }
+
+    if (allCorrect) {
+      unawaited(_soundService.playMatchingSuccess());
+      _showMascotReaction(
+        'Perfect set. Move to the next section.',
+        tone: CompanionTone.success,
+        celebrate: true,
+      );
+      if (_isTTSEnabled) {
+        unawaited(
+          Future<void>.delayed(
+            const Duration(milliseconds: 140),
+            () => _ttsService.speak('Perfect set. Continue to the next section.'),
+          ),
+        );
+      }
+    } else {
+      unawaited(_soundService.playMatchingWrong());
+      _showMascotReaction(
+        'Corrections are now shown inline on the cards.',
+        tone: CompanionTone.warning,
+      );
+      if (_isTTSEnabled) {
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 140), () {
+            return _ttsService.speak(
+              'Not fully correct yet. I have shown the corrected matches on the cards.',
+            );
+          }),
+        );
+      }
+    }
+  }
+
+  void _nextRoundOrFinish() {
+    _roundTimer?.cancel();
+    if (_completedPairs >= _allPairs.length) {
+      _finishGame();
+      return;
+    }
+    _currentRoundStart += _maxPairsPerScreen;
+    if (_currentRoundStart >= _allPairs.length) {
+      _finishGame();
+      return;
+    }
+    safeSetState(_loadCurrentRound);
+  }
+
+  void _retryRound() {
+    safeSetState(() {
+      _showRoundResult = false;
+      _activeLeftPairId = null;
+    });
+    _soundService.playClick();
+  }
+
+  void _startRoundCountdown() {
+    _roundTimer?.cancel();
+    _roundRemainingSeconds = _roundCountdownSeconds;
+    _roundTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (_showRoundResult) {
+        timer.cancel();
+        return;
+      }
+      final nextRemaining = (_roundRemainingSeconds - 1).clamp(0, 9999);
+      safeSetState(() {
+        _roundRemainingSeconds = nextRemaining;
+      });
+      // Trigger tick based on the visible countdown value in red range.
+      if (nextRemaining <= 10 && nextRemaining > 0) {
+        unawaited(_soundService.playCountdownTick());
+      }
+      if (_roundRemainingSeconds <= 0) {
+        timer.cancel();
+        _onRoundTimeout();
+      }
+    });
+  }
+
+  void _onRoundTimeout() {
+    if (_showRoundResult || _currentRoundPairs.isEmpty) return;
+    final roundPairIds = List<int>.generate(
+      _currentRoundPairs.length,
+      (i) => _currentRoundStart + i,
+    );
+    safeSetState(() {
+      for (final pairId in roundPairIds) {
+        _roundAssignments[pairId] = pairId;
+      }
+      _roundCorrectPairIds.clear();
+      _showRoundResult = true;
+      _completedPairs += _currentRoundPairs.length;
+    });
+    unawaited(_soundService.playCountdownBuzzer());
+    unawaited(
+      Future<void>.delayed(const Duration(milliseconds: 90), _soundService.playMatchingWrong),
+    );
+    _showMascotReaction(
+      'Time up for this section. Corrections are shown, continue to next.',
+      tone: CompanionTone.warning,
+    );
+    if (_isTTSEnabled) {
+      unawaited(_ttsService.speak('Time up. Corrections are shown. Continue to next section.'));
+    }
+  }
+
+  Color _leftTileColor(int pairId) {
+    if (!_showRoundResult) {
+      return _activeLeftPairId == pairId
+          ? const Color(0xFFDBEAFE)
+          : const Color(0xFFEFF6FF);
+    }
+    return _roundCorrectPairIds.contains(pairId)
+        ? AppTheme.accentGreen.withOpacity(0.10)
+        : const Color(0xFFEFF6FF);
+  }
+
+  Color _leftTileBorder(int pairId) {
+    if (!_showRoundResult) {
+      return _activeLeftPairId == pairId
+          ? const Color(0xFF2563EB)
+          : const Color(0xFF60A5FA);
+    }
+    return _roundCorrectPairIds.contains(pairId)
+        ? AppTheme.accentGreen.withOpacity(0.65)
+        : const Color(0xFF60A5FA);
+  }
+
+  Color _rightTileColor(int pairId) {
+    if (!_showRoundResult) {
+      final selected = _roundAssignments.values.contains(pairId);
+      return selected
+          ? const Color(0xFFFEF3C7)
+          : const Color(0xFFFFFBEB);
+    }
+    final isCorrectTarget = _roundCorrectPairIds.contains(pairId);
+    return isCorrectTarget
+        ? AppTheme.accentGreen.withOpacity(0.10)
+        : const Color(0xFFFFFBEB);
+  }
+
+  Color _rightTileBorder(int pairId) {
+    if (!_showRoundResult) {
+      final selected = _roundAssignments.values.contains(pairId);
+      return selected
+          ? const Color(0xFFF59E0B)
+          : const Color(0xFFFBBF24);
+    }
+    return _roundCorrectPairIds.contains(pairId)
+        ? AppTheme.accentGreen.withOpacity(0.65)
+        : const Color(0xFFFBBF24);
+  }
+
+  String _rightLabelForPair(int pairId) {
+    if (pairId < 0 || pairId >= _allPairs.length) return '';
+    return _allPairs[pairId].rightItem!.trim();
+  }
+
+  String _leftLabelForPair(int pairId) {
+    if (pairId < 0 || pairId >= _allPairs.length) return '';
+    return _allPairs[pairId].leftItem!.trim();
+  }
+
+  int _roundNumber() {
+    return (_currentRoundStart ~/ _maxPairsPerScreen) + 1;
+  }
+
+  int _totalSections() {
+    return (_allPairs.length / _maxPairsPerScreen).ceil();
+  }
+
+  double _progressValue() {
+    if (_allPairs.isEmpty) return 0;
+    return (_completedPairs / _allPairs.length).clamp(0.0, 1.0);
+  }
+
+  bool _isRightChosenByAnotherLeft(int rightPairId, int leftPairId) {
+    return _roundAssignments.entries.any(
+      (e) => e.key != leftPairId && e.value == rightPairId,
+    );
+  }
+
+  Widget _buildMatchingColumns() {
+    final roundPairIds = List<int>.generate(
+      _currentRoundPairs.length,
+      (i) => _currentRoundStart + i,
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            children: roundPairIds.map((pairId) {
+              final assignedRight = _roundAssignments[pairId];
+              final wasCorrect = _roundCorrectPairIds.contains(pairId);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => _onSelectLeft(pairId),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _leftTileColor(pairId),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: _leftTileBorder(pairId),
+                        width: _activeLeftPairId == pairId ? 1.8 : 1.2,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _leftLabelForPair(pairId),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                        if (assignedRight != null) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Text(
+                                '-> ',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _rightLabelForPair(
+                                    _showRoundResult ? pairId : assignedRight,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
+                              if (_showRoundResult)
+                                Icon(
+                                  wasCorrect
+                                      ? Icons.check_circle_rounded
+                                      : Icons.info_outline_rounded,
+                                  size: 14,
+                                  color: wasCorrect
+                                      ? AppTheme.accentGreen
+                                      : AppTheme.primaryColor,
+                                ),
+                            ],
+                          ),
+                          if (_showRoundResult && !wasCorrect)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'corrected',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF1D4ED8),
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            children: _rightColumnPairIds.map((pairId) {
+              final wasCorrect = _roundCorrectPairIds.contains(pairId);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: _activeLeftPairId == null
+                      ? null
+                      : () {
+                          if (_activeLeftPairId == null) return;
+                          if (_isRightChosenByAnotherLeft(pairId, _activeLeftPairId!)) {
+                            unawaited(_soundService.playMatchingWrong());
+                          }
+                          _onSelectRight(pairId);
+                        },
+                  child: Stack(
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _rightTileColor(pairId),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: _rightTileBorder(pairId),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: Text(
+                          _rightLabelForPair(pairId),
+                          style: GoogleFonts.poppins(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textDark,
+                          ),
+                        ),
+                      ),
+                      if (_showRoundResult)
+                        Positioned(
+                          right: 8,
+                          top: 8,
+                          child: Icon(
+                            wasCorrect
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_rounded,
+                            size: 16,
+                            color: wasCorrect
+                                ? AppTheme.accentGreen
+                                : const Color(0xFFDC2626),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionActionArea() {
+    final allAssigned = _roundAssignments.length == _currentRoundPairs.length;
+    if (_showRoundResult) {
+      return GameStandardsPrimaryButton(
+        label: _completedPairs >= _allPairs.length ? 'Finish game' : 'Continue',
+        onPressed: _nextRoundOrFinish,
+      );
+    }
+    return GameStandardsPrimaryButton(
+      label: allAssigned ? 'Check matches' : 'Select all matches',
+      onPressed: _checkCurrentRound,
+    );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _matchFlyerTimer?.cancel();
-    unawaited(_soundService.stopMusic());
+    _mascotReactionTimer?.cancel();
+    _roundTimer?.cancel();
+    unawaited(_ttsService.stop());
+    unawaited(_soundService.stopMusic(force: true));
     for (final controller in _flipControllers.values) {
       controller.dispose();
     }
@@ -162,6 +650,13 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     _confettiController.dispose();
     _ttsService.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_soundService.resumeBgmIfNeeded());
+    }
   }
 
   void _flipCard(int index) {
@@ -178,7 +673,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _moves++;
       });
       _flipControllers[index]?.forward();
-      _soundService.playFlip();
+      _soundService.playCardFlip();
       // Speak card text
       if (_isTTSEnabled) {
         _ttsService.speak(_cards[index].text);
@@ -191,7 +686,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         _isProcessing = true;
       });
       _flipControllers[index]?.forward();
-      _soundService.playFlip();
+      _soundService.playCardFlip();
       // Speak card text
       if (_isTTSEnabled) {
         _ttsService.speak(_cards[index].text);
@@ -239,6 +734,11 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       });
 
       _showMatchFlyer(_buildMatchSentence(card1, card2));
+      _showMascotReaction(
+        'Excellent match. Keep chaining them.',
+        tone: CompanionTone.success,
+        celebrate: true,
+      );
       _confettiController.play();
 
       // Update progress
@@ -271,6 +771,10 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         });
       });
       _soundService.playIncorrect();
+      _showMascotReaction(
+        'Not a pair yet. Remember positions and try again.',
+        tone: CompanionTone.tip,
+      );
     }
 
     safeSetState(() {
@@ -283,6 +787,11 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   void _useHint() {
     if (_hintsRemaining <= 0 || _isProcessing) return;
     _soundService.playClick();
+    _showMascotReaction(
+      'Hint used. Focus on this pair.',
+      tone: CompanionTone.tip,
+      duration: const Duration(seconds: 3),
+    );
     // Find a random unmatched pair
     final unmatched = <int>[];
     for (int i = 0; i < _cards.length; i++) {
@@ -305,7 +814,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
     _flipControllers[idx1]?.forward();
     _flipControllers[idx2]?.forward();
-    _soundService.playFlip();
+    _soundService.playCardFlip();
     if (_isTTSEnabled) {
       _ttsService.speak('Hint used. Try matching these two cards.');
     }
@@ -339,6 +848,28 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     });
   }
 
+  void _showMascotReaction(
+    String message, {
+    CompanionTone tone = CompanionTone.neutral,
+    bool celebrate = false,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    _mascotReactionTimer?.cancel();
+    if (!mounted) return;
+    safeSetState(() {
+      _mascotReaction = message;
+      _mascotReactionTone = tone;
+      _mascotCelebrate = celebrate;
+    });
+    _mascotReactionTimer = Timer(duration, () {
+      if (!mounted) return;
+      safeSetState(() {
+        _mascotReaction = null;
+        _mascotCelebrate = false;
+      });
+    });
+  }
+
   Future<void> _showHowToPlayIfFirstTime() async {
     final hasSeen = await GameRulesService.hasSeenRules(GameType.matching);
     if (!mounted || hasSeen) return;
@@ -349,10 +880,9 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   Future<void> _showHowToPlay({bool autoRead = false}) async {
     if (!mounted) return;
     final instructionText =
-        'This is a matching game. Each pair links two ideas from your notes. '
-        'Tap one card, then tap another card to find its match. '
-        'When cards match, they stay green and you earn XP. '
-        'If cards do not match, they flip back, so try to remember where they were.';
+        'This is a direct matching game. Choose a term on the left and map it to the correct outcome on the right. '
+        'Complete each section before moving to the next one. '
+        'Green means correct mapping, red means rematch needed.';
     var muted = !_isTTSEnabled;
     final sheetFuture = showModalBottomSheet(
       context: context,
@@ -404,7 +934,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'This is a matching game. Each pair links two ideas from your notes (left and right cards).',
+                  'Match each left concept to its correct right outcome in order.',
                   style: GoogleFonts.poppins(
                     fontSize: 14,
                     color: AppTheme.textMedium,
@@ -412,19 +942,19 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 ),
                 const SizedBox(height: 12),
                 _buildHowToBullet(
-                  'Tap any card to flip it and hear it read aloud.',
+                  'Tap a left item (term) first.',
                 ),
                 _buildHowToBullet(
-                  'Tap a second card to try to find its matching idea.',
+                  'Then tap the matching right item (definition/outcome).',
                 ),
                 _buildHowToBullet(
-                  'If they match, they stay green and you earn XP.',
+                  'Fill all mappings, then press Check matches.',
                 ),
                 _buildHowToBullet(
-                  'If they don’t match, they flip back—try to remember their positions.',
+                  'Correct mappings turn green; incorrect mappings turn red.',
                 ),
                 _buildHowToBullet(
-                  'Finish the game by matching all pairs with as few moves as possible.',
+                  'You get up to 5 pairs per section, and 3 sections flow progressively.',
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -449,168 +979,15 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   }
 
   void _openGameSettings() {
-    showModalBottomSheet(
+    GameSettingsSheet.show(
       context: context,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, modalSetState) {
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Game settings',
-                      style: GoogleFonts.poppins(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('Game sounds', style: GoogleFonts.poppins()),
-                      value: _soundService.soundsEnabled,
-                      onChanged: (v) async {
-                        await _soundService.toggleSounds(v);
-                        modalSetState(() {});
-                        if (mounted) safeSetState(() {});
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SFX volume: ${(_soundService.soundsVolume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _soundService.soundsVolume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _soundService.soundsEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _soundService.setSoundsVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('Music', style: GoogleFonts.poppins()),
-                      value: _soundService.musicEnabled,
-                      onChanged: (v) async {
-                        await _soundService.toggleMusic(v);
-                        if (v) {
-                          await _soundService.playMusicForGame(
-                            widget.game.gameType,
-                          );
-                        }
-                        modalSetState(() {});
-                        if (mounted) safeSetState(() {});
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Music volume: ${(_soundService.musicVolume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _soundService.musicVolume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _soundService.musicEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _soundService.setMusicVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Read aloud (TTS)',
-                        style: GoogleFonts.poppins(),
-                      ),
-                      value: _isTTSEnabled,
-                      onChanged: (v) {
-                        _ttsService.setEnabled(v);
-                        modalSetState(() => _isTTSEnabled = v);
-                        if (mounted) safeSetState(() => _isTTSEnabled = v);
-                      },
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Voice volume: ${(_ttsService.volume * 100).round()}%',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textMedium,
-                            ),
-                          ),
-                          Slider(
-                            value: _ttsService.volume,
-                            min: 0,
-                            max: 1,
-                            divisions: 100,
-                            onChanged: _isTTSEnabled
-                                ? (v) {
-                                    unawaited(
-                                      _ttsService.setVolume(v),
-                                    );
-                                    modalSetState(() {});
-                                    if (mounted) safeSetState(() {});
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
+      soundService: _soundService,
+      gameType: widget.game.gameType,
+      musicGameTypeOverride: GameType.mystery,
+      ttsService: _ttsService,
+      isTTSEnabled: _isTTSEnabled,
+      onTTSToggled: (v) {
+        safeSetState(() => _isTTSEnabled = v);
       },
     );
   }
@@ -642,39 +1019,43 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
         ? endTime.difference(_startTime!).inSeconds
         : null;
 
-    final isPerfectScore = _score == widget.game.items.length;
+    final isPerfectScore = _score == _allPairs.length;
 
     // Calculate bonus XP based on moves (fewer moves = more bonus)
     int bonusXP = 0;
     if (isPerfectScore) bonusXP += 50;
     if (timeTaken != null && timeTaken < 120) bonusXP += 25;
-    final optimalMoves = widget.game.items.length * 2; // Minimum moves needed
+    final optimalMoves = _allPairs.length * 2; // Minimum moves needed
     if (_moves <= optimalMoves * 1.5) bonusXP += 20; // Efficiency bonus
     final totalXP = _xpEarned + bonusXP;
 
-    unawaited(
-      GameStatsService.addGameResult(
-        correctAnswers: _score,
-        totalQuestions: widget.game.items.length,
-        timeTakenSeconds: timeTaken ?? 0,
-        isPerfectScore: isPerfectScore,
-      ).catchError((e) {
+    unawaited(() async {
+      try {
+        await GameStatsService.addGameResult(
+          correctAnswers: _score,
+          totalQuestions: _allPairs.length,
+          timeTakenSeconds: timeTaken ?? 0,
+          isPerfectScore: isPerfectScore,
+        );
+      } catch (e) {
         LogService.error('🎮 [Matching] Error updating game stats: $e');
-      }),
-    );
+      }
+    }());
 
-    unawaited(
-      SkulMateService.saveGameSession(
-        gameId: widget.game.id,
-        score: _score,
-        totalQuestions: widget.game.items.length,
-        correctAnswers: _score,
-        timeTakenSeconds: timeTaken,
-        answers: {'moves': _moves, 'pairs': _matchedPairs.length},
-      ).catchError((e) {
+    unawaited(() async {
+      try {
+        await SkulMateService.saveGameSession(
+          gameId: widget.game.id,
+          score: _score,
+          totalQuestions: _allPairs.length,
+          correctAnswers: _score,
+          timeTakenSeconds: timeTaken,
+          answers: {'moves': _moves, 'pairs': _score},
+        );
+      } catch (e) {
         LogService.error('🎮 [Matching] Error saving game session: $e');
-      }),
-    );
+      }
+    }());
 
     // Play completion sound
     // Don't block navigation on audio playback.
@@ -687,7 +1068,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           builder: (context) => GameResultsScreen(
             game: widget.game,
             score: _score,
-            totalQuestions: widget.game.items.length,
+            totalQuestions: _allPairs.length,
             timeTakenSeconds: timeTaken,
             xpEarned: totalXP,
             isPerfectScore: isPerfectScore,
@@ -728,6 +1109,8 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
       ),
     );
     if (quit == true && mounted) {
+      await _ttsService.stop();
+      await _soundService.stopMusic(force: true);
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -740,6 +1123,63 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_allPairs.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppTheme.softBackground,
+        appBar: SkulMateGameAppBar(
+          title: widget.game.title,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _handleBack,
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+                  children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 40,
+                  color: AppTheme.primaryColor,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'No matching pairs available for this game yet.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Try regenerating with another game type.',
+                  textAlign: TextAlign.center,
+                          style: GoogleFonts.poppins(
+                    fontSize: 12,
+                    color: AppTheme.textMedium,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _handleBack,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                    side: const BorderSide(color: AppTheme.primaryColor),
+                  ),
+                  child: const Text('Back to dashboard'),
+                    ),
+                  ],
+                ),
+          ),
+        ),
+      );
+    }
+
+    final totalPairs = _allPairs.length.clamp(1, 9999);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -754,42 +1194,6 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
             onPressed: _handleBack,
           ),
           actions: [
-            if (_hintsRemaining > 0)
-              IconButton(
-                tooltip: 'Peek at a pair ($_hintsRemaining left)',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                padding: const EdgeInsets.all(6),
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    const Icon(Icons.lightbulb_outline, color: Colors.white),
-                    Positioned(
-                      right: -6,
-                      top: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade400,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          '$_hintsRemaining',
-                          style: GoogleFonts.poppins(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                onPressed: _useHint,
-              ),
             IconButton(
               tooltip: 'How to play',
               visualDensity: VisualDensity.compact,
@@ -806,23 +1210,17 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 child: CircleAvatar(
                   radius: 16,
                   backgroundColor: Colors.white.withOpacity(0.22),
-                  child: _character != null
-                      ? ClipOval(
+                  child: ClipOval(
                           child: SizedBox(
                             width: 28,
                             height: 28,
                             child: SkulMateCharacterWidget(
-                              character: _character,
+                        character: _character ?? SkulMateCharacters.middleMale,
                               size: 24,
                               animated: false,
                               showName: false,
                             ),
                           ),
-                        )
-                      : const Icon(
-                          Icons.settings,
-                          size: 16,
-                          color: Colors.white,
                         ),
                 ),
               ),
@@ -838,7 +1236,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                   animation: _progressAnimation,
                   builder: (context, child) {
                     return LinearProgressIndicator(
-                      value: _progressAnimation.value,
+                      value: _progressValue(),
                       backgroundColor: AppTheme.neutral200,
                       valueColor: const AlwaysStoppedAnimation<Color>(
                         AppTheme.primaryColor,
@@ -850,72 +1248,167 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: Column(
+                            children: [
+                        // Section 1: compact status strip (no large square cards)
+                        FlatStageCard(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          borderColor: AppTheme.primaryColor.withOpacity(0.15),
                     child: Column(
                       children: [
                         Row(
                           children: [
-                            Expanded(
-                              child: _buildStatCard(
-                                'Moves',
-                                '$_moves',
-                                Icons.touch_app,
-                              ),
+                                  _buildCompactTopPill(
+                                    icon: Icons.timer_outlined,
+                                    label: 'Time',
+                                    value: '${_roundRemainingSeconds}s',
+                                    color: _roundRemainingSeconds <= 10
+                                        ? AppTheme.primaryDark
+                                        : AppTheme.primaryColor,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _buildCompactTopPill(
+                                    icon: Icons.check_circle,
+                                    label: 'Matched',
+                                    value: '$_completedPairs/$totalPairs',
+                                    color: AppTheme.primaryColor,
                             ),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildStatCard(
-                                'Matches',
-                                '${_matchedPairs.length ~/ 2}/${widget.game.items.length}',
-                                Icons.check_circle,
+                                  _buildCompactTopPill(
+                                    icon: Icons.star_rounded,
+                                    label: 'XP',
+                                    value: '$_xpEarned',
+                                    color: AppTheme.primaryLight,
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildStatCard(
-                                'XP',
-                                '$_xpEarned',
-                                Icons.star,
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Section ${_roundNumber()} of ${_totalSections()}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppTheme.textMedium,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    '${_currentRoundPairs.length} pairs on this screen',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11,
+                                      color: AppTheme.textMedium,
                               ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 12),
-                        // Memory game grid
-                        Expanded(
-                          child: GridView.builder(
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: _cards.length <= 6
-                                      ? 2
-                                      : (_cards.length <= 12 ? 3 : 4),
-                                  crossAxisSpacing: 6,
-                                  mainAxisSpacing: 6,
-                                  childAspectRatio: _cards.length <= 6
-                                      ? 0.78
-                                      : (_cards.length <= 12 ? 0.85 : 0.92),
-                                ),
-                            itemCount: _cards.length,
-                            itemBuilder: (context, index) {
-                              final card = _cards[index];
-                              final isFlipped = _flippedCards.contains(index);
-                              final isMatched = _matchedPairs.containsKey(
-                                index,
-                              );
-                              final isSelected =
-                                  _firstFlipped == index ||
-                                  _secondFlipped == index;
-
-                              return _buildMemoryCard(
-                                card: card,
-                                index: index,
-                                isFlipped: isFlipped || isMatched,
-                                isMatched: isMatched,
-                                isSelected: isSelected,
-                              );
-                            },
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                        const SizedBox(height: 12),
+                        // Section 2: matching board
+                        FlatStageCard(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          borderColor: AppTheme.primaryColor.withOpacity(0.14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Knowledge Match',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textMedium,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                        Expanded(
+                                    child: Text(
+                                      'Terms',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.primaryColor,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Definitions',
+                                      textAlign: TextAlign.right,
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppTheme.textMedium,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: List.generate(_totalSections().clamp(1, 5), (
+                                index,
+                                ) {
+                                  final sectionCount = _totalSections().clamp(1, 5);
+                                  final completedSteps = _showRoundResult
+                                      ? _roundNumber().clamp(1, sectionCount)
+                                      : (_roundNumber() - 1).clamp(
+                                          0,
+                                          sectionCount,
+                                        );
+                                  final filled = index < completedSteps;
+                                  return Expanded(
+                                    child: Container(
+                                      margin: EdgeInsets.only(
+                                        right: index == sectionCount - 1 ? 0 : 6,
+                                      ),
+                                      height: 6,
+                                      decoration: BoxDecoration(
+                                        color: filled
+                                            ? AppTheme.skyBlue
+                                            : AppTheme.neutral200,
+                                        borderRadius: BorderRadius.circular(99),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                              ),
+                              const SizedBox(height: 10),
+                              _buildMatchingColumns(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (_mascotReaction != null) ...[
+                          SkulMateCompanionBanner(
+                            tone: _mascotReactionTone,
+                            message: _mascotReaction!,
+                            celebrate: _mascotCelebrate,
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                        const SizedBox(height: 12),
+                        // Section 3: action area
+                        _buildSectionActionArea(),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -936,7 +1429,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                 colors: const [
                   AppTheme.accentGreen,
                   AppTheme.primaryColor,
-                  Color(0xFF0A2D67),
+                  AppTheme.primaryDark,
                   AppTheme.softYellow,
                   AppTheme.accentPurple,
                   Colors.white,
@@ -958,7 +1451,7 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
                     ),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFF13458F), Color(0xFF0A2E68)],
+                        colors: [AppTheme.primaryLight, AppTheme.primaryDark],
                       ),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
@@ -995,37 +1488,21 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
 
   Widget _buildStatCard(String label, String value, IconData icon) {
     return Container(
-      height: 82,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      height: 72,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [const Color(0xFFEFF5FF), const Color(0xFFF8FBFF)],
-        ),
-        borderRadius: BorderRadius.circular(14),
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.primaryColor.withOpacity(0.14)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withOpacity(0.9),
-            blurRadius: 8,
-            offset: const Offset(-2, -2),
-          ),
-          BoxShadow(
-            color: AppTheme.primaryColor.withOpacity(0.10),
-            blurRadius: 10,
-            offset: const Offset(2, 4),
-          ),
-        ],
       ),
       child: Column(
         children: [
-          Icon(icon, color: AppTheme.primaryColor, size: 20),
+          Icon(icon, color: AppTheme.primaryColor, size: 18),
           const SizedBox(height: 3),
           Text(
             value,
             style: GoogleFonts.poppins(
-              fontSize: 15,
+              fontSize: 13.5,
               fontWeight: FontWeight.w700,
               color: AppTheme.textDark,
             ),
@@ -1033,11 +1510,59 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           Text(
             label,
             style: GoogleFonts.poppins(
-              fontSize: 10,
+              fontSize: 9.5,
               color: AppTheme.textMedium,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCompactTopPill({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppTheme.neutral100,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppTheme.primaryColor.withOpacity(0.22)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withOpacity(0.9),
+              blurRadius: 1,
+              offset: const Offset(-1, -1),
+            ),
+            BoxShadow(
+              color: AppTheme.primaryColor.withOpacity(0.08),
+              blurRadius: 7,
+              offset: const Offset(1, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
+            Expanded(
+              child: Text(
+                '$value $label',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.poppins(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textDark,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1083,43 +1608,26 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
   Widget _buildCardBack(bool isMatched, bool isSelected) {
     return Container(
       decoration: BoxDecoration(
-        gradient: isMatched
-            ? const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF2DBE62), Color(0xFF1E8E4D)],
-              )
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF0C3574),
-                  const Color(0xFF0A2D67),
-                  if (isSelected) const Color(0xFF13458F),
-                ],
-              ),
-        borderRadius: BorderRadius.circular(16),
+        color: isMatched
+            ? AppTheme.primaryColor.withOpacity(0.14)
+            : const Color(0xFFEFF2F7),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isMatched
-              ? Colors.white
-              : const Color(0xFF275AA2).withOpacity(0.95),
+              ? AppTheme.primaryColor
+              : (isSelected
+                    ? AppTheme.primaryColor.withOpacity(0.8)
+                    : AppTheme.softBorder),
           width: isMatched ? 1.6 : 1.0,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF072552).withOpacity(isSelected ? 0.48 : 0.34),
-            blurRadius: isSelected ? 15 : 12,
-            offset: const Offset(4, 6),
-          ),
-        ],
       ),
       child: Center(
         child: isMatched
-            ? const Icon(Icons.check_circle, color: Colors.white, size: 36)
+            ? const Icon(Icons.check_circle, color: AppTheme.primaryColor, size: 22)
             : Icon(
                 isSelected ? Icons.radio_button_checked : Icons.help_outline,
-                color: Colors.white.withOpacity(0.95),
-                size: 34,
+                color: isSelected ? AppTheme.primaryColor : AppTheme.textMedium,
+                size: 18,
               ),
       ),
     );
@@ -1129,36 +1637,14 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
     // Front of the card should stay clean white whether the pair is correct
     // or not. We only vary the border subtlely for matched cards.
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFFFFFFF),
-            const Color(0xFFF4F8FF),
-            if (isMatched) const Color(0xFFE9F1FF),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: isMatched ? AppTheme.primaryColor.withOpacity(0.10) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isMatched
-              ? const Color(0xFF0A2D67).withOpacity(0.9)
-              : AppTheme.primaryColor.withOpacity(0.55),
+          color: isMatched ? AppTheme.primaryColor : AppTheme.softBorder,
           width: isMatched ? 1.7 : 1.0,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.white.withOpacity(0.55),
-            blurRadius: 8,
-            offset: const Offset(-3, -3),
-          ),
-          BoxShadow(
-            color: const Color(0xFF9EB7DE).withOpacity(0.22),
-            blurRadius: 11,
-            offset: const Offset(4, 6),
-          ),
-        ],
       ),
       child: Center(
         child: Transform(
@@ -1169,11 +1655,11 @@ class _MatchingGameScreenState extends State<MatchingGameScreen>
           child: Text(
             card.text,
             style: GoogleFonts.poppins(
-              fontSize: 12,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
               color: AppTheme.textDark,
             ),
-            textAlign: TextAlign.center,
+            textAlign: card.isLeft ? TextAlign.left : TextAlign.right,
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
           ),

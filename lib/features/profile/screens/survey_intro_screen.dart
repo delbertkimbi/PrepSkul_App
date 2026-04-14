@@ -16,7 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SurveyIntroScreen extends StatefulWidget {
   final String userType; // 'student' or 'parent'
 
-  const SurveyIntroScreen({Key? key, required this.userType}) : super(key: key);
+  const SurveyIntroScreen({super.key, required this.userType});
 
   @override
   State<SurveyIntroScreen> createState() => _SurveyIntroScreenState();
@@ -99,145 +99,125 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
     final isParent = widget.userType == 'parent';
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              AppTheme.primaryColor,
-              AppTheme.primaryLight.withOpacity(0.85),
-              AppTheme.primaryColor.withOpacity(0.9),
-            ],
-            stops: const [0.0, 0.5, 1.0],
-          ),
-        ),
-        child: SafeArea(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(height: 28),
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: SlideTransition(
+            position: _slideAnimation,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 24),
 
-                          // Title – page starts here
+                        // Title – simple and brand-aligned
+                        Text(
+                          'Help us find the best tutor for ${isParent ? 'your child' : 'you'}',
+                          style: GoogleFonts.poppins(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textDark,
+                            height: 1.25,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // Description
+                        Text(
+                          isParent
+                              ? 'Take 2 minutes to tell us about your child\'s learning needs, and we\'ll match them with the perfect tutor.'
+                              : 'Take 2 minutes to tell us about your learning goals, and we\'ll match you with the perfect tutor.',
+                          style: GoogleFonts.poppins(
+                            fontSize: 16,
+                            color: AppTheme.textMedium,
+                            height: 1.6,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (isParent) ...[
+                          const SizedBox(height: 10),
                           Text(
-                            'Help us find the best tutor for ${isParent ? 'your child' : 'you'}',
+                            'We\'ll start with one learner, you can add more children later in your profile.',
                             style: GoogleFonts.poppins(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              height: 1.25,
+                              fontSize: 14,
+                              color: AppTheme.textLight,
+                              height: 1.4,
                             ),
                             textAlign: TextAlign.center,
                           ),
+                        ],
 
-                          const SizedBox(height: 16),
+                        const SizedBox(height: 20),
 
-                          // Description
-                          Text(
-                            isParent
-                                ? 'Take 2 minutes to tell us about your child\'s learning needs, and we\'ll match them with the perfect tutor.'
-                                : 'Take 2 minutes to tell us about your learning goals, and we\'ll match you with the perfect tutor.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 16,
-                              color: Colors.white.withOpacity(0.9),
-                              height: 1.6,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          // Parents: clarify they can add more children later
-                          if (isParent) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              'We\'ll start with one learner, you can add more children later in your profile.',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.white.withOpacity(0.85),
-                                height: 1.4,
+                        _buildBenefitsList(isParent),
+
+                        const SizedBox(height: 32),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _handleGetStarted,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryColor,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-
-                          const SizedBox(height: 20),
-
-                          // Benefits list
-                          _buildBenefitsList(isParent),
-
-                          const SizedBox(height: 32),
-
-                          // Get Started Button (Primary) – soft fill
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _handleGetStarted,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                foregroundColor: AppTheme.primaryColor,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                elevation: 0,
-                                shadowColor: Colors.transparent,
-                              ),
-                              child: Text(
-                                'Get Started',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          // Skip Button (Secondary)
-                          TextButton(
-                            onPressed: _handleSkip,
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                              shadowColor: Colors.transparent,
                             ),
                             child: Text(
-                              'Skip for Now',
+                              'Get Started',
                               style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.white.withOpacity(0.85),
-                                fontWeight: FontWeight.w500,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
+                        ),
 
-                          const SizedBox(height: 12),
+                        const SizedBox(height: 12),
 
-                          // Note – softer, smaller
-                          Text(
-                            'You can complete this later from your home screen',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: Colors.white.withOpacity(0.75),
-                            ),
-                            textAlign: TextAlign.center,
+                        TextButton(
+                          onPressed: _handleSkip,
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
+                          child: Text(
+                            'Skip for Now',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        Text(
+                          'You can complete this later from your home screen',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: AppTheme.textLight,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -261,15 +241,16 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: AppTheme.softBackground,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.white.withOpacity(0.2),
+          color: AppTheme.softBorder,
           width: 1,
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: benefits.asMap().entries.map((entry) {
           final index = entry.key;
           final benefit = entry.value;
@@ -281,7 +262,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
                 Icon(
                   Icons.check_circle_outline,
                   size: 20,
-                  color: Colors.white.withOpacity(0.9),
+                  color: AppTheme.primaryColor,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -289,7 +270,7 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
                     benefit,
                     style: GoogleFonts.poppins(
                       fontSize: 14,
-                      color: Colors.white.withOpacity(0.95),
+                      color: AppTheme.textDark,
                     ),
                   ),
                 ),
@@ -297,7 +278,6 @@ class _SurveyIntroScreenState extends State<SurveyIntroScreen>
             ),
           );
         }).toList(),
-        mainAxisSize: MainAxisSize.min,
       ),
     );
   }

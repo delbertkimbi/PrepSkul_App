@@ -98,6 +98,7 @@ class _GameRulesOverlayState extends State<GameRulesOverlay>
   @override
   Widget build(BuildContext context) {
     final rules = GameRulesService.getRulesForGameType(widget.gameType);
+    final maxDialogHeight = MediaQuery.of(context).size.height * 0.82;
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -114,27 +115,31 @@ class _GameRulesOverlayState extends State<GameRulesOverlay>
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
               child: Container(
-                constraints: const BoxConstraints(maxWidth: 400),
-                padding: const EdgeInsets.all(24),
+                constraints: BoxConstraints(
+                  maxWidth: 400,
+                  maxHeight: maxDialogHeight,
+                ),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: AppTheme.softBackground.withOpacity(0.72),
+                  color: AppTheme.softBackground.withValues(alpha: 0.9),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withValues(alpha: 0.22),
                     width: 1,
                   ),
                   gradient: LinearGradient(
                     colors: [
-                      Colors.white.withOpacity(0.15),
-                      Colors.white.withOpacity(0.06),
+                      Colors.white.withValues(alpha: 0.2),
+                      Colors.white.withValues(alpha: 0.1),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     // Title
                     Row(
                       children: [
@@ -224,7 +229,7 @@ class _GameRulesOverlayState extends State<GameRulesOverlay>
                         ),
                       );
                     }),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     // Got it button
                     SizedBox(
                       width: double.infinity,
@@ -233,7 +238,8 @@ class _GameRulesOverlayState extends State<GameRulesOverlay>
                         onPressed: widget.onGotIt,
                       ),
                     ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
