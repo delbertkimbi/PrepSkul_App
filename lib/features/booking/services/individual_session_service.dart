@@ -166,8 +166,7 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = afterDate ?? now;
 
-      // Fetch sessions with recurring_sessions join
-      // We'll filter by payment status after fetching
+      // Fetch sessions where user is direct learner/parent.
       var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions(
@@ -187,12 +186,69 @@ class IndividualSessionService {
           .order('scheduled_time', ascending: true)
           .limit(limit * 2); // Fetch more to filter by payment status
 
-      // Filter to only include sessions with paid payment_requests
-      final sessions = (response as List).cast<Map<String, dynamic>>();
+      // Also fetch sessions where user is enrolled via classroom participants.
+      final participantRows = await _supabase
+          .from('session_participants')
+          .select('''
+            individual_session_id,
+            individual_sessions(
+              *,
+              recurring_sessions(
+                id,
+                tutor_name,
+                tutor_avatar_url,
+                tutor_id,
+                subject
+              )
+            )
+          ''')
+          .eq('user_id', userId)
+          .not('individual_session_id', 'is', null);
+
+      // Build set of group-class session IDs with paid enrollment.
+      final paidGroupEnrollmentRows = await _supabase
+          .from('group_class_enrollments')
+          .select('listing_id, status, group_class_listings(individual_session_id)')
+          .eq('user_id', userId)
+          .eq('status', 'paid');
+
+      final paidGroupSessionIds = <String>{};
+      for (final row in (paidGroupEnrollmentRows as List).cast<Map<String, dynamic>>()) {
+        final listing = row['group_class_listings'] as Map<String, dynamic>?;
+        final sessionId = listing?['individual_session_id'] as String?;
+        if (sessionId != null && sessionId.isNotEmpty) {
+          paidGroupSessionIds.add(sessionId);
+        }
+      }
+
+      // Merge direct + participant sessions (dedupe by id).
+      final sessionsById = <String, Map<String, dynamic>>{};
+      for (final session in (response as List).cast<Map<String, dynamic>>()) {
+        final id = session['id'] as String?;
+        if (id != null && id.isNotEmpty) {
+          sessionsById[id] = session;
+        }
+      }
+      for (final row in (participantRows as List).cast<Map<String, dynamic>>()) {
+        final session = row['individual_sessions'] as Map<String, dynamic>?;
+        final id = session?['id'] as String?;
+        if (session != null && id != null && id.isNotEmpty) {
+          sessionsById[id] = session;
+        }
+      }
+
+      // Filter to paid recurring OR paid group-class sessions.
+      final sessions = sessionsById.values.toList();
       final paidSessions = <Map<String, dynamic>>[];
       
       for (final session in sessions) {
         final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+        final sessionId = session['id'] as String?;
+        if (sessionId != null && paidGroupSessionIds.contains(sessionId)) {
+          paidSessions.add(session);
+          continue;
+        }
+
         if (recurringData != null) {
           final recurringSessionId = recurringData['id'] as String?;
           if (recurringSessionId != null) {
@@ -247,8 +303,7 @@ class IndividualSessionService {
       final now = DateTime.now();
       final queryDate = beforeDate ?? now;
 
-      // Fetch sessions with recurring_sessions join
-      // We'll filter by payment status after fetching
+      // Fetch sessions where user is direct learner/parent.
       var query = _supabase.from('individual_sessions').select('''
             *,
             recurring_sessions(
@@ -268,12 +323,69 @@ class IndividualSessionService {
           .order('scheduled_time', ascending: false)
           .limit(limit * 2); // Fetch more to filter by payment status
 
-      // Filter to only include sessions with paid payment_requests
-      final sessions = (response as List).cast<Map<String, dynamic>>();
+      // Also fetch sessions where user is enrolled via classroom participants.
+      final participantRows = await _supabase
+          .from('session_participants')
+          .select('''
+            individual_session_id,
+            individual_sessions(
+              *,
+              recurring_sessions(
+                id,
+                tutor_name,
+                tutor_avatar_url,
+                tutor_id,
+                subject
+              )
+            )
+          ''')
+          .eq('user_id', userId)
+          .not('individual_session_id', 'is', null);
+
+      // Build set of group-class session IDs with paid enrollment.
+      final paidGroupEnrollmentRows = await _supabase
+          .from('group_class_enrollments')
+          .select('listing_id, status, group_class_listings(individual_session_id)')
+          .eq('user_id', userId)
+          .eq('status', 'paid');
+
+      final paidGroupSessionIds = <String>{};
+      for (final row in (paidGroupEnrollmentRows as List).cast<Map<String, dynamic>>()) {
+        final listing = row['group_class_listings'] as Map<String, dynamic>?;
+        final sessionId = listing?['individual_session_id'] as String?;
+        if (sessionId != null && sessionId.isNotEmpty) {
+          paidGroupSessionIds.add(sessionId);
+        }
+      }
+
+      // Merge direct + participant sessions (dedupe by id).
+      final sessionsById = <String, Map<String, dynamic>>{};
+      for (final session in (response as List).cast<Map<String, dynamic>>()) {
+        final id = session['id'] as String?;
+        if (id != null && id.isNotEmpty) {
+          sessionsById[id] = session;
+        }
+      }
+      for (final row in (participantRows as List).cast<Map<String, dynamic>>()) {
+        final session = row['individual_sessions'] as Map<String, dynamic>?;
+        final id = session?['id'] as String?;
+        if (session != null && id != null && id.isNotEmpty) {
+          sessionsById[id] = session;
+        }
+      }
+
+      // Filter to paid recurring OR paid group-class sessions.
+      final sessions = sessionsById.values.toList();
       final paidSessions = <Map<String, dynamic>>[];
       
       for (final session in sessions) {
         final recurringData = session['recurring_sessions'] as Map<String, dynamic>?;
+        final sessionId = session['id'] as String?;
+        if (sessionId != null && paidGroupSessionIds.contains(sessionId)) {
+          paidSessions.add(session);
+          continue;
+        }
+
         if (recurringData != null) {
           final recurringSessionId = recurringData['id'] as String?;
           if (recurringSessionId != null) {

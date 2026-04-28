@@ -20,12 +20,14 @@ import '../../../features/notifications/widgets/notification_bell.dart';
 import '../../../features/booking/services/session_payment_service.dart';
 import '../widgets/onboarding_progress_tracker.dart';
 import 'tutor_admin_feedback_screen.dart';
+import '../../group_classes/screens/tutor_group_classes_screen.dart';
 import 'tutor_onboarding_screen.dart';
 import 'tutor_earnings_screen.dart';
 import '../../../core/widgets/skeletons/tutor_home_skeleton.dart';
 import '../../../features/messaging/screens/conversations_list_screen.dart';
 import '../../../features/messaging/widgets/message_icon_badge.dart';
 import '../../../core/services/notification_permission_nudge_service.dart';
+import '../../../core/config/app_config.dart';
 
 class TutorHomeScreen extends StatefulWidget {
   const TutorHomeScreen({Key? key}) : super(key: key);
@@ -702,6 +704,23 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                       );
                     },
                   ),
+                  if (AppConfig.enableGroupClasses) ...[
+                    SizedBox(height: ResponsiveHelper.responsiveSpacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                    _buildActionCard(
+                      icon: Icons.groups_outlined,
+                      title: 'Group Classes',
+                      subtitle: 'Create and publish group sessions',
+                      color: Colors.deepPurple,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TutorGroupClassesScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1104,7 +1123,8 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
               Expanded(
                 child: _buildWalletBalanceCard(
                   label: 'Active Balance',
-                  amount: activeBalanceStr,
+                amount: activeBalanceStr,
+                
                   icon: Icons.check_circle,
                   color: Colors.green.shade300,
                 ),
@@ -1114,6 +1134,7 @@ class _TutorHomeScreenState extends State<TutorHomeScreen> {
                 child: _buildWalletBalanceCard(
                   label: 'Pending Balance',
                   amount: pendingBalanceStr,
+                
                   icon: Icons.pending,
                   color: Colors.orange.shade300,
                 ),

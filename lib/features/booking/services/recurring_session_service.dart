@@ -540,8 +540,15 @@ class RecurringSessionService {
               LogService.info('✅ User context validated: auth.uid() matches session participant');
             }
             
-            final insertResponse = await _supabase.from('individual_sessions').insert(chunk).select('id');
+            final insertResponse = await _supabase
+                .from('individual_sessions')
+                .insert(chunk)
+                .select('id, tutor_id, learner_id, parent_id');
             totalInserted += chunk.length;
+
+            await _ensureIndividualSessionParticipants(
+              (insertResponse as List).cast<Map<String, dynamic>>(),
+            );
             
             LogService.success('✅ Inserted ${chunk.length} individual sessions (${totalInserted}/${sessionsToCreate.length})');
             if (insertResponse.isNotEmpty) {
@@ -584,5 +591,58 @@ class RecurringSessionService {
       LogService.error('📚 Stack trace: $stackTrace');
       rethrow;
     }
+  }
+
+  static Future<void> _ensureIndividualSessionParticipants(
+    List<Map<String, dynamic>> sessions,
+  ) async {
+    final participantRows = <Map<String, dynamic>>[];
+    for (final session in sessions) {
+      final sessionId = session['id'] as String?;
+      if (sessionId == null) continue;
+      participantRows.addAll(
+        _buildSessionParticipantRows(
+          sessionId: sessionId,
+          tutorId: session['tutor_id'] as String?,
+          learnerId: session['learner_id'] as String?,
+          parentId: session['parent_id'] as String?,
+        ),
+      );
+    }
+    if (participantRows.isEmpty) return;
+    try {
+      await _supabase.from('session_participants').upsert(
+            participantRows,
+            onConflict: 'individual_session_id,user_id',
+          );
+    } catch (e) {
+      LogService.warning('Failed to upsert recurring session_participants rows: $e');
+    }
+  }
+
+  static List<Map<String, dynamic>> _buildSessionParticipantRows({
+    required String sessionId,
+    required String? tutorId,
+    required String? learnerId,
+    required String? parentId,
+  }) {
+    final roleByUser = <String, String>{};
+    if (tutorId != null && tutorId.isNotEmpty) roleByUser[tutorId] = 'tutor';
+    if (learnerId != null && learnerId.isNotEmpty) {
+      roleByUser.putIfAbsent(learnerId, () => 'learner');
+    }
+    if (parentId != null && parentId.isNotEmpty) {
+      roleByUser.putIfAbsent(parentId, () => 'parent_observer');
+    }
+
+    final rows = <Map<String, dynamic>>[];
+    roleByUser.forEach((userId, role) {
+      rows.add({
+        'individual_session_id': sessionId,
+        'user_id': userId,
+        'role': role,
+      });
+    });
+    return rows;
   }
 }

@@ -266,10 +266,18 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final raw = e.toString();
+        final isFeedbackUnavailable = raw.contains('Feedback system is not available') ||
+            raw.contains('session_feedback');
+        final userMessage = isFeedbackUnavailable
+            ? 'Feedback is temporarily unavailable. Please try again later.'
+            : 'Unable to submit feedback right now. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to submit feedback: $e'),
-            backgroundColor: Colors.red,
+            content: Text(userMessage),
+            backgroundColor: AppTheme.error,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           ),
         );
       }
@@ -284,8 +292,9 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
     if (_currentStep == 0 && _selectedRating == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please provide a rating'),
-          backgroundColor: Colors.orange,
+          content: const Text('Please select a star rating to continue.'),
+          backgroundColor: AppTheme.softYellow,
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
@@ -622,25 +631,12 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
                 onTap: () => safeSetState(() => _selectedRating = rating),
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 6),
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: _selectedRating == rating
-                        ? AppTheme.primaryColor
-                        : Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _selectedRating == rating
-                          ? AppTheme.primaryColor
-                          : Colors.grey[300]!,
-                      width: 2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '⭐',
-                      style: TextStyle(fontSize: 24),
-                    ),
+                  child: Icon(
+                    Icons.star_rounded,
+                    size: 40,
+                    color: (_selectedRating ?? 0) >= rating
+                        ? AppTheme.softYellow
+                        : Colors.grey[300],
                   ),
                 ),
               );
@@ -848,7 +844,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'What did you like most? (optional)',
+            'What did you like most?',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -875,7 +871,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            'Anything we could improve? (optional)',
+            'Anything we could improve?',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1074,7 +1070,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           const SizedBox(height: 20),
           // Homework Assigned
           Text(
-            'Homework or assignments given (optional)',
+            'Homework or assignments given',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1102,7 +1098,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           const SizedBox(height: 20),
           // Next Focus Areas
           Text(
-            'What to focus on next session (optional)',
+            'What to focus on next session',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1130,7 +1126,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           const SizedBox(height: 20),
           // Concerns
           Text(
-            'Any concerns or areas needing attention? (optional)',
+            'Any concerns or areas needing attention?',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1255,7 +1251,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
             controller: _tutorCommunicationNotesController,
             maxLines: 2,
             decoration: InputDecoration(
-              hintText: 'Optional: Add any notes about communication...',
+              hintText: 'Add any notes about communication...',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: AppTheme.softBorder),
@@ -1320,7 +1316,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           if (_isOnsiteSession) ...[
             const SizedBox(height: 20),
             Text(
-              'Was the location safe and appropriate? (optional)',
+              'Was the location safe and appropriate?',
               style: GoogleFonts.poppins(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -1351,7 +1347,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           const SizedBox(height: 20),
           // Next Session Focus
           Text(
-            'Would you like the tutor to focus on anything specific next time? (optional)',
+            'Would you like the tutor to focus on anything specific next time?',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1386,7 +1382,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Additional details (optional)',
+            'Additional details',
             style: GoogleFonts.poppins(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -1403,7 +1399,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           ),
           const SizedBox(height: 24),
           Text(
-            'What did you learn? (optional)',
+            'What did you learn?',
             style: GoogleFonts.poppins(
               fontSize: 14,
               fontWeight: FontWeight.w600,
@@ -1489,7 +1485,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Additional feedback (optional)',
+          'Additional feedback',
           style: GoogleFonts.poppins(
             fontSize: 22,
             fontWeight: FontWeight.w700,
@@ -1510,7 +1506,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           const SizedBox(height: 20),
         ],
         Text(
-          'What went well? (optional)',
+          'What went well?',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -1538,7 +1534,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
         const SizedBox(height: 20),
         // What Could Improve
         Text(
-          'What could improve? (optional)',
+          'What could improve?',
           style: GoogleFonts.poppins(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -1667,7 +1663,7 @@ class _SessionFeedbackFlowScreenState extends State<SessionFeedbackFlowScreen> {
           controller: _sessionTookPlaceNotesController,
           maxLines: 2,
           decoration: InputDecoration(
-            hintText: 'Optional: Tell us what happened (e.g. tutor did not show, session was shorter, etc.)',
+            hintText: 'Tell us what happened (e.g. tutor did not show, session was shorter, etc.)',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(color: AppTheme.softBorder),

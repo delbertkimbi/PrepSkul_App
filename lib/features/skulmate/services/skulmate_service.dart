@@ -51,16 +51,10 @@ class SkulMateService {
       'skulmate_games_cache_updated_v1_';
 
   /// Get API base URL with smart fallback
-  /// Get API base URL (with localhost detection for local development)
-  /// Uses AppConfig.effectiveApiBaseUrl which automatically detects local development
+  /// Uses the dedicated SkulMate HTTP base, which applies web host normalization
+  /// (`app.prepskul.com` -> `www.prepskul.com`) to keep CORS/routes consistent.
   static String get _apiBaseUrl {
-    return AppConfig.effectiveApiBaseUrl;
-  }
-
-  /// Production API base URL (fallback)
-  /// Uses AppConfig for consistency with environment variables
-  static String get _productionApiBaseUrl {
-    return AppConfig.apiBaseUrl;
+    return AppConfig.skulMateHttpApiBase;
   }
 
   // Endpoint is relative to apiBaseUrl (which already includes /api)

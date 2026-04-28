@@ -1439,34 +1439,23 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
   Widget _buildCreditsHeader() {
     return FutureBuilder<int>(
-      future: _calculateUserPoints(),
+      future: _calculateSessionPoints(),
       builder: (context, snapshot) {
         final points = snapshot.data ?? 0;
         final sessionsAvailable = _getSessionsFromPoints(points);
-        final upcomingCount = _upcomingSessions.where((s) {
-          final status = s['status'] as String?;
-          return status == 'scheduled' || status == 'in_progress';
-        }).length;
         
-        // Neumorphic design for points header
+        // Compact, cleaner points card
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          padding: const EdgeInsets.all(20),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.grey[50],
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: [
-              // Outer shadow (dark)
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 20,
-                offset: const Offset(8, 8),
-              ),
-              // Inner shadow (light)
-              BoxShadow(
-                color: Colors.white.withOpacity(0.8),
-                blurRadius: 20,
-                offset: const Offset(-8, -8),
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
@@ -1479,43 +1468,30 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 ),
               );
             },
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             child: Row(
               children: [
-                // Neumorphic icon container
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.grey[50],
+                    color: AppTheme.primaryColor.withOpacity(0.08),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 8,
-                        offset: const Offset(4, 4),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.9),
-                        blurRadius: 8,
-                        offset: const Offset(-4, -4),
-                      ),
-                    ],
                   ),
                   child: Icon(
                     PhosphorIcons.star(),
-                    size: 24,
+                    size: 20,
                     color: AppTheme.primaryColor,
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Your Points',
+                        'Session Points',
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: Colors.grey[700],
                           letterSpacing: 0.5,
@@ -1529,8 +1505,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           Text(
                             '$points',
                             style: GoogleFonts.poppins(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w900,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
                               color: AppTheme.primaryColor,
                               letterSpacing: -1,
                             ),
@@ -1539,7 +1515,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           Text(
                             'points',
                             style: GoogleFonts.poppins(
-                              fontSize: 14,
+                              fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: Colors.grey[600],
                             ),
@@ -1548,9 +1524,9 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$upcomingCount remaining sessions',
+                        '$sessionsAvailable sessions available',
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w500,
                           color: Colors.grey[600],
                         ),
@@ -1559,26 +1535,14 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.grey[50],
+                    color: AppTheme.primaryColor.withOpacity(0.06),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 4,
-                        offset: const Offset(2, 2),
-                      ),
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.9),
-                        blurRadius: 4,
-                        offset: const Offset(-2, -2),
-                      ),
-                    ],
                   ),
                   child: Icon(
                     PhosphorIcons.caretRight(),
-                    size: 16,
+                    size: 14,
                     color: AppTheme.primaryColor,
                   ),
                 ),
@@ -1601,28 +1565,17 @@ class _MySessionsScreenState extends State<MySessionsScreen>
     }
   }
 
-  /// Calculate user points based on remaining sessions
-  /// New system: 10 points per session
-  /// Example: 8 sessions = 80 points, but can have partial points like 89 (8 sessions + 9 extra)
-  /// A session is only counted when you have at least 10 points
-  Future<int> _calculateUserPoints() async {
+  /// Session points (separate from wallet credits):
+  /// based on remaining upcoming sessions only.
+  Future<int> _calculateSessionPoints() async {
     try {
-      final userId = SupabaseService.currentUser?.id;
-      if (userId == null) return 0;
-
-      // Count upcoming sessions (scheduled + in_progress)
       final upcomingCount = _upcomingSessions.where((s) {
         final status = s['status'] as String?;
         return status == 'scheduled' || status == 'in_progress';
       }).length;
-
-      // Each session = 10 points
-      // Points = upcoming sessions * 10
-      final points = upcomingCount * 10;
-      
-      return points;
+      return upcomingCount * 10;
     } catch (e) {
-      LogService.error('Error calculating user points: $e');
+      LogService.error('Error calculating session points: $e');
       return 0;
     }
   }
@@ -1698,13 +1651,13 @@ class _MySessionsScreenState extends State<MySessionsScreen>
 
     // Neumorphic card design
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
           // Navigate to session detail screen instead of popup
           _navigateToSessionDetail(session);
         },
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -1716,12 +1669,12 @@ class _MySessionsScreenState extends State<MySessionsScreen>
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1766,8 +1719,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                 children: [
                   // Tutor avatar - optimized with CachedNetworkImage
                   Container(
-                    width: 56,
-                    height: 56,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -1787,8 +1740,8 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                           ? CachedNetworkImage(
                               imageUrl: tutorAvatar,
                               fit: BoxFit.cover,
-                              width: 56,
-                              height: 56,
+                              width: 48,
+                              height: 48,
                               cacheKey: 'tutor_avatar_${tutorAvatar.hashCode}',
                               memCacheWidth: 112,
                               memCacheHeight: 112,
@@ -1800,7 +1753,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                   child: Text(
                                     (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 20,
+                                      fontSize: 17,
                                       fontWeight: FontWeight.w700,
                                       color: modeColor,
                                     ),
@@ -1813,7 +1766,7 @@ class _MySessionsScreenState extends State<MySessionsScreen>
                                   child: Text(
                                     (tutorName?.isNotEmpty ?? false) ? tutorName![0].toUpperCase() : 'T',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 20,
+                                      fontSize: 17,
                                       fontWeight: FontWeight.w700,
                                       color: modeColor,
                                     ),
@@ -2624,30 +2577,13 @@ class _MySessionsScreenState extends State<MySessionsScreen>
               return IconButton(
                 icon: Icon(PhosphorIcons.arrowLeft()),
                 color: Colors.white,
-                onPressed: () async {
-                  try {
-                    final userProfile = await AuthService.getUserProfile();
-                    final userType = userProfile?['user_type'] as String?;
-                    final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
-                    Navigator.pushReplacementNamed(context, route);
-                  } catch (e) {
-                    // Fallback: try Supabase profile for user_type so parents get parent-nav
-                    try {
-                      final userId = SupabaseService.currentUser?.id;
-                      if (userId != null) {
-                        final profile = await SupabaseService.client
-                            .from('profiles')
-                            .select('user_type')
-                            .eq('id', userId)
-                            .maybeSingle();
-                        final userType = profile?['user_type'] as String?;
-                        final route = userType == 'parent' ? '/parent-nav' : '/student-nav';
-                        if (context.mounted) Navigator.pushReplacementNamed(context, route);
-                        return;
-                      }
-                    } catch (_) {}
-                    if (context.mounted) Navigator.pushReplacementNamed(context, '/student-nav');
-                  }
+                onPressed: () {
+                  // Keep back-navigation deterministic and avoid network/auth calls.
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/student-nav',
+                    (route) => false,
+                  );
                 },
               );
             }

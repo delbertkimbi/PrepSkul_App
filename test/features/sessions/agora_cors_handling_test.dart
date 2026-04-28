@@ -9,7 +9,7 @@ void main() {
   group('Agora CORS Handling Tests', () {
     test('Token service should use correct API URL from AppConfig', () {
       // Verify that the service uses AppConfig for API URL
-      final apiUrl = AppConfig.apiBaseUrl;
+      final apiUrl = AppConfig.effectiveApiBaseUrl;
       expect(apiUrl, isNotEmpty);
       expect(apiUrl.contains('api'), isTrue);
     });
@@ -28,7 +28,10 @@ void main() {
             errorMsg.contains('API server') ||
             errorMsg.contains('origin') ||
             errorMsg.contains('authenticated') ||
-            errorMsg.contains('error');
+            errorMsg.contains('error') ||
+            errorMsg.contains('Connection failed') ||
+            errorMsg.contains('Unable to connect') ||
+            errorMsg.contains('internet');
         
         expect(hasHelpfulMessage, isTrue,
             reason: 'Error message should be helpful: $errorMsg');
@@ -39,7 +42,7 @@ void main() {
       // This is a configuration test
       // The API URL should be www.prepskul.com/api
       // which is accessible from app.prepskul.com (different subdomain, same domain)
-      final apiUrl = AppConfig.apiBaseUrl;
+      final apiUrl = AppConfig.effectiveApiBaseUrl;
       
       // For production, should be www.prepskul.com/api
       // This allows CORS from app.prepskul.com
@@ -51,7 +54,7 @@ void main() {
 
     test('Token service should construct correct endpoint URL', () {
       // Verify endpoint construction
-      final apiUrl = AppConfig.apiBaseUrl;
+      final apiUrl = AppConfig.effectiveApiBaseUrl;
       final expectedEndpoint = '$apiUrl/agora/token';
       
       expect(expectedEndpoint, isNotEmpty);

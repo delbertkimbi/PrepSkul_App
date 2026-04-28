@@ -27,13 +27,17 @@ import 'package:prepskul/features/sessions/services/agora_recording_service.dart
 import 'package:prepskul/features/sessions/services/session_timer_service.dart';
 import 'package:prepskul/features/sessions/services/call_pip_controller.dart';
 import 'package:prepskul/features/sessions/services/session_heartbeat_service.dart';
+import 'package:prepskul/features/sessions/domain/participant_state.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart' as agora_rtc_engine;
 import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 import 'dart:async';
+import 'dart:ui' as ui;
 
 /// Deep blue for video/connecting/leaving/waiting – consistent with app theme.
 const Color _kSoftDark = Color(0xFF0F1A2E); // AppTheme.primaryDark
+const Color _kGlassFill = Color(0x33141F36);
+const Color _kGlassBorder = Color(0x66FFFFFF);
 
 /// Layout mode for video call: spotlight (main + PIP) or side-by-side (two panels).
 enum VideoLayout { spotlight, sideBySide }
@@ -69,6 +73,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
   bool _isVideoEnabled = false; // Will be set from initial state
   bool _isAudioEnabled = false; // Will be set from initial state
   int? _remoteUID;
+  final Map<int, ParticipantState> _participants = <int, ParticipantState>{};
   String? _errorMessage;
   
   // Remote state tracking
@@ -80,8 +85,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
   DateTime? _remoteJoinedAt;
   String? _transientStateMessage;
   Timer? _transientStateMessageTimer;
+  DateTime? _transientStateMessageShownAt;
+  Timer? _queuedTransientMessageTimer;
+  static const Duration _minTransientMessageDisplay = Duration(seconds: 2);
   bool _isScreenSharing = false;
   bool _remoteIsScreenSharing = false;
+  int? _screenShareOwnerUid;
   bool _remoteUserLeft = false;
   /// Cached remote UID for mobile web main-area lock when we force remote view (never clear on mobile web when ignoring "user left").
   int? _lastRemoteUID;
@@ -126,6 +135,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
   // Network instability tracking
   bool _remoteConnectionUnstable = false;
   bool _localConnectionReconnecting = false;
+  DateTime? _localReconnectingShownAt;
+  Timer? _localReconnectClearTimer;
+  static const Duration _minReconnectIndicatorDisplay = Duration(seconds: 2);
   /// When non-null, show "Connection restored" in status bar until this time + a few seconds.
   DateTime? _connectionRestoredAt;
   static const Duration _connectionRestoredDisplayDuration = Duration(seconds: 4);
@@ -201,6 +213,62 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     });
   }
 
+  ParticipantState? get _currentRemoteParticipant {
+    final uid = _remoteUID;
+    if (uid == null) return null;
+    return _participants[uid];
+  }
+
+  void _upsertParticipant(
+    int uid, {
+    bool? videoMuted,
+    bool? audioMuted,
+    bool? videoReady,
+    bool? screenSharing,
+    bool? userLeft,
+    bool? connectionUnstable,
+    bool? screenOff,
+    DateTime? lastActivityAt,
+  }) {
+    final existing = _participants[uid] ?? ParticipantState(uid: uid);
+    _participants[uid] = existing.copyWith(
+      videoMuted: videoMuted,
+      audioMuted: audioMuted,
+      videoReady: videoReady,
+      screenSharing: screenSharing,
+      userLeft: userLeft,
+      connectionUnstable: connectionUnstable,
+      screenOff: screenOff,
+      lastActivityAt: lastActivityAt,
+    );
+  }
+
+  void _removeParticipant(int uid) {
+    _participants.remove(uid);
+  }
+
+  void _syncLegacyRemoteStateFromRegistry() {
+    final p = _currentRemoteParticipant;
+    if (p == null) {
+      _remoteVideoMuted = false;
+      _remoteAudioMuted = false;
+      _remoteVideoReady = false;
+      _remoteIsScreenSharing = false;
+      _remoteUserLeft = false;
+      _remoteConnectionUnstable = false;
+      _remoteScreenOff = false;
+      return;
+    }
+    _remoteVideoMuted = p.videoMuted;
+    _remoteAudioMuted = p.audioMuted;
+    _remoteVideoReady = p.videoReady;
+    _remoteIsScreenSharing = p.screenSharing;
+    _remoteUserLeft = p.userLeft;
+    _remoteConnectionUnstable = p.connectionUnstable;
+    _remoteScreenOff = p.screenOff;
+    _lastRemoteActivityAt = p.lastActivityAt ?? _lastRemoteActivityAt;
+  }
+
   @override
   void setState(VoidCallback fn) {
     super.setState(fn);
@@ -262,6 +330,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _uiUpdateDebounceTimer?.cancel();
     _remoteUnstableTimer?.cancel();
     _transientStateMessageTimer?.cancel();
+    _queuedTransientMessageTimer?.cancel();
+    _localReconnectClearTimer?.cancel();
 
     _remoteLeftCheckTimer?.cancel();
     _remoteLeftCheckTimer = null;
@@ -381,16 +451,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           _layout = VideoLayout.spotlight;
         });
         LogService.info('Mobile web: remote marked left after ${elapsed.inSeconds}s inactivity (uid=$leftUid)');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Remote participant left', style: GoogleFonts.poppins(fontSize: 12)),
-              backgroundColor: Colors.blueGrey.shade800,
-              duration: const Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
+        // Keep UX minimal: top status banner already communicates this state.
       }
     });
   }
@@ -461,29 +522,18 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       
       // CRITICAL: Explicitly set up local video IMMEDIATELY after joining
       // This ensures the user sees their own video right away (not just after toggle)
-      if (widget.initialCameraEnabled && _agoraService.engine != null) {
+      if (widget.initialCameraEnabled) {
         try {
           LogService.info('[SESSION] Setting up local video immediately after join...');
-          
-          // Set up local video canvas with camera source
-          await _agoraService.engine!.setupLocalVideo(
-            const agora_rtc_engine.VideoCanvas(
-              uid: 0,
-              sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
-            ),
-          );
-          
-          // On web, start preview explicitly
-          if (kIsWeb) {
-            await _agoraService.engine!.startPreview();
-          }
-          
+
+          await _agoraService.setupLocalVideoAfterJoin();
+
           // Small delay to allow video to initialize
           await Future.delayed(const Duration(milliseconds: 300));
-          
+
           // Ensure video stream is unmuted (publishing)
-          await _agoraService.engine!.muteLocalVideoStream(false);
-          
+          await _agoraService.ensureLocalVideoPublishing();
+
           LogService.info('[SESSION] Local video set up successfully - should be visible now');
           
           safeSetState(() {
@@ -619,16 +669,22 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         _remoteUID = uid;
         _lastRemoteUID = uid; // Keep for mobile web main-area lock when forcing remote view
         _remoteJoinedAt = DateTime.now();
-        _remoteUserLeft = false; // User joined, reset left state
         _lastRemoteActivityAt = DateTime.now(); // For mobile web "user left" timeout
         // Clear stale overlay flags so rejoin doesn't keep old screen-off/unstable state
-        _remoteScreenOff = false;
-        _remoteConnectionUnstable = false;
         _remoteUnstableStickyUntil = null;
-        _remoteVideoMuted = false;
-        _remoteVideoReady = false;
         _lastRemoteVideoReadyAt = null;
-        _remoteAudioMuted = false;
+        _upsertParticipant(
+          uid,
+          userLeft: false,
+          videoMuted: false,
+          audioMuted: false,
+          videoReady: false,
+          screenSharing: false,
+          connectionUnstable: false,
+          screenOff: false,
+          lastActivityAt: DateTime.now(),
+        );
+        _syncLegacyRemoteStateFromRegistry();
         _showVaAvatar = true; // PrepSkul VA "joins" when both participants are in the call
       });
       if (_isVideoEnabled && !_localVideoReady) {
@@ -707,20 +763,22 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         _lastRemoteVideoMutedState = muted;
         final debounceScheduledAt = DateTime.now();
         _scheduleUiUpdate(() {
-          _lastRemoteActivityAt = DateTime.now();
+          _upsertParticipant(uid, lastActivityAt: DateTime.now());
+          _syncLegacyRemoteStateFromRegistry();
           _videoStateDebounceTimer?.cancel();
           _videoStateDebounceTimer =
               Timer(const Duration(milliseconds: 250), () {
             if (!mounted || uid != _remoteUID) return;
             _scheduleUiUpdate(() {
-              _remoteVideoMuted = muted;
+              _upsertParticipant(uid, videoMuted: muted);
               // Only set ready=false if no frame-ready arrived after we scheduled this debounce
               if (muted) {
                 final lastReady = _lastRemoteVideoReadyAt;
                 if (lastReady == null || lastReady.isBefore(debounceScheduledAt)) {
-                  _remoteVideoReady = false;
+                  _upsertParticipant(uid, videoReady: false);
                 }
               }
+              _syncLegacyRemoteStateFromRegistry();
             });
           });
         });
@@ -748,11 +806,16 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           _lastRemoteVideoReadyAt = DateTime.now();
         }
         _scheduleUiUpdate(() {
-          _lastRemoteActivityAt = DateTime.now();
-          _remoteVideoReady = ready;
+          _upsertParticipant(
+            uid,
+            videoReady: ready,
+            videoMuted: ready ? false : null,
+            lastActivityAt: DateTime.now(),
+          );
           if (ready) {
-            _remoteVideoMuted = false;
+            _upsertParticipant(uid, videoMuted: false);
           }
+          _syncLegacyRemoteStateFromRegistry();
         });
       }
     });
@@ -766,8 +829,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         final previous = _lastRemoteAudioMutedState;
         _lastRemoteAudioMutedState = muted;
         _scheduleUiUpdate(() {
-          _lastRemoteActivityAt = DateTime.now();
-          _remoteAudioMuted = muted;
+          _upsertParticipant(uid, audioMuted: muted, lastActivityAt: DateTime.now());
+          _syncLegacyRemoteStateFromRegistry();
         });
         final joinedRecently = _remoteJoinedAt != null &&
             DateTime.now().difference(_remoteJoinedAt!) < const Duration(seconds: 6);
@@ -789,13 +852,31 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         _agoraService.screenSharingStream.listen((data) {
       final uid = data['uid'] as int;
       final sharing = data['sharing'] as bool;
+      final ownerUid = data['ownerUid'] as int?;
       if (uid == _remoteUID) {
         _scheduleUiUpdate(() {
-          _remoteIsScreenSharing = sharing;
+          _upsertParticipant(uid, screenSharing: sharing);
+          _screenShareOwnerUid = ownerUid;
+          if (_screenShareOwnerUid != null) {
+            _remoteIsScreenSharing = _screenShareOwnerUid == _remoteUID;
+            _isScreenSharing =
+                _screenShareOwnerUid == _agoraService.currentUID;
+          } else {
+            _remoteIsScreenSharing = false;
+            _isScreenSharing = false;
+          }
+          _syncLegacyRemoteStateFromRegistry();
         });
       } else if (uid == _agoraService.currentUID) {
         _scheduleUiUpdate(() {
-          _isScreenSharing = sharing;
+          _screenShareOwnerUid = ownerUid;
+          if (_screenShareOwnerUid != null) {
+            _isScreenSharing = _screenShareOwnerUid == _agoraService.currentUID;
+            _remoteIsScreenSharing = _screenShareOwnerUid == _remoteUID;
+          } else {
+            _isScreenSharing = false;
+            _remoteIsScreenSharing = false;
+          }
         });
       }
     });
@@ -823,28 +904,19 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       _remoteLeftCheckTimer = null;
 
       _scheduleUiUpdate(() {
-        _remoteUserLeft = true;
+        _upsertParticipant(leftUid, userLeft: true);
         _remoteJoinedAt = null;
         // Keep track of who left for UI, but clear active remote so main area
         // switches to local/profile instead of rendering a blank remote view.
         _lastRemoteUID = leftUid;
+        _removeParticipant(leftUid);
         _remoteUID = null;
-        _remoteVideoReady = false;
-        _remoteConnectionUnstable = false;
+        _syncLegacyRemoteStateFromRegistry();
         _layout = VideoLayout.spotlight;
       });
 
       LogService.info('Remote marked left – source: userLeftStream (remoteUid=$leftUid)');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Remote participant left', style: GoogleFonts.poppins(fontSize: 12)),
-            backgroundColor: Colors.blueGrey.shade800,
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      // Keep UX minimal: top status banner already communicates this state.
     });
     
     // Remote network quality (for instability detection)
@@ -872,8 +944,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         });
 
         _scheduleUiUpdate(() {
-          _lastRemoteActivityAt = DateTime.now();
-          _remoteConnectionUnstable = isUnstable;
+          _upsertParticipant(
+            uid,
+            connectionUnstable: isUnstable,
+            lastActivityAt: DateTime.now(),
+          );
+          _syncLegacyRemoteStateFromRegistry();
         });
         
         if (isUnstable) {
@@ -894,7 +970,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       if (uid == myUid) return;
       // If _remoteUID not set (e.g. remote joined with camera/mic off), set it now
       if (_remoteUID == null) {
-        safeSetState(() => _remoteUID = uid);
+        safeSetState(() {
+          _remoteUID = uid;
+          _upsertParticipant(uid, userLeft: false, lastActivityAt: DateTime.now());
+          _syncLegacyRemoteStateFromRegistry();
+        });
       }
       LogService.info('🎉 Displaying remote reaction: $emoji from UID=$uid');
       _addReactionAnimation(emoji);
@@ -907,7 +987,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       
       if (uid == _remoteUID) {
         safeSetState(() {
-          _remoteScreenOff = screenOff;
+          _upsertParticipant(uid, screenOff: screenOff);
+          _syncLegacyRemoteStateFromRegistry();
         });
         
         if (screenOff) {
@@ -931,7 +1012,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(message),
-              backgroundColor: Colors.orange.shade700,
+              backgroundColor: AppTheme.warning,
               duration: const Duration(seconds: 4),
             ),
           );
@@ -946,8 +1027,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           state == agora_rtc_engine.ConnectionStateType.connectionStateConnecting;
       final connected = state == agora_rtc_engine.ConnectionStateType.connectionStateConnected;
       _scheduleUiUpdate(() {
+        final now = DateTime.now();
         if (connected && _localConnectionReconnecting) {
-          _connectionRestoredAt = DateTime.now();
+          _connectionRestoredAt = now;
           if (_isVideoEnabled && !_localVideoReady) {
             _ensureLocalPreviewActiveNow();
           }
@@ -960,7 +1042,35 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             }
           });
         }
-        _localConnectionReconnecting = reconnecting;
+
+        if (reconnecting) {
+          _localReconnectClearTimer?.cancel();
+          _localConnectionReconnecting = true;
+          _localReconnectingShownAt ??= now;
+          return;
+        }
+
+        if (_localConnectionReconnecting) {
+          final shownAt = _localReconnectingShownAt ?? now;
+          final elapsed = now.difference(shownAt);
+          if (elapsed < _minReconnectIndicatorDisplay) {
+            _localReconnectClearTimer?.cancel();
+            _localReconnectClearTimer = Timer(
+              _minReconnectIndicatorDisplay - elapsed,
+              () {
+                if (!mounted) return;
+                _scheduleUiUpdate(() {
+                  _localConnectionReconnecting = false;
+                  _localReconnectingShownAt = null;
+                });
+              },
+            );
+            return;
+          }
+        }
+
+        _localConnectionReconnecting = false;
+        _localReconnectingShownAt = null;
       });
     });
   }
@@ -1056,19 +1166,16 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     _localPreviewWatchdogTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       if (!_isVideoEnabled) return;
-      final engine = _agoraService.engine;
-      if (engine == null) return;
+      if (_agoraService.engine == null) return;
 
       LogService.info('[SESSION] Local preview watchdog running – ensuring preview is active');
       // Run asynchronously so we do not block the timer callback.
       Future.microtask(() async {
         try {
           if (!_localVideoReady) {
-            if (kIsWeb && !platform_utils.PlatformUtils.isMobileWeb) {
-              await engine.startPreview();
-              await Future.delayed(const Duration(milliseconds: 150));
-            }
-            await engine.muteLocalVideoStream(false);
+            await _agoraService.ensureLocalVideoPublishing(
+              startPreviewOnWeb: !platform_utils.PlatformUtils.isMobileWeb,
+            );
             _scheduleUiUpdate(() {
               _localVideoReady = true;
             });
@@ -1082,8 +1189,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
   }
 
   Future<void> _ensureLocalPreviewActiveNow({bool force = false}) async {
-    final engine = _agoraService.engine;
-    if (engine == null || !_isVideoEnabled) return;
+    if (_agoraService.engine == null || !_isVideoEnabled) return;
     if (_localPreviewEnsureInProgress) return;
     final now = DateTime.now();
     final isMobileWeb = kIsWeb && platform_utils.PlatformUtils.isMobileWeb;
@@ -1095,16 +1201,10 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     }
     _localPreviewEnsureInProgress = true;
     try {
-      await engine.setupLocalVideo(
-        const agora_rtc_engine.VideoCanvas(
-          uid: 0,
-          sourceType: agora_rtc_engine.VideoSourceType.videoSourceCamera,
-        ),
+      await _agoraService.setupLocalVideoAfterJoin();
+      await _agoraService.ensureLocalVideoPublishing(
+        startPreviewOnWeb: !isMobileWeb || force || !_localVideoReady,
       );
-      if (!isMobileWeb || force || !_localVideoReady) {
-        await engine.startPreview();
-      }
-      await engine.muteLocalVideoStream(false);
       _lastLocalPreviewEnsureAt = now;
       _scheduleUiUpdate(() {
         _localVideoReady = true;
@@ -1162,7 +1262,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg, style: GoogleFonts.poppins(fontSize: 12)),
-        backgroundColor: error != null ? Colors.red.shade700 : Colors.blueGrey.shade800,
+        backgroundColor: error != null ? AppTheme.error : AppTheme.primaryDark,
         duration: const Duration(seconds: 4),
         behavior: SnackBarBehavior.floating,
       ),
@@ -1257,7 +1357,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           'Screen sharing is not supported on iOS Safari. Please use the PrepSkul app or a desktop browser to share your screen.',
           style: GoogleFonts.poppins(fontSize: 13),
         ),
-        backgroundColor: Colors.orange.shade700,
+        backgroundColor: AppTheme.warning,
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
       ),
@@ -1366,7 +1466,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           ),
         );
         // Brief display then auto-close dialog and proceed to cleanup
-        await Future.delayed(const Duration(milliseconds: 2200));
+        await Future.delayed(const Duration(milliseconds: 900));
         if (mounted) Navigator.pop(context); // close the dialog
       }
     } else {
@@ -1459,15 +1559,15 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       }
 
       // CRITICAL: Step 2 - Verify state is disconnected before proceeding
-      // Wait a moment for state to update
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Keep wait minimal to avoid sluggish leave UX.
+      await Future.delayed(const Duration(milliseconds: 120));
       
       // Check if we're actually disconnected
       final currentState = _agoraService.state;
       if (currentState != AgoraSessionState.disconnected && channelLeft) {
         LogService.warning('State not yet disconnected, waiting...');
-        // Wait a bit more for state to update
-        await Future.delayed(const Duration(milliseconds: 500));
+        // One short re-check only.
+        await Future.delayed(const Duration(milliseconds: 120));
       }
 
       // CRITICAL: Step 3 - If tutor, end the session in lifecycle service
@@ -1488,9 +1588,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
         }
       }
 
-      // CRITICAL: Step 4 - Final cleanup delay to ensure all resources are released
-      // This gives time for any background cleanup to complete
-      await Future.delayed(const Duration(milliseconds: 300));
+      // CRITICAL: Step 4 - Keep cleanup delay short for responsive UX.
+      await Future.delayed(const Duration(milliseconds: 80));
 
       // CRITICAL: Step 5 - Verify media tracks are stopped
       // Check that video and audio are disabled
@@ -1504,7 +1603,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           if (_agoraService.isAudioEnabled()) {
             await _agoraService.toggleAudio();
           }
-          await Future.delayed(const Duration(milliseconds: 200));
+          await Future.delayed(const Duration(milliseconds: 80));
         } catch (e) {
           LogService.warning('Error forcing media disable: $e');
         }
@@ -1592,21 +1691,52 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: Colors.red,
+        backgroundColor: AppTheme.error,
       ),
     );
   }
 
   void _showTopStateMessage(String message) {
+    final now = DateTime.now();
+    final current = _transientStateMessage;
+    final shownAt = _transientStateMessageShownAt;
+    final normalizedIncoming = message.trim().toLowerCase();
+
+    // Keep each message visible for a minimum window to avoid rapid flicker.
+    if (current != null &&
+        shownAt != null &&
+        now.difference(shownAt) < _minTransientMessageDisplay) {
+      // If same message is already visible, don't queue duplicate noise.
+      if (current.trim().toLowerCase() == normalizedIncoming) {
+        return;
+      }
+      final remaining = _minTransientMessageDisplay - now.difference(shownAt);
+      _queuedTransientMessageTimer?.cancel();
+      _queuedTransientMessageTimer = Timer(remaining, () {
+        if (!mounted) return;
+        _showTopStateMessage(message);
+      });
+      return;
+    }
+
+    // If the same message is already shown and we're outside minimum window,
+    // avoid re-triggering animation jitter.
+    if (current != null && current.trim().toLowerCase() == normalizedIncoming) {
+      return;
+    }
+
+    _queuedTransientMessageTimer?.cancel();
     _transientStateMessageTimer?.cancel();
     _scheduleUiUpdate(() {
       _transientStateMessage = message;
+      _transientStateMessageShownAt = DateTime.now();
     });
     _transientStateMessageTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       _scheduleUiUpdate(() {
         if (_transientStateMessage == message) {
           _transientStateMessage = null;
+          _transientStateMessageShownAt = null;
         }
       });
     });
@@ -1674,18 +1804,31 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                                       left: 16,
                                       right: 16,
                                       child: Center(
-                                        child: Material(
-                                          color: AppTheme.primaryColor,
-                                          borderRadius: BorderRadius.circular(8),
-                                          elevation: 8,
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                            child: Text(
-                                              "PrepSkul VA has joined the session.",
-                                              style: GoogleFonts.poppins(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w500,
-                                                color: Colors.white,
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(14),
+                                          child: BackdropFilter(
+                                            filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                              decoration: BoxDecoration(
+                                                color: _kGlassFill,
+                                                borderRadius: BorderRadius.circular(14),
+                                                border: Border.all(color: _kGlassBorder, width: 1),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withOpacity(0.25),
+                                                    blurRadius: 16,
+                                                    offset: const Offset(0, 6),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: Text(
+                                                "PrepSkul VA has joined the session.",
+                                                style: GoogleFonts.poppins(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: Colors.white,
+                                                ),
                                               ),
                                             ),
                                           ),
@@ -1886,14 +2029,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       LogService.info(
         '📺 [UI] Main area showing LOCAL (waiting for remote): remoteUID=null, remoteUserLeft=$_remoteUserLeft, isVideoEnabled=$_isVideoEnabled',
       );
-      final waitingFor = widget.userRole == 'tutor' ? 'learner' : 'tutor';
-      
       if (_agoraService.currentUID != null) {
         return _buildStableLocalSurface(
           engine: engine,
           localUid: _agoraService.currentUID!,
           showWaiting: true,
-          waitingFor: waitingFor,
         );
       }
       return Container(color: _kSoftDark, child: _buildWaitingPlaceholder());
@@ -1983,7 +2123,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     required agora_rtc_engine.RtcEngine engine,
     required int localUid,
     bool showWaiting = false,
-    String? waitingFor,
   }) {
     final hasReadyVideo = _isVideoEnabled && _localVideoReady;
     final showLoading = _isVideoEnabled && !_localVideoReady;
@@ -2016,19 +2155,8 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             color: _kSoftDark,
             child: Center(child: _buildLocalProfileCard()),
           ),
-        if (showWaiting && waitingFor != null)
-          Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 220),
-                opacity: 1,
-                child: _AnimatedWaitingText(waitingFor: waitingFor),
-              ),
-            ),
-          ),
+        // Waiting state is communicated by the top status banner only
+        // to avoid duplicate/distracting messaging.
       ],
     );
   }
@@ -2265,11 +2393,7 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Waiting for $waitingFor...',
-            style: GoogleFonts.poppins(color: Colors.white70, fontSize: 16),
-          ),
+          // Keep placeholder clean; top banner already shows waiting status.
         ],
       ),
     );
@@ -2292,20 +2416,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
     Widget? message;
     String messageKey = 'none';
-    if (_remoteUserLeft) {
-      messageKey = 'left';
-      message = widget.userRole == 'tutor'
-          ? SessionStateMessages.learnerLeft()
-          : SessionStateMessages.tutorLeft();
-    } else if (_remoteConnectionUnstable &&
-        _remoteUID != null &&
-        (_remoteUnstableStickyUntil == null ||
-            DateTime.now().isBefore(_remoteUnstableStickyUntil!))) {
-      messageKey = 'reconnecting';
-      message = widget.userRole == 'tutor'
-          ? SessionStateMessages.learnerReconnecting()
-          : SessionStateMessages.tutorReconnecting();
-    } else if (_transientStateMessage != null) {
+    // Persistent states (left/reconnecting/waiting/connected) are handled by CallStatusBanner.
+    // Keep this layer only for short, event-like notifications.
+    if (_transientStateMessage != null) {
       messageKey = 'transient';
       message = SessionStateMessage(
         message: _transientStateMessage!,
@@ -2371,6 +2484,11 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
                     padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _kGlassFill,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: _kGlassBorder.withOpacity(0.7)),
+                    ),
                     child: Icon(
                       _layout == VideoLayout.spotlight
                           ? Icons.grid_view
@@ -2387,157 +2505,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     );
   }
 
-  /// Status bar pill: "Reconnecting…", "Connection restored", or "Connected"
-  Widget _buildConnectionStatusPill() {
-    final showRestored = _connectionRestoredAt != null &&
-        DateTime.now().difference(_connectionRestoredAt!) < _connectionRestoredDisplayDuration;
-    final String label;
-    final Color bgColor;
-    if (_localConnectionReconnecting) {
-      label = 'Reconnecting…';
-      bgColor = Colors.orange.shade700;
-    } else if (showRestored) {
-      label = 'Connection restored';
-      bgColor = Colors.green.shade700;
-    } else {
-      label = 'Connected';
-      bgColor = AppTheme.primaryColor;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [bgColor, bgColor.withOpacity(0.8)],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: bgColor.withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!_localConnectionReconnecting)
-            Container(
-              width: 8,
-              height: 8,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-            ),
-          if (!_localConnectionReconnecting) const SizedBox(width: 6),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Connection quality chip (Good / Fair / Poor) in status bar
-  Widget _buildConnectionQualityChip() {
-    final quality = _remoteConnectionUnstable
-        ? 'Poor'
-        : _capitalize(ConnectionQualityService.getBestQuality());
-    final color = quality == 'Good'
-        ? Colors.green
-        : quality == 'Fair'
-            ? Colors.orange
-            : Colors.red;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.6)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.signal_cellular_alt, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            quality,
-            style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _capitalize(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1).toLowerCase();
-  }
-  
-  /// Build timer display widget
-  Widget _buildTimerDisplay() {
-    if (_timeRemaining == null) {
-      return const SizedBox.shrink();
-    }
-    
-    final remaining = _timeRemaining!;
-    final isLowTime = remaining.inMinutes < 5; // Show warning when less than 5 minutes
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isLowTime 
-              ? [
-                  AppTheme.accentOrange,
-                  AppTheme.accentOrange.withOpacity(0.8),
-                ]
-              : [
-                  AppTheme.primaryColor,
-                  AppTheme.primaryColor.withOpacity(0.8),
-                ],
-        ),
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: (isLowTime ? AppTheme.accentOrange : AppTheme.primaryColor).withOpacity(0.3),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.timer,
-            color: Colors.white,
-            size: 14,
-          ),
-          const SizedBox(width: 6),
-          Text(
-            SessionTimerService.formatDuration(remaining),
-            style: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// Build control bar (bottom, Google Meet style)
   Widget _buildControlBar() {
     if (kIsWeb) {
@@ -2547,76 +2514,82 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
       bottom: 0,
       left: 0,
       right: 0,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        decoration: BoxDecoration(
-          // Opaque bottom ensures controls stay visible on mobile web (no transparency)
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [
-              Colors.black.withOpacity(0.95),
-              Colors.black.withOpacity(0.85),
-              Colors.black.withOpacity(0.5),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildControlButton(
-                icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
-                label: _isAudioEnabled ? 'Mute' : 'Unmute',
-                onPressed: _controlsEnabled ? _toggleAudio : () {},
-                isActive: _isAudioEnabled,
-                showMutedIndicator: !_isAudioEnabled,
-                showSpeakingWave: _isAudioEnabled &&
-                    _agoraService.currentUID != null &&
-                    _speakingUids.contains(_agoraService.currentUID),
-                enabled: _controlsEnabled,
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            decoration: BoxDecoration(
+              // Keep high contrast while using restrained glass treatment.
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  Colors.black.withOpacity(0.88),
+                  const Color(0xE6141F36),
+                  const Color(0x99141F36),
+                ],
               ),
-              const SizedBox(width: 12),
-              _buildControlButton(
-                icon: _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
-                label: _isVideoEnabled ? 'Camera Off' : 'Camera On',
-                onPressed: _controlsEnabled ? _toggleVideo : () {},
-                isActive: _isVideoEnabled,
-                showMutedIndicator: !_isVideoEnabled,
-                enabled: _controlsEnabled,
+              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.14), width: 1)),
+            ),
+            child: SafeArea(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildControlButton(
+                    icon: _isAudioEnabled ? Icons.mic : Icons.mic_off,
+                    label: _isAudioEnabled ? 'Mute' : 'Unmute',
+                    onPressed: _controlsEnabled ? _toggleAudio : () {},
+                    isActive: _isAudioEnabled,
+                    showMutedIndicator: !_isAudioEnabled,
+                    showSpeakingWave: _isAudioEnabled &&
+                        _agoraService.currentUID != null &&
+                        _speakingUids.contains(_agoraService.currentUID),
+                    enabled: _controlsEnabled,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildControlButton(
+                    icon: _isVideoEnabled ? Icons.videocam : Icons.videocam_off,
+                    label: _isVideoEnabled ? 'Camera Off' : 'Camera On',
+                    onPressed: _controlsEnabled ? _toggleVideo : () {},
+                    isActive: _isVideoEnabled,
+                    showMutedIndicator: !_isVideoEnabled,
+                    enabled: _controlsEnabled,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildControlButton(
+                    icon: Icons.emoji_emotions,
+                    label: 'Reactions',
+                    onPressed: _controlsEnabled
+                        ? () {
+                            if (mounted) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) safeSetState(() {
+                                  _showReactionsPanel = !_showReactionsPanel;
+                                });
+                              });
+                            }
+                          }
+                        : () {},
+                    isActive: _showReactionsPanel,
+                    enabled: _controlsEnabled,
+                  ),
+                  const SizedBox(width: 12),
+                  (kIsWeb && platform_utils.PlatformUtils.isMobileWeb)
+                      ? const SizedBox.shrink()
+                      : _buildScreenShareButton(),
+                  const SizedBox(width: 12),
+                  _buildControlButton(
+                    icon: Icons.call_end,
+                    label: 'Leave',
+                    onPressed: _endCall,
+                    isActive: false,
+                    isDanger: true,
+                    enabled: true,
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              _buildControlButton(
-                icon: Icons.emoji_emotions,
-                label: 'Reactions',
-                onPressed: _controlsEnabled
-                    ? () {
-                        if (mounted) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (mounted) safeSetState(() {
-                              _showReactionsPanel = !_showReactionsPanel;
-                            });
-                          });
-                        }
-                      }
-                    : () {},
-                isActive: _showReactionsPanel,
-                enabled: _controlsEnabled,
-              ),
-              const SizedBox(width: 12),
-              (kIsWeb && platform_utils.PlatformUtils.isMobileWeb)
-                  ? const SizedBox.shrink()
-                  : _buildScreenShareButton(),
-              const SizedBox(width: 12),
-              _buildControlButton(
-                icon: Icons.call_end,
-                label: 'Leave',
-                onPressed: _endCall,
-                isActive: false,
-                isDanger: true,
-                enabled: true,
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2661,62 +2634,75 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     required String label,
     required VoidCallback onPressed,
     required bool isActive,
+    String? semanticLabel,
     bool isDanger = false,
     bool showMutedIndicator = false,
     bool showSpeakingWave = false,
     bool enabled = true,
   }) {
-    final content = Tooltip(
-      message: label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(28),
-          child: Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: isDanger
-                  ? Colors.red
-                  : showMutedIndicator
-                      ? Colors.white.withOpacity(0.06)
-                  : (isActive 
-                          ? Colors.white.withOpacity(0.18)
-                          : Colors.white.withOpacity(0.08)),
-              shape: BoxShape.circle,
-              border: showMutedIndicator
-                  ? Border.all(color: Colors.white24, width: 1)
-                  : (isActive && !isDanger ? Border.all(color: Colors.white38, width: 1) : null),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  icon,
-                  color: isDanger
-                      ? Colors.white
-                      : (showMutedIndicator
-                          ? Colors.white54
-                          : (isActive ? Colors.white : Colors.white70)),
-                  size: 26,
-                ),
-                if (showMutedIndicator)
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      width: 12,
-                      height: 1.5,
-                      decoration: BoxDecoration(
-                        color: Colors.white38,
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                      transform: Matrix4.rotationZ(-0.785398),
-                    ),
+    final content = Semantics(
+      button: true,
+      enabled: enabled,
+      label: semanticLabel ?? label,
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onPressed,
+            borderRadius: BorderRadius.circular(28),
+            child: Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: isDanger
+                    ? Colors.red
+                    : showMutedIndicator
+                        ? Colors.white.withOpacity(0.06)
+                    : (isActive 
+                            ? Colors.white.withOpacity(0.18)
+                            : Colors.white.withOpacity(0.08)),
+                shape: BoxShape.circle,
+                border: showMutedIndicator
+                    ? Border.all(color: Colors.white24, width: 1)
+                    : (isActive && !isDanger ? Border.all(color: Colors.white38, width: 1) : null),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDanger ? 0.35 : 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
-                if (showSpeakingWave) _buildSpeakingWave(),
-              ],
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    color: isDanger
+                        ? Colors.white
+                        : (showMutedIndicator
+                            ? Colors.white54
+                            : (isActive ? Colors.white : Colors.white70)),
+                    size: 26,
+                  ),
+                  if (showMutedIndicator)
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: Container(
+                        width: 12,
+                        height: 1.5,
+                        decoration: BoxDecoration(
+                          color: Colors.white38,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                        transform: Matrix4.rotationZ(-0.785398),
+                      ),
+                    ),
+                  if (showSpeakingWave) _buildSpeakingWave(),
+                ],
+              ),
             ),
           ),
         ),
@@ -2758,6 +2744,12 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     String msg = error;
     if (msg.startsWith('Failed to join: ')) msg = msg.substring(15);
     if (msg.startsWith('Exception: ')) msg = msg.substring(11);
+    if (msg.contains('permission') ||
+        msg.contains('Permission') ||
+        msg.contains('NotAllowedError') ||
+        msg.contains('NotAllowed')) {
+      return 'Camera and microphone are blocked. Allow access in browser/app settings, refresh, then rejoin.';
+    }
     if (msg.contains('CORS') || msg.contains('cors') || msg.contains('API URL') || msg.contains('origin') || msg.contains('Check:')) {
       return 'Poor network connection. Please check your internet and try again.';
     }
@@ -2769,9 +2761,6 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
     if (msg.contains('Something went wrong on our end')) return msg;
     if (msg.contains('Connection failed') || msg.contains('Unable to connect') || msg.contains('Connection timed out') || msg.contains('Connection error') || msg.contains('Poor network')) {
       return msg;
-    }
-    if (msg.contains('permission') || msg.contains('Permission') || msg.contains('NotAllowedError') || msg.contains('NotAllowed')) {
-      return 'Camera and microphone access is required. Please allow access in your browser settings and refresh the page.';
     }
     return 'Connection failed. Please check your internet and try again.';
   }
@@ -2807,6 +2796,29 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
   /// Build error overlay
   Widget _buildErrorOverlay() {
+    final message = _errorMessage ?? 'Something went wrong. Please try again.';
+    final lowerMessage = message.toLowerCase();
+    final isSessionExpired = message.contains('Session expired');
+    final isNetworkIssue = lowerMessage.contains('network') ||
+        lowerMessage.contains('connection') ||
+        lowerMessage.contains('internet') ||
+        lowerMessage.contains('timeout') ||
+        lowerMessage.contains('poor');
+    final isPermissionBlocked = lowerMessage.contains('camera and microphone are blocked') ||
+        (lowerMessage.contains('camera') && lowerMessage.contains('allow access'));
+    final iconColor = isSessionExpired
+        ? AppTheme.warning
+        : isNetworkIssue
+            ? AppTheme.softYellow
+            : AppTheme.error;
+    final title = isSessionExpired
+        ? 'Session Expired'
+        : isNetworkIssue
+            ? 'Connection Issue'
+            : isPermissionBlocked
+                ? 'Permissions Required'
+                : 'Error';
+
     return Positioned.fill(
       child: Material(
       color: Colors.black54,
@@ -2817,41 +2829,49 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.primaryColor.withOpacity(0.14)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                _errorMessage != null && (_errorMessage!.contains('network') || _errorMessage!.contains('connection') || _errorMessage!.contains('internet'))
+                isNetworkIssue
                     ? Icons.wifi_off_rounded
+                    : isPermissionBlocked
+                        ? Icons.videocam_off_rounded
                     : Icons.error_outline,
-                color: _errorMessage != null && _errorMessage!.contains('Session expired')
-                    ? Colors.orange
-                    : Colors.red,
+                color: iconColor,
                 size: 48,
               ),
               const SizedBox(height: 16),
               Text(
-                _errorMessage != null && _errorMessage!.contains('Session expired')
-                    ? 'Session Expired'
-                    : _errorMessage != null && (_errorMessage!.contains('network') || _errorMessage!.contains('connection') || _errorMessage!.contains('internet') || _errorMessage!.contains('Poor'))
-                        ? 'Connection Issue'
-                        : 'Error',
+                title,
                 style: GoogleFonts.poppins(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryDark,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                _errorMessage ?? 'Something went wrong. Please try again.',
+                message,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.poppins(fontSize: 14),
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: AppTheme.neutral700,
+                ),
               ),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: _retryFromError,
-                child: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(
+                  isPermissionBlocked ? 'Retry after allowing' : 'Retry',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
@@ -2888,9 +2908,9 @@ class _AgoraVideoSessionScreenState extends State<AgoraVideoSessionScreen>
 
 /// Animated "Waiting for tutor/learner to join..." text with pulsing dots
 class _AnimatedWaitingText extends StatefulWidget {
-  final String waitingFor;
-  
-  const _AnimatedWaitingText({required this.waitingFor});
+  // Keep optional parameter for hot-reload compatibility across constructor changes.
+  final String? waitingFor;
+  const _AnimatedWaitingText({this.waitingFor});
   
   @override
   State<_AnimatedWaitingText> createState() => _AnimatedWaitingTextState();
@@ -2941,91 +2961,12 @@ class _AnimatedWaitingTextState extends State<_AnimatedWaitingText>
             borderRadius: BorderRadius.circular(24),
           ),
           child: Text(
-            'Waiting for ${widget.waitingFor} to join$dots',
+            'Waiting for participant$dots',
             style: GoogleFonts.poppins(
               color: Colors.white.withOpacity(0.8 + (_controller.value * 0.2)),
               fontSize: 16,
               fontWeight: FontWeight.w500,
             ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Animated "Reconnecting..." overlay – same style as _AnimatedWaitingText (pulsing pill)
-class _AnimatedReconnectingOverlay extends StatefulWidget {
-  const _AnimatedReconnectingOverlay();
-
-  @override
-  State<_AnimatedReconnectingOverlay> createState() => _AnimatedReconnectingOverlayState();
-}
-
-class _AnimatedReconnectingOverlayState extends State<_AnimatedReconnectingOverlay>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  int _dotCount = 0;
-  Timer? _dotTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _dotTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (mounted) {
-        setState(() {
-          _dotCount = (_dotCount + 1) % 4;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _dotTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dots = '.' * (_dotCount == 0 ? 3 : _dotCount);
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.5 + (_controller.value * 0.2)),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.orange.shade300,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Connection unstable – reconnecting$dots',
-                style: GoogleFonts.poppins(
-                  color: Colors.white.withOpacity(0.8 + (_controller.value * 0.2)),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
           ),
         );
       },

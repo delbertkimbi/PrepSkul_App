@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert'; // For UTF-8 encoding/decoding of emojis
 import 'dart:typed_data';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:prepskul/core/config/app_config.dart';
 import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:prepskul/core/services/log_service.dart';
 import 'package:prepskul/core/services/supabase_service.dart';
@@ -9,6 +10,10 @@ import 'package:prepskul/core/utils/platform_utils_stub.dart'
     if (dart.library.html) 'package:prepskul/core/utils/platform_utils_web.dart' as platform_utils;
 import 'package:prepskul/features/sessions/services/agora_token_service.dart';
 import 'package:prepskul/features/sessions/models/agora_session_state.dart';
+import 'package:prepskul/features/sessions/domain/quality_controller.dart';
+import 'package:prepskul/features/sessions/domain/reconnect_grace_policy.dart';
+import 'package:prepskul/features/sessions/domain/stream_priority_policy.dart';
+import 'package:prepskul/features/sessions/services/qoe_telemetry_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Agora RTC Service
@@ -36,13 +41,16 @@ class AgoraService {
   
   // Network quality adaptation state
   QualityType? _lastNetworkQuality;
-  DateTime? _lastQualityChange;
-  static const _qualityChangeCooldown = Duration(seconds: 10);
+  final QualityController _qualityController = QualityController();
+  final ReconnectGracePolicy _reconnectGracePolicy = const ReconnectGracePolicy();
+  final StreamPriorityPolicy _streamPriorityPolicy = const StreamPriorityPolicy();
+  final Set<int> _remoteParticipantUids = <int>{};
+  int? _spotlightRemoteUid;
   String? _currentQualityTier; // Track current quality tier: '1080p', '720p', '480p'
-  int _consecutivePoorQualityCount = 0;
-  int _consecutiveGoodQualityCount = 0;
-  static const int _poorQualityThreshold = 3; // require 3 consecutive poor samples before downgrading
-  static const int _goodQualityThreshold = 4; // require 4 consecutive good samples before upgrading
+  String? _qoeCorrelationId;
+  bool _reconnectTelemetryActive = false;
+  final Map<int, DateTime> _freezeStartedAt = <int, DateTime>{};
+  final Map<int, VideoStreamType> _lastAppliedRemoteStreamType = <int, VideoStreamType>{};
   
   // Video recovery state - reduced aggressiveness to prevent flickering
   final Map<int, int> _videoRecoveryAttempts = {}; // remoteUid -> attempt count
@@ -70,7 +78,9 @@ class AgoraService {
   
   // Screen sharing state (so we don't double-start and can reset UI on cancel)
   bool _isPublishingScreen = false;
+  int? _screenShareOwnerUid;
   bool get isPublishingScreen => _isPublishingScreen;
+  int? get screenShareOwnerUid => _screenShareOwnerUid;
   
   // Health check state - increased interval to reduce resource usage
   Timer? _videoHealthCheckTimer;
@@ -118,7 +128,7 @@ class AgoraService {
   final Map<int, Timer?> _userLeftGracePeriodTimers = {}; // remoteUid -> grace period timer
   final Map<int, bool> _userConfirmedLeft = {}; // remoteUid -> confirmed left (not just poor connection)
   final Map<int, int> _userOfflineCount = {}; // remoteUid -> consecutive offline events
-  static const _userLeftGracePeriod = Duration(seconds: 15); // Wait 15 seconds before confirming user left
+  static const _userLeftGracePeriod = Duration(seconds: 15); // Backward-compat fallback
   static const _maxOfflineEvents = 3; // Number of offline events before confirming left
   DateTime? _lastLocalVideoMuteTime; // On web, Agora can fire spurious userOffline when local mutes - ignore if within window
   static const _webMuteOfflineIgnoreWindow = Duration(seconds: 5);
@@ -324,11 +334,15 @@ class AgoraService {
       }
 
       // Enable dual‑stream so we can dynamically switch remote quality.
-      try {
-        await _engine!.enableDualStreamMode(enabled: true);
-        LogService.success('✅ Dual stream mode enabled');
-      } catch (e) {
-        LogService.warning('Could not enable dual stream mode: $e');
+      if (AppConfig.enableClassroomDualStream) {
+        try {
+          await _engine!.enableDualStreamMode(enabled: true);
+          LogService.success('✅ Dual stream mode enabled');
+        } catch (e) {
+          LogService.warning('Could not enable dual stream mode: $e');
+        }
+      } else {
+        LogService.info('[NET] Dual stream disabled by feature flag');
       }
 
       // Register event handlers
@@ -539,6 +553,7 @@ class AgoraService {
   }) async {
     // Store session info for reconnection
     _lastSessionId = sessionId;
+    _qoeCorrelationId = QoeTelemetryService.buildCorrelationId(sessionId);
     _lastUserId = userId;
     _lastUserRole = userRole;
     _lastInitialCameraEnabled = initialCameraEnabled;
@@ -787,12 +802,14 @@ class AgoraService {
       _dataStreamId = null;
       _reactionChannel?.unsubscribe();
       _reactionChannel = null;
+      _qoeCorrelationId = null;
       _updateState(AgoraSessionState.disconnected);
       return;
     }
 
     if (!_isInChannel) {
       // Already left
+      _qoeCorrelationId = null;
       _updateState(AgoraSessionState.disconnected);
       return;
     }
@@ -809,12 +826,16 @@ class AgoraService {
       // Reset optimization state
       _reconnectionAttempts = 0;
       _isReconnecting = false;
+      _qoeCorrelationId = null;
       _videoRecoveryAttempts.clear();
       _lastRecoveryAttempt.clear();
       _cameraRecoveryAttempts = 0;
       _isRecoveringCamera = false;
       _lastNetworkQuality = null;
       _currentQualityTier = null;
+      _reconnectTelemetryActive = false;
+      _freezeStartedAt.clear();
+      _lastAppliedRemoteStreamType.clear();
       _lastRemoteVideoActivity = null;
       _lastActiveRemoteUid = null;
       _remoteNetworkQualities.clear();
@@ -1187,6 +1208,38 @@ class AgoraService {
     return _isAudioEnabled;
   }
 
+  /// Configure local camera canvas after channel join.
+  /// UI should call this service method instead of touching engine APIs directly.
+  Future<void> setupLocalVideoAfterJoin() async {
+    if (_engine == null) return;
+    try {
+      await _engine!.setupLocalVideo(
+        const VideoCanvas(
+          uid: 0,
+          sourceType: VideoSourceType.videoSourceCamera,
+        ),
+      );
+    } catch (e) {
+      LogService.warning('setupLocalVideoAfterJoin failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Ensure local video track is actively published and preview is started when needed.
+  /// Keeps engine details out of screen widgets.
+  Future<void> ensureLocalVideoPublishing({bool startPreviewOnWeb = true}) async {
+    if (_engine == null || !_isInChannel || !_isVideoEnabled) return;
+    try {
+      if (kIsWeb && startPreviewOnWeb) {
+        await _engine!.startPreview();
+      }
+      await _engine!.muteLocalVideoStream(false);
+    } catch (e) {
+      LogService.warning('ensureLocalVideoPublishing failed: $e');
+      rethrow;
+    }
+  }
+
   /// Start screen sharing
   /// Both tutor and learner can share their screen.
   /// Tracks state so double-sharing is avoided and cancel resets UI.
@@ -1264,9 +1317,14 @@ class AgoraService {
       }
       
       _isPublishingScreen = true;
+      _screenShareOwnerUid = _currentUID;
       LogService.success('✅ Screen sharing started');
       LogService.info('📺 Screen sharing stream is now active - remote users should see your screen');
-      _screenSharingController.add({'uid': _currentUID, 'sharing': true});
+      _screenSharingController.add({
+        'uid': _currentUID,
+        'sharing': true,
+        'ownerUid': _screenShareOwnerUid,
+      });
 
       // Mute camera AFTER screen capture is ready - avoids blackout on remote
       if (_isVideoEnabled && _engine != null) {
@@ -1338,13 +1396,23 @@ class AgoraService {
       }
       
       _isPublishingScreen = false;
+      _screenShareOwnerUid = null;
       LogService.success('[SCREEN_SHARE] ✅ Screen sharing stopped');
-      _screenSharingController.add({'uid': _currentUID, 'sharing': false});
+      _screenSharingController.add({
+        'uid': _currentUID,
+        'sharing': false,
+        'ownerUid': _screenShareOwnerUid,
+      });
       // CRITICAL: Notify remote so learner receives screen_share_stop and shows tutor camera again
       await _notifyRemoteUsersScreenSharing(false);
     } catch (e) {
       _isPublishingScreen = false;
-      _screenSharingController.add({'uid': _currentUID, 'sharing': false});
+      _screenShareOwnerUid = null;
+      _screenSharingController.add({
+        'uid': _currentUID,
+        'sharing': false,
+        'ownerUid': _screenShareOwnerUid,
+      });
       LogService.error('Failed to stop screen sharing: $e');
       _errorController.add('Failed to stop screen sharing: $e');
     }
@@ -1503,78 +1571,33 @@ class AgoraService {
   /// Adapt video (encoder + remote stream type) based on network conditions.
   Future<void> _adaptVideoQuality(QualityType quality) async {
     if (_engine == null || !_isInChannel) return;
-    
-    // Track streaks of good/poor quality so we only change tiers when
-    // conditions are sustained, not on every short spike. This reduces
-    // visible resolution flicker and random UX changes.
-    final isGood = quality == QualityType.qualityExcellent || quality == QualityType.qualityGood;
-    final isPoorOrWorse = quality == QualityType.qualityPoor ||
-        quality == QualityType.qualityBad ||
-        quality == QualityType.qualityDown;
 
-    if (isGood) {
-      _consecutiveGoodQualityCount++;
-      _consecutivePoorQualityCount = 0;
-    } else if (isPoorOrWorse) {
-      _consecutivePoorQualityCount++;
-      _consecutiveGoodQualityCount = 0;
-    } else {
-      // Unsupported/unknown – reset streaks but do not adapt on this sample
-      _consecutiveGoodQualityCount = 0;
-      _consecutivePoorQualityCount = 0;
-    }
-
-    // Check cooldown to prevent rapid quality changes
-    if (_lastQualityChange != null) {
-      final timeSinceLastChange = DateTime.now().difference(_lastQualityChange!);
-      if (timeSinceLastChange < _qualityChangeCooldown) {
-        return; // Too soon to change quality again
-      }
-    }
-    
     _lastNetworkQuality = quality;
-    
+
+    final decision = _qualityController.onSample(
+      network: quality,
+      at: DateTime.now(),
+    );
+    if (decision == null) return;
+
     VideoEncoderConfiguration targetConfig;
     String targetTier;
-    
-    // Determine target quality based on network conditions
-    // QualityType: excellent(0), good(1), poor(2), bad(3), veryBad(4), down(5), unsupported(6)
-    if (quality == QualityType.qualityExcellent || quality == QualityType.qualityGood) {
-      // High tier: crisp video when network is solid.
-      targetConfig = _quality720p;
-      targetTier = 'high-720p';
-    } else if (quality == QualityType.qualityPoor || quality == QualityType.qualityBad) {
-      // Medium tier: balanced for moderate networks.
-      targetConfig = _quality480p;
-      targetTier = 'medium-480p';
-    } else {
-      // Very poor networks – prioritize continuity over sharpness.
-      targetConfig = _quality360pVeryLow;
-      targetTier = 'low-360p';
+    switch (decision.tier) {
+      case VideoQualityTier.high720p:
+        targetConfig = _quality720p;
+        targetTier = 'high-720p';
+        break;
+      case VideoQualityTier.medium480p:
+        targetConfig = _quality480p;
+        targetTier = 'medium-480p';
+        break;
+      case VideoQualityTier.low360p:
+        targetConfig = _quality360pVeryLow;
+        targetTier = 'low-360p';
+        break;
     }
 
-    // Apply hysteresis: only downgrade after several poor samples in a row;
-    // only upgrade after a longer run of good samples. Initial tier change
-    // (when _currentQualityTier is null) happens immediately.
-    if (_currentQualityTier != null) {
-      final isDowngrade = targetTier == 'medium-480p' || targetTier == 'low-360p';
-      if (isDowngrade) {
-        if (_consecutivePoorQualityCount < _poorQualityThreshold) {
-          return;
-        }
-      } else {
-        // Upgrading back to high quality
-        if (_consecutiveGoodQualityCount < _goodQualityThreshold) {
-          return;
-        }
-      }
-    }
-    
-    // Only change if different from current tier
-    if (_currentQualityTier == targetTier) {
-      return;
-    }
-    
+    final previousTier = _currentQualityTier;
     try {
       await _engine!.setVideoEncoderConfiguration(targetConfig);
 
@@ -1591,12 +1614,17 @@ class AgoraService {
       }
 
       _currentQualityTier = targetTier;
-      _lastQualityChange = DateTime.now();
-      // Reset streaks after an adaptation so the next change also requires
-      // sustained evidence.
-      _consecutiveGoodQualityCount = 0;
-      _consecutivePoorQualityCount = 0;
       LogService.info('[NET] Video quality adapted to $targetTier (network: $quality)');
+      if (previousTier != targetTier) {
+        _emitQoe(
+          'quality_tier_changed',
+          <String, dynamic>{
+            'from_tier': previousTier,
+            'to_tier': targetTier,
+            'network_quality': quality.name,
+          },
+        );
+      }
       final dims = targetConfig.dimensions;
       if (dims != null) {
         LogService.info('📊 Quality config: ${dims.width}x${dims.height} @ ${targetConfig.frameRate}fps, ${targetConfig.bitrate}kbps');
@@ -1605,6 +1633,62 @@ class AgoraService {
       }
     } catch (e) {
       LogService.warning('Failed to adapt video quality: $e');
+    }
+  }
+
+  Future<void> _applyRemoteStreamPriority({Set<int> speakingUids = const <int>{}}) async {
+    if (_engine == null || !_isInChannel) return;
+    if (!AppConfig.enableClassroomDualStream) return;
+    final decision = _streamPriorityPolicy.decide(
+      remoteUids: _remoteParticipantUids,
+      speakingUids: speakingUids,
+      currentSpotlightUid: _spotlightRemoteUid,
+    );
+    _spotlightRemoteUid = decision.spotlightUid;
+
+    for (final uid in decision.highPriorityUids) {
+      try {
+        final previous = _lastAppliedRemoteStreamType[uid];
+        await _engine!.setRemoteVideoStreamType(
+          uid: uid,
+          streamType: VideoStreamType.videoStreamHigh,
+        );
+        if (previous != VideoStreamType.videoStreamHigh) {
+          _lastAppliedRemoteStreamType[uid] = VideoStreamType.videoStreamHigh;
+          _emitQoe(
+            'remote_stream_type_changed',
+            <String, dynamic>{
+              'uid': uid,
+              'stream_type': 'high',
+              'spotlight_uid': _spotlightRemoteUid,
+            },
+          );
+        }
+      } catch (e) {
+        LogService.warning('[NET] Failed to set HIGH stream for uid=$uid: $e');
+      }
+    }
+    for (final uid in decision.lowPriorityUids) {
+      try {
+        final previous = _lastAppliedRemoteStreamType[uid];
+        await _engine!.setRemoteVideoStreamType(
+          uid: uid,
+          streamType: VideoStreamType.videoStreamLow,
+        );
+        if (previous != VideoStreamType.videoStreamLow) {
+          _lastAppliedRemoteStreamType[uid] = VideoStreamType.videoStreamLow;
+          _emitQoe(
+            'remote_stream_type_changed',
+            <String, dynamic>{
+              'uid': uid,
+              'stream_type': 'low',
+              'spotlight_uid': _spotlightRemoteUid,
+            },
+          );
+        }
+      } catch (e) {
+        LogService.warning('[NET] Failed to set LOW stream for uid=$uid: $e');
+      }
     }
   }
   
@@ -1738,6 +1822,12 @@ class AgoraService {
     if (_reconnectionAttempts >= _maxReconnectionAttempts) {
       LogService.error('❌ Max reconnection attempts reached');
       _errorController.add('Connection lost. Please refresh the page to reconnect.');
+      _emitQoe(
+        'reconnect_exhausted',
+        <String, dynamic>{
+          'max_attempts': _maxReconnectionAttempts,
+        },
+      );
       return;
     }
     
@@ -1762,6 +1852,13 @@ class AgoraService {
       }
     } catch (e) {
       LogService.warning('Reconnection attempt failed: $e');
+      _emitQoe(
+        'reconnect_attempt_error',
+        <String, dynamic>{
+          'attempt_count': _reconnectionAttempts,
+          'error': e.toString(),
+        },
+      );
     } finally {
       _isReconnecting = false;
     }
@@ -2010,6 +2107,8 @@ class AgoraService {
           
           // CRITICAL: Reset offline tracking when user rejoins
           _resetUserOfflineTracking(remoteUid);
+          _remoteParticipantUids.add(remoteUid);
+          unawaited(_applyRemoteStreamPriority());
           
           _userJoinedController.add(remoteUid);
         },
@@ -2030,29 +2129,30 @@ class AgoraService {
             }
           }
 
-          // Handle different offline reasons (desktop and mobile web: Quit after short grace = "user left")
+          // Handle different offline reasons using central grace policy.
           String reasonText = 'Unknown';
-          bool isDefinitiveLeave = false;
           switch (reason) {
             case UserOfflineReasonType.userOfflineQuit:
               reasonText = 'User left normally';
-              // On web, require confirmation window (grace) for Quit to absorb reconnect glitches.
-              isDefinitiveLeave = !kIsWeb;
               break;
             case UserOfflineReasonType.userOfflineDropped:
               reasonText = 'User connection dropped (network issue)';
-              isDefinitiveLeave = false; // Could be temporary - use grace period
               break;
             case UserOfflineReasonType.userOfflineBecomeAudience:
               reasonText = 'User became audience';
-              isDefinitiveLeave = true;
               break;
             default:
               reasonText = 'User went offline';
-              isDefinitiveLeave = false; // Unknown reason - use grace period
           }
+
+          final graceDecision = _reconnectGracePolicy.onUserOffline(
+            reason: reason,
+            isWeb: kIsWeb,
+          );
           
-          LogService.info('📤 Remote user offline: UID=$remoteUid ($reasonText, definitive: $isDefinitiveLeave)');
+          LogService.info(
+            '📤 Remote user offline: UID=$remoteUid ($reasonText, definitive: ${graceDecision.confirmLeaveImmediately}, grace=${graceDecision.graceDuration.inSeconds}s)',
+          );
           
           // Track offline timestamp
           _userOfflineTimestamps[remoteUid] = DateTime.now();
@@ -2062,15 +2162,14 @@ class AgoraService {
           _userLeftGracePeriodTimers[remoteUid]?.cancel();
           
           // If user explicitly quit (and not on web), confirm immediately
-          if (isDefinitiveLeave) {
+          if (graceDecision.confirmLeaveImmediately) {
             LogService.info('[userOffline] CONFIRMED user left (definitive) remoteUid=$remoteUid reason=$reasonText');
             _confirmUserLeft(remoteUid);
           } else {
-            // For network drops (or Quit on web - SDK can fire spurious offline when local mutes)
-            // use grace period. On web for Quit use 10s; for Dropped use 15s.
-            final graceDuration = kIsWeb && reason == UserOfflineReasonType.userOfflineQuit
-                ? _webQuitGracePeriod
-                : _userLeftGracePeriod;
+            // For transient disconnects use grace period before confirming leave.
+            final graceDuration = graceDecision.graceDuration == Duration.zero
+                ? _userLeftGracePeriod
+                : graceDecision.graceDuration;
             debugPrint('[userOffline] GRACE started ${graceDuration.inSeconds}s for remoteUid=$remoteUid');
             LogService.info('[userOffline] GRACE started (${graceDuration.inSeconds}s) for remoteUid=$remoteUid');
             _userLeftGracePeriodTimers[remoteUid] = Timer(graceDuration, () {
@@ -2136,12 +2235,16 @@ class AgoraService {
             final speaking = <int>{};
             for (final s in speakers) {
               if (s.volume != null && s.volume! > _speakingVolumeThreshold) {
-                speaking.add(s.uid ?? 0);
+                final uid = s.uid ?? 0;
+                if (uid != 0 && _isValidRemoteUid(uid)) {
+                  speaking.add(uid);
+                }
               }
             }
             if (_speakingController.hasListener) {
               _speakingController.add(speaking);
             }
+            unawaited(_applyRemoteStreamPriority(speakingUids: speaking));
           } catch (e) {
             LogService.warning('onAudioVolumeIndication error: $e');
           }
@@ -2173,6 +2276,17 @@ class AgoraService {
             
             _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
             _remoteVideoFrameController.add({'uid': remoteUid, 'ready': true});
+            final freezeStartedAt = _freezeStartedAt.remove(remoteUid);
+            if (freezeStartedAt != null) {
+              _emitQoe(
+                'remote_freeze_end',
+                <String, dynamic>{
+                  'uid': remoteUid,
+                  'freeze_duration_ms':
+                      DateTime.now().difference(freezeStartedAt).inMilliseconds,
+                },
+              );
+            }
           } else if (state == RemoteVideoState.remoteVideoStateStopped) {
             LogService.info('Remote video stopped for UID=$remoteUid (reason: $reason)');
             _remoteVideoMutedController.add({'uid': remoteUid, 'muted': true});
@@ -2182,6 +2296,14 @@ class AgoraService {
               _resetScreenOffDetection(remoteUid);
               _remoteVideoFrameController.add({'uid': remoteUid, 'ready': false});
             } else {
+              _freezeStartedAt.putIfAbsent(remoteUid, () => DateTime.now());
+              _emitQoe(
+                'remote_freeze_start',
+                <String, dynamic>{
+                  'uid': remoteUid,
+                  'reason': reason.name,
+                },
+              );
               // Provisional: avoid immediate ready=false on transient renegotiation (e.g. web)
               _cancelRemoteVideoStoppedProvisional(remoteUid);
               _remoteVideoStoppedProvisionalTimers[remoteUid] = Timer(_remoteVideoStoppedProvisionalDelay, () {
@@ -2404,6 +2526,15 @@ class AgoraService {
             if (_state != AgoraSessionState.connected) {
               _updateState(AgoraSessionState.connected);
             }
+            if (_reconnectTelemetryActive) {
+              _emitQoe(
+                'reconnect_success',
+                <String, dynamic>{
+                  'attempt_count': _reconnectionAttempts,
+                },
+              );
+              _reconnectTelemetryActive = false;
+            }
             LogService.info('[VIDEO] ✅ Connection established - waiting for remote user...');
           } else if (state == ConnectionStateType.connectionStateDisconnected) {
             _isInChannel = false;
@@ -2414,6 +2545,16 @@ class AgoraService {
               _updateState(AgoraSessionState.disconnected);
               // Do NOT reconnect when user intentionally left - fixes audio continuing after leave
               if (reason != ConnectionChangedReasonType.connectionChangedLeaveChannel) {
+              if (_reconnectTelemetryActive) {
+                _emitQoe(
+                  'reconnect_failed',
+                  <String, dynamic>{
+                    'reason': reason.name,
+                    'attempt_count': _reconnectionAttempts,
+                  },
+                );
+                _reconnectTelemetryActive = false;
+              }
               _attemptReconnection();
               } else {
                 LogService.info('[VIDEO] User left channel - skipping reconnection');
@@ -2422,6 +2563,14 @@ class AgoraService {
           } else if (state == ConnectionStateType.connectionStateReconnecting) {
             _updateState(AgoraSessionState.reconnecting);
             LogService.info('[VIDEO] 🔄 Reconnecting to channel...');
+            _reconnectTelemetryActive = true;
+            _emitQoe(
+              'reconnect_attempt',
+              <String, dynamic>{
+                'reason': reason.name,
+                'attempt_count': _reconnectionAttempts + 1,
+              },
+            );
             _handleReconnection(connection);
           } else if (state == ConnectionStateType.connectionStateConnecting) {
             _updateState(AgoraSessionState.joining);
@@ -2542,7 +2691,12 @@ class AgoraService {
               // No need to explicitly call muteRemoteVideoStream - SDK handles subscription automatically
               LogService.info('💡 UI will rebuild to show screen sharing stream');
               
-              _screenSharingController.add({'uid': remoteUid, 'sharing': true});
+              _screenShareOwnerUid = remoteUid;
+              _screenSharingController.add({
+                'uid': remoteUid,
+                'sharing': true,
+                'ownerUid': _screenShareOwnerUid,
+              });
             } else if (message == 'screen_share_stop') {
               LogService.info('📺 Remote user stopped screen sharing: UID=$remoteUid');
               
@@ -2551,7 +2705,14 @@ class AgoraService {
               // The UI will rebuild when _screenSharingController emits the event
               LogService.info('💡 UI will rebuild to show camera stream');
               
-              _screenSharingController.add({'uid': remoteUid, 'sharing': false});
+              if (_screenShareOwnerUid == remoteUid) {
+                _screenShareOwnerUid = null;
+              }
+              _screenSharingController.add({
+                'uid': remoteUid,
+                'sharing': false,
+                'ownerUid': _screenShareOwnerUid,
+              });
             } else if (message == 'camera_on') {
               LogService.info('📹 Remote user turned camera ON: UID=$remoteUid');
               _remoteVideoMutedController.add({'uid': remoteUid, 'muted': false});
@@ -2591,6 +2752,21 @@ class AgoraService {
     }
     
     _userConfirmedLeft[remoteUid] = true;
+    if (_screenShareOwnerUid == remoteUid) {
+      _screenShareOwnerUid = null;
+      _screenSharingController.add({
+        'uid': remoteUid,
+        'sharing': false,
+        'ownerUid': _screenShareOwnerUid,
+      });
+    }
+    _remoteParticipantUids.remove(remoteUid);
+    if (_spotlightRemoteUid == remoteUid) {
+      _spotlightRemoteUid = _remoteParticipantUids.isNotEmpty
+          ? _remoteParticipantUids.first
+          : null;
+    }
+    unawaited(_applyRemoteStreamPriority());
     LogService.info('CONFIRMED user left remoteUid=$remoteUid (will emit userLeftStream)');
     debugPrint('CONFIRMED user left remoteUid=$remoteUid');
     
@@ -2672,6 +2848,20 @@ class AgoraService {
       _state = newState;
       _stateController.add(newState);
     }
+  }
+
+  void _emitQoe(String eventName, Map<String, dynamic> payload) {
+    final sessionId = _lastSessionId;
+    final correlationId = _qoeCorrelationId;
+    if (sessionId == null || correlationId == null) return;
+    unawaited(
+      QoeTelemetryService.emit(
+        sessionId: sessionId,
+        correlationId: correlationId,
+        eventName: eventName,
+        payload: payload,
+      ),
+    );
   }
 }
 

@@ -32,14 +32,14 @@ class CreditsBalanceWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [AppTheme.primaryColor, AppTheme.primaryColor.withOpacity(0.8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
             color: AppTheme.primaryColor.withOpacity(0.3),
@@ -54,7 +54,7 @@ class CreditsBalanceWidget extends StatelessWidget {
           Text(
             'Current Balance',
             style: GoogleFonts.poppins(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               color: Colors.white.withOpacity(0.9),
             ),
@@ -80,7 +80,7 @@ class CreditsBalanceWidget extends StatelessWidget {
                     Text(
                       '$currentCredits',
                       style: GoogleFonts.poppins(
-                        fontSize: 36,
+                        fontSize: 30,
                         fontWeight: FontWeight.w700,
                         color: Colors.white,
                       ),
@@ -89,7 +89,7 @@ class CreditsBalanceWidget extends StatelessWidget {
                     Text(
                       'points',
                       style: GoogleFonts.poppins(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w400,
                         color: Colors.white.withOpacity(0.9),
                       ),
@@ -103,7 +103,7 @@ class CreditsBalanceWidget extends StatelessWidget {
                         ? '$sessionsRemaining sessions available'
                         : '${_calculateSessionsFromPoints()} sessions available',
                     style: GoogleFonts.poppins(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: Colors.white.withOpacity(0.9),
                     ),

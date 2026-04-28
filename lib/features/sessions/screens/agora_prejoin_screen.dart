@@ -801,20 +801,20 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             padding: const EdgeInsets.all(10),
             margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
-              color: Colors.orange[50],
+              color: AppTheme.softYellowLight.withOpacity(0.55),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.orange),
+              border: Border.all(color: AppTheme.softYellow),
             ),
             child: Row(
               children: [
-                Icon(Icons.warning, color: Colors.orange[700], size: 18),
+                const Icon(Icons.warning_amber_rounded, color: AppTheme.softYellow, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _errorMessage!,
                     style: GoogleFonts.poppins(
                       fontSize: 11,
-                      color: Colors.orange[900],
+                      color: AppTheme.primaryDark,
                     ),
                   ),
                 ),
@@ -865,10 +865,10 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
             ? 'Fair – you can join'
             : 'Poor – try moving closer to your router';
     final color = q == 'good'
-        ? Colors.green[700]
+        ? AppTheme.success
         : q == 'fair'
-            ? Colors.orange[700]
-            : Colors.red[700];
+            ? AppTheme.softYellow
+            : AppTheme.error;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -892,7 +892,7 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
           label,
           style: GoogleFonts.poppins(
             fontSize: 12,
-            color: Colors.grey[600],
+            color: AppTheme.neutral600,
           ),
         ),
         if (!_isTestingConnection) ...[
@@ -938,12 +938,19 @@ class _AgoraPreJoinScreenState extends State<AgoraPreJoinScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 48),
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppTheme.softYellow,
+                        size: 48,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         _previewError!,
                         textAlign: TextAlign.center,
-                        style: GoogleFonts.poppins(color: Colors.grey[700], fontSize: 14),
+                        style: GoogleFonts.poppins(
+                          color: AppTheme.neutral700,
+                          fontSize: 14,
+                        ),
                       ),
                     ],
                   ),

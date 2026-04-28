@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:prepskul/core/theme/app_theme.dart';
 import 'dart:async';
 
 /// User-friendly state message widget
@@ -112,7 +113,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Tutor's mic is muted",
       icon: Icons.mic_off,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
     );
   }
 
@@ -120,7 +121,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Learner's mic is muted",
       icon: Icons.mic_off,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
     );
   }
 
@@ -128,7 +129,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Tutor's camera is off",
       icon: Icons.videocam_off,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
     );
   }
 
@@ -136,7 +137,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Learner's camera is off",
       icon: Icons.videocam_off,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
     );
   }
 
@@ -144,7 +145,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Tutor left the call",
       icon: Icons.person_off,
-      color: Colors.red,
+      color: AppTheme.error,
       duration: const Duration(seconds: 5),
     );
   }
@@ -153,7 +154,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Learner left the call",
       icon: Icons.person_off,
-      color: Colors.red,
+      color: AppTheme.error,
       duration: const Duration(seconds: 5),
     );
   }
@@ -162,7 +163,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Connecting to session...",
       icon: Icons.wifi,
-      color: Colors.blue,
+      color: AppTheme.primaryColor,
     );
   }
 
@@ -170,7 +171,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Waiting for tutor to join...",
       icon: Icons.hourglass_empty,
-      color: Colors.blue,
+      color: AppTheme.primaryColor,
     );
   }
 
@@ -178,7 +179,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Waiting for learner to join...",
       icon: Icons.hourglass_empty,
-      color: Colors.blue,
+      color: AppTheme.primaryColor,
     );
   }
 
@@ -186,7 +187,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Poor connection",
       icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 5),
     );
   }
@@ -195,7 +196,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Poor connection",
       icon: Icons.signal_wifi_statusbar_connected_no_internet_4,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 5),
     );
   }
@@ -204,7 +205,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Reconnecting…",
       icon: Icons.sync,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 8),
     );
   }
@@ -213,7 +214,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Reconnecting…",
       icon: Icons.sync,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 8),
     );
   }
@@ -222,7 +223,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Reconnecting…",
       icon: Icons.sync,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 8),
     );
   }
@@ -231,7 +232,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "Reconnecting…",
       icon: Icons.sync,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 8),
     );
   }
@@ -241,7 +242,7 @@ class SessionStateMessages {
     return SessionStateMessage(
       message: "The other participant's video is temporarily unavailable.",
       icon: Icons.videocam_off,
-      color: Colors.orange,
+      color: AppTheme.softYellow,
       duration: const Duration(seconds: 5),
     );
   }

@@ -55,16 +55,16 @@ class ProfileCardOverlay extends StatelessWidget {
   List<Widget> _buildStatusLines() {
     final lines = <Widget>[];
     if (cameraOff) {
-      lines.add(_statusRow(Icons.videocam_off, 'Camera is off', Colors.orange.withOpacity(0.8)));
+      lines.add(_statusRow(Icons.videocam_off, 'Camera is off', AppTheme.softYellow));
     }
     if (screenOff) {
-      lines.add(_statusRow(Icons.phone_android, 'Screen is off', Colors.blue.withOpacity(0.8)));
+      lines.add(_statusRow(Icons.phone_android, 'Screen is off', AppTheme.primaryColor));
     }
     if (reconnecting) {
-      lines.add(_statusRow(Icons.sync, 'Video is reconnecting…', Colors.orange));
+      lines.add(_statusRow(Icons.sync, 'Video is reconnecting…', AppTheme.softYellow));
     }
     if (lines.isEmpty) {
-      lines.add(_statusRow(Icons.videocam_off, 'Video is temporarily unavailable', Colors.orange.withOpacity(0.8)));
+      lines.add(_statusRow(Icons.videocam_off, 'Video is temporarily unavailable', AppTheme.softYellow));
     }
     return lines;
   }

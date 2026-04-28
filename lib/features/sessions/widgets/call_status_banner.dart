@@ -35,25 +35,32 @@ class CallStatusBanner extends StatelessWidget {
     Color? pillColor;
 
     if (remoteUserLeft) {
-      label = 'Participant left the call';
-      pillColor = Colors.red.shade700;
+      label = 'Participant left';
+      pillColor = AppTheme.error;
     } else if (localReconnecting) {
       label = 'Reconnecting…';
-      pillColor = Colors.orange.shade700;
+      pillColor = AppTheme.softYellow;
     } else if (remoteConnectionUnstable) {
-      label = 'Connection is unstable';
-      pillColor = Colors.orange.shade700;
+      label = 'Connection unstable';
+      pillColor = AppTheme.softYellow;
     } else if (isAloneWaiting) {
-      label = 'Waiting for other participant…';
-      pillColor = Colors.blueGrey.shade700;
+      label = 'Waiting for participant…';
+      pillColor = AppTheme.primaryColor;
     } else {
       label = 'Connected';
-      pillColor = AppTheme.accentGreen;
+      pillColor = AppTheme.success;
     }
 
     if (label == null) return const SizedBox.shrink();
 
-    return Container(
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: Container(
+        key: ValueKey<String>(
+          '${label}_${timeRemaining?.inSeconds ?? -1}_${remoteConnectionUnstable}_${localReconnecting}_${remoteUserLeft}_${isAloneWaiting}',
+        ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -96,7 +103,7 @@ class CallStatusBanner extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

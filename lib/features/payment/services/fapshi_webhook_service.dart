@@ -6,6 +6,7 @@ import 'package:prepskul/features/payment/services/user_credits_service.dart';
 import 'package:prepskul/core/services/notification_helper_service.dart';
 import 'package:prepskul/features/sessions/services/meet_service.dart';
 import 'package:prepskul/features/booking/services/recurring_session_service.dart';
+import 'package:prepskul/features/booking/services/group_class_service.dart';
 import 'package:prepskul/features/booking/models/booking_request_model.dart';
 import 'package:prepskul/features/messaging/services/conversation_lifecycle_service.dart';
 
@@ -270,6 +271,17 @@ class FapshiWebhookService {
             paymentRequestId,
             'paid',
             fapshiTransId: transactionId,
+          );
+        }
+
+        // Finalize any group class enrollments linked to this payment request.
+        final groupEnrollmentsProcessed =
+            await GroupClassService.finalizeEnrollmentForPaymentRequest(
+          paymentRequestId,
+        );
+        if (groupEnrollmentsProcessed > 0) {
+          LogService.success(
+            'Group class enrollments finalized for payment request: $paymentRequestId (count=$groupEnrollmentsProcessed)',
           );
         }
 
